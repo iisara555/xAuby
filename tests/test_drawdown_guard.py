@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from unittest import mock
 
 from xauby.engine.risk import RiskMixin
@@ -66,6 +67,58 @@ class TestDrawdownGuard(unittest.TestCase):
     def test_non_positive_equity_allows(self):
         e = _stub(_GUARD_ON)
         self.assertEqual(e.check_drawdown_guard(0.0), (True, ""))
+
+    def test_per_symbol_consecutive_loss_override(self):
+        e = _stub(
+            {
+                "trading": {
+                    "max_consecutive_losses": 2,
+                    "max_consecutive_losses_by_symbol": {"SOLUSDT": 3},
+                }
+            }
+        )
+        e._sym = lambda: "SOLUSDT"
+        closed_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        e.db = mock.Mock()
+        e.db.get_closed_trades.return_value = [
+            {"closed_at": closed_at, "net_pnl": -2.0},
+            {"closed_at": closed_at, "net_pnl": -1.0},
+        ]
+        self.assertEqual(e.check_daily_protections(1000.0, "SOLUSDT"), (True, ""))
+
+    def test_consecutive_losses_are_scoped_by_execution_mode(self):
+        e = _stub({"trading": {"max_consecutive_losses": 2}})
+        e._sym = lambda: "SOLUSDT"
+        e._execution_mode = lambda symbol=None: "live"
+        closed_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        e.db = mock.Mock()
+        e.db.get_closed_trades.return_value = [
+            {"closed_at": closed_at, "net_pnl": -2.0, "execution_mode": "sim"},
+            {"closed_at": closed_at, "net_pnl": -1.0, "execution_mode": "sim"},
+        ]
+        self.assertEqual(e.check_daily_protections(1000.0, "SOLUSDT"), (True, ""))
+
+        e._execution_mode = lambda symbol=None: "sim"
+        allowed, reason = e.check_daily_protections(1000.0, "SOLUSDT")
+        self.assertFalse(allowed)
+        self.assertIn("max consecutive losses (sim)", reason)
+
+    def test_daily_loss_is_scoped_by_execution_mode(self):
+        e = _stub({"trading": {"max_daily_loss_pct": 1.0}})
+        e._sym = lambda: "SOLUSDT"
+        e._execution_mode = lambda symbol=None: "live"
+        closed_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        e.db = mock.Mock()
+        e.db.get_closed_trades.return_value = [
+            {"closed_at": closed_at, "net_pnl": -50.0, "execution_mode": "sim"},
+            {"closed_at": closed_at, "net_pnl": -50.0, "execution_mode": "sim"},
+        ]
+        self.assertEqual(e.check_daily_protections(1000.0, "SOLUSDT"), (True, ""))
+
+        e._execution_mode = lambda symbol=None: "sim"
+        allowed, reason = e.check_daily_protections(1000.0, "SOLUSDT")
+        self.assertFalse(allowed)
+        self.assertIn("Daily PnL (sim)", reason)
 
 
 if __name__ == "__main__":

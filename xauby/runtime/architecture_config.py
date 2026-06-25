@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from xauby.strategies.indicators.registry import (
+    DEFAULT_STRATEGY_CHART_MAP,
+    available_indicators,
+)
+
 DEFAULT_ARCHITECTURE: Dict[str, Any] = {
     "whitelist_strict": False,
     "indicator_registry_enabled": False,
@@ -15,17 +20,7 @@ DEFAULT_ARCHITECTURE: Dict[str, Any] = {
     "regime_confidence_filter": False,
     "event_bus_enabled": False,
     "exchange_plugin_registry_enabled": False,
-    "strategy_chart_indicators": {
-        "cdc_action_zone": ["cdc_action_zone"],
-        "supertrend_ema200": ["supertrend", "ema200"],
-        "btc_ema_pullback": ["btc_ema_pullback"],
-        "ict_lite_strategy": ["ict_lite"],
-        "bbkc_squeeze": ["bbkc_squeeze"],
-        "bbrsi_mean_reversion": ["bbrsi_mean_reversion"],
-        "rsi2_meanrev": ["rsi2_meanrev"],
-        "vol_breakout": ["vol_breakout"],
-        "supertrend_short": ["supertrend", "ema200"],
-    },
+    "strategy_chart_indicators": dict(DEFAULT_STRATEGY_CHART_MAP),
 }
 
 # Regime -> strategy plugin id. Values MUST be registered strategy ids (see
@@ -126,9 +121,14 @@ def sync_yaml_pairs_from_whitelist(cfg: Dict[str, Any]) -> bool:
 
 def strategy_chart_indicators(cfg: Dict[str, Any], strategy_name: str) -> List[str]:
     mapping = architecture_block(cfg).get("strategy_chart_indicators") or {}
-    names = mapping.get(strategy_name) or mapping.get(str(strategy_name))
+    strat = str(strategy_name)
+    names = mapping.get(strategy_name) or mapping.get(strat)
     if isinstance(names, list) and names:
         return [str(n) for n in names]
+    # Future strategy plugins can render a chart without YAML edits when they
+    # provide a same-name indicator plugin, e.g. strategy "foo" -> indicator "foo".
+    if strat in available_indicators():
+        return [strat]
     return []
 
 

@@ -9,6 +9,7 @@ import yaml
 from xauby.ui.chart import get_bar_chart_lines, get_chart_lines, get_zone_distribution
 from xauby.ui.chart_registry import chart_display_metadata, compute_chart_dataframe
 from xauby.ui.textual_tui.chart_legend import format_chart_legend
+from xauby.runtime.architecture_config import strategy_chart_indicators
 
 
 class TestChartRegistryPath(unittest.TestCase):
@@ -180,6 +181,7 @@ class TestChartRegistryPath(unittest.TestCase):
             "ict_lite_strategy": ("ict_zone", ["ema_fast", "ema_slow", "recent_high", "recent_low"], ["Sweep Low", "MSS", "Recent High"]),
             "bbkc_squeeze": ("zone", ["bb_upper", "bb_mid", "bb_lower", "kc_upper", "kc_lower"], ["Compressed", "KC Upper"]),
             "bbrsi_mean_reversion": ("zone", ["bb_upper", "bb_mid", "bb_lower"], ["Oversold", "BB Upper"]),
+            "simple_scalp_plus": ("scalp_zone", ["hull", "vwap", "ema_fast", "ema_slow"], ["Buy zone", "Hull MA", "VWAP"]),
             "rsi2_meanrev": ("rsi2_zone", ["ema200", "sma5"], ["Buy Setup", "EMA200", "SMA5"]),
             "vol_breakout": ("vol_breakout_zone", ["range_high", "exit_ema"], ["Breakout", "Range High", "Exit EMA"]),
         }
@@ -194,6 +196,20 @@ class TestChartRegistryPath(unittest.TestCase):
             legend = re.sub(r"\x1b\[[0-9;]*m", "", format_chart_legend(100, strategy_name=strat))
             self.assertNotIn("EMA12", legend, strat)
             self.assertNotIn("Buy zone", legend, strat)
+
+    def test_strategy_chart_map_falls_back_to_same_name_indicator(self):
+        cfg = {
+            "architecture": {
+                "indicator_registry_enabled": True,
+                "strategy_chart_indicators": {
+                    "simple_scalp_plus": [],
+                },
+            }
+        }
+        self.assertEqual(strategy_chart_indicators(cfg, "simple_scalp_plus"), ["simple_scalp_plus"])
+        meta = chart_display_metadata("simple_scalp_plus", cfg)
+        self.assertEqual(meta["zone_column"], "scalp_zone")
+        self.assertEqual([x["key"] for x in meta["lines"]], ["hull", "vwap", "ema_fast", "ema_slow"])
 
     def test_compact_legend_keeps_zone_labels_distinct(self):
         """Narrow widths must not collapse multi-word zones into duplicates.

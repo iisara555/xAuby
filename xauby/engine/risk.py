@@ -74,6 +74,33 @@ class RiskMixin:
             )
         return True, ""
 
+    def _risk_execution_mode(self, symbol: str) -> str:
+        """Execution mode used to scope trade-history risk counters.
+
+        Per-symbol engines can run some pairs in sim while others are live. Risk
+        history must not cross that boundary, or a sim loss can block live
+        entries for the same symbol.
+        """
+        try:
+            mode = self._execution_mode(symbol)  # type: ignore[attr-defined]
+        except Exception:
+            mode = ""
+        mode = str(mode or "").lower()
+        return mode if mode in {"sim", "live"} else ""
+
+    @staticmethod
+    def _filter_closed_trades_by_execution_mode(
+        trades: list[Dict[str, Any]],
+        execution_mode: str,
+    ) -> list[Dict[str, Any]]:
+        if execution_mode not in {"sim", "live"}:
+            return trades
+        return [
+            t
+            for t in trades
+            if str(t.get("execution_mode") or "").lower() == execution_mode
+        ]
+
 
     def _build_risk_block(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         sym = symbol or getattr(self, "symbol", "")
@@ -182,16 +209,28 @@ class RiskMixin:
     ) -> Tuple[bool, str]:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         max_consecutive_losses = self.config.get("trading", {}).get("max_consecutive_losses")
+        per_symbol_losses = self.config.get("trading", {}).get("max_consecutive_losses_by_symbol") or {}
+        if isinstance(per_symbol_losses, dict):
+            symbol_limit = per_symbol_losses.get(sym)
+            if symbol_limit is None:
+                symbol_limit = per_symbol_losses.get(sym.replace("USDT", ""))
+            if symbol_limit is not None:
+                max_consecutive_losses = symbol_limit
         max_daily_loss_pct = self.config.get("trading", {}).get("max_daily_loss_pct")
 
         if max_consecutive_losses is None and max_daily_loss_pct is None:
             return True, ""
 
         now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        execution_mode = self._risk_execution_mode(sym)
 
         # 1. Check consecutive losses in the last 24 hours (per-pair streak protection)
         if max_consecutive_losses is not None:
             closed_trades_pair = self.db.get_closed_trades(sym, limit=50)
+            closed_trades_pair = self._filter_closed_trades_by_execution_mode(
+                closed_trades_pair,
+                execution_mode,
+            )
             day_trades_pair = []
             for t in closed_trades_pair:
                 try:
@@ -207,13 +246,18 @@ class RiskMixin:
                 if pnl < 0:
                     consec_losses += 1
                     if consec_losses >= int(max_consecutive_losses):
-                        return False, f"Hit max consecutive losses ({consec_losses} >= {max_consecutive_losses}) in the last 24h"
+                        mode_note = f" ({execution_mode})" if execution_mode else ""
+                        return False, f"Hit max consecutive losses{mode_note} ({consec_losses} >= {max_consecutive_losses}) in the last 24h"
                 else:
                     break
 
         # 2. Check total daily loss percentage (global portfolio-wide protection)
         if max_daily_loss_pct is not None and current_equity > 0:
             closed_trades_global = self.db.get_closed_trades(None, limit=200)
+            closed_trades_global = self._filter_closed_trades_by_execution_mode(
+                closed_trades_global,
+                execution_mode,
+            )
             day_trades_global = []
             for t in closed_trades_global:
                 try:
@@ -227,6 +271,7 @@ class RiskMixin:
             if total_net_pnl < 0:
                 loss_pct = (abs(total_net_pnl) / current_equity) * 100.0
                 if loss_pct >= float(max_daily_loss_pct):
-                    return False, f"Daily PnL ({total_net_pnl:.2f} USDT, -{loss_pct:.2f}%) exceeds limit (-{max_daily_loss_pct}%) in the last 24h"
+                    mode_note = f" ({execution_mode})" if execution_mode else ""
+                    return False, f"Daily PnL{mode_note} ({total_net_pnl:.2f} USDT, -{loss_pct:.2f}%) exceeds limit (-{max_daily_loss_pct}%) in the last 24h"
 
         return True, ""

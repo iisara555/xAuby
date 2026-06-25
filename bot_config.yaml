@@ -47,6 +47,8 @@ trading:
   sl_confirm_ticks: 3
   ws_reconnect_buy_block_seconds: 120
   max_consecutive_losses: 2
+  max_consecutive_losses_by_symbol:
+    SOLUSDT: 3
   max_daily_loss_pct: 10.0
   max_slippage_pct:
     trend_only: 1.0
@@ -246,6 +248,29 @@ strategy:
       fixed_tp_pct: 0.0       # set >0 to arm a fixed TP, else SELL-confluence/trailing exits
       max_calc_bars: 400
       cool_down_minutes: 10
+    sol_ema_pullback:
+      enabled: true
+      timeframe: 15m
+      primary_timeframe: 15m
+      confirm_timeframe: 15m
+      ema_fast: 20
+      ema_slow: 50
+      atr_period: 14
+      volume_ma_period: 20
+      volume_min_ratio: 1.10
+      pullback_lookback: 5
+      pullback_atr_mult: 0.7
+      min_body_atr: 0.08
+      confirm_lookback: 2
+      swing_lookback: 8
+      sl_buffer_atr: 0.10
+      min_sl_atr_mult: 0.8
+      risk_reward: 2.0
+      trailing_atr_mult: 1.2
+      exit_on_momentum_loss: true
+      fixed_tp_pct: 2.0
+      max_calc_bars: 300
+      cool_down_minutes: 10
     ict_lite_strategy:
       enabled: true
       timeframe: 4h
@@ -427,7 +452,7 @@ minimal_roi:
     '960': 0.008
 data:
   auto_detect_held_pairs: false
-  pairs: ["XAUTUSDT", "BTCUSDT"]
+  pairs: ["XAUTUSDT", "BTCUSDT", "SOLUSDT"]
   portfolio_guard:
     held_coins_only: false
   collect_interval_seconds: 60
@@ -657,6 +682,8 @@ architecture:
     - bbrsi_mean_reversion
     simple_scalp_plus:
     - simple_scalp_plus
+    sol_ema_pullback:
+    - sol_ema_pullback
     rsi2_meanrev:
     - rsi2_meanrev
     vol_breakout:
