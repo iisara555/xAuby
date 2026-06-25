@@ -1,0 +1,92 @@
+"""Fail-closed local IPC for confirmed manual trading requests."""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+import uuid
+from typing import Any, Dict, Optional
+
+from xauby.runtime.paths import manual_order_request_path
+from xauby.utils.atomic_io import atomic_json_write
+
+VALID_MANUAL_ACTIONS = {"BUY", "SELL"}
+MANUAL_ORDER_MAX_AGE_SECONDS = 120.0
+
+
+def write_manual_order_request(
+    symbol: str,
+    action: str,
+    *,
+    source: str = "textual_tui",
+    project_root: str = ".",
+) -> Dict[str, Any]:
+    """Atomically queue one short-lived manual request for the engine."""
+    sym = str(symbol or "").upper().replace("_", "")
+    act = str(action or "").upper()
+    if not sym:
+        raise ValueError("manual order symbol is required")
+    if act not in VALID_MANUAL_ACTIONS:
+        raise ValueError(f"manual order action must be one of {sorted(VALID_MANUAL_ACTIONS)}")
+    payload = {
+        "request_id": uuid.uuid4().hex,
+        "symbol": sym,
+        "action": act,
+        "source": str(source or "local"),
+        "created_at": time.time(),
+    }
+    path = os.path.join(project_root, manual_order_request_path())
+    atomic_json_write(path, payload, indent=2)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return payload
+
+
+def claim_manual_order_request(
+    symbol: str,
+    *,
+    project_root: str = ".",
+    now: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """Claim a matching request once; stale/invalid requests fail closed.
+
+    A request for another active symbol is left in place so that symbol can
+    claim it later in the same multi-pair engine tick.
+    """
+    path = os.path.join(project_root, manual_order_request_path())
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        return None
+
+    requested_symbol = str(payload.get("symbol") or "").upper().replace("_", "")
+    if requested_symbol != str(symbol or "").upper().replace("_", ""):
+        return None
+
+    # Remove before execution. A crash cannot replay a financial instruction.
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        return None
+
+    action = str(payload.get("action") or "").upper()
+    try:
+        created_at = float(payload.get("created_at") or 0.0)
+    except (TypeError, ValueError):
+        created_at = 0.0
+    age = float(time.time() if now is None else now) - created_at
+    if action not in VALID_MANUAL_ACTIONS or created_at <= 0 or age < -5 or age > MANUAL_ORDER_MAX_AGE_SECONDS:
+        return None
+    payload["action"] = action
+    payload["symbol"] = requested_symbol
+    return payload

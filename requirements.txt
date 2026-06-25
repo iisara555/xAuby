@@ -1,0 +1,21 @@
+# Crypto Trading Bot Dependencies
+sqlalchemy>=2.0.0
+requests>=2.28.0
+# ccxt 4.4+ bundles ccxt.pro — required for multi-exchange websocket streaming
+# (xauby/api/exchanges/exchange_ccxt.py CCXTProWebSocket). Without it the ccxt
+# provider degrades to REST polling.
+ccxt>=4.4.0
+pandas>=2.0.0
+numpy>=1.24.0
+python-dotenv>=1.0.0
+PyYAML>=6.0.0
+ruamel.yaml>=0.18.0
+
+websocket-client>=1.6.0
+rich>=13.7.1
+tenacity>=8.2.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+optuna>=3.0.0
+pandas-ta @ git+https://github.com/MerlinR/Pandas-ta-fork.git
+textual>=1.0.0

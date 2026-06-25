@@ -1,0 +1,708 @@
+simulate_only: true
+read_only: false
+
+# Exchange selection and exchange-wide economics. Source of truth for the
+# values that used to be hardcoded against Binance / USDT / a 0.1% fee.
+# The same fee_pct / quote_asset feed live, sim, backtest, and replay so
+# simulation stays in parity with live.
+exchange:
+  provider: binance        # native Binance Thailand REST/WebSocket adapter
+  name: binance.th         # informational label
+  quote_asset: USDT        # default quote currency for whitelist pairs
+  fee_pct: 0.001           # taker fee fraction (0.001 == 0.1%)
+  market_type: spot        # Binance Thailand spot; LONG-only execution
+  margin_mode: spot
+  position_mode: one_way
+  # When architecture.exchange_plugin_registry_enabled is true, `provider` is
+  # resolved through the exchange plugin registry (xauby/api/exchanges/). Adding
+  # a new exchange = drop one exchange_<name>.py file there (REST + websocket).
+  # --- ccxt provider only (ignored for native binance) ---
+  # ccxt_id: binance       # ignored by the native Binance Thailand adapter
+  # base_url:              # optional REST override (else <NAME>_BASE_URL env)
+  # api_key_env: BINANCE_API_KEY
+  # api_secret_env: BINANCE_API_SECRET
+  # base_url_env: BINANCE_BASE_URL
+  # params: {}             # extra kwargs forwarded to the ccxt client
+  # sandbox: false         # ccxt sandbox/testnet mode
+
+derivatives:
+  default_leverage: 1
+  max_leverage: 3
+  funding_guard_enabled: true
+  max_abs_funding_rate: 0.003
+  min_liquidation_distance_pct: 20.0
+  sim_funding_rate_8h: 0.0001
+
+trading:
+  trading_pair: ''
+  startup_order_reconcile: true
+  runtime_order_reconcile: true
+  interval_seconds: 60
+  timeframe: 4h
+  mode: full_auto
+  max_open_positions: 2
+  min_order_amount: 10.0
+  risk_pct: 0.03
+  max_position_per_trade_pct: 48.0
+  sl_confirm_ticks: 3
+  ws_reconnect_buy_block_seconds: 120
+  max_consecutive_losses: 2
+  max_daily_loss_pct: 10.0
+  max_slippage_pct:
+    trend_only: 1.0
+    scalping: 2.0
+strategy_mode:
+  active: trend_only
+  trend_only:
+    primary_timeframe: 4h
+    confirm_timeframe: 1d
+    min_confidence: 0.4
+    min_strategies_agree: 1
+    confirmations_required: 1
+    confirmation_window_seconds: 14400
+    stop_loss_pct: 4.5
+    take_profit_pct: 10.0
+    max_hold_hours: 48
+    min_time_between_trades_minutes: 5
+    mtf_enabled: true
+mode_indicator_profiles:
+  trend_only:
+    active_strategies:
+    - cdc_action_zone
+    primary_timeframe: 4h
+    confirm_timeframe: 1d
+    min_confidence: 0.4
+    min_strategies_agree: 1
+    independent_strategy_execution: true
+    stop_loss_pct: 2.0
+    take_profit_pct: 4.0
+    atr_multiplier: 2.5
+    confirmation_candles: 1
+    min_hold_seconds: 240
+auto_mode_switch:
+  enabled: false
+  check_interval_seconds: 300
+  min_switch_interval_seconds: 1800
+  persistence_threshold: 3
+market_analysis:
+  adx_thresholds:
+    strong_trend: 40
+    weak_trend: 25
+  volatility_thresholds:
+    high_pct: 3.0
+    low_pct: 1.0
+  volume_thresholds:
+    high_ratio: 1.5
+    low_ratio: 0.7
+btc_correlation:
+  enabled: true
+  lookback_bars: 100
+  min_correlation_strong: 0.7
+  min_correlation_moderate: 0.5
+multi_timeframe:
+  enabled: true
+  required_candles_for_readiness: 35
+  timeframes:
+  - 1m
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  backfill_target_bars: 250
+  alignment_threshold: 0.4
+  require_htf_confirmation: false
+  higher_timeframes:
+  - 1h
+  - 4h
+  - 1d
+  atr_multiplier: 2.5
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  tf_weights:
+    1m: 0.1
+    5m: 0.15
+    15m: 0.2
+    1h: 0.25
+    4h: 0.2
+    1d: 0.1
+  signal_source: strategy
+risk:
+  use_fractional_kelly: false
+  max_risk_per_trade_pct: 3.0
+  min_risk_per_trade_pct: 0.3
+  max_daily_loss_pct: 10.0
+  max_position_per_trade_pct: 48.0
+  max_open_positions: 2
+  max_daily_trades: 3
+  # Portfolio drawdown circuit-breaker (engine-managed kill-switch). When equity
+  # falls >= max_drawdown_pct below its high-water mark, new BUYs are blocked
+  # (and open positions force-closed if close_positions is true). The peak is
+  # persisted under the runtime root so it survives restarts.
+  drawdown_guard:
+    enabled: true
+    max_drawdown_pct: 20.0
+    close_positions: false
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+  cool_down_minutes: 240
+  cooldown_mode: per_pair
+  use_dynamic_sl_tp: true
+  sl_tp_percent_source_when_dynamic: risk_config
+  atr_multiplier: 2.5
+  atr_period: 14
+  protections:
+    max_consecutive_losses_per_pair: 3
+    pair_loss_cooldown_minutes: 120
+pre_trade_gate:
+  enabled: true
+strategy:
+  use_closed_candles: true
+  active: cdc_action_zone
+  config:
+    donchian_trend:
+      enabled: true
+      timeframe: 4h
+      primary_timeframe: 4h
+      entry_len: 48
+      exit_len: 24
+      ema_period: 200
+      atr_period: 14
+      adx_period: 14
+      adx_min: 20.0
+      vol_ma_period: 20
+      vol_min_ratio: 0.0
+      sl_atr_mult: 2.0
+      trailing_atr_mult: 6.0
+      fixed_tp_pct: 0.0
+      breakeven_sl_enabled: true
+      breakeven_activation_atr_mult: 1.5
+      breakeven_buffer_atr_mult: 0.1
+      exit_on_ema_loss: true
+      max_calc_bars: 1000
+      cool_down_minutes: 240
+    cdc_action_zone:
+      enabled: true
+      timeframe: 4h
+      primary_timeframe: 4h
+      confirm_timeframe: 1d
+      use_d1_regime_filter: false
+      ap_smoothing: 2
+      # CDC ActionZone V3 2020 Spot: Fresh GREEN opens LONG and RED exits.
+      # No SHORT, stop loss, trailing stop, or fixed take profit.
+      enable_short: false
+      require_fresh_zone: true
+      fresh_zone_window: 1
+      disable_stop_loss: true
+      position_pct: 1.0          # สัดส่วน equity ต่อไม้ (1.0 = เต็มพอร์ต). ลดเพื่อหด drawdown
+      rsi_min: 0.0
+      rsi_max: 100.0
+      vol_min_ratio: 0.0
+      sl_atr_mult: 2.0
+      trailing_atr_mult: 1.8
+      fixed_tp_pct: 0.0
+      breakeven_sl_enabled: false
+      breakeven_activation_atr_mult: 1.5
+      breakeven_buffer_atr_mult: 0.1
+      cool_down_minutes: 240
+    simple_scalp_plus:
+      # SimpleScalp+ 8-point confluence scalper (long-only port from
+      # Binance_Cryptonice). Primary/confirm TF are driven per-pair from the
+      # whitelist (e.g. 5m primary / 15m confirm); these are signal defaults.
+      enabled: true
+      timeframe: 5m
+      primary_timeframe: 5m
+      confirm_timeframe: 15m
+      hull_period: 16
+      ema_fast: 9
+      ema_slow: 21
+      rsi_period: 14
+      rsi_buy_min: 30.0
+      rsi_buy_max: 60.0
+      rsi_sell_max: 48.0
+      adx_period: 14
+      adx_threshold: 18.0
+      macd_fast: 12
+      macd_slow: 26
+      macd_signal: 9
+      stoch_period: 14
+      stoch_buy_k_min: 20.0
+      stoch_buy_k_max: 80.0
+      stoch_sell_k_max: 80.0
+      volume_period: 20
+      volume_threshold: 1.05
+      atr_period: 14
+      atr_multiplier: 1.2
+      risk_reward: 1.8
+      min_buy_confidence: 0.70
+      min_confirmations_buy: 4
+      min_confirmations_sell: 3
+      mtf_filter: true        # halve BUY confidence when confirm-TF trend disagrees
+      require_macro_bull: false  # hard gate: only long when confirm-TF is bullish
+                                 # (needs use_d1_regime_filter: true + a confirm_timeframe)
+      # Engine-side exit knobs (TP = SL * risk_reward is delegated here).
+      sl_atr_mult: 1.2
+      trailing_atr_mult: 1.5
+      fixed_tp_pct: 0.0       # set >0 to arm a fixed TP, else SELL-confluence/trailing exits
+      max_calc_bars: 400
+      cool_down_minutes: 10
+    ict_lite_strategy:
+      enabled: true
+      timeframe: 4h
+      primary_timeframe: 4h
+      confirm_timeframe: ''
+      ema_fast: 20
+      ema_slow: 50
+      atr_period: 14
+      swing_lookback: 20
+      reclaim_window: 3
+      min_body_atr: 0.15
+      sl_atr_mult: 2.0
+      trailing_atr_mult: 1.4
+      fixed_tp_pct: 2.0
+      breakeven_sl_enabled: false
+      breakeven_activation_atr_mult: 1.5
+      breakeven_buffer_atr_mult: 0.1
+    btc_ema_pullback:
+      enabled: true
+      timeframe: 1h
+      primary_timeframe: 1h
+      confirm_timeframe: ''
+      ema_fast: 20
+      ema_slow: 55
+      ema_trend: 200
+      atr_period: 14
+      rsi_period: 14
+      volume_ma_period: 20
+      pullback_lookback: 5
+      pullback_atr_mult: 0.7
+      breakout_lookback: 3
+      min_body_atr: 0.05
+      rsi_min: 45.0
+      rsi_max: 75.0
+      vol_min_ratio: 0.6
+      sl_atr_mult: 1.8
+      trailing_atr_mult: 1.2
+      fixed_tp_pct: 1.5
+      breakeven_sl_enabled: true
+      breakeven_activation_atr_mult: 1.0
+      breakeven_buffer_atr_mult: 0.05
+      exit_on_trend_loss: true
+    supertrend_ema200:
+      enabled: true
+      timeframe: 1h
+      primary_timeframe: 1h
+      confirm_timeframe: ''
+      ema_period: 200
+      atr_period: 10
+      supertrend_mult: 3.5
+      confirm_bars: 1
+      entry_on_flip_only: true
+      rsi_period: 14
+      rsi_min: 0.0
+      rsi_max: 100.0
+      volume_ma_period: 20
+      vol_min_ratio: 0.0
+      sl_atr_mult: 2.5
+      trailing_atr_mult: 2.0
+      fixed_tp_pct: 0.0
+      breakeven_sl_enabled: true
+      breakeven_activation_atr_mult: 1.2
+      breakeven_buffer_atr_mult: 0.05
+      exit_on_supertrend_flip: true
+      exit_on_ema_loss: true
+      max_calc_bars: 420
+    bbkc_squeeze:
+      fixed_tp_pct: 0.0
+    bbrsi_mean_reversion:
+      fixed_tp_pct: 1.2
+    rsi2_meanrev:
+      fixed_tp_pct: 0.8
+    vol_breakout:
+      fixed_tp_pct: 0.0
+  # Per-symbol strategy overrides. Both live pairs use cdc_action_zone (XAUT via
+  # whitelist strategy_params, BTC via the shared strategy.config.cdc_action_zone
+  # defaults), so no per-symbol override is needed here.
+  symbols: {}
+strategies:
+  enabled:
+  - cdc_action_zone
+  min_confidence: 0.4
+  min_strategies_agree: 1
+  independent_strategy_execution: true
+  cdc_action_zone:
+    # หมายเหตุ: บล็อกนี้เป็น fallback — ตัวที่ runtime ใช้จริงคือ strategy.config.cdc_action_zone
+    # คงให้ตรงกันกันสับสน (CDC แท้: ไม่มี SL, เข้าเขียวแท้, ลงเต็มไม้)
+    enabled: true
+    use_d1_regime_filter: false
+    require_fresh_zone: true
+    fresh_zone_window: 1
+    disable_stop_loss: true
+    position_pct: 1.0
+    ap_smoothing: 2
+    timeframe: 4h
+    rsi_min: 0.0
+    rsi_max: 100.0
+    vol_min_ratio: 0.0
+    sl_atr_mult: 2.0
+    trailing_atr_mult: 1.8
+    breakeven_sl_enabled: false
+    breakeven_activation_atr_mult: 1.5
+    breakeven_buffer_atr_mult: 0.1
+    cool_down_minutes: 240
+auto_trader:
+  enabled: true
+  position_sizing:
+    mode: risk_based
+    fixed_amount: 12
+    risk_per_trade_pct: 2.0
+    max_position_pct: 48.0
+  stop_loss:
+    mode: atr
+    atr_multiplier: 2.5
+    fixed_pct: 2.0
+  take_profit:
+    mode: trailing
+    risk_reward_ratio: 0.0
+    fixed_pct: 0.0
+  trailing:
+    activation_pct: 0.0
+    step_pct: 0.0
+    atr_mult: 1.5
+  auto_exit:
+    check_interval_seconds: 60
+    close_on_signal_opposite: true
+    max_hold_hours: 96
+notifications:
+  alert_channel: telegram
+  telegram_command_polling_enabled: true
+  send_alerts: true
+  notify_ml_signals: false
+  notify_position_updates: true
+  notify_guard_blocks: true
+  notify_regime_changes: true
+  regime_score_threshold: 10
+  semi_auto_confirm_timeout_seconds: 60
+weekly_review:
+  enabled: true
+  day_of_week: 6
+  hour_utc: 17
+  period_days: 7
+  scheduler_poll_seconds: 60
+  save_to_file: true
+  send_telegram: true
+  file_path: weekly_reviews/review_{date}.md
+daily_digest:
+  enabled: true
+  hour_utc: 10
+  send_telegram: true
+execution:
+  order_type: limit
+  retry_attempts: 3
+  retry_delay_seconds: 5
+  order_timeout_seconds: 10
+  # Adverse execution slippage (fill vs quoted price) above this many basis
+  # points raises a Telegram alert. Slippage is also attached to ORDER_FILLED /
+  # POSITION_OPENED/CLOSED events and the fill log line. 0 disables the alert.
+  max_slippage_bps: 50.0
+  enforce_min_profit_gate_for_voluntary_exit: true
+  min_voluntary_exit_net_profit_pct: 0.2
+  trailing_activation_pct: 3.0
+  trailing_stop_pct: 1.5
+  allow_trailing_stop: true
+api:
+  timeout_seconds: 10
+  connect_timeout_seconds: 3
+  read_timeout_seconds: 10
+  max_attempts: 3
+  get_retry_backoff_seconds: 0.5
+  recv_window_ms: 5000
+  pool_maxsize: 10
+minimal_roi:
+  enabled: true
+  trend_only:
+    '0': 0.05
+    '240': 0.03
+    '480': 0.015
+    '960': 0.008
+data:
+  auto_detect_held_pairs: false
+  pairs: ["XAUTUSDT", "BTCUSDT"]
+  portfolio_guard:
+    held_coins_only: false
+  collect_interval_seconds: 60
+  candle_sync_max_workers: 4
+  candle_sync_max_interval_seconds: 900
+  # Block new entries when the newest closed candle is older than this many
+  # timeframes (REST candle sync stalled while price ticks still flow, so the
+  # strategy would act on stale bars). Age peaks at ~2x between candles, so keep
+  # this above 2.0. Re-evaluated every tick; self-clears when candles refresh.
+  candle_staleness_factor: 2.5
+  hybrid_dynamic_coin_config:
+    whitelist_json_path: coin_whitelist.json
+    min_quote_balance_thb: 10.0
+    min_quote_balance_for_pairs: 0.0
+    require_supported_market: true
+    include_assets_with_balance: false
+    hot_reload_enabled: true
+    reload_interval_seconds: 30
+  pair_filters:
+    min_quote_volume_24h: 0
+candle_retention:
+  enabled: true
+  run_on_startup: true
+  cleanup_interval_hours: 12
+  vacuum_after_cleanup: false
+  timeframes:
+    1m: 7
+    5m: 14
+    15m: 30
+    1h: 60
+    4h: 90
+    1d: 180
+event_retention:
+  enabled: true
+  run_on_startup: true
+  cleanup_interval_hours: 12
+  jsonl_retention_days: 30
+  sqlite_retention_days: 90
+backup_retention:
+  enabled: true
+  run_on_startup: true
+  max_backups: 10
+  max_age_days: 30
+  backup_dir: backups
+portfolio:
+  initial_balance: 1000.0
+  quote_asset: USDT
+  position_sizing:
+    mode: risk_based
+    risk_pct: 0.03
+    max_position_per_trade_pct: 48.0
+    min_order_amount: 10.0
+  symbols:
+    XAUTUSDT:
+      allocation_pct: 48.0
+      position_sizing:
+        risk_pct: 0.03
+        max_position_per_trade_pct: 48.0
+        min_order_amount: 10.0
+    BTCUSDT:
+      allocation_pct: 48.0
+      position_sizing:
+        risk_pct: 0.03
+        max_position_per_trade_pct: 48.0
+        min_order_amount: 10.0
+  max_open_positions: 2
+  max_daily_trades: 3
+  min_balance_threshold: 35.0
+  read_only: false
+  persist_path: portfolio_state.json
+backtest:
+  data_base_url: https://api.binance.com
+  # Per-fill slippage (basis points) applied to backtest entries/exits.
+  slippage_bps: 2.0
+  # Perpetual-swap funding: average rate longs pay shorts per 8h window. The
+  # simulator accrues it per bar (scaled by bar_hours/8) for held positions —
+  # longs pay, shorts receive. Set to your venue's typical rate when
+  # backtesting the OKX swap (e.g. 0.0001 = 0.01%/8h ~ 0.03%/day). 0.0 = off
+  # (correct for spot) and keeps results identical to before.
+  funding_rate_8h: 0.0
+  optimizer:
+    max_runs: 4
+    compact_max_runs: 4
+    max_bars: 300
+    # Out-of-sample selection: tune on the first oos_split_ratio of the data,
+    # validate on the rest (with oos_warmup_bars lead-in for indicators). The
+    # winner is chosen on out-of-sample Sharpe among combos profitable in BOTH
+    # windows — guards against in-sample overfitting. Needs enough bars
+    # (>= 2*warmup+80) or it falls back to a single full-window run.
+    oos_split_ratio: 0.7
+    oos_warmup_bars: 100
+rebalance:
+  enabled: false
+  allow_new_assets: true
+  strategy: threshold
+  check_interval: 5
+  cooldown_minutes: 60
+  trade_count_every: 5
+  sideways_regime: true
+  cash_assets:
+  - USDT
+  sideways_exposure_factor: 0.5
+  threshold:
+    threshold_pct: 10.0
+    min_rebalance_pct: 1.0
+  calendar:
+    frequency: weekly
+    day_of_week: 0
+    hour_of_day: 0
+  risk:
+    volatility_window: 20
+    risk_adjustment_factor: 0.5
+    min_allocation_pct: 5.0
+    max_allocation_pct: 50.0
+    volatility_threshold_pct: 30
+  target_allocation:
+    USDT: 50.0
+    XAUT: 50.0
+  min_trade_value: 10.0
+  estimated_cost_pct: 0.2
+balance_monitor:
+  enabled: true
+  poll_interval_seconds: 30
+  persist_path: balance_monitor_state.json
+  bootstrap_history_on_startup: true
+  clean_startup_event_tape: true
+  event_tape_max_age_hours: 12
+  quote_asset: USDT
+  quote_min_threshold: 0.0
+  coin_min_threshold: 0.0
+  coin_min_thresholds: {}
+monitoring:
+  enabled: true
+  health_check_host: 127.0.0.1
+  health_check_port: 8080
+  health_check_path: /health
+  heartbeat_interval_minutes: 0
+  still_alive_interval_minutes: 5
+  reconciliation_interval_minutes: 10
+  auto_restart_on_crash: true
+  restart_cooldown_seconds: 30
+websocket:
+  enabled: true
+  # OKX depth 50 selects a VIP4-only channel; depth 5 is public.
+  order_book_limit: 5
+  startup_retry_interval_seconds: 20
+  reconnect_max_delay: 60.0
+  reconnect_multiplier: 1.5
+  ping_interval: 20
+  ping_timeout: 10
+  stale_tick_seconds: 15
+logging:
+  log_level: INFO
+  enable_console: true
+  enable_files: true
+  max_log_size_mb: 100
+  backup_count: 10
+  debug_retention_days: 30
+  cleanup_on_startup: true
+  metrics_flush_interval: 60
+observability:
+  durable_high_frequency_events: false
+  high_frequency_event_types:
+  - tick
+  - regime_classified
+  state_json_indent:
+cli_ui:
+  enabled: true
+  checklist_verbose:
+  refresh_interval_seconds: 2.0
+  price_flush_interval_seconds: 2.0
+  bot_name: 'xAuby : Alternative Store of Value Trading System'
+  command_listener_enabled: true
+  chart_enabled: true
+  chart_candle_cols: 2
+  chart_max_candles: 0
+  chart_height: 10
+regime_policy:
+  enabled: false
+macro_sentiment_guard:
+  enabled: false
+  check_interval_hours: 4
+  blocking_threshold: -0.5
+  use_dxy: true
+  use_fred: true
+  use_news: false
+  # How DXY / rates / news combine into macro bias. The scores from the
+  # sentiment guard are already oriented to the traded asset (positive =
+  # bullish: weak USD / falling rates are positive for gold), so the weights are
+  # +1.0 and must NOT re-invert them. Override per asset class, e.g. a
+  # USD-correlated asset would flip the dxy sign to -1.0.
+  macro_weights:
+    news: 1.0
+    dxy: 1.0
+    fred: 1.0
+  news_provider: minimax
+  news_model: MiniMax-M2.7
+  news_base_url: https://api.minimax.io/anthropic
+architecture:
+  whitelist_strict: true
+  # Reject (instead of warn) strategy plugins that fail the static sandbox scan
+  # — imports of engine/DB/network/process modules, eval/exec, etc. Recommended
+  # true for untrusted/marketplace plugins; first-party plugins pass cleanly.
+  strategy_sandbox_strict: false
+  # Reject (instead of warn) a strategy whose config_errors() is non-empty — a
+  # fatally invalid value (e.g. rsi_min >= rsi_max). true = fail-closed at engine
+  # start (a bad config keeps the engine down until fixed); current live cdc/
+  # donchian configs validate clean. Set false for legacy warn-and-run.
+  strategy_validate_strict: true
+  indicator_registry_enabled: true
+  sync_yaml_pairs_from_whitelist: true
+  strategy_chart_indicators:
+    donchian_trend:
+    - donchian_trend
+    cdc_action_zone:
+    - cdc_action_zone
+    supertrend_ema200:
+    - supertrend
+    - ema200
+    btc_ema_pullback:
+    - btc_ema_pullback
+    ict_lite_strategy:
+    - ict_lite
+    bbkc_squeeze:
+    - bbkc_squeeze
+    bbrsi_mean_reversion:
+    - bbrsi_mean_reversion
+    simple_scalp_plus:
+    - simple_scalp_plus
+    rsi2_meanrev:
+    - rsi2_meanrev
+    vol_breakout:
+    - vol_breakout
+    supertrend_short:
+    - supertrend
+    - ema200
+  tui_indicator_registry: true
+  per_symbol_execution_mode: true
+  sim_broker_enabled: true
+  regime_router_enabled: false
+  # Suppress regime switches when the classifier confidence is below
+  # regime_router.confidence_threshold (guarded by a 30-sample warmup). Keeps the
+  # router from swapping strategies during low-confidence / transition reads.
+  regime_confidence_filter: true
+  event_bus_enabled: true
+  # Wrap outbound exchange REST calls in a token-bucket rate limiter + circuit
+  # breaker (xauby/api/resilience.py). Off by default — flip to true to arm;
+  # rollback is a flag flip, no code revert. CCXT's own enable_rate_limit stays
+  # independent of this guard.
+  api_circuit_breaker_enabled: false
+  # DEPRECATED / vestigial: the exchange gateway + websocket always route
+  # through the plugin registries (xauby/api/exchanges/) now — the legacy
+  # hardcoded factory was removed. This flag no longer gates anything; kept
+  # only so existing configs/UI don't error. Custom gateway = exchange.gateway_class.
+  exchange_plugin_registry_enabled: true
+regime_router:
+  debounce_candles: 3
+  recovery_candles: 3
+  force_close_candles: 6
+  instant_switch_when_flat: false
+  # Lowered from 0.70 to keep 2-3 strategies genuinely active (0.70 collapsed
+  # routing to a single strategy in chop on the churn matrix). See
+  # docs/regime_churn_report.md.
+  confidence_threshold: 0.65
+  mapping:
+    BULL_BREAKOUT: cdc_action_zone
+    BULL_TREND_STRONG: cdc_action_zone
+    BULL_TREND_WEAK: cdc_action_zone
+    # LOW_VOL_* folded into the mean-reversion bucket (was bbkc_squeeze) to cut
+    # the distinct destination-strategy count from 4 to 3 and reduce ping-pong.
+    LOW_VOL_ACCUMULATION: bbrsi_mean_reversion
+    LOW_VOL_RANGE: bbrsi_mean_reversion
+    VOLATILITY_EXPANSION: supertrend_ema200
+    SIDEWAYS_CHOP: bbrsi_mean_reversion
+    BEAR_TREND_WEAK: cdc_action_zone
+    PANIC_SELL:
+    BEAR_BREAKDOWN:
+    BEAR_TREND_STRONG:

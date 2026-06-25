@@ -1,0 +1,232 @@
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional, Tuple
+
+from xauby.runtime.trading_config import resolve_trading_config
+
+logger = logging.getLogger("lite_bot")
+
+
+class RiskMixin:
+    # ---- Portfolio drawdown circuit-breaker -------------------------------
+    def _drawdown_guard_cfg(self) -> Dict[str, Any]:
+        return (self.config.get("risk", {}) or {}).get("drawdown_guard", {}) or {}
+
+    def _load_equity_peak(self) -> float:
+        from xauby.runtime.paths import equity_peak_path
+        try:
+            with open(equity_peak_path(), "r", encoding="utf-8") as f:
+                return float((json.load(f) or {}).get("peak", 0.0) or 0.0)
+        except Exception:
+            return 0.0
+
+    def _save_equity_peak(self, peak: float) -> None:
+        from xauby.runtime.paths import ensure_runtime_dir, equity_peak_path
+        try:
+            ensure_runtime_dir()
+            with open(equity_peak_path(), "w", encoding="utf-8") as f:
+                json.dump({"peak": float(peak)}, f)
+        except Exception as e:
+            logger.warning("Could not persist equity peak: %s", e)
+
+    def update_equity_peak(self, equity: float) -> float:
+        """Grow and persist the equity high-water mark; return current peak."""
+        eq = float(equity or 0.0)
+        cached = getattr(self, "_equity_peak_cache", None)
+        if cached is None:
+            cached = self._load_equity_peak()
+        if eq > cached:
+            cached = eq
+            self._save_equity_peak(cached)
+        self._equity_peak_cache = cached
+        return cached
+
+    def drawdown_pct(self, equity: float) -> float:
+        """Current drawdown from the high-water mark, as a positive percent."""
+        eq = float(equity or 0.0)
+        peak = self.update_equity_peak(eq)
+        if peak <= 0 or eq <= 0:
+            return 0.0
+        return max(0.0, (peak - eq) / peak * 100.0)
+
+    def check_drawdown_guard(self, equity: float) -> Tuple[bool, str]:
+        """Return (allowed, reason). Blocks when drawdown >= max_drawdown_pct."""
+        cfg = self._drawdown_guard_cfg()
+        if not cfg.get("enabled", False):
+            return True, ""
+        eq = float(equity or 0.0)
+        if eq <= 0:
+            return True, ""
+        try:
+            max_dd = float(cfg.get("max_drawdown_pct", 20.0) or 0.0)
+        except (TypeError, ValueError):
+            max_dd = 0.0
+        if max_dd <= 0:
+            self.update_equity_peak(eq)
+            return True, ""
+        dd = self.drawdown_pct(eq)
+        if dd >= max_dd:
+            peak = getattr(self, "_equity_peak_cache", eq)
+            return False, (
+                f"Drawdown guard: equity {eq:.2f} is -{dd:.2f}% from peak "
+                f"{peak:.2f} (limit -{max_dd:.1f}%)"
+            )
+        return True, ""
+
+
+    def _build_risk_block(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+        sym = symbol or getattr(self, "symbol", "")
+        active_strategy = None
+        if hasattr(self, "_strategy_name_for_symbol"):
+            active_strategy = self._strategy_name_for_symbol(sym)
+        eff = resolve_trading_config(
+            self.config,
+            active_strategy,
+            symbol=sym or "",
+            for_live=True,
+        )
+        strat_cfg = eff.strategy
+        portfolio_cfg = eff.portfolio
+        sc = self._sc(symbol) if symbol else None
+
+        def _f(d: Dict[str, Any], key: str, default: float) -> float:
+            try:
+                return float(d.get(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        use_d1 = sc.use_d1_regime_filter if sc else self.use_d1_regime_filter
+        risk = {
+            "risk_pct": _f(portfolio_cfg, "risk_pct", 0.01),
+            "sl_atr_mult": _f(strat_cfg, "sl_atr_mult", 2.0),
+            "trailing_atr_mult": _f(strat_cfg, "trailing_atr_mult", 1.5),
+            "breakeven_sl_enabled": bool(strat_cfg.get("breakeven_sl_enabled", False)),
+            "breakeven_activation_atr_mult": _f(
+                strat_cfg, "breakeven_activation_atr_mult", 1.5
+            ),
+            "breakeven_buffer_atr_mult": _f(strat_cfg, "breakeven_buffer_atr_mult", 0.1),
+            "use_d1_regime_filter": use_d1,
+        }
+        # Expose only gates owned by the active strategy. Injecting CDC-shaped
+        # defaults into every strategy made the dashboard describe gates that
+        # were not actually used (for example BBRSI uses rsi_oversold).
+        for key in (
+            "rsi_min",
+            "rsi_max",
+            "rsi_oversold",
+            "rsi_overbought",
+            "rsi_exit",
+            "vol_min_ratio",
+            "fresh_zone_window",
+            "require_fresh_zone",
+            "ap_smoothing",
+            "release_window",
+            "momentum_min",
+        ):
+            if key in strat_cfg:
+                risk[key] = strat_cfg[key]
+        return risk
+
+    def _is_buy_blocked_by_cooldown(self, symbol: Optional[str] = None) -> Tuple[bool, str]:
+        sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        closed = self.db.get_closed_trades(sym, limit=1)
+        if not closed:
+            return False, ""
+        last = closed[0]
+        if float(last.get("net_pnl", 0.0)) >= 0:
+            return False, ""
+        try:
+            closed_at = datetime.fromisoformat(str(last.get("closed_at", "")).replace("Z", ""))
+        except Exception:
+            return False, ""
+
+        tf = "4h"
+        if sym:
+            try:
+                tf = self._sc(sym).primary_timeframe
+            except Exception:
+                pass
+
+        # Parse tf to minutes
+        unit = tf[-1].lower()
+        try:
+            val = int(tf[:-1])
+        except ValueError:
+            val = 4
+        if unit == 'm':
+            tf_mins = val
+        elif unit == 'h':
+            tf_mins = val * 60
+        elif unit == 'd':
+            tf_mins = val * 1440
+        else:
+            tf_mins = 240
+
+        cooldown_bars = int(self.config.get("trading", {}).get("cooldown_bars", 1))
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        closed_at_ts = int(closed_at.replace(tzinfo=timezone.utc).timestamp())
+        closed_bar_start_ts = (closed_at_ts // (tf_mins * 60)) * (tf_mins * 60)
+        cooldown_end_ts = closed_bar_start_ts + (cooldown_bars * tf_mins * 60)
+
+        if now_ts < cooldown_end_ts:
+            cooldown_end_dt = datetime.fromtimestamp(cooldown_end_ts, tz=timezone.utc).replace(tzinfo=None)
+            return True, f"Loss cooldown active until {cooldown_end_dt.isoformat()} (last loss at {closed_at.isoformat()})"
+        return False, ""
+
+    def check_daily_protections(
+        self,
+        current_equity: float,
+        symbol: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        max_consecutive_losses = self.config.get("trading", {}).get("max_consecutive_losses")
+        max_daily_loss_pct = self.config.get("trading", {}).get("max_daily_loss_pct")
+
+        if max_consecutive_losses is None and max_daily_loss_pct is None:
+            return True, ""
+
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # 1. Check consecutive losses in the last 24 hours (per-pair streak protection)
+        if max_consecutive_losses is not None:
+            closed_trades_pair = self.db.get_closed_trades(sym, limit=50)
+            day_trades_pair = []
+            for t in closed_trades_pair:
+                try:
+                    closed_dt = datetime.fromisoformat(t["closed_at"])
+                    if (now_naive - closed_dt).total_seconds() <= 86400:
+                        day_trades_pair.append(t)
+                except Exception as e:
+                    logger.error(f"Error parsing closed_at date '{t.get('closed_at')}': {e}")
+
+            consec_losses = 0
+            for t in day_trades_pair:
+                pnl = t.get("net_pnl", 0.0)
+                if pnl < 0:
+                    consec_losses += 1
+                    if consec_losses >= int(max_consecutive_losses):
+                        return False, f"Hit max consecutive losses ({consec_losses} >= {max_consecutive_losses}) in the last 24h"
+                else:
+                    break
+
+        # 2. Check total daily loss percentage (global portfolio-wide protection)
+        if max_daily_loss_pct is not None and current_equity > 0:
+            closed_trades_global = self.db.get_closed_trades(None, limit=200)
+            day_trades_global = []
+            for t in closed_trades_global:
+                try:
+                    closed_dt = datetime.fromisoformat(t["closed_at"])
+                    if (now_naive - closed_dt).total_seconds() <= 86400:
+                        day_trades_global.append(t)
+                except Exception as e:
+                    logger.error(f"Error parsing closed_at date '{t.get('closed_at')}': {e}")
+
+            total_net_pnl = sum(t.get("net_pnl", 0.0) for t in day_trades_global)
+            if total_net_pnl < 0:
+                loss_pct = (abs(total_net_pnl) / current_equity) * 100.0
+                if loss_pct >= float(max_daily_loss_pct):
+                    return False, f"Daily PnL ({total_net_pnl:.2f} USDT, -{loss_pct:.2f}%) exceeds limit (-{max_daily_loss_pct}%) in the last 24h"
+
+        return True, ""

@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "quote_asset": "USDT",
+  "min_quote_balance_usdt": 10.0,
+  "min_quote_balance_for_pairs": 0,
+  "require_supported_market": true,
+  "include_assets_with_balance": false,
+  "assets": [
+    {
+      "symbol": "XAUT",
+      "enabled": true,
+      "primary_timeframe": "4h",
+      "confirm_timeframe": "1d",
+      "strategy": "cdc_action_zone",
+      "strategy_params": {
+        "backtest_data_proxy": "PAXGUSDT",
+        "enable_short": false,
+        "ap_smoothing": 2,
+        "use_d1_regime_filter": false,
+        "require_fresh_zone": true,
+        "fresh_zone_window": 1,
+        "rsi_min": 0.0,
+        "rsi_max": 100.0,
+        "vol_min_ratio": 0.0,
+        "sl_atr_mult": 2.0,
+        "trailing_atr_mult": 1.8,
+        "breakeven_sl_enabled": false,
+        "breakeven_activation_atr_mult": 1.5,
+        "breakeven_buffer_atr_mult": 0.1,
+        "disable_stop_loss": true,
+        "position_pct": 1.0,
+        "fixed_tp_pct": 0.0
+      },
+      "mode": "live",
+      "allowed_sides": [
+        "long"
+      ],
+      "short_live_enabled": false,
+      "regime_router_enabled": false,
+      "regime_router_live_confirmed": false,
+      "sim_fee_pct": 0.1
+    },
+    {
+      "symbol": "BTC",
+      "enabled": true,
+      "primary_timeframe": "4h",
+      "confirm_timeframe": "1d",
+      "strategy": "donchian_trend",
+      "strategy_params": {
+        "enable_short": false,
+        "entry_len": 48,
+        "exit_len": 24,
+        "ema_period": 200,
+        "atr_period": 14,
+        "adx_period": 14,
+        "adx_min": 20.0,
+        "sl_atr_mult": 2.0,
+        "trailing_atr_mult": 6.0,
+        "fixed_tp_pct": 0.0,
+        "breakeven_sl_enabled": true,
+        "breakeven_activation_atr_mult": 1.5,
+        "breakeven_buffer_atr_mult": 0.1,
+        "exit_on_ema_loss": true,
+        "use_d1_regime_filter": false,
+        "use_regime_filter": false
+      },
+      "mode": "live",
+      "allowed_sides": [
+        "long"
+      ],
+      "short_live_enabled": false,
+      "regime_router_enabled": false,
+      "regime_router_live_confirmed": false,
+      "sim_fee_pct": 0.1
+    },
+    {
+      "symbol": "SOL",
+      "enabled": true,
+      "primary_timeframe": "15m",
+      "confirm_timeframe": "1h",
+      "strategy": "simple_scalp_plus",
+      "strategy_params": {
+        "enable_short": false,
+        "hull_period": 16,
+        "ema_fast": 9,
+        "ema_slow": 21,
+        "rsi_period": 14,
+        "rsi_buy_min": 30.0,
+        "rsi_buy_max": 60.0,
+        "rsi_sell_max": 48.0,
+        "adx_period": 14,
+        "adx_threshold": 18.0,
+        "stoch_period": 14,
+        "volume_period": 20,
+        "volume_threshold": 1.05,
+        "atr_period": 14,
+        "atr_multiplier": 3.0,
+        "risk_reward": 1.8,
+        "min_buy_confidence": 0.78,
+        "min_confirmations_buy": 5,
+        "min_confirmations_sell": 3,
+        "mtf_filter": true,
+        "require_macro_bull": true,
+        "use_d1_regime_filter": true,
+        "sl_atr_mult": 3.0,
+        "trailing_atr_mult": 1.5,
+        "fixed_tp_pct": 0.0
+      },
+      "mode": "sim",
+      "allowed_sides": [
+        "long"
+      ],
+      "short_live_enabled": false,
+      "regime_router_enabled": false,
+      "regime_router_live_confirmed": false,
+      "sim_fee_pct": 0.1
+    }
+  ]
+}

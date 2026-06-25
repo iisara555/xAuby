@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# xauby CLI wrapper — ensures we run from the project root.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$SCRIPT_DIR"
+
+if [ -f "venv/bin/python" ]; then
+    PYTHON="venv/bin/python"
+else
+    PYTHON="python3"
+fi
+
+exec "$PYTHON" -m xauby "$@"

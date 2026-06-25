@@ -1,0 +1,750 @@
+/* Premium Gemini Modern Gradient TUI Theme Styles */
+
+Screen {
+    background: #121215; /* Soft charcoal — not pure black */
+    color: #f4f4f5;      /* Zinc 100 - clean off-white */
+}
+
+/* Header & Footer styling */
+AppHeader {
+    background: #18181b; /* Zinc 900 */
+    color: #f4f4f5;
+    padding: 0 1;
+    height: auto;
+    min-height: 2;
+}
+
+AppFooter {
+    background: #18181b;
+    color: #a1a1aa;
+    padding: 0 1;
+    height: auto;
+    min-height: 1;
+}
+
+/* ─── Dashboard Native Layout ─── */
+
+#dashboard-scroll {
+    height: 1fr;
+    width: 100%;
+}
+
+/* Horizontal split: sidebar | main (wide desktop) */
+#dashboard-content {
+    layout: horizontal;
+    height: 100%;
+    width: 100%;
+}
+
+/* Left sidebar (35% width) */
+#sidebar {
+    width: 35%;
+    min-width: 28;
+    max-width: 50;
+    height: 100%;
+    layout: vertical;
+}
+
+/* Right main panel (65% width) */
+#main-panel {
+    width: 1fr;
+    height: 100%;
+    layout: vertical;
+}
+
+/* ─── Panel Boxes ─── */
+
+.panel-box {
+    background: #18181b;    /* Zinc 900 */
+    border: round #3f3f46;  /* match the launcher menu's inactive border */
+    border-title-color: #818cf8;  /* Indigo 400 */
+    border-title-align: left;
+    border-title-style: bold;
+    padding: 0 1 1 1;
+    margin: 0 0 0 0;
+    overflow-y: auto;
+}
+
+.panel-box:focus {
+    border: round #818cf8;
+    background: #818cf8 8%;
+}
+
+/* Sidebar panels */
+#portfolio-panel {
+    height: 30%;
+    min-height: 7;
+}
+
+#positions-panel {
+    height: 28%;
+    min-height: 5;
+}
+
+#regime-panel {
+    height: 1fr;
+    min-height: 8;
+    max-height: 18;
+}
+
+/* Main panels */
+#chart-panel {
+    height: 70%;
+    min-height: 20;
+    background: #18181b;
+    layout: vertical;
+}
+
+.chart-panel {
+    padding: 0 1;
+}
+
+#chart-ansi {
+    height: auto;
+    min-height: 15;
+}
+
+/* Wide desktop: candle chart fills chart panel (Textual CSS has no :not()) */
+#dashboard-content.wide-layout #chart-ansi {
+    height: auto;
+    min-height: 20;
+}
+
+#dashboard-content.stacked-layout #chart-ansi {
+    height: auto;
+}
+
+#chart-legend {
+    height: auto;
+    max-height: 3;
+    background: #1c1c21;
+    padding: 0 0;
+}
+
+#checklist-panel {
+    height: 1fr;
+    min-height: 12;
+}
+
+/* ─── Scrollbar Customizations ─── */
+
+ScrollBar {
+    background: #18181b;
+    color: #818cf8;
+}
+
+ScrollableContainer {
+    scrollbar-size: 1 1;
+}
+
+/* ─── Data Table ─── */
+
+DataTable {
+    background: #18181b;
+    border: none;
+    color: #f4f4f5;
+    height: auto;
+    max-height: 20;
+}
+
+DataTable > .datatable--header {
+    background: #27272a;
+    color: #a78bfa; /* Violet 400 */
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: #312e81; /* Deep indigo */
+}
+
+/* ─── TradeLog & Incidents (RawTUI fallback) ─── */
+
+#raw-tui-container {
+    height: 1fr;
+    width: 100%;
+}
+
+#dashboard-scroll,
+#tradelog-scroll,
+#incidents-main,
+#backtest-main,
+#menu-scroll {
+    height: 1fr;
+    width: 100%;
+}
+
+.view-panel {
+    height: auto;
+    min-height: 8;
+}
+
+#menu-scroll {
+    align: center middle;
+}
+
+#launcher-banner {
+    width: 100%;
+    height: auto;
+    padding: 1 0 0 0;
+}
+
+#menu-body {
+    width: 100%;
+    max-width: 80;
+    height: auto;
+    padding: 0 2 1 2;
+}
+
+#launcher-status {
+    width: 100%;
+    height: auto;
+    border: round #6366F1;
+    padding: 0 1;
+    margin: 1 0;
+    color: #E5E7EB;
+    content-align: center middle;
+}
+
+OptionList#launcher-menu {
+    width: 100%;
+    height: auto;
+    border: round #3F3F46;
+    background: transparent;
+    padding: 0 1;
+}
+
+OptionList#launcher-menu:focus {
+    border: round #818CF8;
+}
+
+OptionList#launcher-menu > .option-list--option-highlighted {
+    background: #818CF8 20%;
+    text-style: bold;
+}
+
+OptionList#launcher-menu > .option-list--option-hover {
+    background: #818CF8 12%;
+}
+
+OptionList#launcher-menu > .option-list--separator {
+    color: #374151;
+}
+
+OptionList#launcher-menu > .option-list--option-disabled {
+    color: #6B7280;
+    text-style: bold;
+}
+
+#menu-help {
+    width: 100%;
+    height: auto;
+    color: #6B7280;
+    text-align: center;
+    padding: 1 0 0 0;
+}
+
+/* ─── Responsive Stacked Layout (< 110 cols) — Termius / tablet / phone ─── */
+
+#dashboard-content.stacked-layout {
+    layout: vertical;
+    height: auto;
+}
+
+#dashboard-content.stacked-layout #sidebar {
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+#dashboard-content.stacked-layout #main-panel {
+    width: 100%;
+    height: auto;
+}
+
+#dashboard-content.stacked-layout .panel-box {
+    height: auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin-bottom: 1;
+}
+
+/* Tablet stacked: taller chart area */
+#dashboard-content.stacked-layout #chart-panel {
+    height: 26;
+    min-height: 22;
+}
+
+#dashboard-content.stacked-layout #checklist-panel {
+    min-height: 10;
+}
+
+#dashboard-content.stacked-layout #regime-panel {
+    min-height: 5;
+    margin-top: 1;
+}
+
+/* Phone ultra-compact (< 75 cols) — candles only; no volume sub-chart */
+#dashboard-content.phone-layout.stacked-layout #chart-panel {
+    height: auto;
+    min-height: 22;
+    overflow: hidden;
+}
+
+#dashboard-content.phone-layout #chart-ansi {
+    height: auto;
+    min-height: 17;
+    overflow: hidden;
+}
+
+#dashboard-content.phone-layout #chart-legend {
+    height: auto;
+    min-height: 2;
+    max-height: 3;
+    overflow: hidden;
+}
+
+#dashboard-content.phone-layout #checklist-panel {
+    height: auto;
+    min-height: 4;
+    max-height: 7;
+}
+
+#dashboard-content.phone-layout #decision-gates-panel {
+    min-height: 3;
+    max-height: 8;
+}
+
+#dashboard-content.phone-layout .panel-box {
+    padding: 0;
+    margin-bottom: 0;
+}
+
+#dashboard-content.phone-layout #portfolio-panel,
+#dashboard-content.phone-layout #positions-panel {
+    min-height: 0;
+}
+
+/* ─── App-level phone-mode: tighten header/footer padding ─── */
+.phone-mode AppHeader {
+    padding: 0;
+    min-height: 2;
+}
+
+.phone-mode AppFooter {
+    padding: 0;
+    min-height: 1;
+}
+
+/* Trade log & incident native screens */
+.muted-panel {
+    color: #a1a1aa;
+    padding: 0 1;
+    height: auto;
+}
+
+#tradelog-scroll, #incidents-scroll {
+    height: 1fr;
+    width: 100%;
+}
+
+/* ── Trade Log split ── */
+#tradelog-split {
+    layout: horizontal;
+    width: 100%;
+    height: auto;
+}
+
+#tradelog-split.stacked {
+    layout: vertical;
+    height: auto;
+}
+
+#tradelog-split.stacked #tradelog-left-col,
+#tradelog-split.stacked #tradelog-right-col {
+    width: 100%;
+    height: auto;
+}
+
+#tradelog-left-col, #tradelog-right-col {
+    width: 1fr;
+    height: auto;
+}
+
+/* ── Incident Explorer 2-column split ── */
+#incident-split {
+    layout: horizontal;
+    width: 100%;
+    height: 1fr;
+}
+
+#incident-split.stacked {
+    layout: vertical;
+    height: auto;
+}
+
+#incident-left-col {
+    width: 38;
+    min-width: 28;
+    height: 1fr;
+}
+
+#incident-right-col {
+    width: 1fr;
+    height: 1fr;
+}
+
+#incident-split.stacked #incident-left-col {
+    width: 100%;
+    height: auto;
+    max-height: 12;
+}
+
+#incident-split.stacked #incident-right-col {
+    width: 100%;
+    height: auto;
+}
+
+/* Premium Panel box styles for Trade Log Section panels */
+#tl-regime, #tl-perf, #tl-peak, #tl-cards, #inc-runs-panel, #inc-summary, #inc-validation, #inc-timeline {
+    background: #18181b;
+    border: round #3f3f46;
+    border-title-color: #818cf8;
+    border-title-align: left;
+    border-title-style: bold;
+    padding: 0 1;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#inc-runs-panel:focus-within {
+    border: round #818cf8;
+}
+
+/* Runs panel fills the entire left column */
+#inc-runs-panel {
+    height: 1fr;
+    min-height: 6;
+    max-height: 100%;
+    overflow: hidden;
+    margin-bottom: 0;
+}
+
+#incident-split.stacked #inc-runs-panel {
+    height: auto;
+    max-height: 10;
+    margin-bottom: 1;
+}
+
+#inc-runs-panel ListView {
+    width: 100%;
+    height: 1fr;
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+#incident-split.stacked #inc-runs-panel ListView {
+    height: auto;
+    max-height: 8;
+}
+
+#inc-runs-panel ListItem {
+    height: 1;
+    padding: 0;
+}
+
+#inc-runs-panel ListView > ListItem.-highlight {
+    background: #27272a;
+}
+
+/* Summary is compact; validation is collapsible; timeline expands */
+#inc-summary {
+    min-height: 5;
+    max-height: 12;
+    overflow-y: auto;
+}
+
+#inc-validation {
+    min-height: 3;
+    max-height: 6;
+    overflow-y: auto;
+}
+
+#inc-timeline {
+    min-height: 6;
+    height: 1fr;
+    overflow-y: auto;
+}
+
+#incident-body-root {
+    height: 1fr;
+}
+
+/* ─── Phone-mode: Trade Log panels — no padding/margin waste ─── */
+#tradelog-split.phone-layout #tl-regime,
+#tradelog-split.phone-layout #tl-perf,
+#tradelog-split.phone-layout #tl-peak,
+#tradelog-split.phone-layout #tl-cards {
+    padding: 0;
+    margin-bottom: 0;
+}
+
+/* ─── Phone-mode: Incident Explorer panels ─── */
+#incident-split.phone-layout #inc-summary,
+#incident-split.phone-layout #inc-validation,
+#incident-split.phone-layout #inc-timeline,
+#incident-split.phone-layout #inc-runs-panel {
+    padding: 0;
+    margin-bottom: 0;
+}
+
+#incident-split.phone-layout #inc-summary {
+    max-height: 9;
+}
+
+#incident-split.phone-layout #inc-validation {
+    max-height: 4;
+}
+
+/* ─── Phone-mode: Backtest — tighter min-heights ─── */
+#backtest-split.phone-layout #bt-summary {
+    min-height: 8;
+    padding: 0;
+    margin-bottom: 0;
+}
+
+#backtest-split.phone-layout #bt-parity {
+    min-height: 4;
+    padding: 0;
+    margin-bottom: 0;
+}
+
+#backtest-split.phone-layout #bt-trades {
+    padding: 0;
+}
+
+/* Premium styled Trade DataTable */
+TradeDataTable {
+    border: round #3f3f46;
+    border-title-color: #818cf8;
+    border-title-align: left;
+    border-title-style: bold;
+    margin-bottom: 1;
+    height: auto;
+    max-height: 20;
+}
+
+TradeDataTable:focus {
+    border: round #818cf8;
+}
+
+.phone-mode TradeDataTable {
+    margin-bottom: 0;
+}
+
+#tradelog-body-inner {
+    height: auto;
+    width: 100%;
+}
+
+ListItem.run-selected {
+    background: #27272a;
+}
+
+/* ─── Backtest Screen Layout ─── */
+
+#backtest-split {
+    layout: horizontal;
+    width: 100%;
+    height: 100%;
+}
+
+#backtest-split.stacked {
+    layout: vertical;
+    height: auto;
+}
+
+#backtest-left-col {
+    width: 38%;
+    min-width: 38;
+    max-width: 50;
+    height: 100%;
+}
+
+#backtest-split.stacked #backtest-left-col {
+    width: 100%;
+    height: auto;
+}
+
+#backtest-right-col {
+    width: 1fr;
+    height: 100%;
+}
+
+#backtest-split.stacked #backtest-right-col {
+    width: 100%;
+    height: auto;
+}
+
+#bt-summary {
+    height: auto;
+    min-height: 18;
+    margin-bottom: 1;
+}
+
+#bt-parity {
+    height: auto;
+    min-height: 8;
+    margin-bottom: 1;
+}
+
+#bt-curve {
+    height: 1fr;
+    min-height: 8;
+}
+
+#bt-trades {
+    height: 1fr;
+    overflow-y: scroll;
+}
+
+#backtest-split.stacked #bt-curve {
+    height: auto;
+    min-height: 8;
+}
+
+#backtest-split.stacked #bt-trades {
+    height: auto;
+    min-height: 15;
+}
+
+#backtest-split.phone-layout {
+    height: auto;
+}
+
+#backtest-split.phone-layout #backtest-left-col,
+#backtest-split.phone-layout #backtest-right-col {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+#backtest-split.phone-layout #bt-summary {
+    min-height: 10;
+    margin-bottom: 0;
+}
+
+#backtest-split.phone-layout #bt-parity {
+    min-height: 6;
+    margin-bottom: 0;
+}
+
+#backtest-split.phone-layout #bt-curve.phone-hidden {
+    display: none;
+    height: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
+
+#backtest-split.phone-layout #bt-trades {
+    height: auto;
+    min-height: 10;
+    max-height: 18;
+}
+
+
+
+/* ─── Quick Config (native Textual menus) ─── */
+
+#qc-scroll {
+    height: 1fr;
+    width: 100%;
+    align-horizontal: center;
+}
+
+#qc-body {
+    width: 100%;
+    max-width: 84;
+    height: auto;
+    padding: 1 2;
+}
+
+#qc-title {
+    width: 100%;
+    text-align: center;
+    padding: 1 0;
+}
+
+OptionList.qc-list {
+    width: 100%;
+    height: auto;
+    border: round #3F3F46;
+    background: transparent;
+    padding: 0 1;
+}
+
+OptionList.qc-list:focus {
+    border: round #818CF8;
+}
+
+OptionList.qc-list > .option-list--option-highlighted {
+    background: #818CF8 20%;
+    text-style: bold;
+}
+
+OptionList.qc-list > .option-list--option-hover {
+    background: #818CF8 12%;
+}
+
+OptionList.qc-list > .option-list--separator {
+    color: #374151;
+}
+
+OptionList.qc-list > .option-list--option-disabled {
+    color: #6B7280;
+}
+
+/* Modals */
+QuickConfigScreen, QuickConfigHubScreen {
+    align: center middle;
+}
+
+#qc-modal-box {
+    width: 60;
+    max-width: 80%;
+    height: auto;
+    padding: 1 2;
+    border: round #818CF8;
+    background: #18181B;
+}
+
+#qc-modal-title {
+    width: 100%;
+    padding-bottom: 1;
+}
+
+#qc-modal-hint {
+    width: 100%;
+    color: #9CA3AF;
+    padding-bottom: 1;
+}
+
+#qc-modal-buttons {
+    width: 100%;
+    height: auto;
+    align-horizontal: center;
+    padding-top: 1;
+}
+
+#qc-modal-buttons Button {
+    margin: 0 1;
+}
+
+#qc-choice-list {
+    width: 100%;
+    height: auto;
+    max-height: 16;
+    background: transparent;
+}
