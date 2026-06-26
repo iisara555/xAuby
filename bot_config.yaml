@@ -43,7 +43,7 @@ trading:
   max_open_positions: 2
   min_order_amount: 10.0
   risk_pct: 0.03
-  max_position_per_trade_pct: 48.0
+  max_position_per_trade_pct: 32.0
   sl_confirm_ticks: 3
   ws_reconnect_buy_block_seconds: 120
   max_consecutive_losses: 2
@@ -134,7 +134,7 @@ risk:
   max_risk_per_trade_pct: 3.0
   min_risk_per_trade_pct: 0.3
   max_daily_loss_pct: 10.0
-  max_position_per_trade_pct: 48.0
+  max_position_per_trade_pct: 32.0
   max_open_positions: 2
   max_daily_trades: 3
   # Portfolio drawdown circuit-breaker (engine-managed kill-switch). When equity
@@ -381,7 +381,7 @@ auto_trader:
     mode: risk_based
     fixed_amount: 12
     risk_per_trade_pct: 2.0
-    max_position_pct: 48.0
+    max_position_pct: 32.0
   stop_loss:
     mode: atr
     atr_multiplier: 2.5
@@ -503,20 +503,26 @@ portfolio:
   position_sizing:
     mode: risk_based
     risk_pct: 0.03
-    max_position_per_trade_pct: 48.0
+    max_position_per_trade_pct: 32.0
     min_order_amount: 10.0
   symbols:
     XAUTUSDT:
-      allocation_pct: 48.0
+      allocation_pct: 32.0
       position_sizing:
         risk_pct: 0.03
-        max_position_per_trade_pct: 48.0
+        max_position_per_trade_pct: 32.0
         min_order_amount: 10.0
     BTCUSDT:
-      allocation_pct: 48.0
+      allocation_pct: 32.0
       position_sizing:
         risk_pct: 0.03
-        max_position_per_trade_pct: 48.0
+        max_position_per_trade_pct: 32.0
+        min_order_amount: 10.0
+    SOLUSDT:
+      allocation_pct: 32.0
+      position_sizing:
+        risk_pct: 0.02
+        max_position_per_trade_pct: 32.0
         min_order_amount: 10.0
   max_open_positions: 2
   max_daily_trades: 3

@@ -98,7 +98,7 @@
         "exit_on_momentum_loss": true,
         "fixed_tp_pct": 2.0
       },
-      "mode": "sim",
+      "mode": "live",
       "allowed_sides": [
         "long"
       ],
