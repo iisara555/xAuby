@@ -219,6 +219,25 @@ class OrderMixin:
         """
         return fixed_take_profit_price(entry_price, strategy_name, strategy_cfg)
 
+    def _min_tradeable_base_qty(self, symbol: str, ref_price: float = 0.0) -> float:
+        """Return the smallest base qty worth tracking as an actionable spot position."""
+        sym = symbol.upper().replace("_", "")
+        try:
+            filters = self.client.get_symbol_filters(sym)
+        except Exception:
+            filters = {}
+        min_qty = float(filters.get("minQty") or 0.0)
+        step_size = float(filters.get("stepSize") or 0.0)
+        min_notional = float(filters.get("minNotional") or 0.0)
+        price = float(ref_price or 0.0)
+        if price <= 0:
+            try:
+                price = float(self.client.get_ticker(sym).get("last") or 0.0)
+            except Exception:
+                price = 0.0
+        min_notional_qty = (min_notional / price) if min_notional > 0 and price > 0 else 0.0
+        return max(min_qty, step_size, min_notional_qty, 0.0)
+
     def _record_partial_closed_trade(
         self,
         state: Dict[str, Any],
@@ -415,6 +434,25 @@ class OrderMixin:
         qty = float(state.get("quantity", 0.0))
         if stop_loss <= 0 or qty <= 0:
             return state
+        tradeable_qty = self._min_tradeable_base_qty(sym, stop_loss)
+        try:
+            balances = self.client.get_balances()
+            base_coin = self._get_base_asset(sym)
+            base_bal = balances.get(base_coin) or {}
+            total_base = float(base_bal.get("available", 0.0) or 0.0) + float(
+                base_bal.get("reserved", 0.0) or 0.0
+            )
+        except Exception:
+            total_base = qty
+        if tradeable_qty > 0 and max(qty, total_base) < tradeable_qty:
+            logger.warning(
+                "Tracked %s remainder %.8f is below tradeable threshold %.8f; clearing dust state.",
+                sym,
+                qty,
+                tradeable_qty,
+            )
+            self.db.save_trade_state(sym, "idle")
+            return self.db.get_trade_state(sym)
 
         sl_alive = False
         if sl_order_id:
@@ -1365,7 +1403,13 @@ class OrderMixin:
                 f = self.client.get_symbol_filters(sym)
                 min_qty = float(f.get("minQty") or 0.0)
                 step_size = float(f.get("stepSize") or 0.0001)
-                dust_limit = max(min_qty, step_size)
+                min_notional = float(f.get("minNotional") or 0.0)
+                min_notional_qty = (
+                    min_notional / float(ticker_price)
+                    if min_notional > 0 and float(ticker_price) > 0
+                    else 0.0
+                )
+                dust_limit = max(min_qty, step_size, min_notional_qty)
 
                 if qty < dust_limit:
                     if state_qty >= dust_limit:
@@ -1472,8 +1516,13 @@ class OrderMixin:
                         exit_fee=exit_fee,
                     )
 
-                    remaining_qty = state_qty - filled_qty
-                    if remaining_qty > 0.0001:
+                    remaining_qty = max(0.0, state_qty - filled_qty)
+                    min_remaining_qty = self._min_tradeable_base_qty(sym, filled_price)
+                    remaining_is_tradeable = (
+                        remaining_qty > 0.0001
+                        and (min_remaining_qty <= 0 or remaining_qty >= min_remaining_qty)
+                    )
+                    if remaining_is_tradeable:
                         self._record_partial_closed_trade(
                             state,
                             filled_qty,
@@ -1506,6 +1555,15 @@ class OrderMixin:
                             f"| PnL: {net_pnl:+.2f} USDT"
                         )
                     else:
+                        if remaining_qty > 0.0001 and min_remaining_qty > 0:
+                            logger.warning(
+                                "Treating %s live sell remainder %.8f %s as dust "
+                                "(tradeable threshold %.8f); clearing local state.",
+                                sym,
+                                remaining_qty,
+                                base_coin,
+                                min_remaining_qty,
+                            )
                         if not self._record_closed_trade_atomic(
                             state,
                             filled_qty,

@@ -470,6 +470,98 @@ class TestSimSellDisplayedPnlIncludesFees(unittest.TestCase):
         self.assertAlmostEqual(trade["net_pnl"], 3.916, places=6)
         self.assertIn("PnL: +3.92 USDT", self.engine.last_log_message)
 
+    def test_live_sell_clears_untradeable_remainder_after_partial_fill(self):
+        self.engine.simulate_only = False
+        self.engine.live_trading_allowed = True
+        self.engine.read_only = False
+        self.engine._use_sim_broker = lambda symbol=None: False
+        self.engine._symbol_fee_pct = lambda symbol: 0.001
+        self.engine.db.save_trade_state(
+            symbol="SOLUSDT",
+            state="bought",
+            entry_price=69.50,
+            stop_loss=70.10,
+            take_profit=70.89,
+            highest_price_seen=70.87,
+            quantity=0.681,
+            opened_at="2026-06-26T13:45:00",
+            last_transition_at="2026-06-26T13:45:00",
+            stop_loss_order_id=None,
+        )
+        self.engine.client.get_balances = MagicMock(
+            return_value={"SOL": {"available": 0.680319, "reserved": 0.0}}
+        )
+        self.engine.client.get_symbol_filters = MagicMock(
+            return_value={
+                "minQty": 0.001,
+                "stepSize": 0.001,
+                "minNotional": 5.0,
+            }
+        )
+        self.engine.client.place_order = MagicMock(
+            return_value={
+                "orderId": "sell-sol-1",
+                "status": "FILLED",
+                "executedQty": "0.680",
+                "cummulativeQuoteQty": "48.314",
+            }
+        )
+
+        with patch.object(self.engine, "_place_sl_with_retry") as place_sl:
+            ok = self.engine.execute_sell(
+                self.engine.db.get_trade_state("SOLUSDT"),
+                ticker_price=71.05,
+                trigger_reason="Fixed TP reached",
+                symbol="SOLUSDT",
+            )
+
+        self.assertTrue(ok)
+        place_sl.assert_not_called()
+        state = self.engine.db.get_trade_state("SOLUSDT")
+        self.assertEqual(state.state, "idle")
+        self.assertAlmostEqual(state.quantity, 0.0)
+        trade = self.engine.db.get_closed_trades("SOLUSDT", limit=1)[0]
+        self.assertAlmostEqual(trade["amount"], 0.680, places=6)
+        self.assertIn("[LIVE SELL FILLED]", self.engine.last_log_message)
+
+    def test_ensure_sl_protected_clears_untradeable_live_dust_state(self):
+        self.engine.simulate_only = False
+        self.engine.live_trading_allowed = True
+        self.engine.read_only = False
+        self.engine._execution_mode = lambda symbol=None: "live"
+        self.engine.db.save_trade_state(
+            symbol="SOLUSDT",
+            state="bought",
+            entry_price=69.50,
+            stop_loss=70.10,
+            take_profit=70.89,
+            highest_price_seen=70.87,
+            quantity=0.001,
+            opened_at="2026-06-26T13:45:00",
+            last_transition_at="2026-06-26T13:45:00",
+            stop_loss_order_id=None,
+        )
+        self.engine.client.get_balances = MagicMock(
+            return_value={"SOL": {"available": 0.000319, "reserved": 0.0}}
+        )
+        self.engine.client.get_symbol_filters = MagicMock(
+            return_value={
+                "minQty": 0.001,
+                "stepSize": 0.001,
+                "minNotional": 5.0,
+            }
+        )
+
+        with patch.object(self.engine, "_place_sl_with_retry") as place_sl:
+            state = self.engine._ensure_sl_protected(
+                self.engine.db.get_trade_state("SOLUSDT"),
+                symbol="SOLUSDT",
+            )
+
+        place_sl.assert_not_called()
+        self.assertEqual(state.state, "idle")
+        self.assertAlmostEqual(state.quantity, 0.0)
+
 
 class TestSimBalanceDelegatesToBroker(unittest.TestCase):
     """Legacy {"balance"} schema must not clobber SimBroker's
