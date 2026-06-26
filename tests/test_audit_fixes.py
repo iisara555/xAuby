@@ -128,6 +128,29 @@ class TestStopLossPlacementUsesAvailableBalance(unittest.TestCase):
         self.engine.client.place_order.assert_called_once()
         self.assertAlmostEqual(self.engine.client.place_order.call_args.kwargs["amount"], 0.0112)
 
+    def test_sl_does_not_place_dust_order_when_balance_locked_by_existing_stop(self):
+        self.engine.client.get_balances = MagicMock(
+            return_value={"SOL": {"available": 0.003319, "reserved": 0.68}}
+        )
+        self.engine.client.get_symbol_filters = MagicMock(
+            return_value={
+                "minQty": 0.001,
+                "stepSize": 0.001,
+                "tickSize": 0.01,
+                "minNotional": 10.0,
+            }
+        )
+        self.engine.client.place_order = MagicMock(return_value={"orderId": "dust-sl"})
+
+        result = self.engine._place_sl_with_retry(
+            qty=0.681,
+            stop_loss=69.64,
+            symbol="SOLUSDT",
+        )
+
+        self.assertIsNone(result)
+        self.engine.client.place_order.assert_not_called()
+
 
 class TestExchangeStopLossPartialFill(unittest.TestCase):
     def setUp(self):

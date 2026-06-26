@@ -18,11 +18,58 @@ from xauby.engine.regime_policy import apply_regime_policy, regime_policy_enable
 from xauby.runtime.candle_utils import candle_is_stale, drop_forming_bar, use_closed_candles
 from xauby.runtime.trading_config import resolve_trading_config
 from xauby.utils.atomic_io import atomic_json_write
+from xauby.api.utils import round_step
 
 logger = logging.getLogger("lite_bot")
 
 
 class LoopMixin:
+    def _wait_for_sl_replacement_balance(
+        self,
+        symbol: str,
+        qty: float,
+        stop_loss: float,
+        *,
+        timeout_s: float = 6.0,
+        interval_s: float = 0.5,
+    ) -> None:
+        """Wait briefly for a canceled spot SL order to release locked base.
+
+        Some spot venues acknowledge cancel before the locked base balance is
+        immediately usable for the replacement STOP_LOSS_LIMIT.  Without this
+        short wait, the replacement path sees only fee dust as available and
+        emits noisy failure alerts despite protection being restored seconds
+        later.
+        """
+        try:
+            base_coin = self._get_base_asset(symbol)
+            filters = self.client.get_symbol_filters(symbol)
+            step = float(filters.get("stepSize") or 0.0)
+            min_qty = float(filters.get("minQty") or 0.0)
+            min_notional = float(filters.get("minNotional") or 0.0)
+            min_allowed = max(min_qty, step, 0.0)
+            deadline = time.time() + max(0.0, float(timeout_s))
+            while time.time() < deadline:
+                balances = self.client.get_balances()
+                entry = balances.get(base_coin) or {}
+                available = float(entry.get("available", 0.0) or 0.0)
+                rounded = available
+                if step > 0:
+                    try:
+                        rounded = round_step(available, step)
+                    except Exception:
+                        rounded = available
+                if rounded >= min_allowed and (
+                    min_notional <= 0 or rounded * float(stop_loss) >= min_notional
+                ):
+                    if rounded + max(step, 0.0) >= min(float(qty), available):
+                        return
+                    if rounded >= float(qty) * 0.99:
+                        return
+                time.sleep(max(0.1, float(interval_s)))
+        except Exception as e:
+            logger.debug("SL replacement balance wait skipped for %s: %s", symbol, e)
+
     def _process_manual_order_request(
         self,
         state: Dict[str, Any],
@@ -1795,6 +1842,10 @@ class LoopMixin:
                     if sl_order_id and not old_sl_cancelled:
                         placed_new_sl_res = None
                     else:
+                        if old_sl_cancelled:
+                            self._wait_for_sl_replacement_balance(
+                                sym, state["quantity"], candidate_sl
+                            )
                         placed_new_sl_res = self._place_sl_with_retry(
                             state["quantity"], candidate_sl, symbol=sym
                         )
@@ -1817,10 +1868,18 @@ class LoopMixin:
                         new_sl = current_sl
                         new_sl_order_id = restored_sl_id
                         sl_update_succeeded = False
-                        self.send_telegram_alert(
-                            "⚠️ *Trailing Stop Failed*: Could not update exchange SL order.",
-                            level=AlertLevel.POSITION,
-                        )
+                        if restored_sl_id:
+                            logger.warning(
+                                "Trailing Stop: update postponed; exchange SL protection remains active "
+                                "(order_id=%s, sl=%.2f)",
+                                restored_sl_id,
+                                float(current_sl),
+                            )
+                        else:
+                            self.send_telegram_alert(
+                                "⚠️ *Trailing Stop Failed*: Could not update exchange SL order.",
+                                level=AlertLevel.POSITION,
+                            )
 
                 if sl_update_succeeded:
                     msg = (

@@ -331,12 +331,27 @@ class OrderMixin:
         try:
             balances = self.client.get_balances()
             base_coin = self._get_base_asset(sym)
-            available = float((balances.get(base_coin) or {}).get("available", 0.0) or 0.0)
+            base_bal = balances.get(base_coin) or {}
+            available = float(base_bal.get("available", 0.0) or 0.0)
+            reserved = float(base_bal.get("reserved", 0.0) or 0.0)
             if 0 < available < attempt_qty:
                 filters = self.client.get_symbol_filters(sym)
                 step = float(filters.get("stepSize") or 0.0)
                 capped_qty = round_step(available, step) if step > 0 else available
                 min_qty = float(filters.get("minQty") or 0.0)
+                min_notional = float(filters.get("minNotional") or 0.0)
+                min_allowed = max(min_qty, step, 0.0)
+                if capped_qty < min_allowed or (
+                    min_notional > 0 and capped_qty * float(stop_loss) < min_notional
+                ):
+                    logger.warning(
+                        "Available %s balance %.8f is below exchange SL minimum "
+                        "(reserved %.8f); skipping dust SL placement",
+                        base_coin,
+                        available,
+                        reserved,
+                    )
+                    return None
                 if capped_qty >= max(min_qty, step, 0.0):
                     logger.warning(
                         "Capping SL qty for %s from %.8f to available %.8f (rounded %.8f)",
@@ -361,8 +376,15 @@ class OrderMixin:
                     client_id=client_id,
                 )
                 sl_order_id = str(sl_res.get("orderId") or sl_res.get("id") or "")
-                logger.info(f"Exchange-side STOP_LOSS_LIMIT placed (ID: {sl_order_id}, qty={attempt_qty:.6f})")
-                return (sl_order_id, attempt_qty) if sl_order_id else None
+                if sl_order_id:
+                    logger.info(f"Exchange-side STOP_LOSS_LIMIT placed (ID: {sl_order_id}, qty={attempt_qty:.6f})")
+                    return (sl_order_id, attempt_qty)
+                logger.error(
+                    "Exchange-side STOP_LOSS_LIMIT response missing order id for %s (qty=%.6f)",
+                    sym,
+                    attempt_qty,
+                )
+                return None
             except ExchangeAPIError as e:
                 if e.code in (-2010, -2018, -1013, -1111) and attempt < max_attempts - 1:
                     logger.warning(
