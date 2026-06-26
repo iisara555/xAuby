@@ -8,6 +8,7 @@ still use the shared fixed-TP/trailing-stop controls.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -32,6 +33,34 @@ def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int) -> pd.S
         axis=1,
     ).max(axis=1)
     return tr.rolling(period).mean()
+
+
+def _closed_trade_dt(trade: Dict[str, Any]) -> Optional[datetime]:
+    try:
+        dt = datetime.fromisoformat(str(trade.get("closed_at", "")).replace("Z", ""))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _closed_trade_is_stop_loss(trade: Dict[str, Any]) -> bool:
+    trigger = str(trade.get("trigger") or "").lower()
+    try:
+        pnl = float(trade.get("net_pnl", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        pnl = 0.0
+    return pnl < 0 or "stop loss" in trigger or "stop_loss" in trigger or " sl" in trigger
+
+
+def _series_as_utc_datetime(values: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(values, errors="coerce")
+    if numeric.notna().any():
+        max_abs = float(numeric.abs().max() or 0.0)
+        unit = "ms" if max_abs > 10_000_000_000 else "s"
+        return pd.to_datetime(numeric, unit=unit, utc=True, errors="coerce")
+    return pd.to_datetime(values, utc=True, errors="coerce")
 
 
 def annotate(df: pd.DataFrame, cfg: Dict[str, Any]) -> pd.DataFrame:
@@ -119,6 +148,11 @@ class SOLEMAPullbackStrategy(Strategy):
             "exit_on_momentum_loss": True,
             "fixed_tp_pct": 2.0,
             "max_calc_bars": 300,
+            "reentry_guard_enabled": True,
+            "cooldown_after_tp_minutes": 15,
+            "cooldown_after_sl_minutes": 60,
+            "require_new_pullback_after_exit": True,
+            "require_new_pullback_after_sl": True,
         }
 
     def validate_config(self) -> List[str]:
@@ -209,6 +243,28 @@ class SOLEMAPullbackStrategy(Strategy):
             "checklist_passed": passed,
         }
 
+        def reentry_reset_pending() -> bool:
+            if ctx.has_position or not bool(cfg.get("reentry_guard_enabled", False)):
+                return False
+            trade = (ctx.extras or {}).get("last_closed_trade") or {}
+            if not isinstance(trade, dict) or not trade:
+                return False
+            require_exit = bool(cfg.get("require_new_pullback_after_exit", False))
+            require_sl = bool(cfg.get("require_new_pullback_after_sl", False))
+            is_sl = _closed_trade_is_stop_loss(trade)
+            if not require_exit and not (is_sl and require_sl):
+                return False
+            closed_at = _closed_trade_dt(trade)
+            if closed_at is None or "timestamp" not in ann.columns:
+                return False
+            ann_dt = _series_as_utc_datetime(ann["timestamp"])
+            after_exit = ann.loc[ann_dt > closed_at]
+            if after_exit.empty:
+                return True
+            zones = after_exit["ema_pullback_zone"].astype(str)
+            prior_zones = zones.iloc[:-1] if len(zones) > 1 else zones.iloc[:0]
+            return not prior_zones.isin(["PULLBACK", "NEUTRAL", "BEAR"]).any()
+
         if ctx.has_position:
             if ctx.sl_confirmed:
                 return sell(
@@ -245,6 +301,18 @@ class SOLEMAPullbackStrategy(Strategy):
             )
 
         if entry_ok:
+            if reentry_reset_pending():
+                return hold(
+                    "SOL re-entry guard waiting for new pullback reset",
+                    confidence=confidence,
+                    volatility=atr if atr > 0 else None,
+                    indicators=indicators,
+                    checklist=checklist,
+                    metadata=metadata,
+                    status_summary="SOL re-entry guard active",
+                    strategy_name=self.name,
+                    timeframe=ctx.timeframe_primary,
+                )
             return buy(
                 "SOL EMA20/50 pullback confirmed",
                 confidence=confidence,

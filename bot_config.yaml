@@ -271,6 +271,11 @@ strategy:
       fixed_tp_pct: 2.0
       max_calc_bars: 300
       cool_down_minutes: 10
+      reentry_guard_enabled: true
+      cooldown_after_tp_minutes: 15
+      cooldown_after_sl_minutes: 60
+      require_new_pullback_after_exit: true
+      require_new_pullback_after_sl: true
     ict_lite_strategy:
       enabled: true
       timeframe: 4h

@@ -1320,6 +1320,16 @@ class LoopMixin:
             sc._sl_breach_count = 0
         sl_confirmed = sc._sl_breach_count >= self._sl_breach_threshold
 
+        try:
+            closed_for_strategy = self.db.get_closed_trades(sym, limit=10)
+            closed_for_strategy = self._filter_closed_trades_by_execution_mode(
+                closed_for_strategy,
+                self._risk_execution_mode(sym),
+            )
+            last_closed_trade = closed_for_strategy[0] if closed_for_strategy else None
+        except Exception:
+            last_closed_trade = None
+
         ctx = ContextBuilder.build(
             symbol=sym,
             timeframe_primary=tf_primary,
@@ -1336,6 +1346,7 @@ class LoopMixin:
             extras={
                 "use_d1_regime_filter": sc.use_d1_regime_filter,
                 "last_bar_is_forming": last_bar_is_forming,
+                "last_closed_trade": last_closed_trade,
             },
         )
 
@@ -1710,7 +1721,7 @@ class LoopMixin:
                 reason = f"Blocked: max open positions ({max_open})"
             blocked, block_reason = self._is_buy_blocked_by_cooldown(symbol=sym)
             if blocked:
-                logger.warning(f"BUY blocked by loss cooldown: {block_reason}")
+                logger.warning("BUY blocked by cooldown: %s", block_reason)
                 action = "HOLD"
                 reason = block_reason
                 self._emit_event(

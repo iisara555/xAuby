@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from xauby.engine.risk import RiskMixin
@@ -119,6 +119,80 @@ class TestDrawdownGuard(unittest.TestCase):
         allowed, reason = e.check_daily_protections(1000.0, "SOLUSDT")
         self.assertFalse(allowed)
         self.assertIn("Daily PnL (sim)", reason)
+
+    def test_sol_reentry_guard_blocks_after_recent_tp(self):
+        e = _stub({})
+        e._sym = lambda: "SOLUSDT"
+        e._execution_mode = lambda symbol=None: "live"
+        e._strategy_name_for_symbol = lambda symbol: "sol_ema_pullback"
+        e._get_strategy_config = lambda symbol: {
+            "reentry_guard_enabled": True,
+            "cooldown_after_tp_minutes": 15,
+            "cooldown_after_sl_minutes": 60,
+        }
+        e.db = mock.Mock()
+        e.db.get_closed_trades.return_value = [
+            {
+                "closed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                "net_pnl": 0.95,
+                "trigger": "Fixed TP reached",
+                "execution_mode": "live",
+            }
+        ]
+
+        blocked, reason = e._is_buy_blocked_by_cooldown("SOLUSDT")
+
+        self.assertTrue(blocked)
+        self.assertIn("TP re-entry cooldown", reason)
+
+    def test_sol_reentry_guard_blocks_after_recent_sl_longer(self):
+        e = _stub({})
+        e._sym = lambda: "SOLUSDT"
+        e._execution_mode = lambda symbol=None: "live"
+        e._strategy_name_for_symbol = lambda symbol: "sol_ema_pullback"
+        e._get_strategy_config = lambda symbol: {
+            "reentry_guard_enabled": True,
+            "cooldown_after_tp_minutes": 15,
+            "cooldown_after_sl_minutes": 60,
+        }
+        e.db = mock.Mock()
+        e.db.get_closed_trades.return_value = [
+            {
+                "closed_at": (
+                    datetime.now(timezone.utc) - timedelta(minutes=30)
+                ).replace(tzinfo=None).isoformat(),
+                "net_pnl": -0.22,
+                "trigger": "Exchange-Side Stop Loss",
+                "execution_mode": "live",
+            }
+        ]
+
+        blocked, reason = e._is_buy_blocked_by_cooldown("SOLUSDT")
+
+        self.assertTrue(blocked)
+        self.assertIn("SL re-entry cooldown", reason)
+
+    def test_sol_reentry_guard_ignores_other_execution_mode(self):
+        e = _stub({})
+        e._sym = lambda: "SOLUSDT"
+        e._execution_mode = lambda symbol=None: "live"
+        e._strategy_name_for_symbol = lambda symbol: "sol_ema_pullback"
+        e._get_strategy_config = lambda symbol: {
+            "reentry_guard_enabled": True,
+            "cooldown_after_tp_minutes": 15,
+            "cooldown_after_sl_minutes": 60,
+        }
+        e.db = mock.Mock()
+        e.db.get_closed_trades.return_value = [
+            {
+                "closed_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                "net_pnl": -1.0,
+                "trigger": "Exchange-Side Stop Loss",
+                "execution_mode": "sim",
+            }
+        ]
+
+        self.assertEqual(e._is_buy_blocked_by_cooldown("SOLUSDT"), (False, ""))
 
 
 if __name__ == "__main__":

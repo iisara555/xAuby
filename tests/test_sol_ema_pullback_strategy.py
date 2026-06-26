@@ -1,5 +1,6 @@
 """Tests for SOL EMA20/50 pullback strategy and chart indicator."""
 import unittest
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,16 @@ def _pullback_frame(n: int = 120) -> pd.DataFrame:
     volume = np.full(n, 1000.0)
     volume[-1] = 1450.0
     return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume})
+
+
+def _pullback_frame_with_timestamps(n: int = 120) -> pd.DataFrame:
+    df = _pullback_frame(n)
+    start = datetime(2026, 6, 26, 0, 0, tzinfo=timezone.utc)
+    df["timestamp"] = [
+        int((start + timedelta(minutes=15 * i)).timestamp())
+        for i in range(n)
+    ]
+    return df
 
 
 class TestSOLEMAPullbackStrategy(unittest.TestCase):
@@ -50,6 +61,25 @@ class TestSOLEMAPullbackStrategy(unittest.TestCase):
             )
         )
 
+    def _signal_with_trade(self, closed_at: datetime):
+        df = _pullback_frame_with_timestamps()
+        return self._strategy().analyze(
+            MarketContext(
+                symbol="SOLUSDT",
+                timeframe_primary="15m",
+                df_primary=df,
+                current_price=float(df["close"].iloc[-1]),
+                extras={
+                    "last_closed_trade": {
+                        "closed_at": closed_at.replace(tzinfo=None).isoformat(),
+                        "net_pnl": 0.95,
+                        "trigger": "Fixed TP reached",
+                        "execution_mode": "live",
+                    }
+                },
+            )
+        )
+
     def test_registered_and_buys_confirmed_pullback(self):
         self.assertIn("sol_ema_pullback", available_strategies())
         signal = self._signal()
@@ -62,6 +92,23 @@ class TestSOLEMAPullbackStrategy(unittest.TestCase):
         signal = self._signal(has_position=True, sl_confirmed=True)
         self.assertEqual(signal.action, "SELL")
         self.assertIn("SL confirmed", signal.reason)
+
+    def test_reentry_guard_blocks_entry_until_new_pullback_reset(self):
+        df = _pullback_frame_with_timestamps()
+        last_bar_time = datetime.fromtimestamp(float(df["timestamp"].iloc[-1]), tz=timezone.utc)
+
+        signal = self._signal_with_trade(last_bar_time - timedelta(minutes=1))
+
+        self.assertEqual(signal.action, "HOLD")
+        self.assertIn("re-entry guard", signal.reason)
+
+    def test_reentry_guard_allows_entry_after_new_pullback_reset(self):
+        df = _pullback_frame_with_timestamps()
+        reset_bar_time = datetime.fromtimestamp(float(df["timestamp"].iloc[-3]), tz=timezone.utc)
+
+        signal = self._signal_with_trade(reset_bar_time)
+
+        self.assertEqual(signal.action, "BUY")
 
     def test_indicator_appends_chart_columns(self):
         ind = load_indicator("sol_ema_pullback", {})

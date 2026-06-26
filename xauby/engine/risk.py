@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Tuple
 
 from xauby.runtime.trading_config import resolve_trading_config
@@ -155,17 +155,86 @@ class RiskMixin:
                 risk[key] = strat_cfg[key]
         return risk
 
+    @staticmethod
+    def _closed_trade_dt(trade: Dict[str, Any]) -> Optional[datetime]:
+        try:
+            dt = datetime.fromisoformat(str(trade.get("closed_at", "")).replace("Z", ""))
+        except Exception:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    @staticmethod
+    def _closed_trade_is_stop_loss(trade: Dict[str, Any]) -> bool:
+        trigger = str(trade.get("trigger") or "").lower()
+        try:
+            pnl = float(trade.get("net_pnl", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            pnl = 0.0
+        return pnl < 0 or "stop loss" in trigger or "stop_loss" in trigger or " sl" in trigger
+
+    @staticmethod
+    def _closed_trade_is_take_profit(trade: Dict[str, Any]) -> bool:
+        trigger = str(trade.get("trigger") or "").lower()
+        try:
+            pnl = float(trade.get("net_pnl", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            pnl = 0.0
+        return pnl >= 0 or "take profit" in trigger or "fixed tp" in trigger or "tp reached" in trigger
+
+    def _latest_closed_trade_for_cooldown(self, symbol: str) -> Optional[Dict[str, Any]]:
+        execution_mode = self._risk_execution_mode(symbol)
+        closed = self.db.get_closed_trades(symbol, limit=10)
+        closed = self._filter_closed_trades_by_execution_mode(closed, execution_mode)
+        return closed[0] if closed else None
+
+    def _strategy_reentry_guard_config(self, symbol: str) -> Dict[str, Any]:
+        try:
+            strategy_name = self._strategy_name_for_symbol(symbol)
+            cfg = self._get_strategy_config(symbol)
+        except Exception:
+            strategy_name = ""
+            cfg = {}
+        if strategy_name != "sol_ema_pullback":
+            return {}
+        if not bool(cfg.get("reentry_guard_enabled", False)):
+            return {}
+        return cfg
+
     def _is_buy_blocked_by_cooldown(self, symbol: Optional[str] = None) -> Tuple[bool, str]:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
-        closed = self.db.get_closed_trades(sym, limit=1)
-        if not closed:
+        last = self._latest_closed_trade_for_cooldown(sym)
+        if not last:
             return False, ""
-        last = closed[0]
+
+        guard_cfg = self._strategy_reentry_guard_config(sym)
+        if guard_cfg:
+            closed_at = self._closed_trade_dt(last)
+            if closed_at is None:
+                return False, ""
+            minutes = 0.0
+            label = "exit"
+            if self._closed_trade_is_stop_loss(last):
+                minutes = float(guard_cfg.get("cooldown_after_sl_minutes", 0.0) or 0.0)
+                label = "SL"
+            elif self._closed_trade_is_take_profit(last):
+                minutes = float(guard_cfg.get("cooldown_after_tp_minutes", 0.0) or 0.0)
+                label = "TP"
+            if minutes > 0:
+                cooldown_end = closed_at + timedelta(minutes=minutes)
+                now = datetime.now(timezone.utc)
+                if now < cooldown_end:
+                    until = cooldown_end.replace(tzinfo=None).isoformat()
+                    return True, (
+                        f"{sym} {label} re-entry cooldown active until {until} "
+                        f"(last exit at {closed_at.replace(tzinfo=None).isoformat()})"
+                    )
+
         if float(last.get("net_pnl", 0.0)) >= 0:
             return False, ""
-        try:
-            closed_at = datetime.fromisoformat(str(last.get("closed_at", "")).replace("Z", ""))
-        except Exception:
+        closed_at = self._closed_trade_dt(last)
+        if closed_at is None:
             return False, ""
 
         tf = "4h"
@@ -193,7 +262,7 @@ class RiskMixin:
         cooldown_bars = int(self.config.get("trading", {}).get("cooldown_bars", 1))
 
         now_ts = int(datetime.now(timezone.utc).timestamp())
-        closed_at_ts = int(closed_at.replace(tzinfo=timezone.utc).timestamp())
+        closed_at_ts = int(closed_at.timestamp())
         closed_bar_start_ts = (closed_at_ts // (tf_mins * 60)) * (tf_mins * 60)
         cooldown_end_ts = closed_bar_start_ts + (cooldown_bars * tf_mins * 60)
 
