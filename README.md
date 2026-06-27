@@ -83,7 +83,7 @@ baseline uses **Binance.th spot** in long-only mode.
 | Backtest | Live-config replay, low-CPU optimizer, best config apply to YAML |
 | Strategy R&D | Multi-year Binance global data, per-regime PF evaluation harness, train/test gates, short-side simulator |
 | Observability | `run_id`, `tick_id`, JSONL events, replay validation, health JSON |
-| UI/Ops | Textual dashboard, pair switching, strategy-aware chart legend, Telegram commands |
+| UI/Ops | Textual dashboard, pair switching, strategy-aware chart legend, Telegram commands, emergency pause |
 
 ---
 
@@ -195,6 +195,11 @@ Both live pairs are configured as **long-only** in `coin_whitelist.json`. Shorts
 | `BTCUSDT` | `live` | `donchian_trend` | `4h` | `1d` | `long` | RegimeRouter off |
 
 Safety gate: a pair with `mode: live` and `regime_router_enabled: true` is forced to sim unless that pair also has `regime_router_live_confirmed: true`.
+
+Telegram operator control is runtime-only. `/pause` writes
+`core/telegram_control.json` and blocks new BUY orders across signal, manual,
+and semi-auto paths without closing existing positions. `/resume` clears that
+block after inline confirmation.
 
 ---
 
@@ -341,6 +346,13 @@ Replay validation checks whether recorded live `signal_evaluated` events match t
 | Live | `--live` plus `LIVE_TRADING=true` plus `simulate_only: false` plus per-asset `mode: live` | Real orders on the configured exchange |
 | Read-only | `--read-only` or `read_only: true` | Signals only, no orders |
 | Semi-auto | `trading.mode: semi_auto` | Telegram confirmation before BUY |
+| Telegram pause | `/pause` then `Confirm PAUSE` | Runtime block for new BUYs; `/resume` allows entries again |
+
+Telegram commands are available when `TELEGRAM_ENABLED=true` and
+`notifications.telegram_command_polling_enabled: true`: `/status`, `/pnl`,
+`/regime`, `/last`, `/health`, `/pause`, and `/resume`. Critical alerts include
+`Status` and `Ack` buttons. See [Telegram](docs/telegram.md) for setup and
+operator notes.
 
 ---
 
@@ -433,7 +445,8 @@ python scripts/regime_strategy_eval.py --timeframe 1h --grid
 - [ ] `architecture.strategy_sandbox_strict: true` when running third-party/untrusted strategy plugins.
 - [ ] `scripts/select_pair_strategy.py` report reviewed before using `--apply`.
 - [ ] `scripts/replay_validate.py <run_id> --symbol <PAIR>` passes after restart.
-- [ ] Telegram tested; `/status` shows all active pairs and per-pair mode.
+- [ ] Telegram tested; `/status` shows all active pairs and `/health` shows no unexpected issues.
+- [ ] Emergency Telegram `/pause` and `/resume` confirmation buttons tested in simulation.
 - [ ] Engine supervised by tmux/systemd, not an unmanaged SSH shell.
 
 ---
