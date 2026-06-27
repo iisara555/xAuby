@@ -102,9 +102,10 @@ def _yaml_number(key: str, label: str, path: str, *, lo=None, hi=None,
                  is_int: bool = False, unit: str = "", default=0,
                  also_path: Optional[str] = None) -> Field:
     def setter(value, c, p=path, ap=also_path):
+        ok = True
         if ap is not None:
-            _set_yaml_path(ap, value)
-        return _set_yaml_path(p, value)
+            ok = _set_yaml_path(ap, value) and ok
+        return _set_yaml_path(p, value) and ok
 
     return Field(
         key, label, "number",
@@ -194,7 +195,8 @@ def build_global_trading(ctx: Ctx) -> List[Field]:
 
     return [
         _yaml_number("max_open_positions", "Max open positions",
-                     "trading.max_open_positions", lo=1, hi=50, is_int=True, default=2),
+                     "trading.max_open_positions", lo=1, hi=50, is_int=True, default=2,
+                     also_path="risk.max_open_positions"),
         _yaml_number("interval_seconds", "Tick interval", "trading.interval_seconds",
                      lo=5, hi=3600, is_int=True, unit="s", default=60),
         Field("timeframe", "Primary timeframe", "choice",
@@ -512,7 +514,11 @@ def build_regime_mapping(ctx: Ctx) -> List[Field]:
     for reg in DEFAULT_REGIME_ROUTER_MAPPING:
         def getter(c, r=reg):
             mapping = (c.cfg.get("regime_router", {}) or {}).get("mapping", {}) or {}
-            return mapping.get(r) or DEFAULT_REGIME_ROUTER_MAPPING.get(r) or "NO_TRADE"
+            if r in mapping:
+                value = mapping.get(r)
+            else:
+                value = DEFAULT_REGIME_ROUTER_MAPPING.get(r)
+            return "NO_TRADE" if value in (None, "None", "null", "") else value
 
         def setter(v, c, r=reg):
             return _set_yaml_path(f"regime_router.mapping.{r}",

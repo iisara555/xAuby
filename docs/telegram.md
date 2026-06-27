@@ -31,6 +31,9 @@ Only the configured `TELEGRAM_CHAT_ID` is authorized.
 | `/pnl` | 7-day and 30-day portfolio PnL plus per pair |
 | `/regime` | Regime snapshot per pair |
 | `/last` | Recent closed trades per pair |
+| `/health` | Engine health snapshot: mode, pause state, pairs, open positions, feed/WS issues |
+| `/pause` | Confirm emergency pause; blocks new BUY orders without closing positions |
+| `/resume` | Confirm resume; allows new BUY orders again |
 
 ## Automatic alerts
 
@@ -75,6 +78,17 @@ notifications:
 ```
 
 The bot sends an inline keyboard (`Confirm BUY` / `Skip`). Callbacks call `confirm_semi_auto_buy()` or `skip_semi_auto_buy()` on the engine.
+
+## Emergency pause
+
+`/pause` and `/resume` are two-step commands. The text command only asks for
+confirmation; the inline button applies the runtime control. Pause blocks new
+BUY orders across signal, manual, and semi-auto paths. Existing positions are
+not closed.
+
+Critical alerts include `Status` and `Ack` buttons by default. `Status` returns
+the same engine health snapshot as `/health`; `Ack` records an operator
+acknowledgement in chat only.
 
 ## RegimeRouter operator note
 

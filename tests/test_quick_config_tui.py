@@ -176,6 +176,22 @@ async def test_global_trading_dual_path_write(temp_config):
 
 
 @pytest.mark.asyncio
+async def test_global_trading_max_open_positions_matches_runtime_resolver(temp_config):
+    app = XAubyTextualApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await _edit_number(app, pilot, "global_trading", "max_open_positions", 7)
+    cfg = _load_cfg(temp_config)
+    assert cfg["trading"]["max_open_positions"] == 7
+    assert cfg["risk"]["max_open_positions"] == 7
+
+    from xauby.runtime.trading_config import resolve_trading_config
+
+    eff = resolve_trading_config(cfg, symbol="XAUTUSDT", project_root=str(temp_config))
+    assert eff.portfolio["max_open_positions"] == 7
+
+
+@pytest.mark.asyncio
 async def test_strategy_params_rsi_cross_validation(temp_config):
     from xauby.launcher.quick_config import _quick_config_load_values, _strategy_cfg_for_symbol
     from xauby.launcher.config_io import _load_bot_yaml
@@ -218,6 +234,16 @@ async def test_alerts_token_textmodal_writes_env(temp_config, monkeypatch):
     import os
     assert os.environ.get("TELEGRAM_BOT_TOKEN") == "999:XYZ"
     assert "TELEGRAM_BOT_TOKEN" in (temp_config / ".env").read_text()
+
+
+def test_quick_config_load_values_refreshes_env_file(temp_config, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "STALE000000")
+    (temp_config / ".env").write_text("TELEGRAM_BOT_TOKEN=FRESH123456\n", encoding="utf-8")
+
+    from xauby.launcher.quick_config import _quick_config_load_values
+
+    assert _quick_config_load_values()["tg_tok_disp"] == "SET (...123456)"
+    assert os.environ["TELEGRAM_BOT_TOKEN"] == "FRESH123456"
 
 
 @pytest.mark.asyncio
@@ -288,6 +314,37 @@ async def test_regime_mapping_write(temp_config):
         await pilot.pause()
         await pilot.pause()
     assert _load_cfg(temp_config)["regime_router"]["mapping"][reg] == "cdc_action_zone"
+
+
+@pytest.mark.asyncio
+async def test_regime_mapping_no_trade_stays_visible_and_runtime_no_trade(temp_config):
+    from xauby.runtime.architecture_config import regime_router_mapping
+    from xauby.ui.textual_tui.quick_config.schema import SUBMENUS, build_ctx
+
+    reg = "BULL_BREAKOUT"
+    app = XAubyTextualApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        scr = await _open_submenu(app, pilot, "regime_mapping")
+        ol = scr.query_one("#qc-list", OptionList)
+        ol.highlighted = ol.get_option_index(reg)
+        await pilot.pause()
+        ol.action_select()
+        await pilot.pause()
+        cl = app.screen.query_one("#qc-choice-list", OptionList)
+        cl.highlighted = cl.get_option_index("NO_TRADE")
+        await pilot.pause()
+        cl.action_select()
+        await pilot.pause()
+        await pilot.pause()
+
+    cfg = _load_cfg(temp_config)
+    assert cfg["regime_router"]["mapping"][reg] is None
+    assert regime_router_mapping(cfg)[reg] is None
+
+    ctx = build_ctx()
+    field = next(f for f in SUBMENUS["regime_mapping"].fields(ctx) if f.key == reg)
+    assert field.get(ctx) == "NO_TRADE"
 
 
 @pytest.mark.asyncio

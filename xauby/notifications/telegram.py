@@ -30,6 +30,7 @@ class TelegramNotificationService(INotificationService):
         self.failure_log_path = failure_log_path or log_path("telegram_failures.log")
         self.max_retries = max(1, max_retries)
         self._queue: queue.Queue = queue.Queue()
+        self._stopped = threading.Event()
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
 
@@ -62,6 +63,13 @@ class TelegramNotificationService(INotificationService):
                 if resp.status_code == 200:
                     return True
                 last_error = resp.text[:300]
+                if self._is_markdown_parse_error(resp.status_code, resp.text):
+                    ok, plain_status, plain_error = self._post_plain_message(url, payload)
+                    if ok:
+                        return True
+                    last_status = plain_status
+                    last_error = plain_error
+                    break
                 logger.warning(
                     "Telegram send failed (attempt %s/%s): HTTP %s",
                     attempt,
@@ -80,6 +88,29 @@ class TelegramNotificationService(INotificationService):
                 time.sleep(min(2 ** (attempt - 1), 4))
         self._log_failure(message, last_error, last_status)
         return False
+
+    @staticmethod
+    def _is_markdown_parse_error(status_code: int, body: str) -> bool:
+        if status_code != 400:
+            return False
+        text = str(body or "").lower()
+        return "parse" in text and "markdown" in text
+
+    def _post_plain_message(
+        self,
+        url: str,
+        markdown_payload: Dict[str, Any],
+    ) -> tuple[bool, Optional[int], str]:
+        payload = dict(markdown_payload)
+        payload.pop("parse_mode", None)
+        try:
+            resp = requests.post(url, json=payload, timeout=10)
+            if resp.status_code == 200:
+                logger.warning("Telegram Markdown parse failed; sent plain-text fallback.")
+                return True, resp.status_code, ""
+            return False, resp.status_code, resp.text[:300]
+        except Exception as e:
+            return False, None, str(e)
 
     def _worker(self) -> None:
         while True:
@@ -111,6 +142,8 @@ class TelegramNotificationService(INotificationService):
         """Queue message to be sent asynchronously to Telegram."""
         if not self.enabled or not self.token or not self.chat_id:
             return
+        if self._stopped.is_set():
+            return
         try:
             self._queue.put_nowait((message, level, reply_markup))
         except Exception as e:
@@ -124,11 +157,17 @@ class TelegramNotificationService(INotificationService):
         """Send synchronously (used by command replies)."""
         if not self.enabled or not self.token or not self.chat_id:
             return False
+        if self._stopped.is_set():
+            return False
         return self._post_message(message, reply_markup=reply_markup)
 
     def stop(self) -> None:
         """Stop the background worker thread."""
-        try:
-            self._queue.put_nowait(None)
-        except Exception:
-            pass
+        if not self._stopped.is_set():
+            self._stopped.set()
+            try:
+                self._queue.put_nowait(None)
+            except Exception:
+                pass
+        if self._thread.is_alive() and self._thread is not threading.current_thread():
+            self._thread.join(timeout=2.0)

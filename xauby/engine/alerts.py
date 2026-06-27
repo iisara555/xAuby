@@ -28,11 +28,70 @@ class AlertMixin:
     ) -> None:
         if not self._should_send_alert(level):
             return
+        if level == AlertLevel.CRITICAL and reply_markup is None:
+            try:
+                from xauby.notifications.telegram_bot import CRITICAL_ALERT_KEYBOARD
+
+                reply_markup = CRITICAL_ALERT_KEYBOARD
+            except Exception:
+                reply_markup = None
         if self._notif_settings.alert_channel == "console":
             logger.info("[ALERT/%s] %s", level.value, message.replace("\n", " | "))
             return
         if hasattr(self, "_tg_service"):
             self._tg_service.send_alert(message, level=level, reply_markup=reply_markup)
+
+    def set_telegram_trading_paused(self, paused: bool, *, actor: str = "telegram") -> str:
+        from xauby.runtime.telegram_control import set_trading_paused
+
+        state = set_trading_paused(
+            paused,
+            reason="paused by Telegram" if paused else "resumed by Telegram",
+            actor=actor,
+        )
+        mode = "PAUSED" if state.get("trading_paused") else "ACTIVE"
+        return (
+            f"🛑 *Trading {mode}*\n"
+            f"New BUY orders are {'blocked' if paused else 'allowed'}.\n"
+            f"Updated: `{str(state.get('updated_at') or '')[:19]}`"
+        )
+
+    def format_telegram_health(self) -> str:
+        from xauby.runtime.telegram_control import load_control_state
+
+        control = load_control_state()
+        paused = bool(control.get("trading_paused", False))
+        active = self._pair_registry.active()
+        with self._ws_status_lock:
+            ws_down = bool(getattr(self, "_ws_disconnected_at", 0.0) or 0.0)
+        open_positions = 0
+        unhealthy = []
+        for spec in active:
+            sc = self._sc(spec.symbol)
+            state = self.db.get_trade_state(spec.symbol)
+            if state.get("state") == "bought":
+                open_positions += 1
+            if getattr(sc, "feed_degraded", False):
+                unhealthy.append(f"{spec.symbol}: feed degraded")
+            if getattr(sc, "candle_stale", False):
+                unhealthy.append(f"{spec.symbol}: candle stale")
+            if getattr(sc, "trading_halted", False):
+                unhealthy.append(f"{spec.symbol}: halted")
+        lines = [
+            "🩺 *xAuby Health*",
+            f"Engine: `{'RUNNING' if getattr(self, '_engine_loop_started', False) else 'INITIALIZED'}`",
+            f"Mode: `{'SIM' if self.simulate_only else 'LIVE'}` │ Read-only: `{bool(self.read_only)}`",
+            f"Telegram pause: `{'ON' if paused else 'OFF'}`",
+            f"Pairs: `{len(active)}` │ Open positions: `{open_positions}` │ WS: `{'DOWN' if ws_down else 'OK'}`",
+        ]
+        if paused:
+            lines.append(f"Pause reason: `{control.get('reason', '')}`")
+        if unhealthy:
+            lines.append("*Issues*")
+            lines.extend(f"• {item}" for item in unhealthy[:6])
+        else:
+            lines.append("Issues: `none`")
+        return "\n".join(lines)
 
     def get_regime_dict(self, symbol: Optional[str] = None) -> Optional[Dict[str, Any]]:
         reg = getattr(self._sc(symbol), "current_regime", None)

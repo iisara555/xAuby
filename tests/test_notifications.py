@@ -1,6 +1,7 @@
 import unittest
+import tempfile
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from xauby.notifications.interface import AlertLevel
 from xauby.notifications.report_formatter import (
@@ -21,6 +22,16 @@ class MockNotificationService:
 
     def stop(self):
         pass
+
+
+class _Resp:
+    def __init__(self, status_code=200, text="OK", result=None):
+        self.status_code = status_code
+        self.text = text
+        self._result = [] if result is None else result
+
+    def json(self):
+        return {"result": self._result}
 
 
 class TestNotificationSettings(unittest.TestCase):
@@ -152,6 +163,7 @@ class TestAlertGating(unittest.TestCase):
 
     def test_critical_always_sent(self):
         from xauby.engine.trading import LiteTradingEngine
+        from xauby.notifications.telegram_bot import CRITICAL_ALERT_KEYBOARD
         from tests.mocks import MockExchangeGateway, MockDatabaseRepository
 
         notif = MockNotificationService()
@@ -165,6 +177,273 @@ class TestAlertGating(unittest.TestCase):
         engine.tg_enabled = True
         engine.send_telegram_alert("critical", level=AlertLevel.CRITICAL)
         self.assertEqual(len(notif.alerts), 1)
+        self.assertEqual(notif.alerts[0][2], CRITICAL_ALERT_KEYBOARD)
+
+
+class TestTelegramCommandPoller(unittest.TestCase):
+    def _poller(self):
+        from xauby.notifications.telegram_bot import TelegramCommandPoller
+
+        engine = MagicMock()
+        engine.format_telegram_status.return_value = "status text"
+        engine.format_telegram_pnl.return_value = "pnl text"
+        engine.format_telegram_regime.return_value = "regime text"
+        engine.format_telegram_last_trades.return_value = "last text"
+        engine.format_telegram_health.return_value = "health text"
+        engine.set_telegram_trading_paused.side_effect = (
+            lambda paused, actor="telegram": "paused" if paused else "resumed"
+        )
+        poller = TelegramCommandPoller("token", "123", engine)
+        poller._reply = MagicMock()
+        poller._answer_callback = MagicMock()
+        return poller, engine
+
+    def test_authorized_status_command_supports_bot_suffix(self):
+        poller, engine = self._poller()
+        poller._handle_update({
+            "message": {"chat": {"id": 123}, "text": "/status@XaubyBot"},
+        })
+
+        engine.format_telegram_status.assert_called_once_with()
+        poller._reply.assert_called_once_with("123", "status text")
+
+    def test_unauthorized_command_and_callback_are_ignored(self):
+        poller, engine = self._poller()
+        poller._handle_update({
+            "message": {"chat": {"id": 999}, "text": "/status"},
+        })
+        poller._handle_update({
+            "callback_query": {
+                "id": "cb1",
+                "data": "semi_buy_confirm",
+                "message": {"chat": {"id": 999}},
+            },
+        })
+
+        engine.format_telegram_status.assert_not_called()
+        engine.confirm_semi_auto_buy.assert_not_called()
+        poller._reply.assert_not_called()
+        poller._answer_callback.assert_not_called()
+
+    def test_semi_auto_callbacks_call_engine_and_ack(self):
+        poller, engine = self._poller()
+        poller._handle_update({
+            "callback_query": {
+                "id": "cb1",
+                "data": "semi_buy_confirm",
+                "message": {"chat": {"id": "123"}},
+            },
+        })
+        poller._handle_update({
+            "callback_query": {
+                "id": "cb2",
+                "data": "semi_buy_skip",
+                "message": {"chat": {"id": "123"}},
+            },
+        })
+
+        engine.confirm_semi_auto_buy.assert_called_once_with()
+        engine.skip_semi_auto_buy.assert_called_once_with()
+        self.assertEqual(poller._answer_callback.call_count, 2)
+        self.assertEqual(poller._reply.call_count, 2)
+
+    def test_health_command_replies_with_engine_health(self):
+        poller, engine = self._poller()
+        poller._handle_update({
+            "message": {"chat": {"id": 123}, "text": "/health"},
+        })
+
+        engine.format_telegram_health.assert_called_once_with()
+        poller._reply.assert_called_once_with("123", "health text")
+
+    def test_pause_and_resume_commands_require_confirmation(self):
+        from xauby.notifications.telegram_bot import PAUSE_CONFIRM_KEYBOARD, RESUME_CONFIRM_KEYBOARD
+
+        poller, engine = self._poller()
+        poller._handle_update({
+            "message": {"chat": {"id": 123}, "text": "/pause"},
+        })
+        poller._handle_update({
+            "message": {"chat": {"id": 123}, "text": "/resume"},
+        })
+
+        engine.set_telegram_trading_paused.assert_not_called()
+        self.assertEqual(poller._reply.call_args_list[0].kwargs["reply_markup"], PAUSE_CONFIRM_KEYBOARD)
+        self.assertEqual(poller._reply.call_args_list[1].kwargs["reply_markup"], RESUME_CONFIRM_KEYBOARD)
+
+    def test_pause_resume_callbacks_update_engine_control(self):
+        poller, engine = self._poller()
+        poller._handle_update({
+            "callback_query": {
+                "id": "cb1",
+                "data": "op_pause_confirm",
+                "message": {"chat": {"id": "123"}},
+            },
+        })
+        poller._handle_update({
+            "callback_query": {
+                "id": "cb2",
+                "data": "op_resume_confirm",
+                "message": {"chat": {"id": "123"}},
+            },
+        })
+
+        engine.set_telegram_trading_paused.assert_any_call(True, actor="telegram")
+        engine.set_telegram_trading_paused.assert_any_call(False, actor="telegram")
+        self.assertEqual(poller._answer_callback.call_count, 2)
+        self.assertEqual(poller._reply.call_args_list[0].args, ("123", "paused"))
+        self.assertEqual(poller._reply.call_args_list[1].args, ("123", "resumed"))
+
+    def test_critical_alert_callbacks_show_status_and_ack(self):
+        poller, engine = self._poller()
+        poller._handle_update({
+            "callback_query": {
+                "id": "cb1",
+                "data": "critical_status",
+                "message": {"chat": {"id": "123"}},
+            },
+        })
+        poller._handle_update({
+            "callback_query": {
+                "id": "cb2",
+                "data": "critical_ack",
+                "message": {"chat": {"id": "123"}},
+            },
+        })
+
+        engine.format_telegram_health.assert_called_once_with()
+        self.assertEqual(poller._reply.call_args_list[0].args, ("123", "health text"))
+        self.assertIn("acknowledged", poller._reply.call_args_list[1].args[1])
+
+    @patch("xauby.notifications.telegram_bot.requests.get")
+    def test_poll_loop_continues_after_handler_exception(self, mock_get):
+        from xauby.notifications.telegram_bot import TelegramCommandPoller
+
+        engine = MagicMock()
+        engine.format_telegram_status.side_effect = [RuntimeError("boom"), "ok"]
+        poller = TelegramCommandPoller("token", "123", engine)
+        replies = []
+
+        def reply(chat_id, text):
+            replies.append((chat_id, text))
+            if text == "ok":
+                poller._stop.set()
+
+        poller._reply = MagicMock(side_effect=reply)
+        mock_get.return_value = _Resp(
+            200,
+            result=[
+                {"update_id": 1, "message": {"chat": {"id": 123}, "text": "/status"}},
+                {"update_id": 2, "message": {"chat": {"id": 123}, "text": "/status"}},
+            ],
+        )
+
+        poller._poll_loop()
+
+        self.assertEqual(engine.format_telegram_status.call_count, 2)
+        self.assertEqual(replies[0], ("123", "⚠️ *Telegram command failed* — check engine logs."))
+        self.assertEqual(replies[1], ("123", "ok"))
+        self.assertEqual(poller._offset, 3)
+
+
+class TestTelegramNotificationService(unittest.TestCase):
+    @patch("xauby.notifications.telegram.requests.post")
+    def test_post_message_sends_markdown_payload(self, mock_post):
+        from xauby.notifications.telegram import TelegramNotificationService
+
+        mock_post.return_value = _Resp(200)
+        svc = TelegramNotificationService("token", "123", enabled=True)
+        try:
+            self.assertTrue(svc._post_message("*hello*"))
+        finally:
+            svc.stop()
+
+        payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual(payload["parse_mode"], "Markdown")
+        self.assertEqual(payload["text"], "*hello*")
+
+    @patch("xauby.notifications.telegram.requests.post")
+    def test_markdown_parse_error_retries_plain_text_once(self, mock_post):
+        from xauby.notifications.telegram import TelegramNotificationService
+
+        mock_post.side_effect = [
+            _Resp(400, "Bad Request: can't parse Markdown entities"),
+            _Resp(200),
+        ]
+        svc = TelegramNotificationService("token", "123", enabled=True)
+        try:
+            self.assertTrue(svc._post_message("*bad markdown"))
+        finally:
+            svc.stop()
+
+        first = mock_post.call_args_list[0].kwargs["json"]
+        second = mock_post.call_args_list[1].kwargs["json"]
+        self.assertEqual(first["parse_mode"], "Markdown")
+        self.assertNotIn("parse_mode", second)
+        self.assertEqual(second["text"], "*bad markdown")
+
+    @patch("xauby.notifications.telegram.requests.post")
+    def test_failed_send_writes_failure_log(self, mock_post):
+        from xauby.notifications.telegram import TelegramNotificationService
+
+        mock_post.return_value = _Resp(500, "server error")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = f"{tmp}/telegram_failures.log"
+            svc = TelegramNotificationService(
+                "token", "123", enabled=True, failure_log_path=path, max_retries=2
+            )
+            try:
+                self.assertFalse(svc._post_message("hello"))
+            finally:
+                svc.stop()
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+        self.assertIn("server error", text)
+        self.assertIn("hello", text)
+
+    def test_stop_is_idempotent_and_joins_worker(self):
+        from xauby.notifications.telegram import TelegramNotificationService
+
+        svc = TelegramNotificationService("token", "123", enabled=True)
+        svc.stop()
+        svc.stop()
+        self.assertFalse(svc._thread.is_alive())
+
+
+class TestTelegramRuntimeControl(unittest.TestCase):
+    def test_pause_state_round_trips_under_runtime_root(self):
+        from xauby.runtime.telegram_control import load_control_state, set_trading_paused, trading_pause_reason
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"XAUBY_HOME": tmp}, clear=False):
+            self.assertFalse(load_control_state()["trading_paused"])
+            set_trading_paused(True, reason="test pause", actor="test")
+            paused, reason = trading_pause_reason()
+            self.assertTrue(paused)
+            self.assertIn("test pause", reason)
+            set_trading_paused(False, reason="test resume", actor="test")
+            self.assertFalse(trading_pause_reason()[0])
+
+    def test_execute_buy_blocks_when_telegram_paused(self):
+        from xauby.engine.orders import OrderMixin
+        from xauby.runtime.telegram_control import set_trading_paused
+
+        class Stub(OrderMixin):
+            def __init__(self):
+                self.last_log_message = ""
+                self.events = []
+
+            def _sym(self):
+                return "XAUTUSDT"
+
+            def _emit_event(self, *args, **kwargs):
+                self.events.append((args, kwargs))
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ", {"XAUBY_HOME": tmp}, clear=False):
+            set_trading_paused(True, reason="operator pause", actor="test")
+            stub = Stub()
+            self.assertFalse(stub.execute_buy(100.0, 1.0, symbol="XAUTUSDT"))
+            self.assertIn("Telegram pause", stub.last_log_message)
+            self.assertTrue(stub.events)
 
 
 if __name__ == "__main__":

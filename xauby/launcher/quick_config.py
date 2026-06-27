@@ -323,6 +323,15 @@ def quick_config_dashboard_focus():
 
 def _quick_config_load_values() -> dict:
     """Load current Quick Config field values from YAML and .env."""
+    try:
+        from dotenv import load_dotenv
+        from xauby.runtime.paths import env_file
+
+        env_path = env_file()
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=True)
+    except Exception:
+        pass
     cfg = _load_bot_yaml()
     global _QUICK_CONFIG_TARGET_SYMBOL
     symbols = _quick_config_symbols(cfg)
@@ -895,6 +904,8 @@ def quick_config_submenu_global_trading() -> None:
             return
         if choice == "1":
             n = _qc_prompt_number("Max open positions", t.get("max_open_positions", 2), is_int=True, lo=1, hi=50)
+            if n is not None:
+                _set_yaml_path("risk.max_open_positions", n)
             if n is not None and _set_yaml_path("trading.max_open_positions", n):
                 print(f"{GREEN}[*] Max open positions → {n}{RESET}")
                 _qc_offer_restart()

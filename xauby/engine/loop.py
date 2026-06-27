@@ -1698,6 +1698,18 @@ class LoopMixin:
             self.last_status_time = now_ts
 
         if action == "BUY" and state["state"] == "idle":
+            from xauby.runtime.telegram_control import trading_pause_reason
+
+            paused, pause_reason = trading_pause_reason()
+            if paused:
+                logger.warning("BUY blocked for %s: Telegram pause active (%s)", sym, pause_reason)
+                action = "HOLD"
+                reason = f"Blocked: Telegram pause ({pause_reason})"
+                self._emit_event(
+                    EventType.GUARD_BLOCKED,
+                    reason=reason,
+                    symbol=sym,
+                )
             if sc.blocks_new_entries():
                 logger.warning(
                     "BUY blocked for %s: RegimeRouter %s",

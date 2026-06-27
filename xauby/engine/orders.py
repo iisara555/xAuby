@@ -751,6 +751,18 @@ class OrderMixin:
         rejects values above 0.10.
         """
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        from xauby.runtime.telegram_control import trading_pause_reason
+
+        paused, pause_reason = trading_pause_reason()
+        if paused:
+            logger.warning("BUY blocked for %s: Telegram pause active (%s)", sym, pause_reason)
+            self.last_log_message = f"Blocked: Telegram pause ({pause_reason})"
+            self._emit_event(
+                EventType.RISK_REJECTED,
+                reason=f"telegram pause: {pause_reason}",
+                symbol=sym,
+            )
+            return False
         try:
             sc = self._sc(sym)
         except (AttributeError, KeyError):
