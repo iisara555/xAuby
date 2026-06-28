@@ -84,6 +84,9 @@ class LoopMixin:
             return None
 
         action = request["action"]
+        management_mode = str(request.get("management_mode") or "strategy").lower()
+        if management_mode not in {"strategy", "manual"}:
+            management_mode = "strategy"
         request_id = str(request.get("request_id") or "")
         reason = ""
         success = False
@@ -115,8 +118,14 @@ class LoopMixin:
                 elif blocked:
                     reason = f"Manual BUY rejected: {block_reason}"
                 else:
-                    success = self.execute_buy(ticker_price, atr, symbol=symbol)
-                    reason = "Manual BUY submitted" if success else "Manual BUY execution failed"
+                    success = self.execute_buy(
+                        ticker_price,
+                        atr,
+                        symbol=symbol,
+                        management_mode=management_mode,
+                    )
+                    label = "strategy-managed" if management_mode == "strategy" else "manual-managed"
+                    reason = f"Manual BUY submitted ({label})" if success else "Manual BUY execution failed"
         elif state.get("state") != "bought":
             reason = f"Manual SELL rejected: {symbol} has no tracked position"
         elif str(state.get("position_side") or "LONG").upper() == "SHORT":
@@ -135,6 +144,7 @@ class LoopMixin:
             "manual_order_executed" if success else "manual_order_rejected",
             symbol=symbol,
             action=action,
+            management_mode=management_mode,
             request_id=request_id,
             reason=reason,
         )
@@ -185,7 +195,11 @@ class LoopMixin:
         cfg = (self.config.get("risk", {}) or {}).get("drawdown_guard", {}) or {}
         if not cfg.get("enabled", False) or not cfg.get("close_positions", False):
             return action, reason
-        allowed, dd_reason = self.check_drawdown_guard(self.get_equity(symbol=symbol))
+        equity = self.get_equity(symbol=symbol)
+        try:
+            allowed, dd_reason = self.check_drawdown_guard(equity, symbol=symbol)
+        except TypeError:
+            allowed, dd_reason = self.check_drawdown_guard(equity)
         if not allowed:
             return "SELL", f"Drawdown guard force-close ({dd_reason})"
         return action, reason
@@ -753,6 +767,7 @@ class LoopMixin:
                 "margin_mode": state.get("margin_mode", "spot"),
                 "liquidation_price": state.get("liquidation_price", 0.0),
                 "funding_paid": state.get("funding_paid", 0.0),
+                "management_mode": state.get("management_mode", "strategy"),
                 "mark_price": current_price,
                 "exchange": exchange_id,
                 "market_type": exchange_identity["market_type"].upper(),
@@ -1583,7 +1598,11 @@ class LoopMixin:
                         self.send_telegram_alert(
                             f"⛔ NO_TRADE active on {sym} ({route.regime})"
                         )
-                if route.force_close and has_pos:
+                if (
+                    route.force_close
+                    and has_pos
+                    and str(state_for_pos.get("management_mode") or "strategy").lower() != "manual"
+                ):
                     if str(state_for_pos.get("position_side") or "LONG").upper() == "SHORT":
                         self.execute_close_short(state_for_pos, ticker_price,
                             trigger_reason="NO_TRADE force close (6+ candles)", symbol=sym)
@@ -1614,6 +1633,14 @@ class LoopMixin:
             reason=(reason or "")[:240],
             confidence=round(float(signal.confidence or 0.0), 3),
         )
+
+        if (
+            state["state"] == "bought"
+            and str(state.get("management_mode") or "strategy").lower() == "manual"
+        ):
+            self.last_log_message = "Manual-managed position: waiting for Manual SELL"
+            self.update_state_json(state, indicators, symbol=sym)
+            return
 
         if time.time() - self._guard_last_run > self._guard_interval:
             self._refresh_guard_async()

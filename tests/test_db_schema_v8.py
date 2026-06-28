@@ -17,7 +17,9 @@ class TestSchemaV8Migration(unittest.TestCase):
                 ver = conn.execute("PRAGMA user_version").fetchone()[0]
                 self.assertEqual(ver, SCHEMA_VERSION)
                 cols = [r[1] for r in conn.execute("PRAGMA table_info(closed_trades)").fetchall()]
+                state_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_states)").fetchall()]
                 self.assertIn("execution_mode", cols)
+                self.assertIn("management_mode", state_cols)
                 conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='regime_history'"
                 )
@@ -53,6 +55,22 @@ class TestSchemaV8Migration(unittest.TestCase):
             state = db.get_trade_state("BTCUSDT")
             self.assertEqual(state.state, "bought")
             self.assertEqual(state.quantity, 0.001)
+            self.assertEqual(state.management_mode, "strategy")
+
+    def test_save_trade_state_persists_management_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = LiteDB(os.path.join(tmp, "test.db"))
+
+            db.save_trade_state(
+                symbol="BTCUSDT",
+                state="bought",
+                entry_price=64000.0,
+                quantity=0.001,
+                management_mode="manual",
+            )
+
+            state = db.get_trade_state("BTCUSDT")
+            self.assertEqual(state.management_mode, "manual")
 
 
 if __name__ == "__main__":

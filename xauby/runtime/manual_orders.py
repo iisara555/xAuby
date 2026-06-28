@@ -12,6 +12,7 @@ from xauby.runtime.paths import manual_order_request_path
 from xauby.utils.atomic_io import atomic_json_write
 
 VALID_MANUAL_ACTIONS = {"BUY", "SELL"}
+VALID_MANAGEMENT_MODES = {"strategy", "manual"}
 MANUAL_ORDER_MAX_AGE_SECONDS = 120.0
 
 
@@ -19,6 +20,7 @@ def write_manual_order_request(
     symbol: str,
     action: str,
     *,
+    management_mode: str = "strategy",
     source: str = "textual_tui",
     project_root: str = ".",
 ) -> Dict[str, Any]:
@@ -29,10 +31,16 @@ def write_manual_order_request(
         raise ValueError("manual order symbol is required")
     if act not in VALID_MANUAL_ACTIONS:
         raise ValueError(f"manual order action must be one of {sorted(VALID_MANUAL_ACTIONS)}")
+    mode = str(management_mode or "strategy").lower()
+    if mode not in VALID_MANAGEMENT_MODES:
+        raise ValueError(
+            f"manual management mode must be one of {sorted(VALID_MANAGEMENT_MODES)}"
+        )
     payload = {
         "request_id": uuid.uuid4().hex,
         "symbol": sym,
         "action": act,
+        "management_mode": mode,
         "source": str(source or "local"),
         "created_at": time.time(),
     }
@@ -87,6 +95,10 @@ def claim_manual_order_request(
     age = float(time.time() if now is None else now) - created_at
     if action not in VALID_MANUAL_ACTIONS or created_at <= 0 or age < -5 or age > MANUAL_ORDER_MAX_AGE_SECONDS:
         return None
+    mode = str(payload.get("management_mode") or "strategy").lower()
+    if mode not in VALID_MANAGEMENT_MODES:
+        mode = "strategy"
     payload["action"] = action
     payload["symbol"] = requested_symbol
+    payload["management_mode"] = mode
     return payload

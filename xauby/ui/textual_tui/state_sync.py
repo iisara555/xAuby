@@ -244,6 +244,7 @@ def _positions_sig(envelope: Dict[str, Any]) -> Tuple[Any, ...]:
                 str(pos.get("stop_loss_order_id") or ""),
                 str(pos.get("position_side") or "LONG"),
                 round(float(pos.get("leverage") or 1.0), 2),
+                str(pos.get("management_mode") or "strategy"),
                 str(pos.get("market_type") or "SPOT"),
                 str(pos.get("feed_health") or "OK"),
             )

@@ -1064,6 +1064,7 @@ def _position_checklist_lines(
     leverage = float(pos.get("leverage") or 1.0)
     market_type = str(pos.get("market_type") or "SPOT").upper()
     feed_health = str(pos.get("feed_health") or "OK").upper()
+    management_mode = str(pos.get("management_mode") or "strategy").lower()
 
     chk_ok = f"{fg_rgb(52, 211, 153)}[✓]{RESET}"
     chk_err = f"{fg_rgb(251, 113, 133)}[✗]{RESET}"
@@ -1082,6 +1083,11 @@ def _position_checklist_lines(
         f"  {C_PRIMARY}{side} {leverage:.0f}x {market_type}{C_RESET}  Feed: {feed_health}",
         max_width,
     ))
+    if management_mode == "manual":
+        hdr.append(_fit_checklist_line(
+            f"  {C_MUTED}Mode{C_RESET} {C_PRIMARY}Manual sell only{C_RESET}",
+            max_width,
+        ))
     if entry > 0:
         hdr.append(_fit_checklist_line(
             f"  {C_MUTED}Entry{C_RESET} {C_PRIMARY}{entry:,.2f}{C_RESET}"

@@ -11,7 +11,7 @@ from xauby.runtime.paths import runtime_path
 
 logger = logging.getLogger("lite_db")
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 DEFAULT_DB_PATH = "core/xauby.db"
 
 
@@ -153,6 +153,7 @@ class LiteDB(IDatabaseRepository):
                         ,margin_mode TEXT NOT NULL DEFAULT 'spot'
                         ,liquidation_price REAL NOT NULL DEFAULT 0.0
                         ,funding_paid REAL NOT NULL DEFAULT 0.0
+                        ,management_mode TEXT NOT NULL DEFAULT 'strategy'
                     )
                 """)
 
@@ -320,6 +321,19 @@ class LiteDB(IDatabaseRepository):
                         "WHERE position_side IS NULL OR position_side = ''"
                     )
 
+                if user_version < 10:
+                    try:
+                        conn.execute(
+                            "ALTER TABLE trade_states ADD COLUMN management_mode "
+                            "TEXT NOT NULL DEFAULT 'strategy'"
+                        )
+                    except sqlite3.OperationalError:
+                        pass
+                    conn.execute(
+                        "UPDATE trade_states SET management_mode = 'strategy' "
+                        "WHERE management_mode IS NULL OR management_mode = ''"
+                    )
+
                 if user_version < SCHEMA_VERSION:
                     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
 
@@ -425,6 +439,7 @@ class LiteDB(IDatabaseRepository):
             "margin_mode": "spot",
             "liquidation_price": 0.0,
             "funding_paid": 0.0,
+            "management_mode": "strategy",
         }
 
     def get_trade_state(self, symbol: str) -> Position:
@@ -454,6 +469,7 @@ class LiteDB(IDatabaseRepository):
                 margin_mode=str(d.get("margin_mode") or "spot"),
                 liquidation_price=float(d.get("liquidation_price", 0.0) or 0.0),
                 funding_paid=float(d.get("funding_paid", 0.0) or 0.0),
+                management_mode=str(d.get("management_mode") or "strategy").lower(),
             )
         except Exception as e:
             logger.error(f"Error getting trade state for {sym}: {e}")
@@ -478,6 +494,7 @@ class LiteDB(IDatabaseRepository):
         margin_mode: str = "spot",
         liquidation_price: float = 0.0,
         funding_paid: float = 0.0,
+        management_mode: str = "strategy",
         *,
         symbol: Optional[str] = None,
     ) -> None:
@@ -508,6 +525,7 @@ class LiteDB(IDatabaseRepository):
             margin_mode = pos.margin_mode
             liquidation_price = pos.liquidation_price
             funding_paid = pos.funding_paid
+            management_mode = pos.management_mode
         elif symbol_or_position is not None:
             symbol = symbol_or_position
         if symbol is None:
@@ -524,9 +542,9 @@ class LiteDB(IDatabaseRepository):
                         symbol, state, entry_price, stop_loss, take_profit,
                         highest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
-                        liquidation_price, funding_paid
+                        liquidation_price, funding_paid, management_mode
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state=excluded.state,
                         entry_price=excluded.entry_price,
@@ -541,13 +559,15 @@ class LiteDB(IDatabaseRepository):
                         leverage=excluded.leverage,
                         margin_mode=excluded.margin_mode,
                         liquidation_price=excluded.liquidation_price,
-                        funding_paid=excluded.funding_paid
+                        funding_paid=excluded.funding_paid,
+                        management_mode=excluded.management_mode
                 """, (
                     sym, state, entry_price, stop_loss, take_profit,
                     highest_price_seen, quantity, opened_at, transition_str,
                     stop_loss_order_id, str(position_side or "LONG").upper(),
                     float(leverage or 1.0), str(margin_mode or "spot"),
                     float(liquidation_price or 0.0), float(funding_paid or 0.0),
+                    str(management_mode or "strategy").lower(),
                 ))
         except Exception as e:
             logger.error(f"Error saving trade state for {sym}: {e}")
@@ -675,9 +695,9 @@ class LiteDB(IDatabaseRepository):
                         symbol, state, entry_price, stop_loss, take_profit,
                         highest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
-                        liquidation_price, funding_paid
+                        liquidation_price, funding_paid, management_mode
                     )
-                    VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0)
+                    VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy')
                     ON CONFLICT(symbol) DO UPDATE SET
                         state='idle',
                         entry_price=0,
@@ -689,7 +709,7 @@ class LiteDB(IDatabaseRepository):
                         last_transition_at=excluded.last_transition_at,
                         stop_loss_order_id=NULL,
                         position_side='LONG', leverage=1.0, margin_mode='spot',
-                        liquidation_price=0, funding_paid=0
+                        liquidation_price=0, funding_paid=0, management_mode='strategy'
                 """, (sym, transition_str))
             return True
         except Exception as e:
