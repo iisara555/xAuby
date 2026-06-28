@@ -1112,14 +1112,71 @@ class OrderMixin:
                     except Exception as pe:
                         logger.error(f"Error fetching final order state after cancellation: {pe}")
 
-                cummulative_quote_qty = float(order_details.get("cummulativeQuoteQty", 0.0) or 0.0)
+                # Entry market fallback: a LIMIT entry that did not fully fill
+                # before the timeout is cancelled above, which would leave the
+                # strategy without the position the backtest assumed it holds —
+                # the PositionSimulator fills entries at market, so a silent skip
+                # breaks live/backtest parity and the bot misses the move. When
+                # enabled, top up the unfilled remainder with a MARKET order.
+                fallback_quote_spent = 0.0
+                entry_market_fallback = bool(
+                    self.config.get("execution", {}).get("entry_market_fallback", True)
+                )
+                limit_quote_spent = float(order_details.get("cummulativeQuoteQty", 0.0) or 0.0)
+                remaining_quote = buy_amount_usdt - limit_quote_spent
+                if (
+                    entry_market_fallback
+                    and order_type_config != "MARKET"
+                    and status != "FILLED"
+                    and remaining_quote >= min_order_amt
+                ):
+                    fb_client_id = make_client_id("buyfb")
+                    logger.warning(
+                        f"LIMIT entry {order_id} unfilled ({filled_qty:.6f} filled). "
+                        f"Market fallback for {remaining_quote:.2f} USDT (clientId={fb_client_id})..."
+                    )
+                    self._emit_event(
+                        EventType.ORDER_SUBMITTED,
+                        side="BUY",
+                        client_id=fb_client_id,
+                        notional=round(remaining_quote, 2),
+                        order_type="MARKET",
+                        context="entry_market_fallback",
+                    )
+                    try:
+                        fb_res = self.client.place_order(
+                            symbol=sym,
+                            side="BUY",
+                            order_type="MARKET",
+                            amount=remaining_quote,
+                            client_id=fb_client_id,
+                        )
+                        fb_id = str(fb_res.get("orderId") or fb_res.get("id") or "")
+                        fb_status = fb_res.get("status", "").upper()
+                        if fb_status not in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
+                            fb_status, _fb_qty, fb_res = self._poll_order_adaptive(fb_id, symbol=sym)
+                        fb_filled_qty = float(fb_res.get("executedQty", 0.0) or fb_res.get("filled", 0.0))
+                        fallback_quote_spent = float(fb_res.get("cummulativeQuoteQty", 0.0) or 0.0)
+                        if fb_filled_qty > 0:
+                            filled_qty += fb_filled_qty
+                            order_id = fb_id or order_id
+                            if fb_status == "FILLED":
+                                status = "FILLED"
+                    except ExchangeAPIError as fe:
+                        logger.error(f"Entry market fallback failed: {fe.msg} (code={fe.code})")
+                    except Exception as fe:
+                        logger.error(f"Entry market fallback exception: {fe}", exc_info=True)
+
+                cummulative_quote_qty = (
+                    float(order_details.get("cummulativeQuoteQty", 0.0) or 0.0) + fallback_quote_spent
+                )
                 if filled_qty > 0 and cummulative_quote_qty > 0:
                     filled_price = cummulative_quote_qty / filled_qty
                 else:
                     filled_price = float(order_details.get("price", 0.0) or ticker_price)
                 if filled_price <= 0:
                     filled_price = ticker_price
-                
+
                 if filled_qty > 0:
                     stop_loss = 0.0 if disable_sl else (filled_price - sl_distance)
                     take_profit = self._fixed_take_profit_price(

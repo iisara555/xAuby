@@ -428,6 +428,12 @@ daily_digest:
   send_telegram: true
 execution:
   order_type: limit
+  # When a LIMIT entry does not fully fill before order_timeout_seconds, top up
+  # the unfilled remainder with a MARKET order instead of cancelling and skipping
+  # the trade. Keeps live entries in parity with the backtest (PositionSimulator
+  # fills entries at market) so the bot does not miss the move on fast breakouts.
+  # Affects entries only; exits already escalate to MARKET on urgent triggers.
+  entry_market_fallback: true
   retry_attempts: 3
   retry_delay_seconds: 5
   order_timeout_seconds: 10

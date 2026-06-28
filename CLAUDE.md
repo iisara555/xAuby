@@ -98,22 +98,26 @@ Rollback is intentionally a flag flip to `false` — no code revert required.
 
 ## Current runtime baseline (from coin_whitelist.json / bot_config.yaml)
 
-Exchange is now **OKX USDT perpetual** (`provider: ccxt`, `ccxt_id: okx`,
-`market_type: swap`, isolated/one-way) via the exchange plugin registry, not the
-native Binance.th client. The gold slot trades **XAU** — on OKX the gold
-*perpetual* is `XAUUSDT` (native `XAU/USDT:USDT`); `XAUTUSDT` is the *spot*
-(Tether Gold) market and is a different instrument. Backtests proxy XAU to
-`PAXGUSDT` (deep history on Global Binance) via `strategy_params.backtest_data_proxy`.
+Exchange is **Binance Thailand spot** (`exchange.provider: binance`,
+`name: binance.th`, `market_type: spot`, `margin_mode: spot`, one-way) via the
+native Binance.th REST/WebSocket adapter — **LONG-only** execution (no shorts, no
+perpetual, no funding). The gold slot trades **XAUT** (Tether Gold spot);
+backtests proxy XAU to `PAXGUSDT` (deep history on Global Binance) via
+`strategy_params.backtest_data_proxy`.
 
-Both pairs run `cdc_action_zone` as a **stop-and-reverse** system
-(`enable_short: true`): fresh GREEN opens LONG, fresh RED opens SHORT, and the
-position flips when the zone flips (TradingView CDC). `allowed_sides:
-[long, short]` and `short_live_enabled: true` arm live shorts on both.
+All pairs are LONG-only (`allowed_sides: [long]`, `short_live_enabled: false`,
+`enable_short: false`). Live spot order flow: entries place a **LIMIT** at the
+ticker (`execution.order_type: limit`) and, when `execution.entry_market_fallback:
+true`, top up any unfilled remainder with a **MARKET** order after the timeout
+instead of cancelling (keeps live in parity with the market-fill backtest). Exits
+use MARKET on urgent triggers (CDC red / NO_TRADE / force close) and LIMIT
+otherwise; stop-losses are exchange-side `STOP_LOSS_LIMIT`.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides |
 |--------|------|----------|-----------|-----------|-------|
-| `XAUUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long`+`short` (backtest proxy `PAXGUSDT`) |
-| `BTCUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long`+`short` (RegimeRouter off) |
+| `XAUT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long` (backtest proxy `PAXGUSDT`) |
+| `BTC`  | `live` | `donchian_trend`   | `4h` | `1d` | `long` |
+| `SOL`  | `live` | `sol_ema_pullback` | `15m`| `15m`| `long` |
 
 > Doc drift warning: `README.md` reflects this current baseline, but
 > `README_DEV.md` and several files under `docs/` still describe the older state
@@ -160,9 +164,9 @@ Production note: the `*_short` strategies (`donchian_short`, `supertrend_short`,
 `rsi2_short`) and other R&D plugins (`rsi2_meanrev`, `vol_breakout`) are research
 only (tagged `research`). The engine hard-blocks any `research`-tagged strategy
 from a `live` pair (`_load_strategy_for_symbol`), so they are sim/backtest only —
-never map them in `regime_router.mapping` for production. The production
-long+short path is `cdc_action_zone` with `enable_short: true` (a real
-stop-and-reverse strategy, not research-tagged).
+never map them in `regime_router.mapping` for production. On the current
+Binance.th spot baseline every live pair is LONG-only, so the short path stays
+dormant; the short machinery below applies to swap/derivative venues only.
 
 Shorts in general: a strategy emits `open_short`/`close_short`
 (`xauby/strategies/signal.py`); the engine routes them to
