@@ -201,6 +201,26 @@ Telegram operator control is runtime-only. `/pause` writes
 and semi-auto paths without closing existing positions. `/resume` clears that
 block after inline confirmation.
 
+### Manual TUI Orders
+
+The Textual dashboard exposes confirmed manual orders for the focused symbol:
+
+| Key | Action | Behavior |
+|-----|--------|----------|
+| `F7` | Manual BUY | Opens a mode picker before queuing the order |
+| `F8` | Manual SELL | Closes the currently tracked quantity on the next engine tick |
+
+Manual BUY has two modes:
+
+| Mode | Stored state | Bot behavior after fill |
+|------|--------------|-------------------------|
+| `Bot manages strategy` | `management_mode: strategy` | Normal engine-managed position: strategy exits, fixed TP, trailing, drawdown force-close, and stop protection remain active |
+| `I will sell manual` | `management_mode: manual` | User-managed position: the bot records the filled quantity so Manual SELL can close it, but it does not auto-sell, trail, fixed-TP, or force-close by strategy/regime logic |
+
+Manual-managed positions are shown in the dashboard as `Manual sell only`.
+They still count as open `bought` positions for allocation/max-position guards,
+and `/pause` continues to block new manual BUY requests.
+
 ---
 
 ## Strategy Routing

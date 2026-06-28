@@ -45,6 +45,24 @@ class ManualOrderIPCTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 write_manual_order_request("BTCUSDT", "CLOSE", project_root=root)
 
+    def test_buy_request_can_be_manual_managed(self):
+        with tempfile.TemporaryDirectory() as root:
+            request = write_manual_order_request(
+                "BTCUSDT", "BUY", management_mode="manual", project_root=root
+            )
+            claimed = claim_manual_order_request(
+                "BTCUSDT", project_root=root, now=request["created_at"] + 1
+            )
+            self.assertEqual(claimed["action"], "BUY")
+            self.assertEqual(claimed["management_mode"], "manual")
+
+    def test_invalid_management_mode_is_rejected_before_write(self):
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaises(ValueError):
+                write_manual_order_request(
+                    "BTCUSDT", "BUY", management_mode="robot", project_root=root
+                )
+
 
 class ManualOrderEngineTests(unittest.TestCase):
     def _engine(self):
@@ -104,6 +122,26 @@ class ManualOrderEngineTests(unittest.TestCase):
         )
         self.assertFalse(result)
         engine.execute_buy.assert_not_called()
+
+    @mock.patch("xauby.engine.loop.claim_manual_order_request")
+    def test_manual_buy_passes_management_mode(self, claim):
+        claim.return_value = {
+            "request_id": "req3",
+            "symbol": "BTCUSDT",
+            "action": "BUY",
+            "management_mode": "manual",
+        }
+        engine = self._engine()
+        result = engine._process_manual_order_request(
+            {"state": "idle"}, 60000.0, 500.0, symbol="BTCUSDT"
+        )
+        self.assertTrue(result)
+        engine.execute_buy.assert_called_once_with(
+            60000.0,
+            500.0,
+            symbol="BTCUSDT",
+            management_mode="manual",
+        )
 
 
 if __name__ == "__main__":

@@ -740,6 +740,7 @@ class OrderMixin:
         symbol: Optional[str] = None,
         risk_pct_override: Optional[float] = None,
         sl_atr_mult_delta: float = 0.0,
+        management_mode: str = "strategy",
     ) -> bool:
         """Open a position sized so that hitting SL loses ``equity * risk_pct``.
 
@@ -751,6 +752,10 @@ class OrderMixin:
         rejects values above 0.10.
         """
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        position_management_mode = str(management_mode or "strategy").lower()
+        if position_management_mode not in {"strategy", "manual"}:
+            position_management_mode = "strategy"
+        manual_management = position_management_mode == "manual"
         from xauby.runtime.telegram_control import trading_pause_reason
 
         paused, pause_reason = trading_pause_reason()
@@ -798,7 +803,10 @@ class OrderMixin:
 
         allowed, reason = self.check_daily_protections(equity, symbol=sym)
         if allowed:
-            allowed, reason = self.check_drawdown_guard(equity)
+            try:
+                allowed, reason = self.check_drawdown_guard(equity, symbol=sym)
+            except TypeError:
+                allowed, reason = self.check_drawdown_guard(equity)
         if not allowed:
             logger.warning(f"BUY order blocked: {reason}")
             self.last_log_message = f"Blocked: {reason}"
@@ -893,8 +901,12 @@ class OrderMixin:
                 logger.warning(msg)
                 self.last_log_message = msg
                 return False
-            stop_loss = 0.0 if disable_sl else (ticker_price - sl_distance)
-            take_profit = self._fixed_take_profit_price(ticker_price, eff_cfg.strategy_name, eff_cfg.strategy)
+            stop_loss = 0.0 if (disable_sl or manual_management) else (ticker_price - sl_distance)
+            take_profit = (
+                0.0
+                if manual_management
+                else self._fixed_take_profit_price(ticker_price, eff_cfg.strategy_name, eff_cfg.strategy)
+            )
             now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
             self._emit_event(
@@ -922,11 +934,14 @@ class OrderMixin:
                 highest_price_seen=ticker_price,
                 quantity=qty,
                 opened_at=now_iso,
-                last_transition_at=now_iso
+                last_transition_at=now_iso,
+                management_mode=position_management_mode,
             )
             
             base_coin = self._get_base_asset(sym)
-            if disable_sl:
+            if manual_management:
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (manual sell only)"
+            elif disable_sl:
                 msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (no SL — CDC exit on RED)"
             else:
                 msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (Risk: {risk_pct*100}%, SL: {stop_loss:.2f})"
@@ -957,8 +972,12 @@ class OrderMixin:
 
                 self.save_simulated_balance(sim_bal - total_spent)
 
-            stop_loss = 0.0 if disable_sl else (ticker_price - sl_distance)
-            take_profit = self._fixed_take_profit_price(ticker_price, eff_cfg.strategy_name, eff_cfg.strategy)
+            stop_loss = 0.0 if (disable_sl or manual_management) else (ticker_price - sl_distance)
+            take_profit = (
+                0.0
+                if manual_management
+                else self._fixed_take_profit_price(ticker_price, eff_cfg.strategy_name, eff_cfg.strategy)
+            )
             now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
             self._emit_event(
@@ -986,11 +1005,14 @@ class OrderMixin:
                 highest_price_seen=ticker_price,
                 quantity=qty,
                 opened_at=now_iso,
-                last_transition_at=now_iso
+                last_transition_at=now_iso,
+                management_mode=position_management_mode,
             )
 
             base_coin = self._get_base_asset(sym)
-            if disable_sl:
+            if manual_management:
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (manual sell only)"
+            elif disable_sl:
                 msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (no SL - CDC exit on RED)"
             else:
                 msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (Risk: {risk_pct*100}%, SL: {stop_loss:.2f})"
@@ -1178,11 +1200,15 @@ class OrderMixin:
                     filled_price = ticker_price
 
                 if filled_qty > 0:
-                    stop_loss = 0.0 if disable_sl else (filled_price - sl_distance)
-                    take_profit = self._fixed_take_profit_price(
-                        filled_price,
-                        eff_cfg.strategy_name,
-                        eff_cfg.strategy,
+                    stop_loss = 0.0 if (disable_sl or manual_management) else (filled_price - sl_distance)
+                    take_profit = (
+                        0.0
+                        if manual_management
+                        else self._fixed_take_profit_price(
+                            filled_price,
+                            eff_cfg.strategy_name,
+                            eff_cfg.strategy,
+                        )
                     )
                     now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
@@ -1203,7 +1229,7 @@ class OrderMixin:
                     )
 
                     sl_order_id = None
-                    if not disable_sl:
+                    if not disable_sl and not manual_management:
                         sl_res = self._place_sl_with_retry(filled_qty, stop_loss, symbol=sym)
                         sl_order_id = sl_res[0] if sl_res else None
                         if not sl_order_id:
@@ -1223,10 +1249,14 @@ class OrderMixin:
                         opened_at=now_iso,
                         last_transition_at=now_iso,
                         stop_loss_order_id=sl_order_id,
+                        management_mode=position_management_mode,
                     )
                     
                     base_coin = self._get_base_asset(sym)
-                    sl_msg = "no SL — CDC exit on RED" if disable_sl else f"SL set to {stop_loss:.2f}"
+                    if manual_management:
+                        sl_msg = "manual sell only; no bot SL"
+                    else:
+                        sl_msg = "no SL — CDC exit on RED" if disable_sl else f"SL set to {stop_loss:.2f}"
                     slip_msg = f" | slip {slip_bps:+.1f}bps"
                     if status == "FILLED":
                         msg = f"🚀 [LIVE BUY FILLED] {filled_qty:.6f} {base_coin} @ {filled_price:.2f} USDT. {sl_msg}{slip_msg}"

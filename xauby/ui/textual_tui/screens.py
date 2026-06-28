@@ -27,7 +27,7 @@ from xauby.ui.textual_tui.state_sync import (
 from xauby.ui.textual_tui.tradelog_native import TradeLogNativeBody
 from xauby.ui.textual_tui.incident_native import IncidentNativeBody
 from xauby.ui.textual_tui.backtest_native import BacktestNativeBody
-from xauby.ui.textual_tui.quick_config.modals import ConfirmModal
+from xauby.ui.textual_tui.quick_config.modals import ChoiceModal, ConfirmModal
 from xauby.runtime.manual_orders import write_manual_order_request
 from xauby.ui.textual_tui.widgets import (
     AppHeader, AppFooter,
@@ -487,23 +487,60 @@ class DashboardScreen(BaseTUIScreen):
         symbol = str(self._last_focus or state.get("symbol") or "").upper()
         position = state.get("position") or {}
         position_state = str(position.get("state") or "idle")
+        mode = str(state.get("execution_mode") or "unknown").upper()
         if not symbol:
             self.notify("No focused symbol", severity="error")
             return
         if action == "BUY" and position_state != "idle":
             self.notify(f"{symbol} already has a position", severity="warning")
             return
+        if action == "BUY":
+            def selected(choice: str | None) -> None:
+                if not choice:
+                    return
+                try:
+                    request = write_manual_order_request(
+                        symbol,
+                        "BUY",
+                        management_mode=choice,
+                    )
+                except Exception as exc:
+                    self.notify(f"Manual BUY queue failed: {exc}", severity="error")
+                    return
+                label = "strategy" if choice == "strategy" else "manual"
+                self.notify(
+                    f"Manual BUY queued for {symbol} ({label}, {request['request_id'][:8]})",
+                    severity="information",
+                )
+
+            self.app.push_screen(
+                ChoiceModal(
+                    f"Manual BUY {symbol} ({mode})",
+                    [
+                        ("strategy", "Bot manages strategy"),
+                        ("manual", "I will sell manual"),
+                    ],
+                ),
+                selected,
+            )
+            return
         if action == "SELL" and position_state != "bought":
             self.notify(f"{symbol} has no tracked position", severity="warning")
             return
 
-        mode = str(state.get("execution_mode") or "unknown").upper()
         if action == "SELL":
             qty = float(position.get("quantity") or 0.0)
-            message = (
-                f"Manual SELL {symbol} ({mode})?\n"
-                f"This closes the tracked quantity {qty:.8f} on the next engine tick."
-            )
+            management_mode = str(position.get("management_mode") or "strategy").lower()
+            if management_mode == "manual":
+                message = (
+                    f"Manual SELL {symbol} ({mode})?\n"
+                    f"This closes your manual-managed quantity {qty:.8f} on the next engine tick."
+                )
+            else:
+                message = (
+                    f"Manual SELL {symbol} ({mode})?\n"
+                    f"This closes the tracked quantity {qty:.8f} on the next engine tick."
+                )
         else:
             message = (
                 f"Manual BUY {symbol} ({mode})?\n"

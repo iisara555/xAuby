@@ -120,6 +120,7 @@ class Position:
     margin_mode: str = "spot"
     liquidation_price: float = 0.0
     funding_paid: float = 0.0
+    management_mode: str = "strategy"
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -136,7 +137,12 @@ class Position:
             return default
 
     def keys(self):
-        return ("symbol", "state", "entry_price", "stop_loss", "take_profit", "highest_price_seen", "quantity", "opened_at", "last_transition_at", "stop_loss_order_id", "position_side", "leverage", "margin_mode", "liquidation_price", "funding_paid")
+        return (
+            "symbol", "state", "entry_price", "stop_loss", "take_profit",
+            "highest_price_seen", "quantity", "opened_at", "last_transition_at",
+            "stop_loss_order_id", "position_side", "leverage", "margin_mode",
+            "liquidation_price", "funding_paid", "management_mode",
+        )
 
     def __contains__(self, key):
         return hasattr(self, key)
@@ -173,4 +179,3 @@ class Portfolio:
         if self.raw_payload and key in self.raw_payload:
             return True
         return hasattr(self, key)
-
