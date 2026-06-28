@@ -5,6 +5,20 @@ import os
 
 DEFAULT_ALLOWED_TIMEFRAMES = ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w")
 ALLOWED_TIMEFRAMES = DEFAULT_ALLOWED_TIMEFRAMES
+KNOWN_QUOTE_ASSETS = (
+    "USDT",
+    "USDC",
+    "BUSD",
+    "FDUSD",
+    "TUSD",
+    "USD",
+    "THB",
+    "EUR",
+    "TRY",
+    "BTC",
+    "ETH",
+    "BNB",
+)
 
 if os.path.exists("bot_config.yaml"):
     try:
@@ -24,6 +38,24 @@ def normalize_symbol(raw: str, quote: str = "USDT") -> str:
     if not s:
         return ""
     if s.endswith(quote):
+        return s
+    return f"{s}{quote}"
+
+
+def normalize_market_symbol(raw: str, quote: str = "USDT") -> str:
+    """Normalize whitelist symbols while preserving explicit market symbols.
+
+    Whitelist assets are usually stored as base assets (``BTC`` -> ``BTCUSDT``),
+    but cross-quote markets such as ``BTCTHB`` are already complete symbols and
+    must not receive the default quote suffix.
+    """
+    s = str(raw or "").upper().replace("_", "").strip()
+    if not s:
+        return ""
+    quote = str(quote or "USDT").upper()
+    if s.endswith(quote):
+        return s
+    if any(s.endswith(q) and len(s) > len(q) for q in KNOWN_QUOTE_ASSETS):
         return s
     return f"{s}{quote}"
 

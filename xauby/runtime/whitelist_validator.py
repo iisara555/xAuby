@@ -5,7 +5,7 @@ import os
 from typing import Any, Dict, List, Optional, Set
 
 from xauby.runtime.config_error import ConfigError
-from xauby.runtime.symbol_utils import ALLOWED_TIMEFRAMES, normalize_symbol, normalize_tf
+from xauby.runtime.symbol_utils import ALLOWED_TIMEFRAMES, normalize_market_symbol, normalize_tf
 
 
 def strategy_name_from_whitelist_entry(entry: Dict[str, Any]) -> str:
@@ -40,7 +40,7 @@ def validate_whitelist_schema(
         base = str(entry.get("symbol", "")).strip()
         if not base:
             raise ConfigError(f"Whitelist assets[{idx}] missing 'symbol'")
-        sym = normalize_symbol(base, quote)
+        sym = normalize_market_symbol(base, quote)
         if sym in seen:
             raise ConfigError(f"Duplicate whitelist symbol: {sym}")
         seen.add(sym)

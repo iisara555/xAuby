@@ -23,6 +23,7 @@ DEFAULT_STRATEGY_CHART_MAP: Dict[str, List[str]] = {
     "bbrsi_mean_reversion": ["bbrsi_mean_reversion"],
     "simple_scalp_plus": ["simple_scalp_plus"],
     "sol_ema_pullback": ["sol_ema_pullback"],
+    "xauby_vwap_pullback": ["xauby_vwap_pullback"],
     "rsi2_meanrev": ["rsi2_meanrev"],
     "vol_breakout": ["vol_breakout"],
     "supertrend_short": ["supertrend", "ema200"],

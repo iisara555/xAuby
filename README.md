@@ -187,12 +187,17 @@ This is the current committed baseline.
 
 Exchange: **Binance.th spot** (`provider: binance`, `name: binance.th`, `market_type: spot`) via the exchange plugin registry. The default quote asset is `USDT`; backtests can still proxy XAUT to `PAXGUSDT`.
 
-Both live pairs are configured as **long-only** in `coin_whitelist.json`. Shorts and live short execution are disabled for the committed baseline.
+All live pairs are configured as **long-only** in `coin_whitelist.json`. Shorts and live short execution are disabled for the committed baseline.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Notes |
 |--------|------|----------|------------|------------|-------|-------|
 | `XAUTUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long` | Backtest proxy `PAXGUSDT`; RegimeRouter off |
-| `BTCUSDT` | `live` | `donchian_trend` | `4h` | `1d` | `long` | RegimeRouter off |
+| `BTCUSDT` | `live` | `donchian_trend` | `4h` | `1d` | `long` | RegimeRouter on and live-confirmed |
+| `SOLUSDT` | `live` | `sol_ema_pullback` | `15m` | `15m` | `long` | SOL EMA20/50 pullback setup; RegimeRouter off |
+
+Latest operator checkpoint: on `2026-06-28`, the engine was running live with all tracked trade states idle. XAUTUSDT had one rejected manual BUY attempt, no closed trades were recorded for the day, and WebSocket stale-tick warnings were handled by REST fallback. If open-order verification returns `API-key format invalid`, fix the exchange credential environment before trusting shell-level order probes; the controlled restart preflight still remains the required gate before live restarts.
+
+The `xauby_vwap_pullback` strategy is available for explicit market symbols such as `BTCTHB`. Strict whitelist loading preserves full symbols like `BTCTHB` instead of appending the default `USDT` quote.
 
 Safety gate: a pair with `mode: live` and `regime_router_enabled: true` is forced to sim unless that pair also has `regime_router_live_confirmed: true`.
 
@@ -268,7 +273,9 @@ Current strategy display mapping:
 | `btc_ema_pullback` | `btc_ema_pullback` | Trend / Pullback / Reclaim / Neutral | EMA Fast, EMA Slow, EMA Trend |
 | `ict_lite_strategy` | `ict_lite` | Sweep Low / Reclaim / MSS / Neutral | EMA Fast, EMA Slow, Recent High, Recent Low |
 | `rsi2_meanrev` | `rsi2_meanrev` | Buy Setup / Oversold / Exit / Neutral | EMA200, SMA5 |
+| `sol_ema_pullback` | `sol_ema_pullback` | Trend / Pullback / Reclaim / Neutral | EMA20, EMA50 |
 | `vol_breakout` | `vol_breakout` | Breakout / ATR Expansion / Neutral | Range High, Exit EMA |
+| `xauby_vwap_pullback` | `xauby_vwap_pullback` | Entry / Pullback / Trend / Wait / Trend lost | EMA20, EMA50, EMA200, VWAP |
 
 When adding a new strategy, add the strategy plugin, matching indicator plugin, tests, and `strategy_chart_indicators` entry together.
 

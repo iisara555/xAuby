@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 from xauby.runtime.architecture_config import sync_yaml_pairs_from_whitelist, whitelist_strict
 from xauby.runtime.config_error import ConfigError
 from xauby.runtime.exchange_config import resolve_quote_asset
-from xauby.runtime.symbol_utils import normalize_symbol, normalize_tf
+from xauby.runtime.symbol_utils import normalize_market_symbol, normalize_symbol, normalize_tf
 
 # Backward-compatible aliases used across the codebase.
 _normalize_symbol = normalize_symbol
@@ -237,7 +237,7 @@ class PairRegistry:
             if not isinstance(entry, dict):
                 continue
             base = str(entry.get("symbol", "")).strip()
-            sym = _normalize_symbol(base, self.quote_asset)
+            sym = normalize_market_symbol(base, self.quote_asset)
             if not sym:
                 continue
             enabled = bool(entry.get("enabled", True))
@@ -274,7 +274,7 @@ class PairRegistry:
                 if not isinstance(entry, dict):
                     continue
                 base = str(entry.get("symbol", "")).strip()
-                sym = _normalize_symbol(base, self.quote_asset)
+                sym = normalize_market_symbol(base, self.quote_asset)
                 if not sym:
                     continue
                 enabled = bool(entry.get("enabled", True))
