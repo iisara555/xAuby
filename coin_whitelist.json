@@ -69,8 +69,8 @@
         "long"
       ],
       "short_live_enabled": false,
-      "regime_router_enabled": false,
-      "regime_router_live_confirmed": false,
+      "regime_router_enabled": true,
+      "regime_router_live_confirmed": true,
       "sim_fee_pct": 0.1
     },
     {

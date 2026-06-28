@@ -711,7 +711,11 @@ architecture:
   tui_indicator_registry: true
   per_symbol_execution_mode: true
   sim_broker_enabled: true
-  regime_router_enabled: false
+  # Master switch for regime routing. Only pairs that ALSO set
+  # regime_router_enabled: true in coin_whitelist.json are routed — currently
+  # BTCUSDT only (XAUT/SOL keep it false, so the shared mapping below is
+  # effectively BTC-only).
+  regime_router_enabled: true
   # Suppress regime switches when the classifier confidence is below
   # regime_router.confidence_threshold (guarded by a 30-sample warmup). Keeps the
   # router from swapping strategies during low-confidence / transition reads.
@@ -736,17 +740,24 @@ regime_router:
   # routing to a single strategy in chop on the churn matrix). See
   # docs/regime_churn_report.md.
   confidence_threshold: 0.65
+  # Automated strategy router matrix (BTCUSDT only — the only router-enabled
+  # pair). Trend/breakout regimes -> DONCHIAN (donchian_trend); low-vol /
+  # range-bound regimes -> BBRSI mean-reversion; bearish / high-risk regimes ->
+  # NO_TRADE (empty target). Spot account is LONG-only, so bearish regimes are
+  # risk-off (flat to cash) rather than short.
   mapping:
-    BULL_BREAKOUT: cdc_action_zone
-    BULL_TREND_STRONG: cdc_action_zone
-    BULL_TREND_WEAK: cdc_action_zone
-    # LOW_VOL_* folded into the mean-reversion bucket (was bbkc_squeeze) to cut
-    # the distinct destination-strategy count from 4 to 3 and reduce ping-pong.
+    # Bullish — Trend-Following / Breakout
+    BULL_BREAKOUT: donchian_trend
+    BULL_TREND_STRONG: donchian_trend
+    BULL_TREND_WEAK: donchian_trend        # middle-band tight trailing stop
+    # Low volatility / range-bound — Mean-Reversion
     LOW_VOL_ACCUMULATION: bbrsi_mean_reversion
     LOW_VOL_RANGE: bbrsi_mean_reversion
-    VOLATILITY_EXPANSION: supertrend_ema200
     SIDEWAYS_CHOP: bbrsi_mean_reversion
-    BEAR_TREND_WEAK: cdc_action_zone
+    # High volatility — catch the explosive momentum
+    VOLATILITY_EXPANSION: donchian_trend
+    # Bearish / high-risk — risk-off (LONG-only spot: no shorting → NO_TRADE)
+    BEAR_TREND_WEAK:
     PANIC_SELL:
     BEAR_BREAKDOWN:
     BEAR_TREND_STRONG:
