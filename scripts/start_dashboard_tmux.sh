@@ -17,7 +17,10 @@ fi
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 sleep 0.5
 
-if ! pgrep -f 'run_xauby\.py' >/dev/null 2>&1; then
+ENGINE_SESSION="${XAUBY_ENGINE_TMUX_SESSION:-xauby-engine}"
+if tmux has-session -t "$ENGINE_SESSION" 2>/dev/null; then
+  echo "[INFO] Engine tmux session '$ENGINE_SESSION' is already running. Continuing with TUI."
+elif ! pgrep -f 'run_xauby\.py' >/dev/null 2>&1; then
   mkdir -p core/logs
   # Try to start the engine; exit code 2 means another instance grabbed the
   # lock just before pgrep ran — treat that as "already running", not an error.
@@ -35,7 +38,7 @@ if ! pgrep -f 'run_xauby\.py' >/dev/null 2>&1; then
 fi
 
 tmux new-session -d -s "$SESSION" -c "$ROOT" \
-  "env -u NO_COLOR -u FORCE_COLOR COLORTERM=truecolor TERM=xterm-256color XAUBY_START_SCREEN=dashboard ./venv/bin/python -m xauby.ui.textual_tui.app; exec bash"
+  "env -u NO_COLOR -u FORCE_COLOR FROM_LAUNCHER=true COLORTERM=truecolor TERM=xterm-256color XAUBY_START_SCREEN=dashboard ./venv/bin/python -m xauby.ui.textual_tui.app; exec bash"
 
 sleep 1
 if ! tmux has-session -t "$SESSION" 2>/dev/null; then

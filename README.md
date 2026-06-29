@@ -4,13 +4,13 @@
 
 **Alternative Store of Value Trading System**
 
-Multi-pair trading automation for **Binance Thailand spot** with a pluggable
+Single-focus trading automation for **OKX XAUUSDT perpetual swap** with a pluggable
 exchange gateway — native Binance.th or **CCXT** — featuring per-pair strategies,
 isolated strategy runners, per-symbol execution mode, strategy-aware charts,
 RegimeRouter support, exchange stop-losses, Textual TUI, and Telegram operations.
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![Exchange](https://img.shields.io/badge/Exchange-Binance.th%20%7C%20CCXT-F0B90B)](https://www.binance.th/)
+[![Exchange](https://img.shields.io/badge/Exchange-OKX%20via%20CCXT-111827)](https://www.okx.com/)
 [![UI](https://img.shields.io/badge/TUI-Textual-5c2dee)](https://textual.textualize.io/)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-blue)](docs/README.md)
 
@@ -48,9 +48,9 @@ RegimeRouter support, exchange stop-losses, Textual TUI, and Telegram operations
 
 ## Overview
 
-**xAuby** is an event-driven crypto trading system for store-of-value pairs such
-as **XAUT** and **BTC** on configured USDT markets. The current committed
-baseline uses **Binance.th spot** in long-only mode.
+**xAuby** is an event-driven trading system for store-of-value markets. The
+current committed runtime is focused on **XAUUSDT** on **OKX USDT-settled swap**
+via CCXT, with both long and short execution enabled at 1x leverage.
 
 1. Ingest candles and tickers through REST plus WebSocket.
 2. Resolve the configured strategy, timeframe, execution mode, and portfolio budget for every active pair.
@@ -160,22 +160,30 @@ probe, and ops scripts all resolve through the same helpers
 
 ```yaml
 exchange:
-  provider: binance        # binance (native client) | ccxt (generic adapter)
-  name: binance.th
-  quote_asset: USDT        # default quote currency; also drives live cash reads
-  fee_pct: 0.001           # taker fee fraction (0.1%); used by sim/backtest/replay
-  # --- ccxt provider only ---
-  # ccxt_id: kraken
-  # api_key_env: KRAKEN_API_KEY   # else defaults to <PREFIX>_API_KEY
+  provider: ccxt
+  ccxt_id: okx
+  name: okx
+  quote_asset: USDT
+  settle_asset: USDT
+  fee_pct: 0.0005
+  market_type: swap
+  margin_mode: isolated
+  position_mode: one_way
+  api_key_env: OKX_API_KEY
+  api_secret_env: OKX_API_SECRET
+  base_url_env: OKX_BASE_URL
+  params:
+    options:
+      defaultType: swap
 ```
 
-- **Credentials** read from exchange-driven env vars: `<PREFIX>_API_KEY` /
-  `_API_SECRET` / `_BASE_URL` where `<PREFIX>` derives from the provider
-  (`binance` → `BINANCE_*`, `kraken` → `KRAKEN_*`); override with `*_env` keys.
+- **Credentials** read from exchange-driven env vars. The OKX runtime expects
+  `OKX_API_KEY`, `OKX_API_SECRET`, and one of `OKX_API_PASSPHRASE`,
+  `OKX_PASSWORD`, or `OKX_API_PASSWORD`; do not commit `.env`.
 - **Fee** precedence: `exchange.fee_pct` → `backtest.fee_pct` → `trading.fee_pct`
   → `0.001`; per-symbol `sim_fee_pct` (whitelist) wins for that pair.
-- CCXT is **REST-only** (no websocket stream, no exchange-side `STOP_LOSS_LIMIT`
-  by default) — see [docs/multi-exchange-ccxt.md](docs/multi-exchange-ccxt.md).
+- CCXT is the active OKX adapter. See
+  [docs/multi-exchange-ccxt.md](docs/multi-exchange-ccxt.md) for adapter notes.
 
 See [docs/configuration.md](docs/configuration.md) for the full env-var table.
 
@@ -185,17 +193,40 @@ See [docs/configuration.md](docs/configuration.md) for the full env-var table.
 
 This is the current committed baseline.
 
-Exchange: **Binance.th spot** (`provider: binance`, `name: binance.th`, `market_type: spot`) via the exchange plugin registry. The default quote asset is `USDT`; backtests can still proxy XAUT to `PAXGUSDT`.
+Exchange: **OKX USDT-settled swap** (`provider: ccxt`, `ccxt_id: okx`,
+`market_type: swap`, `margin_mode: isolated`) with `USDT` quote and settlement.
+The live focus pair is `XAUUSDT`, mapped by CCXT to the OKX gold perpetual
+market (`XAU/USDT:USDT`).
 
-All live pairs are configured as **long-only** in `coin_whitelist.json`. Shorts and live short execution are disabled for the committed baseline.
+Live execution is enabled for both **long** and **short** on XAU only. The
+runtime is intentionally single-position (`max_open_positions: 1`) and 1x
+leverage only.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Notes |
 |--------|------|----------|------------|------------|-------|-------|
-| `XAUTUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long` | Backtest proxy `PAXGUSDT`; RegimeRouter off |
-| `BTCUSDT` | `live` | `donchian_trend` | `4h` | `1d` | `long` | RegimeRouter on and live-confirmed |
-| `SOLUSDT` | `live` | `sol_ema_pullback` | `15m` | `15m` | `long` | SOL EMA20/50 pullback setup; RegimeRouter off |
+| `XAUUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long`, `short` | OKX swap, 1x isolated, RegimeRouter off |
 
-Latest operator checkpoint: on `2026-06-28`, the engine was running live with all tracked trade states idle. XAUTUSDT had one rejected manual BUY attempt, no closed trades were recorded for the day, and WebSocket stale-tick warnings were handled by REST fallback. If open-order verification returns `API-key format invalid`, fix the exchange credential environment before trusting shell-level order probes; the controlled restart preflight still remains the required gate before live restarts.
+Risk and allocation defaults:
+
+| Setting | Value |
+|---------|-------|
+| Per-trade risk | `2%` |
+| Max allocation per trade | `25%` |
+| Max daily loss | `6%` |
+| Max open positions | `1` |
+| Max leverage | `1x` |
+
+Latest operator checkpoint: on `2026-06-29 22:07 Asia/Bangkok`, the engine was
+started live with `run_xauby.py --live --pair XAUUSDT`. The dashboard showed
+`LIVE [LIVE] OKX`, read-only was disabled, and the current signal was `HOLD`
+because the 4H red zone was no longer fresh. No open position was tracked at
+startup.
+
+If the dashboard portfolio shows `0.00 USDT` while the OKX account has funds,
+check the OKX funding/account placement and credential scope first. The bot
+reads live cash from the configured OKX swap/trading account, not from unrelated
+funding wallets, and OKX auth requires API key, secret, and passphrase. Keep
+withdraw permission disabled.
 
 The `xauby_vwap_pullback` strategy is available for explicit market symbols such as `BTCTHB`. Strict whitelist loading preserves full symbols like `BTCTHB` instead of appending the default `USDT` quote.
 
@@ -285,13 +316,17 @@ When adding a new strategy, add the strategy plugin, matching indicator plugin, 
 
 Backtest and Live resolve strategy and portfolio config through the same resolver. This keeps backtest, replay, and live trading aligned with the same strategy source of truth.
 
-**Data source:** backtests pull from `https://api.binance.com` (Global Binance) by default, giving BTCUSDT longer historical coverage and 12-month rolling windows. Live trading still uses the configured live exchange endpoint. The source is set via `backtest.data_base_url` in `bot_config.yaml` and can be overridden with `BINANCE_BACKTEST_URL`.
+**Data source:** the OKX migration evaluator uses OKX XAUUSDT 4H candles and
+funding history. Live trading uses the configured OKX CCXT endpoint, while
+research scripts can still download Global Binance candles for legacy symbols.
+The active source is set via `backtest.data_source` and `backtest.data_base_url`
+in `bot_config.yaml`.
 
 **Regime-aware replay:** setting `use_regime_filter: true` on a symbol's strategy config activates the regime classifier inside the replay engine. BUY signals are suppressed outside the strategy's `TARGET_REGIMES`, re-evaluated every 24 bars by default via `regime_update_bars`.
 
 ```bash
-python scripts/replay_backtest.py --symbol XAUTUSDT --config bot_config.yaml
-python scripts/replay_backtest.py --symbol BTCUSDT --config bot_config.yaml
+python scripts/replay_backtest.py --symbol XAUUSDT --config bot_config.yaml
+python scripts/evaluate_okx_xau_migration.py --config configs/okx_xau_paper.yaml --whitelist configs/okx_xau_whitelist.json
 ```
 
 Low-CPU optimizer:
@@ -303,8 +338,8 @@ python scripts/optimize_pair_configs.py
 Strategy selection is dry-run by default:
 
 ```bash
-python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates donchian_trend,cdc_action_zone,supertrend_ema200
-python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates donchian_trend,cdc_action_zone,supertrend_ema200 --apply
+python scripts/select_pair_strategy.py --symbol XAUUSDT --candidates cdc_action_zone,supertrend_ema200,bbkc_squeeze
+python scripts/select_pair_strategy.py --symbol XAUUSDT --candidates cdc_action_zone,supertrend_ema200,bbkc_squeeze --apply
 ```
 
 `--apply` only writes the best passing candidate back to `bot_config.yaml`.
@@ -357,8 +392,7 @@ and 12-month windows to provide more meaningful trade counts.
 Use replay validation after restarts, incidents, and config changes:
 
 ```bash
-python scripts/replay_validate.py <run_id> --symbol XAUTUSDT
-python scripts/replay_validate.py <run_id> --symbol BTCUSDT
+python scripts/replay_validate.py <run_id> --symbol XAUUSDT
 ```
 
 Replay validation checks whether recorded live `signal_evaluated` events match the strategy replay for the same run. It validates strategy output before macro guard, cooldown, and execution overrides.
@@ -387,7 +421,9 @@ operator notes.
 
 ```bash
 mkdir -p core/logs
-nohup ./venv/bin/python run_xauby.py --live >> core/logs/xauby_engine_bg.log 2>&1 &
+env -u DEFAULT_SYMBOL XAUBY_DEFAULT_SYMBOL=XAUUSDT XAUBY_FOCUS_SYMBOL=XAUUSDT \
+  SIMULATE_ONLY=false BOT_READ_ONLY=false \
+  ./venv/bin/python run_xauby.py --live --pair XAUUSDT
 
 ./scripts/start_dashboard_tmux.sh
 ./scripts/attach_dashboard_tmux.sh
@@ -451,8 +487,9 @@ xAuby/
 python -m unittest discover -s tests -q
 python health_check.py
 python scripts/incident_explorer.py list
-python scripts/replay_validate.py <run_id> --symbol XAUTUSDT
-python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates cdc_action_zone,supertrend_ema200,bbkc_squeeze,bbrsi_mean_reversion
+python scripts/replay_validate.py <run_id> --symbol XAUUSDT
+python scripts/evaluate_okx_xau_migration.py --config configs/okx_xau_paper.yaml --whitelist configs/okx_xau_whitelist.json
+python scripts/select_pair_strategy.py --symbol XAUUSDT --candidates cdc_action_zone,supertrend_ema200,bbkc_squeeze,bbrsi_mean_reversion
 python scripts/optimize_pair_configs.py
 python scripts/capture_tui_screenshots.py
 python scripts/fetch_global_klines.py --symbol BTCUSDT --timeframe 1h --years 3
@@ -464,10 +501,12 @@ python scripts/regime_strategy_eval.py --timeframe 1h --grid
 ## Safety Checklist
 
 - [ ] Simulation run reviewed before live.
-- [ ] API key has Spot permission only and no withdraw permission.
+- [ ] OKX API key has trade permission for the intended account and no withdraw permission.
+- [ ] OKX API key, secret, and passphrase env vars are present before live restart.
+- [ ] Funds are in the OKX account that the bot reads for USDT swap trading; the dashboard portfolio can show `0.00` if funds remain in an unrelated funding wallet/account.
 - [ ] `risk_pct`, `max_position_per_trade_pct`, and global guards reviewed for account size.
 - [ ] `risk.drawdown_guard` threshold set for your risk tolerance (kill-switch on portfolio drawdown).
-- [ ] BTC backtest reviewed after downloading fresh 12-month 1h candles from Global Binance.
+- [ ] OKX XAU long/short migration evaluation reviewed after downloading fresh 4H candles and funding history.
 - [ ] `regime_router_live_confirmed: true` is set only after explicit per-pair sign-off.
 - [ ] `architecture.strategy_sandbox_strict: true` when running third-party/untrusted strategy plugins.
 - [ ] `scripts/select_pair_strategy.py` report reviewed before using `--apply`.
@@ -486,6 +525,6 @@ This software is for education and research. Cryptocurrency trading involves sub
 
 <div align="center">
 
-**xAuby** - disciplined multi-pair spot automation
+**xAuby** - disciplined OKX XAUUSDT automation
 
 </div>

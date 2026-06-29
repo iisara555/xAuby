@@ -1,4 +1,4 @@
-simulate_only: true
+simulate_only: false
 read_only: false
 
 # Exchange selection and exchange-wide economics. Source of truth for the
@@ -6,50 +6,51 @@ read_only: false
 # The same fee_pct / quote_asset feed live, sim, backtest, and replay so
 # simulation stays in parity with live.
 exchange:
-  provider: binance        # native Binance Thailand REST/WebSocket adapter
-  name: binance.th         # informational label
-  quote_asset: USDT        # default quote currency for whitelist pairs
-  fee_pct: 0.001           # taker fee fraction (0.001 == 0.1%)
-  market_type: spot        # Binance Thailand spot; LONG-only execution
-  margin_mode: spot
+  provider: ccxt           # OKX is routed through the exchange-neutral CCXT adapter
+  ccxt_id: okx
+  name: okx
+  quote_asset: USDT
+  settle_asset: USDT
+  fee_pct: 0.0005          # conservative OKX swap taker fee assumption
+  market_type: swap
+  margin_mode: isolated
   position_mode: one_way
   # When architecture.exchange_plugin_registry_enabled is true, `provider` is
   # resolved through the exchange plugin registry (xauby/api/exchanges/). Adding
   # a new exchange = drop one exchange_<name>.py file there (REST + websocket).
-  # --- ccxt provider only (ignored for native binance) ---
-  # ccxt_id: binance       # ignored by the native Binance Thailand adapter
-  # base_url:              # optional REST override (else <NAME>_BASE_URL env)
-  # api_key_env: BINANCE_API_KEY
-  # api_secret_env: BINANCE_API_SECRET
-  # base_url_env: BINANCE_BASE_URL
-  # params: {}             # extra kwargs forwarded to the ccxt client
-  # sandbox: false         # ccxt sandbox/testnet mode
+  api_key_env: OKX_API_KEY
+  api_secret_env: OKX_API_SECRET
+  base_url_env: OKX_BASE_URL
+  params:
+    options:
+      defaultType: swap
+  sandbox: false
 
 derivatives:
   default_leverage: 1
-  max_leverage: 3
+  max_leverage: 1
   funding_guard_enabled: true
   max_abs_funding_rate: 0.003
   min_liquidation_distance_pct: 20.0
-  sim_funding_rate_8h: 0.0001
+  sim_funding_rate_8h: 0.00004
 
 trading:
-  trading_pair: ''
+  trading_pair: XAUUSDT
   startup_order_reconcile: true
   runtime_order_reconcile: true
   interval_seconds: 60
   timeframe: 4h
   mode: full_auto
-  max_open_positions: 2
+  max_open_positions: 1
   min_order_amount: 10.0
-  risk_pct: 0.03
-  max_position_per_trade_pct: 32.0
+  risk_pct: 0.02
+  max_position_per_trade_pct: 25.0
   sl_confirm_ticks: 3
   ws_reconnect_buy_block_seconds: 120
-  max_consecutive_losses: 2
+  max_consecutive_losses: 3
   max_consecutive_losses_by_symbol:
-    SOLUSDT: 3
-  max_daily_loss_pct: 10.0
+    XAUUSDT: 3
+  max_daily_loss_pct: 6.0
   max_slippage_pct:
     trend_only: 1.0
     scalping: 2.0
@@ -131,11 +132,11 @@ multi_timeframe:
   signal_source: strategy
 risk:
   use_fractional_kelly: false
-  max_risk_per_trade_pct: 3.0
+  max_risk_per_trade_pct: 2.0
   min_risk_per_trade_pct: 0.3
-  max_daily_loss_pct: 10.0
-  max_position_per_trade_pct: 32.0
-  max_open_positions: 2
+  max_daily_loss_pct: 6.0
+  max_position_per_trade_pct: 25.0
+  max_open_positions: 1
   max_daily_trades: 3
   protection_alert_cooldown_seconds: 900
   # Portfolio drawdown circuit-breaker (engine-managed kill-switch). When equity
@@ -269,8 +270,13 @@ strategy:
       swing_lookback: 8
       sl_buffer_atr: 0.10
       min_sl_atr_mult: 0.8
+      max_entry_extension_atr: 1.2
+      max_signal_range_atr: 2.5
       risk_reward: 2.0
       trailing_atr_mult: 1.2
+      trail_activation_atr_mult: 1.0
+      trail_activation_min_minutes: 15
+      trail_update_min_delta_atr: 0.25
       exit_on_momentum_loss: true
       fixed_tp_pct: 2.0
       max_calc_bars: 300
@@ -354,9 +360,8 @@ strategy:
       fixed_tp_pct: 0.8
     vol_breakout:
       fixed_tp_pct: 0.0
-  # Per-symbol strategy overrides. Both live pairs use cdc_action_zone (XAUT via
-  # whitelist strategy_params, BTC via the shared strategy.config.cdc_action_zone
-  # defaults), so no per-symbol override is needed here.
+  # Per-symbol strategy overrides. OKX XAU uses cdc_action_zone through the
+  # whitelist strategy_params so live/replay/paper stay aligned.
   symbols: {}
 strategies:
   enabled:
@@ -467,7 +472,7 @@ minimal_roi:
     '960': 0.008
 data:
   auto_detect_held_pairs: false
-  pairs: ["XAUTUSDT", "BTCUSDT", "SOLUSDT"]
+  pairs: ["XAUUSDT"]
   portfolio_guard:
     held_coins_only: false
   collect_interval_seconds: 60
@@ -517,35 +522,24 @@ portfolio:
   quote_asset: USDT
   position_sizing:
     mode: risk_based
-    risk_pct: 0.03
-    max_position_per_trade_pct: 32.0
+    risk_pct: 0.02
+    max_position_per_trade_pct: 25.0
     min_order_amount: 10.0
   symbols:
-    XAUTUSDT:
-      allocation_pct: 32.0
-      position_sizing:
-        risk_pct: 0.03
-        max_position_per_trade_pct: 32.0
-        min_order_amount: 10.0
-    BTCUSDT:
-      allocation_pct: 32.0
-      position_sizing:
-        risk_pct: 0.03
-        max_position_per_trade_pct: 32.0
-        min_order_amount: 10.0
-    SOLUSDT:
-      allocation_pct: 32.0
+    XAUUSDT:
+      allocation_pct: 100.0
       position_sizing:
         risk_pct: 0.02
-        max_position_per_trade_pct: 32.0
+        max_position_per_trade_pct: 25.0
         min_order_amount: 10.0
-  max_open_positions: 2
+  max_open_positions: 1
   max_daily_trades: 3
   min_balance_threshold: 35.0
   read_only: false
   persist_path: portfolio_state.json
 backtest:
-  data_base_url: https://api.binance.com
+  data_source: okx
+  data_base_url: https://www.okx.com
   # Per-fill slippage (basis points) applied to backtest entries/exits.
   slippage_bps: 2.0
   # Perpetual-swap funding: average rate longs pay shorts per 8h window. The
@@ -553,7 +547,11 @@ backtest:
   # longs pay, shorts receive. Set to your venue's typical rate when
   # backtesting the OKX swap (e.g. 0.0001 = 0.01%/8h ~ 0.03%/day). 0.0 = off
   # (correct for spot) and keeps results identical to before.
-  funding_rate_8h: 0.0
+  funding_rate_8h: 0.00004
+  acceptance:
+    compare_against: long_only
+    min_profit_edge_pp: 5.0
+    require_long_short_positive: true
   optimizer:
     max_runs: 4
     compact_max_runs: 4
@@ -590,8 +588,8 @@ rebalance:
     max_allocation_pct: 50.0
     volatility_threshold_pct: 30
   target_allocation:
-    USDT: 50.0
-    XAUT: 50.0
+    USDT: 100.0
+    XAU: 0.0
   min_trade_value: 10.0
   estimated_cost_pct: 0.2
 balance_monitor:

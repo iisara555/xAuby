@@ -1,0 +1,105 @@
+# OKX XAU-USDT-SWAP validation profile.
+#
+# This is intentionally separate from bot_config.yaml. Use it for paper/sim
+# validation before moving any live capital from Binance Thailand.
+simulate_only: true
+read_only: true
+
+exchange:
+  provider: ccxt
+  ccxt_id: okx
+  name: okx
+  quote_asset: USDT
+  settle_asset: USDT
+  fee_pct: 0.0005
+  market_type: swap
+  margin_mode: isolated
+  position_mode: one_way
+  api_key_env: OKX_API_KEY
+  api_secret_env: OKX_API_SECRET
+  base_url_env: OKX_BASE_URL
+  params:
+    options:
+      defaultType: swap
+  sandbox: false
+
+derivatives:
+  default_leverage: 1
+  max_leverage: 1
+  funding_guard_enabled: true
+  max_abs_funding_rate: 0.003
+  min_liquidation_distance_pct: 20.0
+  sim_funding_rate_8h: 0.00004
+
+trading:
+  trading_pair: XAUUSDT
+  timeframe: 4h
+  mode: full_auto
+  max_open_positions: 1
+  min_order_amount: 10.0
+  risk_pct: 0.02
+  max_position_per_trade_pct: 25.0
+  sl_confirm_ticks: 3
+  max_consecutive_losses: 3
+  max_daily_loss_pct: 6.0
+
+portfolio:
+  initial_balance: 1000.0
+  quote_asset: USDT
+  max_open_positions: 1
+  max_daily_trades: 3
+  min_balance_threshold: 35.0
+  symbols:
+    XAUUSDT:
+      allocation_pct: 100.0
+      position_sizing:
+        risk_pct: 0.02
+        max_position_per_trade_pct: 25.0
+        min_order_amount: 10.0
+
+strategy:
+  active: cdc_action_zone
+  symbols:
+    XAUUSDT:
+      strategy: cdc_action_zone
+      ap_smoothing: 2
+      enable_short: true
+      allowed_sides:
+        - long
+        - short
+      short_live_enabled: false
+      backtest_data_proxy: PAXGUSDT
+      disable_stop_loss: true
+      position_pct: 1.0
+      require_fresh_zone: true
+      fresh_zone_window: 1
+      rsi_min: 0.0
+      rsi_max: 100.0
+      vol_min_ratio: 0.0
+      sl_atr_mult: 2.0
+      trailing_atr_mult: 1.8
+      fixed_tp_pct: 0.0
+
+backtest:
+  data_source: okx
+  data_base_url: https://www.okx.com
+  slippage_bps: 2.0
+  funding_rate_8h: 0.00004
+  acceptance:
+    compare_against: long_only
+    min_profit_edge_pp: 5.0
+    require_long_short_positive: true
+
+data:
+  pairs:
+    - XAUUSDT
+  hybrid_dynamic_coin_config:
+    whitelist_json_path: configs/okx_xau_whitelist.json
+    require_supported_market: true
+    include_assets_with_balance: false
+    hot_reload_enabled: true
+    reload_interval_seconds: 30
+
+websocket:
+  enabled: true
+  order_book_limit: 5

@@ -22,7 +22,7 @@ from xauby.backtest.symbols import (
 
 
 class TestBacktestSymbols(unittest.TestCase):
-    def test_whitelist_has_xau_and_btc(self):
+    def test_whitelist_is_okx_xau_only(self):
         # OKX migration: the gold slot trades XAU (OKX gold perpetual XAUUSDT =
         # XAU/USDT:USDT). XAUT is the separate spot market; PAXG is only the
         # backtest data proxy — neither is a live whitelist asset.
@@ -37,7 +37,8 @@ class TestBacktestSymbols(unittest.TestCase):
         self.assertNotIn("XAUT", bases)
         self.assertNotIn("PAXG", bases)
         self.assertIn("XAU", bases)
-        self.assertIn("BTC", bases)
+        self.assertNotIn("BTC", bases)
+        self.assertNotIn("SOL", bases)
 
     def test_paxg_backtest_only_timeframes(self):
         primary, confirm = backtest_timeframes_for_symbol("PAXGUSDT")

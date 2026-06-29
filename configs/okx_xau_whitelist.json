@@ -31,13 +31,13 @@
         "position_pct": 1.0,
         "fixed_tp_pct": 0.0
       },
-      "mode": "live",
+      "mode": "sim",
       "allowed_sides": [
         "long",
         "short"
       ],
       "leverage": 1.0,
-      "short_live_enabled": true,
+      "short_live_enabled": false,
       "regime_router_enabled": false,
       "regime_router_live_confirmed": false,
       "sim_fee_pct": 0.05
