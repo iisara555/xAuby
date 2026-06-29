@@ -177,10 +177,18 @@ class BaseEngine:
 
         # WebSocket disconnect tracking
         self._ws_disconnected_at = 0.0
+        self._ws_disconnect_reason = "unknown"
+        self._ws_disconnect_alerted_for = 0.0
+        self._ws_disconnect_alert_pending_for = 0.0
+        self._ws_disconnect_alert_timer: Optional[threading.Timer] = None
         self._ws_status_lock = threading.Lock()
+        self._ws_disconnect_alert_after_seconds = float(
+            (self.config.get("websocket", {}) or {}).get("disconnect_alert_after_seconds", 45.0)
+        )
         self._ws_buy_block_seconds = float(
             self.config.get("trading", {}).get("ws_reconnect_buy_block_seconds", 120.0)
         )
+        self._protection_alert_last: Dict[tuple[str, str], float] = {}
 
         # Balance cache
         self._balance_cache: Dict[str, Any] = {}

@@ -13,44 +13,249 @@ class RiskMixin:
     def _drawdown_guard_cfg(self) -> Dict[str, Any]:
         return (self.config.get("risk", {}) or {}).get("drawdown_guard", {}) or {}
 
-    def _load_equity_peak(self) -> float:
+    def _equity_peak_scope(self, symbol: Optional[str] = None) -> str:
+        try:
+            mode = self._risk_execution_mode(symbol or getattr(self, "_sym", lambda: "")())
+        except Exception:
+            mode = ""
+        if mode not in {"sim", "live"}:
+            mode = "sim" if bool(getattr(self, "simulate_only", True)) else "live"
+        if mode == "live":
+            account_fp = str(getattr(self, "_account_fp", "") or "").strip()
+            exchange_cfg = self.config.get("exchange") or {}
+            exchange_id = ""
+            if isinstance(exchange_cfg, dict):
+                exchange_id = str(
+                    exchange_cfg.get("ccxt_id")
+                    or exchange_cfg.get("name")
+                    or exchange_cfg.get("provider")
+                    or ""
+                ).strip().lower()
+            if account_fp:
+                return ":".join(part for part in ("live", exchange_id, account_fp) if part)
+        return mode
+
+    def _equity_peak_fallback_scopes(self, scope: str) -> list[str]:
+        if scope.startswith("live:"):
+            return [scope, "live"]
+        return [scope]
+
+    def _capital_flow_rebase_cfg(self) -> Dict[str, Any]:
+        cfg = self._drawdown_guard_cfg()
+        return {
+            "enabled": bool(cfg.get("auto_rebase_capital_flows", True)),
+            "min_abs": float(cfg.get("capital_flow_min_abs_usdt", 20.0) or 0.0),
+            "min_pct": float(cfg.get("capital_flow_min_pct", 5.0) or 0.0) / 100.0,
+        }
+
+    def _capital_flow_symbols(self, symbol: Optional[str]) -> list[str]:
+        try:
+            specs = self._pair_registry.active()  # type: ignore[attr-defined]
+            syms = [str(s.symbol).upper().replace("_", "") for s in specs]
+            return syms or [str(symbol or self._sym()).upper().replace("_", "")]
+        except Exception:
+            sym = str(symbol or "").upper().replace("_", "")
+            return [sym] if sym else []
+
+    def _portfolio_flat_for_capital_flow(self, symbol: Optional[str] = None) -> bool:
+        if not hasattr(self, "db"):
+            return False
+        symbols = self._capital_flow_symbols(symbol)
+        if not symbols:
+            return False
+        for sym in symbols:
+            if not sym:
+                return False
+            try:
+                state = self.db.get_trade_state(sym)  # type: ignore[attr-defined]
+            except Exception:
+                return False
+            if state.get("state") == "bought":
+                return False
+        return True
+
+    def _latest_closed_trade_marker(self, symbol: Optional[str] = None) -> str:
+        try:
+            trades = self.db.get_closed_trades(None, limit=20)  # type: ignore[attr-defined]
+        except Exception:
+            trades = []
+            for sym in self._capital_flow_symbols(symbol):
+                try:
+                    trades.extend(self.db.get_closed_trades(sym, limit=5))  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+        mode = self._risk_execution_mode(symbol or "")
+        trades = self._filter_closed_trades_by_execution_mode(trades, mode)
+        if not trades:
+            return ""
+        latest = max(
+            trades,
+            key=lambda t: str(t.get("closed_at") or t.get("timestamp") or ""),
+        )
+        return "|".join(
+            str(latest.get(k, ""))
+            for k in ("symbol", "closed_at", "net_pnl", "execution_mode")
+        )
+
+    def _load_equity_peak_data(self) -> Dict[str, Any]:
         from xauby.runtime.paths import equity_peak_path
         try:
             with open(equity_peak_path(), "r", encoding="utf-8") as f:
-                return float((json.load(f) or {}).get("peak", 0.0) or 0.0)
+                data = json.load(f) or {}
+                return data if isinstance(data, dict) else {}
         except Exception:
+            return {}
+
+    def _load_equity_peak(self, symbol: Optional[str] = None) -> float:
+        data = self._load_equity_peak_data()
+        scope = self._equity_peak_scope(symbol)
+        peaks = data.get("peaks")
+        if isinstance(peaks, dict):
+            for key in self._equity_peak_fallback_scopes(scope):
+                try:
+                    peak = float(peaks.get(key, 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    peak = 0.0
+                if peak > 0:
+                    return peak
+            return 0.0
+        try:
+            return float(data.get("peak", 0.0) or 0.0)
+        except (TypeError, ValueError):
             return 0.0
 
-    def _save_equity_peak(self, peak: float) -> None:
+    def _save_equity_peak(self, peak: float, symbol: Optional[str] = None) -> None:
         from xauby.runtime.paths import ensure_runtime_dir, equity_peak_path
         try:
             ensure_runtime_dir()
+            data = self._load_equity_peak_data()
+            scope = self._equity_peak_scope(symbol)
+            peaks = data.get("peaks")
+            if not isinstance(peaks, dict):
+                peaks = {}
+            peaks[scope] = float(peak)
+            data["peaks"] = peaks
+            data["peak"] = float(peak)
             with open(equity_peak_path(), "w", encoding="utf-8") as f:
-                json.dump({"peak": float(peak)}, f)
+                json.dump(data, f)
         except Exception as e:
             logger.warning("Could not persist equity peak: %s", e)
 
-    def update_equity_peak(self, equity: float) -> float:
+    def _save_equity_peak_data(self, data: Dict[str, Any]) -> None:
+        from xauby.runtime.paths import ensure_runtime_dir, equity_peak_path
+        from xauby.utils.atomic_io import atomic_json_write
+
+        try:
+            ensure_runtime_dir()
+            atomic_json_write(equity_peak_path(), data, indent=None)
+        except Exception as e:
+            logger.warning("Could not persist equity peak data: %s", e)
+
+    def _maybe_rebase_peak_for_capital_flow(
+        self,
+        equity: float,
+        symbol: Optional[str] = None,
+    ) -> None:
+        cfg = self._capital_flow_rebase_cfg()
+        if not cfg["enabled"] or equity <= 0:
+            return
+        if not self._portfolio_flat_for_capital_flow(symbol):
+            return
+
+        scope = self._equity_peak_scope(symbol)
+        marker = self._latest_closed_trade_marker(symbol)
+        data = self._load_equity_peak_data()
+        baselines = data.get("capital_flow_baselines")
+        if not isinstance(baselines, dict):
+            baselines = {}
+        baseline = baselines.get(scope)
+        if not isinstance(baseline, dict):
+            baselines[scope] = {"equity": float(equity), "closed_trade_marker": marker}
+            data["capital_flow_baselines"] = baselines
+            self._save_equity_peak_data(data)
+            return
+
+        baseline_equity = float(baseline.get("equity", 0.0) or 0.0)
+        baseline_marker = str(baseline.get("closed_trade_marker", "") or "")
+        if marker != baseline_marker:
+            baselines[scope] = {"equity": float(equity), "closed_trade_marker": marker}
+            data["capital_flow_baselines"] = baselines
+            self._save_equity_peak_data(data)
+            return
+        if baseline_equity <= 0:
+            baselines[scope] = {"equity": float(equity), "closed_trade_marker": marker}
+            data["capital_flow_baselines"] = baselines
+            self._save_equity_peak_data(data)
+            return
+
+        delta = float(equity) - baseline_equity
+        abs_delta = abs(delta)
+        pct_delta = abs_delta / max(baseline_equity, 1.0)
+        if abs_delta >= cfg["min_abs"] and pct_delta >= cfg["min_pct"]:
+            peak = self._load_equity_peak(symbol)
+            new_peak = max(float(equity), peak + delta)
+            peaks = data.get("peaks")
+            if not isinstance(peaks, dict):
+                peaks = {}
+            peaks[scope] = new_peak
+            mode = self._risk_execution_mode(symbol or "")
+            if mode in {"live", "sim"}:
+                peaks[mode] = new_peak
+            data["peaks"] = peaks
+            data["peak"] = new_peak
+            logger.info(
+                "Drawdown guard capital-flow rebase: scope=%s baseline=%.2f equity=%.2f delta=%+.2f peak %.2f -> %.2f",
+                scope,
+                baseline_equity,
+                equity,
+                delta,
+                peak,
+                new_peak,
+            )
+
+        baselines[scope] = {"equity": float(equity), "closed_trade_marker": marker}
+        data["capital_flow_baselines"] = baselines
+        self._save_equity_peak_data(data)
+        if abs_delta >= cfg["min_abs"] and pct_delta >= cfg["min_pct"]:
+            caches = getattr(self, "_equity_peak_cache_by_scope", None)
+            if not isinstance(caches, dict):
+                caches = {}
+            caches[scope] = float(data.get("peak", equity) or equity)
+            self._equity_peak_cache_by_scope = caches
+            self._equity_peak_cache = caches[scope]
+
+    def update_equity_peak(self, equity: float, symbol: Optional[str] = None) -> float:
         """Grow and persist the equity high-water mark; return current peak."""
         eq = float(equity or 0.0)
-        cached = getattr(self, "_equity_peak_cache", None)
+        scope = self._equity_peak_scope(symbol)
+        caches = getattr(self, "_equity_peak_cache_by_scope", None)
+        if not isinstance(caches, dict):
+            caches = {}
+        cached = caches.get(scope)
         if cached is None:
-            cached = self._load_equity_peak()
+            cached = self._load_equity_peak(symbol)
+        data = self._load_equity_peak_data()
+        peaks = data.get("peaks")
+        scope_missing = not isinstance(peaks, dict) or scope not in peaks
         if eq > cached:
             cached = eq
-            self._save_equity_peak(cached)
+            self._save_equity_peak(cached, symbol)
+        elif scope_missing and cached > 0:
+            self._save_equity_peak(cached, symbol)
+        caches[scope] = cached
+        self._equity_peak_cache_by_scope = caches
         self._equity_peak_cache = cached
         return cached
 
-    def drawdown_pct(self, equity: float) -> float:
+    def drawdown_pct(self, equity: float, symbol: Optional[str] = None) -> float:
         """Current drawdown from the high-water mark, as a positive percent."""
         eq = float(equity or 0.0)
-        peak = self.update_equity_peak(eq)
+        peak = self.update_equity_peak(eq, symbol)
         if peak <= 0 or eq <= 0:
             return 0.0
         return max(0.0, (peak - eq) / peak * 100.0)
 
-    def check_drawdown_guard(self, equity: float) -> Tuple[bool, str]:
+    def check_drawdown_guard(self, equity: float, symbol: Optional[str] = None) -> Tuple[bool, str]:
         """Return (allowed, reason). Blocks when drawdown >= max_drawdown_pct."""
         cfg = self._drawdown_guard_cfg()
         if not cfg.get("enabled", False):
@@ -63,9 +268,10 @@ class RiskMixin:
         except (TypeError, ValueError):
             max_dd = 0.0
         if max_dd <= 0:
-            self.update_equity_peak(eq)
+            self.update_equity_peak(eq, symbol)
             return True, ""
-        dd = self.drawdown_pct(eq)
+        self._maybe_rebase_peak_for_capital_flow(eq, symbol)
+        dd = self.drawdown_pct(eq, symbol)
         if dd >= max_dd:
             peak = getattr(self, "_equity_peak_cache", eq)
             return False, (

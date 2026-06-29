@@ -154,6 +154,24 @@ class TestTradingEngineConcurrency(unittest.TestCase):
             t.join(timeout=5)
         self.assertEqual(errors, [], f"Concurrency errors: {errors}")
 
+    def test_ws_transient_disconnect_does_not_send_telegram_immediately(self):
+        self.engine._ws_disconnect_alert_after_seconds = 999.0
+
+        self.engine._on_ws_status({"event": "ws_disconnected", "error": "ping/pong timed out"})
+        self.engine._on_ws_status({"event": "ws_reconnected", "downtime_sec": 1})
+
+        self.assertEqual(self.notification.alerts, [])
+
+    def test_ws_persistent_disconnect_sends_delayed_telegram_once(self):
+        self.engine._ws_disconnect_alert_after_seconds = 0.0
+
+        self.engine._on_ws_status({"event": "ws_disconnected", "error": "ping/pong timed out"})
+        self.engine._on_ws_status({"event": "ws_disconnected", "error": "ping/pong timed out"})
+
+        alerts = [msg for msg in self.notification.alerts if "WebSocket Disconnected" in msg]
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("ping/pong timed out", alerts[0])
+
     def test_semi_auto_pending_thread_safety(self):
         """Telegram callback thread and main thread accessing _semi_auto_pending concurrently."""
         errors = []

@@ -70,6 +70,13 @@ class TestThreadedWebSocketBase(unittest.TestCase):
         self.ws._on_open(None)
         self.assertEqual(self.ws.reconnect_delay, 1.0)
 
+    def test_reconnect_status_emitted_for_short_disconnect(self):
+        self.ws._on_close(None, 1006, "abnormal")
+        self.ws._on_open(None)
+
+        self.assertEqual([s["event"] for s in self.statuses], ["ws_disconnected", "ws_reconnected"])
+        self.assertGreater(self.statuses[1]["downtime_sec"], 0)
+
     def test_trim_price_cache_drops_unsubscribed(self):
         self.ws._on_message(None, json.dumps({"s": "BTCUSDT", "c": "50000"}))
         self.ws._on_message(None, json.dumps({"s": "DOGEUSDT", "c": "0.1"}))

@@ -207,24 +207,36 @@ class LoopMixin:
     def _on_ws_status(self, status: Dict[str, Any]):
         event = status.get("event")
         if event == "ws_disconnected":
+            reason = str(status.get("error", status.get("reason", "unknown")))
             with self._ws_status_lock:
-                self._ws_disconnected_at = time.time()
+                now = time.time()
+                if self._ws_disconnected_at <= 0:
+                    self._ws_disconnected_at = now
+                    self._ws_disconnect_alerted_for = 0.0
+                started_at = self._ws_disconnected_at
+                self._ws_disconnect_reason = reason
             downtime = status.get("downtime_sec", 0)
             self._emit_event(
                 EventType.WS_DISCONNECTED,
-                reason=status.get("error", status.get("reason", "unknown")),
+                reason=reason,
                 downtime_sec=downtime,
             )
-            if downtime <= 0:
-                self.send_telegram_alert(
-                    f"⚠️ *WebSocket Disconnected*\nSymbol: `{self.symbol}`\nReason: `{status.get('error', status.get('reason', 'unknown'))}`"
-                )
+            self._schedule_ws_disconnect_alert(started_at)
         elif event == "ws_reconnected":
             downtime = float(status.get("downtime_sec", 0))
             with self._ws_status_lock:
                 self._ws_disconnected_at = 0.0
+                disconnect_was_alerted = self._ws_disconnect_alerted_for > 0
+                self._ws_disconnect_reason = "unknown"
+                self._ws_disconnect_alerted_for = 0.0
+                self._ws_disconnect_alert_pending_for = 0.0
+                alert_timer = self._ws_disconnect_alert_timer
+                self._ws_disconnect_alert_timer = None
+            if alert_timer is not None:
+                alert_timer.cancel()
             self._emit_event(EventType.WS_RECONNECTED, downtime_sec=downtime)
-            if downtime > 30:
+            threshold = float(getattr(self, "_ws_disconnect_alert_after_seconds", 45.0))
+            if disconnect_was_alerted or downtime >= threshold:
                 self.send_telegram_alert(
                     f"✅ *WebSocket Reconnected*\nSymbol: `{self.symbol}`\nDowntime: `{downtime:.0f}s`"
                 )
@@ -235,6 +247,38 @@ class LoopMixin:
             if sym in self.contexts:
                 self.contexts[sym].feed_degraded = True
                 self.contexts[sym].degrade_reason = str(status.get("error") or event)
+
+    def _schedule_ws_disconnect_alert(self, started_at: float) -> None:
+        delay = max(0.0, float(getattr(self, "_ws_disconnect_alert_after_seconds", 45.0)))
+        if delay <= 0:
+            self._send_ws_disconnect_alert_if_current(started_at)
+            return
+        with self._ws_status_lock:
+            if self._ws_disconnect_alert_pending_for == started_at:
+                return
+            self._ws_disconnect_alert_pending_for = started_at
+            timer = threading.Timer(
+                delay,
+                self._send_ws_disconnect_alert_if_current,
+                args=(started_at,),
+            )
+            timer.daemon = True
+            self._ws_disconnect_alert_timer = timer
+        timer.start()
+
+    def _send_ws_disconnect_alert_if_current(self, started_at: float) -> None:
+        with self._ws_status_lock:
+            if self._ws_disconnected_at != started_at:
+                return
+            if self._ws_disconnect_alerted_for == started_at:
+                return
+            self._ws_disconnect_alerted_for = started_at
+            self._ws_disconnect_alert_pending_for = 0.0
+            self._ws_disconnect_alert_timer = None
+            reason = self._ws_disconnect_reason
+        self.send_telegram_alert(
+            f"⚠️ *WebSocket Disconnected*\nSymbol: `{self.symbol}`\nReason: `{reason}`"
+        )
 
     def _refresh_guard_async(self):
         with self._guard_spawn_lock:

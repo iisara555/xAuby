@@ -52,6 +52,7 @@ class _OrderEngine(OrderMixin):
         self.read_only = False
         self.last_log_message = ""
         self.events = []
+        self.alerts = []
 
     def _sym(self):
         return "BTCUSDT"
@@ -78,7 +79,7 @@ class _OrderEngine(OrderMixin):
         self.events.append((event_type, payload))
 
     def send_telegram_alert(self, *args, **kwargs):
-        return None
+        self.alerts.append(args[0] if args else "")
 
 
 class TestOrderAllocationGuard(unittest.TestCase):
@@ -107,6 +108,16 @@ class TestOrderAllocationGuard(unittest.TestCase):
         self.assertFalse(ok)
         self.assertFalse(engine.client.order_called)
         self.assertIn("remaining allocation", engine.last_log_message)
+
+    def test_repeated_protection_block_alert_is_throttled(self):
+        engine = _OrderEngine({"USDT": {"available": 100.0, "reserved": 0.0}})
+        engine.check_daily_protections = lambda equity, symbol=None: (False, "daily loss limit")
+
+        self.assertFalse(engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT"))
+        self.assertFalse(engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT"))
+
+        self.assertEqual(len(engine.alerts), 1)
+        self.assertIn("daily loss limit", engine.alerts[0])
 
 
 if __name__ == "__main__":

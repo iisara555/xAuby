@@ -14,6 +14,23 @@ logger = logging.getLogger("lite_bot")
 
 
 class OrderMixin:
+    def _send_protection_block_alert(self, symbol: str, reason: str) -> None:
+        risk_cfg = self.config.get("risk", {}) if isinstance(self.config, dict) else {}
+        try:
+            cooldown = float(risk_cfg.get("protection_alert_cooldown_seconds", 900.0) or 0.0)
+        except (TypeError, ValueError):
+            cooldown = 900.0
+        key = (str(symbol or "").upper().replace("_", ""), str(reason or ""))
+        last_sent = getattr(self, "_protection_alert_last", None)
+        if not isinstance(last_sent, dict):
+            last_sent = {}
+        now = time.time()
+        last_at = float(last_sent.get(key, 0.0) or 0.0)
+        if cooldown <= 0 or now - last_at >= cooldown:
+            self.send_telegram_alert(f"⚠️ *Trading Blocked by Protection*\nReason: {reason}")
+            last_sent[key] = now
+            self._protection_alert_last = last_sent
+
     def execute_open_short(self, signal: Any, ticker_price: float, symbol: Optional[str] = None) -> bool:
         """Open an isolated one-way SHORT; live mode is explicit and fail-closed."""
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
@@ -810,7 +827,7 @@ class OrderMixin:
         if not allowed:
             logger.warning(f"BUY order blocked: {reason}")
             self.last_log_message = f"Blocked: {reason}"
-            self.send_telegram_alert(f"⚠️ *Trading Blocked by Protection*\nReason: {reason}")
+            self._send_protection_block_alert(sym, reason)
             self._emit_event(
                 EventType.RISK_REJECTED,
                 reason=reason,

@@ -1,5 +1,6 @@
 """Tests for the portfolio drawdown circuit-breaker (RiskMixin)."""
 
+import json
 import os
 import tempfile
 import unittest
@@ -58,6 +59,129 @@ class TestDrawdownGuard(unittest.TestCase):
         e2 = _stub(_GUARD_ON)
         self.assertFalse(e2.check_drawdown_guard(750.0)[0])  # -25% from persisted 1000
         self.assertAlmostEqual(e2.drawdown_pct(750.0), 25.0)
+
+    def test_live_scoped_peak_preferred_over_legacy_peak(self):
+        os.makedirs(self._home, exist_ok=True)
+        with open(os.path.join(self._home, "equity_peak.json"), "w", encoding="utf-8") as f:
+            json.dump({"peak": 3057.27, "peaks": {"live": 149.14}}, f)
+        e = _stub(_GUARD_ON)
+        e.simulate_only = False
+        e._account_fp = "acct1"
+        e._execution_mode = lambda symbol=None: "live"
+
+        allowed, reason = e.check_drawdown_guard(148.63, symbol="BTCUSDT")
+
+        self.assertTrue(allowed, reason)
+        self.assertLess(e.drawdown_pct(148.63, symbol="BTCUSDT"), 1.0)
+
+        with open(os.path.join(self._home, "equity_peak.json"), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertAlmostEqual(data["peaks"]["live:acct1"], 149.14)
+
+    def test_live_peak_is_scoped_by_account_fingerprint(self):
+        os.makedirs(self._home, exist_ok=True)
+        with open(os.path.join(self._home, "equity_peak.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {"peak": 3057.27, "peaks": {"live:acct_a": 3057.27, "live:acct_b": 149.14}},
+                f,
+            )
+        e = _stub(_GUARD_ON)
+        e.simulate_only = False
+        e._account_fp = "acct_b"
+        e._execution_mode = lambda symbol=None: "live"
+
+        allowed, reason = e.check_drawdown_guard(148.63, symbol="BTCUSDT")
+
+        self.assertTrue(allowed, reason)
+        self.assertLess(e.drawdown_pct(148.63, symbol="BTCUSDT"), 1.0)
+
+    def test_flat_capital_withdrawal_rebases_peak(self):
+        os.makedirs(self._home, exist_ok=True)
+        with open(os.path.join(self._home, "equity_peak.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "peak": 1000.0,
+                    "peaks": {"live:acct1": 1000.0},
+                    "capital_flow_baselines": {
+                        "live:acct1": {"equity": 1000.0, "closed_trade_marker": ""}
+                    },
+                },
+                f,
+            )
+        e = _stub(
+            {
+                "risk": {
+                    "drawdown_guard": {
+                        "enabled": True,
+                        "max_drawdown_pct": 20.0,
+                        "auto_rebase_capital_flows": True,
+                        "capital_flow_min_abs_usdt": 20.0,
+                        "capital_flow_min_pct": 5.0,
+                    }
+                }
+            }
+        )
+        e.simulate_only = False
+        e._account_fp = "acct1"
+        e._execution_mode = lambda symbol=None: "live"
+        e.db = mock.Mock()
+        e.db.get_trade_state.return_value = {"state": "idle"}
+        e.db.get_closed_trades.return_value = []
+
+        allowed, reason = e.check_drawdown_guard(700.0, symbol="BTCUSDT")
+
+        self.assertTrue(allowed, reason)
+        with open(os.path.join(self._home, "equity_peak.json"), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["peaks"]["live:acct1"], 700.0)
+
+    def test_realized_loss_does_not_auto_rebase_peak(self):
+        os.makedirs(self._home, exist_ok=True)
+        with open(os.path.join(self._home, "equity_peak.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "peak": 1000.0,
+                    "peaks": {"live:acct1": 1000.0},
+                    "capital_flow_baselines": {
+                        "live:acct1": {"equity": 1000.0, "closed_trade_marker": ""}
+                    },
+                },
+                f,
+            )
+        e = _stub(
+            {
+                "risk": {
+                    "drawdown_guard": {
+                        "enabled": True,
+                        "max_drawdown_pct": 20.0,
+                        "auto_rebase_capital_flows": True,
+                        "capital_flow_min_abs_usdt": 20.0,
+                        "capital_flow_min_pct": 5.0,
+                    }
+                }
+            }
+        )
+        e.simulate_only = False
+        e._account_fp = "acct1"
+        e._execution_mode = lambda symbol=None: "live"
+        e.db = mock.Mock()
+        e.db.get_trade_state.return_value = {"state": "idle"}
+        e.db.get_closed_trades.return_value = [
+            {
+                "symbol": "BTCUSDT",
+                "closed_at": "2026-06-29T01:00:00",
+                "net_pnl": -300.0,
+                "execution_mode": "live",
+            }
+        ]
+
+        allowed, reason = e.check_drawdown_guard(700.0, symbol="BTCUSDT")
+
+        self.assertFalse(allowed)
+        self.assertIn("Drawdown guard", reason)
+        with open(os.path.join(self._home, "equity_peak.json"), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["peaks"]["live:acct1"], 1000.0)
 
     def test_zero_threshold_disables_block(self):
         e = _stub({"risk": {"drawdown_guard": {"enabled": True, "max_drawdown_pct": 0.0}}})
