@@ -17,11 +17,13 @@ from xauby.ui.textual_tui.quick_config import (
     SystemCheckScreen,
 )
 
+from xauby.meta import PRODUCT_NAME
+
 
 class XAubyTextualApp(App):
     """The Main Textual TUI Application for xAuby."""
 
-    TITLE = "xAuby Trading Dashboard"
+    TITLE = f"{PRODUCT_NAME} Trading Dashboard"
     CSS_PATH = "styles.tcss"
     ENABLE_COMMAND_PALETTE = False
 

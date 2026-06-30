@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from xauby.utils.colors import C_RESET, make_gemini_gradient, fg_rgb
 from xauby.utils.common import center_text
+from xauby.meta import PRODUCT_NAME
 
 _LOGO_LARGE = [
     "██╗  ██╗ █████╗ ██╗   ██╗██████╗ ██╗   ██╗",
@@ -27,13 +28,13 @@ _IND = fg_rgb(99, 102, 241)   # Indigo 400 — box lines
 
 def _top_border(box_w: int) -> str:
     """╔══ ✦ xAuby ✦ ══╗  with gradient title embedded in the top edge."""
-    title_vis = " ✦ xAuby ✦ "   # 12 visible chars including surrounding spaces
+    title_vis = f" ✦ {PRODUCT_NAME} ✦ "   # 12 visible chars including surrounding spaces
     fill = box_w - 2 - len(title_vis)
     left = max(1, fill // 2)
     right = max(1, fill - left)
     return (
         f"{_IND}╔{'═' * left}{C_RESET}"
-        f" {make_gemini_gradient('✦ xAuby ✦')} "
+        f" {make_gemini_gradient(f'✦ {PRODUCT_NAME} ✦')} "
         f"{_IND}{'═' * right}╗{C_RESET}"
     )
 
@@ -81,4 +82,4 @@ def render_launcher_banner_lines(width: int) -> list[str]:
         return _box_wide(w, min(60, w - 4))
     if w >= 36:
         return _box_compact(w, min(36, w - 2))
-    return [center_text(make_gemini_gradient("✦ xAuby ✦"), w)]
+    return [center_text(make_gemini_gradient(f"✦ {PRODUCT_NAME} ✦"), w)]

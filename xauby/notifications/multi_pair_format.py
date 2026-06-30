@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from xauby.notifications.report_formatter import build_period_report_message
 from xauby.track_record.generator import generate_report
+from xauby.meta import PRODUCT_NAME
 
 
 def _pair_regime_one_liner(regime: Optional[Dict[str, Any]]) -> str:
@@ -98,7 +99,7 @@ def format_multi_heartbeat(
     get_regime: Callable[[str], Optional[Dict[str, Any]]],
 ) -> str:
     lines = [
-        f"💚 *xAuby Heartbeat* — `{len(symbols)}` pair(s)",
+        f"💚 *{PRODUCT_NAME} Heartbeat* — `{len(symbols)}` pair(s)",
         f"• Equity: `{equity:.2f} USDT`",
         f"• Status: `Running normally`",
     ]

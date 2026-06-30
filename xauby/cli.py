@@ -16,6 +16,8 @@ import argparse
 import os
 import sys
 
+from xauby.meta import PRODUCT_NAME
+
 
 def _ensure_project_root() -> None:
     script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,7 +74,7 @@ def _do_restart(live_mode: bool) -> int:
     import launcher
     from xauby.ui.menu import check_engine_status
 
-    print("\n[*] Restarting xAuby bot engine + TUI...")
+    print(f"\n[*] Restarting {PRODUCT_NAME} bot engine + TUI...")
 
     if live_mode:
         controlled_script = os.path.join("scripts", "controlled_restart_engine.sh")
@@ -149,7 +151,7 @@ def _do_update() -> int:
         print("[ERR] scripts/deploy_from_github.sh not found.")
         return 1
 
-    print("\n[*] Updating xAuby from origin/main and restarting engine...")
+    print(f"\n[*] Updating {PRODUCT_NAME} from origin/main and restarting engine...")
     result = subprocess.run([deploy_script, "--restart", "--branch=main"])
     if result.returncode != 0:
         print(f"[ERR] Update failed with exit code {result.returncode}.")
@@ -161,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="xauby",
-        description="xAuby Trading Bot — one-command launcher",
+        description=f"{PRODUCT_NAME} Trading Bot — one-command launcher",
     )
     parser.add_argument(
         "command",

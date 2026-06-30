@@ -5,6 +5,7 @@ from xauby.utils.colors import (
 )
 from xauby.utils.common import center_text, visible_len
 from xauby.runtime.paths import runtime_path
+from xauby.meta import PRODUCT_NAME
 
 def print_line(width: int, char: str = "─", color: str = BB_CYAN):
     print(f"{color}{char * width}{RESET}")
@@ -508,7 +509,7 @@ def draw_hermes_banner(W: int):
         print(center_text(make_gemini_gradient(sub_text), W))
         print()
     else:
-        sub_text = "xAuby"
+        sub_text = PRODUCT_NAME
         print(center_text(make_gemini_gradient(sub_text), W))
         print()
 
@@ -525,7 +526,7 @@ def draw_hermes_banner(W: int):
         "  /  \\  / ___ \\| |_| | |_) || |  ",
         " /_/\\_\\/_/   \\_\\\\___/|____/ |_|  ",
     ]
-    logo_small = ["xAuby", "trading system"]
+    logo_small = [PRODUCT_NAME, "trading system"]
 
     if W >= 82:
         box_w = 52
@@ -536,7 +537,7 @@ def draw_hermes_banner(W: int):
         logo = logo_small
         subtitle = "ASoV Trading System"
     else:
-        print(center_text(make_gemini_gradient("xAuby"), W))
+        print(center_text(make_gemini_gradient(PRODUCT_NAME), W))
         print()
         draw_hermes_status_bar(W)
         return
@@ -547,7 +548,7 @@ def draw_hermes_banner(W: int):
     for line in logo:
         centered_line = center_text(make_3d_gemini_logo(line), box_w - 2)
         print(f"{pad_str}{border_color}|{RESET}{centered_line}{border_color}|{RESET}")
-    brand = center_text(make_gemini_gradient("xAuby"), box_w - 2)
+    brand = center_text(make_gemini_gradient(PRODUCT_NAME), box_w - 2)
     print(f"{pad_str}{border_color}|{RESET}{brand}{border_color}|{RESET}")
     centered_sub = center_text(make_gemini_gradient(subtitle), box_w - 2)
     print(f"{pad_str}{border_color}|{RESET}{centered_sub}{border_color}|{RESET}")

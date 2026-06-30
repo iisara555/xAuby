@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional
 from xauby.notifications.interface import AlertLevel
 from xauby.observability.events import EventType
+from xauby.meta import PRODUCT_NAME
 
 logger = logging.getLogger("lite_bot")
 
@@ -79,7 +80,7 @@ class AlertMixin:
             if feed_status["trading_halted"]:
                 unhealthy.append(f"{spec.symbol}: halted")
         lines = [
-            "🩺 *xAuby Health*",
+            f"🩺 *{PRODUCT_NAME} Health*",
             f"Engine: `{'RUNNING' if getattr(self, '_engine_loop_started', False) else 'INITIALIZED'}`",
             f"Mode: `{'SIM' if self.simulate_only else 'LIVE'}` │ Read-only: `{bool(self.read_only)}`",
             f"Telegram pause: `{'ON' if paused else 'OFF'}`",
@@ -101,7 +102,7 @@ class AlertMixin:
         return reg.to_dict() if hasattr(reg, "to_dict") else dict(reg)
 
     def format_telegram_status_multi(self) -> str:
-        lines = [f"📡 *xAuby Status* — `{len(self._pair_registry.active())} active pair(s)`"]
+        lines = [f"📡 *{PRODUCT_NAME} Status* — `{len(self._pair_registry.active())} active pair(s)`"]
         equity = self.get_equity()
         lines.append(f"Equity: `{equity:.2f} USDT` │ Mode: `{'SIM' if self.simulate_only else 'LIVE'}`")
         for spec in self._pair_registry.active():
@@ -286,7 +287,7 @@ class AlertMixin:
                     else "IDLE"
                 )
                 msg = (
-                    f"💚 *xAuby Heartbeat*\n"
+                    f"💚 *{PRODUCT_NAME} Heartbeat*\n"
                     f"• Symbol: `{self.symbol}`\n"
                     f"• Price: `{ticker_price:.2f} USDT`\n"
                     f"• Equity: `{equity:.2f} USDT`\n"

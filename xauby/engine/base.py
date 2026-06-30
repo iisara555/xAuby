@@ -26,6 +26,7 @@ from xauby.observability.store import EventStore
 logger = logging.getLogger("lite_bot")
 
 from xauby.database import create_database
+from xauby.meta import PRODUCT_NAME
 from xauby.strategies import load_strategy
 from xauby.strategies.sandbox import StrategyRunner
 
@@ -836,7 +837,7 @@ class BaseEngine:
                     pass
                 pid_hint = f" (pid {existing_pid})" if existing_pid else ""
                 raise RuntimeError(
-                    f"xAuby engine is already running{pid_hint} — "
+                    f"{PRODUCT_NAME} engine is already running{pid_hint} — "
                     f"lock file held: {lock_name}\n"
                     f"If the previous process crashed, remove the lock file and retry:\n"
                     f"  rm {lock_name}"
@@ -890,7 +891,10 @@ class BaseEngine:
         try:
             import fcntl
         except ImportError:
-            logger.debug("fcntl unavailable; skipping account lock")
+            logger.warning(
+                "fcntl unavailable (e.g. Windows); cross-instance account lock SKIPPED "
+                "— ensure each live instance uses its own subaccount/API key."
+            )
             return
         from xauby.runtime.paths import account_lock_path
 
@@ -909,7 +913,7 @@ class BaseEngine:
                 pass
             hint = f" (held by {existing})" if existing else ""
             raise RuntimeError(
-                f"Another LIVE xAuby instance is already trading this exchange "
+                f"Another LIVE {PRODUCT_NAME} instance is already trading this exchange "
                 f"account{hint}. Two live instances on one account double-count "
                 f"risk — give each its own subaccount/API key, or stop the other "
                 f"instance. Account lock: {path}"

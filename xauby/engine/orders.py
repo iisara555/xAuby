@@ -815,6 +815,10 @@ class OrderMixin:
             )
             return False
 
+        if ticker_price <= 0:
+            logger.error("BUY aborted for %s: non-positive price %s", sym, ticker_price)
+            return False
+
         equity = self.get_equity(ticker_price, symbol=sym)
         if equity <= 0:
             logger.error("Equity is 0 or negative. Cannot place BUY order.")

@@ -17,6 +17,7 @@ from xauby.observability.incidents import (
 )
 from xauby.observability.store import EventStore
 from xauby.utils.common import format_ts_ict
+from xauby.meta import PRODUCT_TITLE
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -69,7 +70,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="xAuby : Alternative Store of Value Trading System — incident explorer",
+        description=f"{PRODUCT_TITLE} — incident explorer",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

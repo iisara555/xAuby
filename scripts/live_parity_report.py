@@ -17,6 +17,7 @@ from xauby.backtest.service import run_focused_backtest
 from xauby.observability.replay_validation import load_bot_config
 from xauby.runtime.pair_registry import PairRegistry
 from xauby.runtime.trading_config import resolve_trading_config
+from xauby.meta import PRODUCT_NAME
 
 
 STATE_PATH = os.path.join("core", "logs", "xauby_bot_state.json")
@@ -124,7 +125,7 @@ def build_report(*, include_backtest: bool = False) -> Dict[str, Any]:
 
 def print_human(report: Dict[str, Any]) -> None:
     state = report.get("state") or {}
-    print("xAuby Live/Backtest Parity Report")
+    print(f"{PRODUCT_NAME} Live/Backtest Parity Report")
     print(f"State: pid={state.get('pid')} run_id={state.get('run_id')} simulate_only={state.get('simulate_only')} read_only={state.get('read_only')}")
     print("")
     for row in report.get("pairs") or []:

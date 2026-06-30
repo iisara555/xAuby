@@ -125,9 +125,7 @@ class RiskMixin:
             return 0.0
 
     def _save_equity_peak(self, peak: float, symbol: Optional[str] = None) -> None:
-        from xauby.runtime.paths import ensure_runtime_dir, equity_peak_path
         try:
-            ensure_runtime_dir()
             data = self._load_equity_peak_data()
             scope = self._equity_peak_scope(symbol)
             peaks = data.get("peaks")
@@ -136,8 +134,9 @@ class RiskMixin:
             peaks[scope] = float(peak)
             data["peaks"] = peaks
             data["peak"] = float(peak)
-            with open(equity_peak_path(), "w", encoding="utf-8") as f:
-                json.dump(data, f)
+            # Atomic write so a crash mid-save can't truncate the drawdown
+            # high-water mark (which would silently reset the guard).
+            self._save_equity_peak_data(data)
         except Exception as e:
             logger.warning("Could not persist equity peak: %s", e)
 

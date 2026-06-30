@@ -5,6 +5,8 @@ from typing import Any, Optional
 
 import requests
 
+from xauby.meta import PRODUCT_NAME
+
 logger = logging.getLogger("telegram_bot")
 
 SEMI_AUTO_KEYBOARD = {
@@ -211,7 +213,7 @@ class TelegramCommandPoller:
     def _cmd_start(self, chat_id: str) -> None:
         self._reply(
             chat_id,
-            "🤖 *xAuby Bot Commands*\n"
+            f"🤖 *{PRODUCT_NAME} Bot Commands*\n"
             "/status — price, position, signal (all pairs)\n"
             "/pnl — 7d & 30d portfolio + per pair\n"
             "/regime — regime per active pair\n"

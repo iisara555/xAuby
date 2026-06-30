@@ -19,6 +19,7 @@ from xauby.ui.menu import (
     print_line, print_menu_row, check_engine_status,
 )
 from xauby.database.db import resolve_db_path
+from xauby.meta import PRODUCT_NAME
 
 from xauby.launcher.config_io import *  # noqa: F401,F403
 
@@ -46,7 +47,7 @@ def send_test_telegram() -> bool:
     url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
     payload = {
         "chat_id": tg_chat_id,
-        "text": "🔔 *xAuby Test Alert*\nThis is a test notification to verify your Telegram connection from the launcher.",
+        "text": f"🔔 *{PRODUCT_NAME} Test Alert*\nThis is a test notification to verify your Telegram connection from the launcher.",
         "parse_mode": "Markdown"
     }
     try:

@@ -29,11 +29,12 @@ run_id = setup_logging(logging_cfg=_load_logging_cfg(_pre_args.config))
 
 from xauby.engine.trading import LiteTradingEngine
 from xauby.runtime.config_error import ConfigError
+from xauby.meta import PRODUCT_TITLE
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="xAuby : Alternative Store of Value Trading System — engine launcher",
+        description=f"{PRODUCT_TITLE} — engine launcher",
     )
     parser.add_argument("--config", type=str, default="bot_config.yaml", help="Path to bot_config.yaml")
     parser.add_argument("--simulate", action="store_true", help="Force simulation (paper trading) mode")

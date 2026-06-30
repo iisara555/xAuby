@@ -28,6 +28,12 @@ class ReconcileMixin:
                                 or (self.config.get("exchange") or {}).get("provider") or "configured")
             logger.info("[%s] Local state is 'bought'. Reconciling with %s exchange...", sym, exchange_name)
             balances = self.client.get_balances()
+            if not isinstance(balances, dict):
+                logger.warning(
+                    "[%s] get_balances() returned %s; skipping reconcile, keeping DB state.",
+                    sym, type(balances).__name__,
+                )
+                return
             base_asset = self._get_base_asset(sym)
             live_bal_info = balances.get(base_asset, {})
             avail_bal = float(live_bal_info.get("available", 0.0))
@@ -94,6 +100,8 @@ class ReconcileMixin:
         engine is not tracking (state is idle). Mirrors the swap orphan guard."""
         try:
             balances = self.client.get_balances()
+            if not isinstance(balances, dict):
+                return  # cannot assess orphan without balances → stay safe (no false halt)
             base_asset = self._get_base_asset(sym)
             info = balances.get(base_asset, {}) or {}
             total_bal = float(info.get("available", 0.0) or 0.0) + float(info.get("reserved", 0.0) or 0.0)
