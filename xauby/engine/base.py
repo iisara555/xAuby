@@ -656,7 +656,7 @@ class BaseEngine:
                 ctx.confirm_timeframe = spec.regime_timeframe
                 ctx.use_d1_regime_filter = bool(spec.use_d1_regime_filter)
                 ctx.degraded = spec.degraded
-                ctx.degrade_reason = spec.degrade_reason
+                ctx.set_degrade_reason(spec.degrade_reason)
                 ctx.regime_router_warning = RegimeRouter.live_gate_warning(spec) or ctx.regime_router_warning
                 self.contexts[spec.symbol] = ctx
             else:

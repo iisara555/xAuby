@@ -38,13 +38,14 @@ class OrderMixin:
         if not spec or "short" not in spec.allowed_sides:
             logger.warning("SHORT blocked for %s: not present in allowed_sides", sym)
             return False
-        if getattr(self._sc(sym), "trading_halted", False):
-            logger.warning("SHORT blocked for %s: trading halted (%s)", sym, self._sc(sym).halt_reason)
+        feed_status = self._sc(sym).feed_snapshot()
+        if feed_status["trading_halted"]:
+            logger.warning("SHORT blocked for %s: trading halted (%s)", sym, feed_status["halt_reason"])
             return False
-        if getattr(self._sc(sym), "candle_stale", False):
+        if feed_status["candle_stale"]:
             logger.warning("SHORT blocked for %s: candle feed stale", sym)
             return False
-        if self._sc(sym).feed_degraded:
+        if feed_status["feed_degraded"]:
             logger.warning("SHORT blocked for %s: market feed degraded", sym)
             return False
         live = self._execution_mode(sym) == "live"
@@ -790,15 +791,16 @@ class OrderMixin:
         except (AttributeError, KeyError):
             sc = None  # minimal stubs / unknown symbol: no per-symbol safety state
         if sc is not None:
-            if getattr(sc, "trading_halted", False):
-                logger.warning("BUY blocked for %s: trading halted (%s)", sym, sc.halt_reason)
+            feed_status = sc.feed_snapshot()
+            if feed_status["trading_halted"]:
+                logger.warning("BUY blocked for %s: trading halted (%s)", sym, feed_status["halt_reason"])
                 self._emit_event(
                     EventType.RISK_REJECTED,
-                    reason=f"trading halted: {sc.halt_reason}",
+                    reason=f"trading halted: {feed_status['halt_reason']}",
                     symbol=sym,
                 )
                 return False
-            if getattr(sc, "candle_stale", False):
+            if feed_status["candle_stale"]:
                 logger.warning("BUY blocked for %s: candle feed stale", sym)
                 self._emit_event(EventType.RISK_REJECTED, reason="candle feed stale", symbol=sym)
                 return False

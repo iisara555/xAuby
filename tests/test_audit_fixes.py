@@ -251,8 +251,8 @@ class TestSemiAutoConfirmTargetsPendingSymbol(unittest.TestCase):
         finally:
             self.engine._active_tick_symbol = None
 
-        self.assertTrue(self.engine.contexts["XAUTUSDT"]._semi_auto_confirm.is_set())
-        self.assertFalse(self.engine.contexts["BTCUSDT"]._semi_auto_confirm.is_set())
+        self.assertTrue(self.engine.contexts["XAUTUSDT"].semi_auto_confirmed())
+        self.assertFalse(self.engine.contexts["BTCUSDT"].semi_auto_confirmed())
 
     def test_skip_resolves_pending_symbol(self):
         signal = MagicMock()
@@ -266,7 +266,7 @@ class TestSemiAutoConfirmTargetsPendingSymbol(unittest.TestCase):
         finally:
             self.engine._active_tick_symbol = None
 
-        self.assertIsNone(self.engine.contexts["XAUTUSDT"]._semi_auto_pending)
+        self.assertFalse(self.engine.contexts["XAUTUSDT"].has_semi_auto_pending())
 
 
 class TestSimBrokerAtomicity(unittest.TestCase):

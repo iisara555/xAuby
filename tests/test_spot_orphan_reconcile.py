@@ -50,8 +50,9 @@ class TestSpotOrphan(unittest.TestCase):
         sc = _sc()
         eng = _Eng(_client(available=0.5, last=100.0), sc)  # 0.5 BTC ~ $50
         eng._detect_spot_orphan("BTCUSDT", {"state": "idle"})
-        self.assertTrue(sc.trading_halted)
-        self.assertIn("BTC", sc.halt_reason)
+        snap = sc.feed_snapshot()
+        self.assertTrue(snap["trading_halted"])
+        self.assertIn("BTC", snap["halt_reason"])
         self.assertEqual(len(eng.alerts), 1)
         self.assertIn("RECONCILE NEEDED", eng.alerts[0])
 
@@ -60,7 +61,7 @@ class TestSpotOrphan(unittest.TestCase):
         sc = _sc()
         eng = _Eng(_client(available=0.00001, last=100.0), sc)  # below stepSize
         eng._detect_spot_orphan("BTCUSDT", {"state": "idle"})
-        self.assertFalse(sc.trading_halted)
+        self.assertFalse(sc.feed_snapshot()["trading_halted"])
         self.assertEqual(eng.alerts, [])
 
     @patch("xauby.runtime.trading_config.resolve_trading_config", return_value=_EFF)
@@ -69,14 +70,14 @@ class TestSpotOrphan(unittest.TestCase):
         # 0.05 BTC * $100 = $5 < $10 min_order -> not a tradeable position.
         eng = _Eng(_client(available=0.05, last=100.0), sc)
         eng._detect_spot_orphan("BTCUSDT", {"state": "idle"})
-        self.assertFalse(sc.trading_halted)
+        self.assertFalse(sc.feed_snapshot()["trading_halted"])
 
     @patch("xauby.runtime.trading_config.resolve_trading_config", return_value=_EFF)
     def test_no_balance_no_halt(self, _rt):
         sc = _sc()
         eng = _Eng(_client(available=0.0), sc)
         eng._detect_spot_orphan("BTCUSDT", {"state": "idle"})
-        self.assertFalse(sc.trading_halted)
+        self.assertFalse(sc.feed_snapshot()["trading_halted"])
 
 
 if __name__ == "__main__":

@@ -126,6 +126,24 @@ class TestTextualStateSync(unittest.TestCase):
             self.assertEqual(state.get("symbol"), "XAUTUSDT")
             self.assertTrue(bot_state_file_path().endswith("xauby_bot_state.json"))
 
+    def test_load_cache_returns_defensive_copies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            logs = os.path.join(tmp, "core", "logs")
+            os.makedirs(logs)
+            path = os.path.join(logs, "xauby_bot_state.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"symbol": "BTCUSDT", "regime": {"regime": "A"}}, f)
+            old = os.getcwd()
+            try:
+                os.chdir(tmp)
+                state1, _, _, _ = load_bot_state_from_disk()
+                state1["regime"]["regime"] = "MUTATED"
+                state2, _, _, _ = load_bot_state_from_disk()
+            finally:
+                os.chdir(old)
+
+        self.assertEqual(state2["regime"]["regime"], "A")
+
     def test_stale_state_is_not_rendered(self):
         with tempfile.TemporaryDirectory() as tmp:
             logs = os.path.join(tmp, "core", "logs")

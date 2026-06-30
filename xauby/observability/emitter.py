@@ -34,6 +34,7 @@ class EventEmitter:
         self._ring_size = max(1, int(ring_size))
         self._ring: Deque[Dict[str, Any]] = deque(maxlen=self._ring_size)
         self._ring_lock = threading.Lock()
+        self._state_lock = threading.Lock()
         self._tick_id: Optional[str] = None
         cfg = config or {}
         arch_cfg = cfg.get("architecture") or {}
@@ -51,43 +52,53 @@ class EventEmitter:
         self._local_seq = 0
 
     def configure(self, symbol: str, mode: str, run_id: Optional[str] = None) -> None:
-        self.symbol = symbol
-        self.mode = mode
-        if run_id:
-            self.run_id = run_id
-            self.store.set_run_id(run_id)
+        with self._state_lock:
+            self.symbol = symbol
+            self.mode = mode
+            if run_id:
+                self.run_id = run_id
+                self.store.set_run_id(run_id)
 
     def set_tick_id(self, tick_id: str) -> None:
-        self._tick_id = tick_id
+        with self._state_lock:
+            self._tick_id = tick_id
 
     def emit(self, event_type: str, symbol: Optional[str] = None, **fields: Any) -> None:
         try:
             payload = {k: v for k, v in fields.items() if v is not None}
-            sym = (symbol or self.symbol or "").upper().replace("_", "")
-            durable = self._durable_high_frequency or event_type not in self._high_frequency_types
+            with self._state_lock:
+                sym = (symbol or self.symbol or "").upper().replace("_", "")
+                mode = self.mode
+                run_id = self.run_id
+                tick_id = self._tick_id
+                durable = self._durable_high_frequency or event_type not in self._high_frequency_types
             started = time.monotonic()
             if durable:
                 ev = self.store.append(
                     event_type=event_type,
                     symbol=sym,
-                    mode=self.mode,
-                    run_id=self.run_id,
+                    mode=mode,
+                    run_id=run_id,
                     payload=payload,
-                    tick_id=self._tick_id,
+                    tick_id=tick_id,
                 )
-                self.last_store_ms = int((time.monotonic() - started) * 1000)
+                store_ms = int((time.monotonic() - started) * 1000)
+                with self._state_lock:
+                    self.last_store_ms = store_ms
             else:
-                self._local_seq += 1
+                with self._state_lock:
+                    self._local_seq += 1
+                    seq = self._local_seq
+                    self.last_store_ms = 0
                 ev = Event(
                     event_type=event_type,
                     symbol=sym,
-                    mode=self.mode,
-                    run_id=self.run_id,
-                    seq=self._local_seq,
+                    mode=mode,
+                    run_id=run_id,
+                    seq=seq,
                     payload=payload,
-                    tick_id=self._tick_id,
+                    tick_id=tick_id,
                 )
-                self.last_store_ms = 0
             kv = "｜".join(f"{k}={v}" for k, v in payload.items())
             if durable:
                 logger.info(f"EVENT｜{event_type}" + (f"｜{kv}" if kv else ""))

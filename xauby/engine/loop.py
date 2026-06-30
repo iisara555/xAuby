@@ -97,7 +97,7 @@ class LoopMixin:
                 reason = f"Manual BUY rejected: {symbol} already has an open position"
             elif not spec or "long" not in spec.allowed_sides:
                 reason = f"Manual BUY rejected: LONG is disabled for {symbol}"
-            elif self._sc(symbol).feed_degraded:
+            elif self._sc(symbol).feed_snapshot()["feed_degraded"]:
                 reason = f"Manual BUY rejected: market feed is degraded for {symbol}"
             elif self._sc(symbol).blocks_new_entries():
                 reason = f"Manual BUY rejected: RegimeRouter {self._sc(symbol).no_trade_state}"
@@ -241,12 +241,14 @@ class LoopMixin:
                     f"✅ *WebSocket Reconnected*\nSymbol: `{self.symbol}`\nDowntime: `{downtime:.0f}s`"
                 )
             for sc in self.contexts.values():
-                sc.feed_degraded = False
+                sc.set_feed_degraded(False)
         elif event in ("market_channel_degraded", "order_book_resync_required"):
             sym = str(status.get("symbol") or "").upper().replace("_", "")
             if sym in self.contexts:
-                self.contexts[sym].feed_degraded = True
-                self.contexts[sym].degrade_reason = str(status.get("error") or event)
+                self.contexts[sym].set_feed_degraded(
+                    True,
+                    str(status.get("error") or event),
+                )
 
     def _schedule_ws_disconnect_alert(self, started_at: float) -> None:
         delay = max(0.0, float(getattr(self, "_ws_disconnect_alert_after_seconds", 45.0)))
@@ -355,15 +357,11 @@ class LoopMixin:
 
         # Snapshot cache state under the lock; do the (slow) REST call outside
         # so the WS price-flush thread is never blocked behind network I/O.
-        with self._balance_lock:
-            cache_age = time.time() - self._balance_last_update
-            b = self._balance_cache
+        b, cache_age = self._balance_cache_snapshot()
         if not b or cache_age >= self._balance_cache_ttl:
             try:
                 fresh = self.client.get_balances()
-                with self._balance_lock:
-                    self._balance_cache = fresh
-                    self._balance_last_update = time.time()
+                self._store_balance_cache(fresh)
                 b = fresh
             except Exception as e:
                 logger.error(f"Failed to get balances for equity: {e}")
@@ -380,9 +378,11 @@ class LoopMixin:
     def get_portfolio_equity_total(self) -> float:
         totals = self._balance_totals_map()
         if not totals:
-            if self._last_equity is not None:
+            with self._balance_lock:
+                last_equity = self._last_equity
+            if last_equity is not None:
                 logger.warning("Using last known portfolio equity (no balance data)")
-                return self._last_equity
+                return last_equity
             return 0.0
         usdt = float(totals.get(self._quote_asset(), 0.0) or 0.0)
         total = usdt
@@ -398,7 +398,8 @@ class LoopMixin:
             price = self._price_for_symbol(spec.symbol)
             if price > 0:
                 total += qty * price
-        self._last_equity = total
+        with self._balance_lock:
+            self._last_equity = total
         return total
 
     def get_symbol_equity_breakdown(self, symbol: str) -> Dict[str, Any]:
@@ -495,11 +496,31 @@ class LoopMixin:
             return
         try:
             b = self.client.get_balances()
-            with self._balance_lock:
-                self._balance_cache = b
-                self._balance_last_update = time.time()
+            self._store_balance_cache(b)
         except Exception as e:
             logger.debug(f"Background balance refresh failed: {e}")
+
+    def _balance_cache_snapshot(self) -> tuple[Dict[str, Any], float]:
+        with self._balance_lock:
+            return dict(self._balance_cache or {}), time.time() - self._balance_last_update
+
+    def _store_balance_cache(self, balances: Dict[str, Any]) -> None:
+        with self._balance_lock:
+            self._balance_cache = dict(balances or {})
+            self._balance_last_update = time.time()
+
+    def _maybe_start_balance_refresh(self) -> None:
+        if self._all_symbols_sim():
+            return
+        with self._balance_lock:
+            cache_age = time.time() - self._balance_last_update
+            if cache_age < self._balance_cache_ttl:
+                return
+            if self._balance_refresh_thread and self._balance_refresh_thread.is_alive():
+                return
+            thread = threading.Thread(target=self._refresh_balance_cache, daemon=True)
+            self._balance_refresh_thread = thread
+        thread.start()
 
     def get_simulated_balance(self) -> float:
         from xauby.runtime.architecture_config import sim_broker_enabled
@@ -736,8 +757,7 @@ class LoopMixin:
                 }
             except Exception as e:
                 logger.warning(f"Failed to fetch balances for state export: {e}")
-                with self._balance_lock:
-                    b = self._balance_cache
+                b, _ = self._balance_cache_snapshot()
                 if b:
                     usdt_avail = b.get(quote, {}).get("available", 0.0)
                     usdt_res = b.get(quote, {}).get("reserved", 0.0)
@@ -782,6 +802,8 @@ class LoopMixin:
                 else "config_fallback",
             },
         }
+        feed_status = sc.feed_snapshot()
+        candle_status = sc.candle_snapshot()
         snap = self._state_exporter.build(
             pid=os.getpid(),
             engine_started_at=self.engine_started_at,
@@ -815,7 +837,7 @@ class LoopMixin:
                 "mark_price": current_price,
                 "exchange": exchange_id,
                 "market_type": exchange_identity["market_type"].upper(),
-                "feed_health": "DEGRADED" if sc.feed_degraded else "OK",
+                "feed_health": "DEGRADED" if feed_status["feed_degraded"] else "OK",
             },
             indicators=indicators,
             strategy_name=getattr(self._get_strategy_for_symbol(sym), "name", "unknown"),
@@ -851,8 +873,8 @@ class LoopMixin:
         snap["exchange"] = exchange_identity
         snap["confirm_timeframe"] = sc.confirm_timeframe or ""
         snap["degraded"] = sc.degraded
-        snap["degrade_reason"] = sc.degrade_reason
-        snap["last_candle_timestamp"] = int(sc.last_candle_timestamp or 0)
+        snap["degrade_reason"] = feed_status["degrade_reason"]
+        snap["last_candle_timestamp"] = candle_status["last_candle_timestamp"]
         snap["equity_breakdown"] = equity_breakdown
         snap["total_equity_usdt"] = portfolio_total
 
@@ -1032,13 +1054,13 @@ class LoopMixin:
         """
         with self._semi_auto_lock:
             for sym, sc in self.contexts.items():
-                if sc._semi_auto_pending:
+                if sc.has_semi_auto_pending():
                     return sym
         return None
 
     def confirm_semi_auto_buy(self, symbol: Optional[str] = None) -> None:
         sym = symbol or self._find_semi_auto_pending_symbol()
-        self._sc(sym)._semi_auto_confirm.set()
+        self._sc(sym).confirm_semi_auto_pending()
 
     def skip_semi_auto_buy(self, symbol: Optional[str] = None) -> None:
         sym = symbol or self._find_semi_auto_pending_symbol()
@@ -1048,10 +1070,7 @@ class LoopMixin:
         self, notify: bool = True, reason: str = "skipped", symbol: Optional[str] = None
     ) -> None:
         sc = self._sc(symbol)
-        with self._semi_auto_lock:
-            pending = sc._semi_auto_pending
-            sc._semi_auto_pending = None
-            sc._semi_auto_confirm.clear()
+        pending = sc.clear_semi_auto_pending()
         if pending and notify:
             self.send_telegram_alert(
                 f"⏭ *Semi-auto BUY {reason}* — `{sc.symbol}`",
@@ -1063,15 +1082,13 @@ class LoopMixin:
     ) -> None:
         sc = self._sc(symbol)
         timeout = self._notif_settings.semi_auto_confirm_timeout_seconds
-        with self._semi_auto_lock:
-            sc._semi_auto_pending = {
-                "ticker_price": ticker_price,
-                "atr": atr,
-                "signal_stop_loss_price": signal.stop_loss_price,
-                "signal_stop_loss_distance": signal.stop_loss_distance,
-                "expires_at": time.time() + timeout,
-            }
-            sc._semi_auto_confirm.clear()
+        sc.set_semi_auto_pending({
+            "ticker_price": ticker_price,
+            "atr": atr,
+            "signal_stop_loss_price": signal.stop_loss_price,
+            "signal_stop_loss_distance": signal.stop_loss_distance,
+            "expires_at": time.time() + timeout,
+        })
         from xauby.notifications.telegram_bot import SEMI_AUTO_KEYBOARD
 
         msg = (
@@ -1083,14 +1100,9 @@ class LoopMixin:
 
     def _execute_confirmed_semi_auto_buy(self, symbol: Optional[str] = None) -> bool:
         sc = self._sc(symbol)
-        with self._semi_auto_lock:
-            pending = sc._semi_auto_pending
-            if not pending:
-                sc._semi_auto_confirm.clear()
-                return False
-            sc._semi_auto_pending = None
-            sc._semi_auto_confirm.clear()
-        params = dict(pending)
+        status, params = sc.pop_confirmed_or_expired_semi_auto(time.time())
+        if status != "confirmed" or not params:
+            return False
         return self.execute_buy(
             float(params["ticker_price"]),
             float(params["atr"]),
@@ -1113,30 +1125,19 @@ class LoopMixin:
         if self.trading_mode != "semi_auto" or state.get("state") != "idle":
             return state
 
-        # Single lock acquisition: read pending state + decide + mutate atomically
         do_timeout_notify = False
         do_execute_buy = False
         do_queue_new = False
         execute_params: Optional[dict] = None
 
-        with self._semi_auto_lock:
-            pending = sc._semi_auto_pending
-            if pending:
-                if time.time() > float(pending.get("expires_at", 0)):
-                    # Inline: clear pending (timed out)
-                    sc._semi_auto_pending = None
-                    sc._semi_auto_confirm.clear()
-                    do_timeout_notify = True
-                elif sc._semi_auto_confirm.is_set():
-                    # Inline: extract params and clear pending (confirmed)
-                    execute_params = dict(pending)
-                    sc._semi_auto_pending = None
-                    sc._semi_auto_confirm.clear()
-                    do_execute_buy = True
-            # Check if we should queue a new signal (only if no pending after above)
-            if not do_execute_buy and state.get("state") == "idle" and action == "BUY":
-                if not sc._semi_auto_pending:
-                    do_queue_new = True
+        pending_status, pending = sc.pop_confirmed_or_expired_semi_auto(time.time())
+        if pending_status == "expired":
+            do_timeout_notify = True
+        elif pending_status == "confirmed" and pending:
+            execute_params = dict(pending)
+            do_execute_buy = True
+        elif state.get("state") == "idle" and action == "BUY" and pending_status == "none":
+            do_queue_new = True
 
         # Side-effects outside the lock
         if do_timeout_notify:
@@ -1308,9 +1309,11 @@ class LoopMixin:
 
         if "timestamp" in df_4h.columns:
             try:
-                sc.last_candle_timestamp = int(df_4h["timestamp"].iloc[-1])
+                last_candle_timestamp = int(df_4h["timestamp"].iloc[-1])
             except (TypeError, ValueError):
-                sc.last_candle_timestamp = 0
+                last_candle_timestamp = 0
+        else:
+            last_candle_timestamp = 0
 
         # Candle-staleness guard: if the newest CLOSED candle is older than
         # candle_staleness_factor timeframes, REST candle sync is not keeping up
@@ -1319,12 +1322,10 @@ class LoopMixin:
         # refreshes. Normal max age between closed candles is ~2x the timeframe,
         # so the default 2.5 leaves headroom without false positives.
         factor = float((self.config.get("data") or {}).get("candle_staleness_factor", 2.5))
-        was_stale = sc.candle_stale
-        sc.candle_stale = candle_is_stale(
-            sc.last_candle_timestamp, tf_primary, factor=factor
-        )
-        if sc.candle_stale and not was_stale:
-            age_s = int(time.time() - sc.last_candle_timestamp)
+        is_stale = candle_is_stale(last_candle_timestamp, tf_primary, factor=factor)
+        was_stale = sc.set_candle_status(last_candle_timestamp, is_stale)
+        if is_stale and not was_stale:
+            age_s = int(time.time() - last_candle_timestamp)
             logger.warning(
                 "[%s] Candle feed stale: newest %s candle is %ds old (> %.1fx timeframe). "
                 "Blocking new entries until candles refresh.",
@@ -1523,12 +1524,14 @@ class LoopMixin:
             from xauby.runtime.architecture_config import regime_router_enabled as rr_master
             from xauby.engine.regime_gate import should_route_on_candle
             spec = self._pair_registry.get(sym)
+            candle_status = sc.candle_snapshot()
+            last_candle_timestamp = candle_status["last_candle_timestamp"]
             # Advance the router/debounce once per CLOSED candle, not once per
             # tick. Without this, debounce_candles counted ticks (~60s) instead
             # of candles, collapsing the multi-candle confirmation and causing
             # the strategy to switch far more often than intended.
             new_closed_candle = should_route_on_candle(
-                sc.last_candle_timestamp, getattr(sc, "_last_routed_candle_ts", 0)
+                last_candle_timestamp, candle_status["last_routed_candle_ts"]
             )
             if (
                 rr_master(self.config)
@@ -1537,7 +1540,7 @@ class LoopMixin:
                 and self._regime_router
                 and new_closed_candle
             ):
-                sc._last_routed_candle_ts = int(sc.last_candle_timestamp or 0)
+                sc.mark_routed_candle(last_candle_timestamp)
                 state_for_pos = self.db.get_trade_state(sym)
                 has_pos = state_for_pos.get("state") == "bought"
                 if (
@@ -1558,7 +1561,7 @@ class LoopMixin:
                     refreshed_spec = self._pair_registry.get(sym)
                     if refreshed_spec:
                         sc.degraded = refreshed_spec.degraded
-                        sc.degrade_reason = refreshed_spec.degrade_reason
+                        sc.set_degrade_reason(refreshed_spec.degrade_reason)
                     self._start_loaded_strategies()
                     sc.strategy_name = new_strategy
                     sc.no_trade_state = "ACTIVE"
@@ -1608,7 +1611,7 @@ class LoopMixin:
                     refreshed_spec = self._pair_registry.get(sym)
                     if refreshed_spec:
                         sc.degraded = refreshed_spec.degraded
-                        sc.degrade_reason = refreshed_spec.degrade_reason
+                        sc.set_degrade_reason(refreshed_spec.degrade_reason)
                     self._start_loaded_strategies()
                     sc.strategy_name = route.strategy_name
                     self._emit_event(
@@ -1908,7 +1911,14 @@ class LoopMixin:
             new_sl = current_sl
             new_sl_order_id = sl_order_id
 
-            if candidate_sl > current_sl:
+            if self._trailing_stop_update_allowed(
+                state=state,
+                strat_conf=strat_conf,
+                candidate_sl=float(candidate_sl),
+                current_sl=float(current_sl),
+                highest_seen=float(highest_seen),
+                atr=float(atr),
+            ):
                 new_sl = candidate_sl
                 state_changed = True
                 sl_update_succeeded = True
@@ -2014,6 +2024,58 @@ class LoopMixin:
         updated_state = self.db.get_trade_state(sym)
         self.update_state_json(updated_state, indicators, symbol=sym)
 
+    def _position_age_minutes(self, opened_at: Any) -> float:
+        if not opened_at:
+            return 0.0
+        try:
+            opened = datetime.fromisoformat(str(opened_at).replace("Z", "+00:00"))
+            if opened.tzinfo is None:
+                opened = opened.replace(tzinfo=timezone.utc)
+            age_seconds = (
+                datetime.now(timezone.utc) - opened.astimezone(timezone.utc)
+            ).total_seconds()
+            return max(0.0, age_seconds / 60.0)
+        except Exception:
+            return 0.0
+
+    def _trailing_stop_update_allowed(
+        self,
+        *,
+        state: Dict[str, Any],
+        strat_conf: Dict[str, Any],
+        candidate_sl: float,
+        current_sl: float,
+        highest_seen: float,
+        atr: float,
+    ) -> bool:
+        if candidate_sl <= current_sl:
+            return False
+        if current_sl <= 0:
+            return True
+
+        entry_price = float(state.get("entry_price", 0.0) or 0.0)
+        try:
+            min_minutes = float(strat_conf.get("trail_activation_min_minutes", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            min_minutes = 0.0
+        if min_minutes > 0 and self._position_age_minutes(state.get("opened_at")) < min_minutes:
+            return False
+
+        try:
+            activation_atr_mult = float(strat_conf.get("trail_activation_atr_mult", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            activation_atr_mult = 0.0
+        if atr > 0 and activation_atr_mult > 0 and highest_seen - entry_price < atr * activation_atr_mult:
+            return False
+
+        try:
+            min_delta_atr = float(strat_conf.get("trail_update_min_delta_atr", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            min_delta_atr = 0.0
+        if atr > 0 and min_delta_atr > 0 and candidate_sl - current_sl < atr * min_delta_atr:
+            return False
+        return True
+
     def stop(self, reason: Optional[str] = None):
         was_running = bool(getattr(self, "_engine_loop_started", False))
         active_syms = ", ".join(self._pair_registry.active_symbols()) or self.focus_symbol
@@ -2115,15 +2177,7 @@ class LoopMixin:
             try:
                 self.tick()
 
-                if not self._all_symbols_sim():
-                    with self._balance_lock:
-                        cache_age = time.time() - self._balance_last_update
-                        if cache_age >= self._balance_cache_ttl:
-                            if not (self._balance_refresh_thread and self._balance_refresh_thread.is_alive()):
-                                self._balance_refresh_thread = threading.Thread(
-                                    target=self._refresh_balance_cache, daemon=True
-                                )
-                                self._balance_refresh_thread.start()
+                self._maybe_start_balance_refresh()
                 
                 now = time.time()
                 if now - self.last_cleanup_time >= cleanup_interval:

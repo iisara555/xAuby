@@ -56,6 +56,7 @@ class SymbolContext:
     _semi_auto_pending: Optional[Dict[str, Any]] = None
     _semi_auto_confirm: threading.Event = field(default_factory=threading.Event)
     _tick_lock: threading.Lock = field(default_factory=threading.Lock)
+    _state_lock: threading.Lock = field(default_factory=threading.Lock)
 
     @classmethod
     def from_spec(cls, spec: PairSpec) -> "SymbolContext":
@@ -91,9 +92,100 @@ class SymbolContext:
         kind = str(event.get("kind") or "")
         if not kind:
             return
-        with self._tick_lock:
+        with self._state_lock:
             self.market_data[kind] = dict(event)
             self.feed_degraded = False
+
+    def market_data_snapshot(self) -> Dict[str, Dict[str, Any]]:
+        with self._state_lock:
+            return {k: dict(v) for k, v in self.market_data.items()}
+
+    def set_feed_degraded(self, degraded: bool, reason: str = "") -> None:
+        with self._state_lock:
+            self.feed_degraded = bool(degraded)
+            if degraded or reason or not self.degraded:
+                self.degrade_reason = str(reason or "")
+
+    def set_degrade_reason(self, reason: str) -> None:
+        with self._state_lock:
+            self.degrade_reason = str(reason or "")
+
+    def feed_snapshot(self) -> Dict[str, Any]:
+        with self._state_lock:
+            return {
+                "feed_degraded": bool(self.feed_degraded),
+                "degrade_reason": self.degrade_reason,
+                "trading_halted": bool(self.trading_halted),
+                "halt_reason": self.halt_reason,
+                "candle_stale": bool(self.candle_stale),
+            }
+
+    def candle_snapshot(self) -> Dict[str, Any]:
+        with self._state_lock:
+            return {
+                "last_candle_timestamp": int(self.last_candle_timestamp or 0),
+                "candle_stale": bool(self.candle_stale),
+                "last_routed_candle_ts": int(self._last_routed_candle_ts or 0),
+            }
+
+    def set_candle_status(self, last_candle_timestamp: int, candle_stale: bool) -> bool:
+        with self._state_lock:
+            was_stale = bool(self.candle_stale)
+            self.last_candle_timestamp = int(last_candle_timestamp or 0)
+            self.candle_stale = bool(candle_stale)
+            return was_stale
+
+    def mark_routed_candle(self, last_candle_timestamp: int) -> None:
+        with self._state_lock:
+            self._last_routed_candle_ts = int(last_candle_timestamp or 0)
+
+    def set_trading_halted(self, halted: bool, reason: str = "") -> None:
+        with self._state_lock:
+            self.trading_halted = bool(halted)
+            self.halt_reason = str(reason or "")
+
+    def has_semi_auto_pending(self) -> bool:
+        with self._state_lock:
+            return bool(self._semi_auto_pending)
+
+    def set_semi_auto_pending(self, pending: Optional[Dict[str, Any]]) -> None:
+        with self._state_lock:
+            self._semi_auto_pending = dict(pending) if pending else None
+            self._semi_auto_confirm.clear()
+
+    def clear_semi_auto_pending(self) -> Optional[Dict[str, Any]]:
+        with self._state_lock:
+            pending = self._semi_auto_pending
+            self._semi_auto_pending = None
+            self._semi_auto_confirm.clear()
+            return dict(pending) if pending else None
+
+    def confirm_semi_auto_pending(self) -> bool:
+        with self._state_lock:
+            if not self._semi_auto_pending:
+                return False
+            self._semi_auto_confirm.set()
+            return True
+
+    def semi_auto_confirmed(self) -> bool:
+        with self._state_lock:
+            return self._semi_auto_confirm.is_set()
+
+    def pop_confirmed_or_expired_semi_auto(self, now: float) -> tuple[str, Optional[Dict[str, Any]]]:
+        with self._state_lock:
+            pending = self._semi_auto_pending
+            if not pending:
+                self._semi_auto_confirm.clear()
+                return "none", None
+            if now > float(pending.get("expires_at", 0)):
+                self._semi_auto_pending = None
+                self._semi_auto_confirm.clear()
+                return "expired", dict(pending)
+            if self._semi_auto_confirm.is_set():
+                self._semi_auto_pending = None
+                self._semi_auto_confirm.clear()
+                return "confirmed", dict(pending)
+            return "pending", dict(pending)
 
     def blocks_new_entries(self) -> bool:
         """True when RegimeRouter forbids new BUY orders."""

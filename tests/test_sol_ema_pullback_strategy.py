@@ -45,6 +45,8 @@ class TestSOLEMAPullbackStrategy(unittest.TestCase):
                 "volume_min_ratio": 1.05,
                 "confirm_lookback": 2,
                 "swing_lookback": 8,
+                "max_entry_extension_atr": 5.0,
+                "max_signal_range_atr": 4.0,
             }
         )
 
@@ -116,6 +118,50 @@ class TestSOLEMAPullbackStrategy(unittest.TestCase):
         for col in ("ema20", "ema50", "swing_low", "ema_pullback_zone"):
             self.assertIn(col, out.columns)
         self.assertEqual(annotate(_pullback_frame(), SOLEMAPullbackStrategy.default_config()).shape[0], 120)
+
+    def test_extended_entry_is_filtered(self):
+        strategy = SOLEMAPullbackStrategy(
+            {
+                **self._strategy().config,
+                "max_entry_extension_atr": 0.5,
+                "max_signal_range_atr": 4.0,
+            }
+        )
+        df = _pullback_frame()
+
+        signal = strategy.analyze(
+            MarketContext(
+                symbol="SOLUSDT",
+                timeframe_primary="15m",
+                df_primary=df,
+                current_price=float(df["close"].iloc[-1]),
+            )
+        )
+
+        self.assertEqual(signal.action, "HOLD")
+        self.assertIn("extended", signal.reason)
+
+    def test_wide_signal_candle_is_filtered(self):
+        strategy = SOLEMAPullbackStrategy(
+            {
+                **self._strategy().config,
+                "max_entry_extension_atr": 5.0,
+                "max_signal_range_atr": 0.5,
+            }
+        )
+        df = _pullback_frame()
+
+        signal = strategy.analyze(
+            MarketContext(
+                symbol="SOLUSDT",
+                timeframe_primary="15m",
+                df_primary=df,
+                current_price=float(df["close"].iloc[-1]),
+            )
+        )
+
+        self.assertEqual(signal.action, "HOLD")
+        self.assertIn("range too wide", signal.reason)
 
     def test_loader_rejects_rr_below_two_in_strict_mode(self):
         with self.assertRaises(Exception):

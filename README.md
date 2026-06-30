@@ -64,6 +64,42 @@ via CCXT, with both long and short execution enabled at 1x leverage.
 
 ---
 
+## For New Users
+
+Read this before running the bot with real funds.
+
+1. **This repository is currently configured for one live market:** OKX
+   `XAUUSDT` USDT-settled perpetual swap, mapped by CCXT to
+   `XAU/USDT:USDT`.
+2. **Simulation is the expected first run.** `python run_xauby.py --simulate`
+   should work before any live order is considered.
+3. **Live trading requires three gates at the same time:** `--live`,
+   `LIVE_TRADING=true`, and the active pair set to `mode: live` in
+   `coin_whitelist.json`.
+4. **The bot reads the OKX trading/swap account, not every OKX wallet.** If the
+   dashboard portfolio is `0.00 USDT`, check that funds are in the account used
+   for USDT swap trading and that the API key can read/trade that account.
+5. **Never enable withdrawal permission on the API key.** The bot only needs
+   read and trade permissions.
+6. **Run one engine instance per runtime root.** If you need multiple accounts,
+   use separate `XAUBY_HOME` or `XAUBY_INSTANCE_ID` values.
+
+What this bot does:
+
+- evaluates strategy signals on configured candles,
+- opens and closes exchange or simulated positions,
+- keeps stop-loss protection and local risk gates,
+- writes state/events for dashboard, replay, incident review, and Telegram ops.
+
+What it does not do:
+
+- guarantee profit,
+- manage funds sitting in unrelated OKX wallets,
+- make third-party strategy plugins safe unless sandbox checks are enabled,
+- replace manual review of risk, leverage, fees, funding, and exchange rules.
+
+---
+
 ## Features
 
 | Area | Highlights |
@@ -84,6 +120,7 @@ via CCXT, with both long and short execution enabled at 1x leverage.
 | Strategy R&D | Multi-year Binance global data, per-regime PF evaluation harness, train/test gates, short-side simulator |
 | Observability | `run_id`, `tick_id`, JSONL events, replay validation, health JSON |
 | UI/Ops | Textual dashboard, pair switching, strategy-aware chart legend, Telegram commands, emergency pause |
+| Concurrency safety | Per-symbol feed/candle/semi-auto locks, protected balance cache refresh, thread-safe event emitter, defensive UI cache copies |
 
 ---
 
@@ -103,6 +140,22 @@ pip install -e .
 cp .env.example .env
 python run_xauby.py --simulate
 python health_check.py
+```
+
+Before live trading, edit `.env` and provide OKX credentials:
+
+```bash
+OKX_API_KEY=...
+OKX_API_SECRET=...
+OKX_API_PASSPHRASE=...
+LIVE_TRADING=true
+```
+
+Then verify the active pair and exchange configuration:
+
+```bash
+python scripts/evaluate_okx_xau_migration.py --config configs/okx_xau_paper.yaml --whitelist configs/okx_xau_whitelist.json
+DEFAULT_SYMBOL=XAUUSDT python health_check.py
 ```
 
 Other entrypoints:
@@ -140,6 +193,10 @@ or untracked open orders.
 | `.env` | Secrets, `LIVE_TRADING`, `TELEGRAM_*`; do not commit |
 | `bot_config.yaml` | Engine, Strategy, Portfolio, notifications, backtest optimizer |
 | `coin_whitelist.json` | Active pairs, timeframes, per-pair strategy, mode, RegimeRouter gates |
+
+Local runtime files under `core/`, database files, backups, and `.env` are
+machine-specific. Do not treat them as portable configuration unless you
+intentionally copy a whole runtime root.
 
 The config is split into three responsibilities:
 
@@ -217,10 +274,18 @@ Risk and allocation defaults:
 | Max leverage | `1x` |
 
 Latest operator checkpoint: on `2026-06-29 22:07 Asia/Bangkok`, the engine was
-started live with `run_xauby.py --live --pair XAUUSDT`. The dashboard showed
-`LIVE [LIVE] OKX`, read-only was disabled, and the current signal was `HOLD`
-because the 4H red zone was no longer fresh. No open position was tracked at
-startup.
+started live in the maintainer's runtime with `run_xauby.py --live --pair
+XAUUSDT`. This checkpoint is not a guarantee about your account state after
+clone; always verify dashboard balance, open positions, stop orders, API scope,
+and read-only/live flags on your own OKX account.
+
+Recommended live startup after simulation and health checks:
+
+```bash
+env -u DEFAULT_SYMBOL XAUBY_DEFAULT_SYMBOL=XAUUSDT XAUBY_FOCUS_SYMBOL=XAUUSDT \
+  SIMULATE_ONLY=false BOT_READ_ONLY=false \
+  ./venv/bin/python run_xauby.py --live --pair XAUUSDT
+```
 
 If the dashboard portfolio shows `0.00 USDT` while the OKX account has funds,
 check the OKX funding/account placement and credential scope first. The bot

@@ -1,6 +1,7 @@
 import threading
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from xauby.engine.trading import LiteTradingEngine
@@ -172,6 +173,82 @@ class TestTradingEngineConcurrency(unittest.TestCase):
         self.assertEqual(len(alerts), 1)
         self.assertIn("ping/pong timed out", alerts[0])
 
+    def test_trailing_update_waits_for_min_position_age(self):
+        state = {
+            "entry_price": 100.0,
+            "opened_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        }
+        conf = {"trail_activation_min_minutes": 15}
+
+        allowed = self.engine._trailing_stop_update_allowed(
+            state=state,
+            strat_conf=conf,
+            candidate_sl=101.0,
+            current_sl=99.0,
+            highest_seen=103.0,
+            atr=1.0,
+        )
+
+        self.assertFalse(allowed)
+
+    def test_trailing_update_waits_for_min_profit_atr(self):
+        state = {
+            "entry_price": 100.0,
+            "opened_at": (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat(),
+        }
+        conf = {"trail_activation_atr_mult": 1.0}
+
+        allowed = self.engine._trailing_stop_update_allowed(
+            state=state,
+            strat_conf=conf,
+            candidate_sl=100.4,
+            current_sl=99.0,
+            highest_seen=100.8,
+            atr=1.0,
+        )
+
+        self.assertFalse(allowed)
+
+    def test_trailing_update_requires_min_delta(self):
+        state = {
+            "entry_price": 100.0,
+            "opened_at": (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat(),
+        }
+        conf = {"trail_update_min_delta_atr": 0.25}
+
+        allowed = self.engine._trailing_stop_update_allowed(
+            state=state,
+            strat_conf=conf,
+            candidate_sl=99.2,
+            current_sl=99.0,
+            highest_seen=102.0,
+            atr=1.0,
+        )
+
+        self.assertFalse(allowed)
+
+    def test_trailing_update_allows_after_activation(self):
+        state = {
+            "entry_price": 100.0,
+            "opened_at": (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat(),
+        }
+        conf = {
+            "trail_activation_min_minutes": 15,
+            "trail_activation_atr_mult": 1.0,
+            "trail_update_min_delta_atr": 0.25,
+        }
+
+        allowed = self.engine._trailing_stop_update_allowed(
+            state=state,
+            strat_conf=conf,
+            candidate_sl=100.0,
+            current_sl=99.0,
+            highest_seen=102.0,
+            atr=1.0,
+        )
+
+        self.assertTrue(allowed)
+
     def test_semi_auto_pending_thread_safety(self):
         """Telegram callback thread and main thread accessing _semi_auto_pending concurrently."""
         errors = []
@@ -189,8 +266,7 @@ class TestTradingEngineConcurrency(unittest.TestCase):
         def ticker():
             try:
                 for _ in range(50):
-                    with self.engine._semi_auto_lock:
-                        _ = self.engine._sc()._semi_auto_pending
+                    _ = self.engine._sc().has_semi_auto_pending()
                     time.sleep(0.002)
             except Exception as e:
                 errors.append(e)
@@ -203,6 +279,50 @@ class TestTradingEngineConcurrency(unittest.TestCase):
         for t in threads:
             t.join(timeout=5)
         self.assertEqual(errors, [], f"Concurrency errors: {errors}")
+
+    def test_balance_cache_refresh_thread_safety(self):
+        """Background balance refresh and equity reads should share cache safely."""
+        errors = []
+        calls = []
+        calls_lock = threading.Lock()
+
+        def get_balances():
+            with calls_lock:
+                calls.append(1)
+            time.sleep(0.002)
+            return {"USDT": {"available": 1000.0, "reserved": 0.0}}
+
+        self.engine.client.get_balances = get_balances
+        self.engine._balance_cache_ttl = 0.0
+
+        def refresher():
+            try:
+                for _ in range(50):
+                    self.engine._maybe_start_balance_refresh()
+                    time.sleep(0.001)
+            except Exception as e:
+                errors.append(e)
+
+        def reader():
+            try:
+                for _ in range(50):
+                    _ = self.engine.get_portfolio_equity_total()
+                    time.sleep(0.001)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=refresher) for _ in range(3)] + [
+            threading.Thread(target=reader) for _ in range(3)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+        if self.engine._balance_refresh_thread:
+            self.engine._balance_refresh_thread.join(timeout=5)
+
+        self.assertEqual(errors, [], f"Concurrency errors: {errors}")
+        self.assertGreater(len(calls), 0)
 
     @patch("xauby.macro.sentiment_guard.evaluate_sentiment_guard")
     def test_guard_thread_no_duplicate(self, mock_evaluate):

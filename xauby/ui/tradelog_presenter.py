@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -21,7 +23,6 @@ from xauby.ui.widgets import (
     format_regime_user_lines,
     format_regime_compact_lines,
 )
-import threading
 
 from xauby.utils.colors import C_MUTED, C_PRIMARY, C_RESET, C_BOLD, C_GREEN, C_RED
 from xauby.utils.common import format_to_ict
@@ -614,7 +615,7 @@ def build_tradelog_view_model(
     cache_key = (symbol, width, height, latest_trade_time, count, bool(state.get("simulate_only")), filter_mode)
     with _TRADELOG_VM_CACHE_LOCK:
         if cache_key in _TRADELOG_VM_CACHE:
-            return _TRADELOG_VM_CACHE[cache_key]
+            return copy.deepcopy(_TRADELOG_VM_CACHE[cache_key])
 
     all_trades = db.get_closed_trades(None if all_scope else symbol, limit=1000)
     trades = _apply_trade_filter(all_trades, filter_mode)
@@ -680,7 +681,7 @@ def build_tradelog_view_model(
             pad_line(f"  {C_MUTED}No closed trades for {symbol} yet.{C_RESET}", col_w),
         ]
         with _TRADELOG_VM_CACHE_LOCK:
-            _TRADELOG_VM_CACHE[cache_key] = vm
+            _TRADELOG_VM_CACHE[cache_key] = copy.deepcopy(vm)
         return vm
 
     stats = compute_trade_stats(trades)
@@ -712,5 +713,5 @@ def build_tradelog_view_model(
             )
 
     with _TRADELOG_VM_CACHE_LOCK:
-        _TRADELOG_VM_CACHE[cache_key] = vm
+        _TRADELOG_VM_CACHE[cache_key] = copy.deepcopy(vm)
     return vm

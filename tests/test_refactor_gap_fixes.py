@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
+import time
 import unittest
 
 import yaml
@@ -11,7 +13,7 @@ from xauby.engine.orders import OrderMixin
 from xauby.engine.regime_router import RegimeRouter
 from xauby.engine.symbol_context import SymbolContext
 from xauby.observability.event_bus import EventBus
-from xauby.observability.events import EventType
+from xauby.observability.events import Event, EventType
 from xauby.observability.routing_subscriber import RoutingEventRecorder
 from xauby.regime.models import GoldRegime
 from xauby.runtime.pair_registry import PairSpec
@@ -138,6 +140,66 @@ class TestRoutingSubscriber(unittest.TestCase):
             finally:
                 eb._BUS = None
                 os.chdir(orig)
+
+    def test_emitter_state_is_thread_safe(self):
+        from xauby.observability.emitter import EventEmitter
+
+        class FakeStore:
+            def __init__(self):
+                self._lock = threading.Lock()
+                self._seq = 0
+                self.run_id = ""
+
+            def set_run_id(self, run_id):
+                with self._lock:
+                    self.run_id = run_id
+
+            def append(self, event_type, symbol, mode, run_id, payload=None, tick_id=None):
+                with self._lock:
+                    self._seq += 1
+                    seq = self._seq
+                return Event(
+                    event_type=event_type,
+                    symbol=symbol,
+                    mode=mode,
+                    run_id=run_id,
+                    seq=seq,
+                    payload=dict(payload or {}),
+                    tick_id=tick_id,
+                )
+
+            def recent(self, limit=20, symbol=None):
+                return []
+
+        emitter = EventEmitter(store=FakeStore(), symbol="BTCUSDT", mode="paper", run_id="run-a")
+        errors = []
+
+        def writer(idx):
+            try:
+                for i in range(50):
+                    emitter.set_tick_id(f"{idx}-{i}")
+                    emitter.emit(EventType.TICK, idx=idx, i=i)
+                    time.sleep(0.001)
+            except Exception as exc:
+                errors.append(exc)
+
+        def configurer():
+            try:
+                for i in range(50):
+                    emitter.configure("XAUUSDT", "live", run_id=f"run-{i}")
+                    time.sleep(0.001)
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(3)]
+        threads.append(threading.Thread(target=configurer))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        self.assertEqual(errors, [], f"Concurrency errors: {errors}")
+        self.assertLessEqual(len(emitter.recent(limit=20)), 20)
 
 
 class TestStatePresenters(unittest.TestCase):

@@ -68,14 +68,15 @@ class AlertMixin:
         unhealthy = []
         for spec in active:
             sc = self._sc(spec.symbol)
+            feed_status = sc.feed_snapshot()
             state = self.db.get_trade_state(spec.symbol)
             if state.get("state") == "bought":
                 open_positions += 1
-            if getattr(sc, "feed_degraded", False):
+            if feed_status["feed_degraded"]:
                 unhealthy.append(f"{spec.symbol}: feed degraded")
-            if getattr(sc, "candle_stale", False):
+            if feed_status["candle_stale"]:
                 unhealthy.append(f"{spec.symbol}: candle stale")
-            if getattr(sc, "trading_halted", False):
+            if feed_status["trading_halted"]:
                 unhealthy.append(f"{spec.symbol}: halted")
         lines = [
             "🩺 *xAuby Health*",

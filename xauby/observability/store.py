@@ -33,8 +33,9 @@ class EventStore:
         os.makedirs(self._jsonl_dir, exist_ok=True)
 
     def set_run_id(self, run_id: str) -> None:
-        self._run_id = run_id
-        self._seq = 0
+        with self._lock:
+            self._run_id = run_id
+            self._seq = 0
 
     def _ensure_db(self):
         if self._db is None:

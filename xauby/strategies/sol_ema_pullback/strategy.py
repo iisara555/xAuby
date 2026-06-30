@@ -143,8 +143,13 @@ class SOLEMAPullbackStrategy(Strategy):
             "swing_lookback": 8,
             "sl_buffer_atr": 0.10,
             "min_sl_atr_mult": 0.8,
+            "max_entry_extension_atr": 1.2,
+            "max_signal_range_atr": 2.5,
             "risk_reward": 2.0,
             "trailing_atr_mult": 1.2,
+            "trail_activation_atr_mult": 1.0,
+            "trail_activation_min_minutes": 15,
+            "trail_update_min_delta_atr": 0.25,
             "exit_on_momentum_loss": True,
             "fixed_tp_pct": 2.0,
             "max_calc_bars": 300,
@@ -214,9 +219,22 @@ class SOLEMAPullbackStrategy(Strategy):
         confirm_ok = bool(row["confirm_ok"])
         rr_ok = rr >= 2.0 and sl_dist > 0
         momentum_ok = bool(row["momentum_ok"])
-        entry_ok = trend_ok and pullback_ok and reversal_ok and volume_ok and confirm_ok and rr_ok
-        passed = sum([trend_ok, pullback_ok, reversal_ok, volume_ok, confirm_ok, rr_ok])
-        confidence = min(0.95, 0.35 + passed / 6 * 0.55)
+        extension_atr = (price - ema20) / atr if atr > 0 else 0.0
+        signal_range_atr = (float(row["high"]) - float(row["low"])) / atr if atr > 0 else 0.0
+        extension_ok = atr <= 0 or extension_atr <= float(cfg["max_entry_extension_atr"])
+        range_ok = atr <= 0 or signal_range_atr <= float(cfg["max_signal_range_atr"])
+        entry_ok = (
+            trend_ok
+            and pullback_ok
+            and reversal_ok
+            and volume_ok
+            and confirm_ok
+            and rr_ok
+            and extension_ok
+            and range_ok
+        )
+        passed = sum([trend_ok, pullback_ok, reversal_ok, volume_ok, confirm_ok, rr_ok, extension_ok, range_ok])
+        confidence = min(0.95, 0.35 + passed / 8 * 0.55)
 
         indicators = {
             "ema20": round(ema20, 6),
@@ -227,6 +245,8 @@ class SOLEMAPullbackStrategy(Strategy):
             "zone": str(row["ema_pullback_zone"]),
             "risk_reward": rr,
             "take_profit_price": round(tp_price, 6) if tp_price > 0 else None,
+            "entry_extension_atr": round(extension_atr, 3),
+            "signal_range_atr": round(signal_range_atr, 3),
         }
         checklist = [
             self._item("EMA20>50", f"{ema20:.2f}>{ema50:.2f}", trend_ok),
@@ -235,6 +255,8 @@ class SOLEMAPullbackStrategy(Strategy):
             self._item("Volume", f"{indicators['vol_ratio']:.2f}x", volume_ok, f">={float(cfg['volume_min_ratio']):.2f}x"),
             self._item("Confirm", "close > EMA20 + prior high", confirm_ok),
             self._item("RR", f"1:{rr:.1f}", rr_ok, ">=1:2"),
+            self._item("Extension", f"{extension_atr:.2f} ATR", extension_ok, f"<={float(cfg['max_entry_extension_atr']):.2f}"),
+            self._item("Range", f"{signal_range_atr:.2f} ATR", range_ok, f"<={float(cfg['max_signal_range_atr']):.2f}"),
         ]
         metadata = {
             "stop_loss_price": round(sl_price, 6) if sl_price > 0 else None,
@@ -327,6 +349,32 @@ class SOLEMAPullbackStrategy(Strategy):
                 strategy_name=self.name,
                 timeframe=ctx.timeframe_primary,
             )
+
+        if trend_ok and pullback_ok and reversal_ok and volume_ok and confirm_ok and rr_ok:
+            if not extension_ok:
+                return hold(
+                    "SOL entry extended after spike",
+                    confidence=confidence,
+                    volatility=atr if atr > 0 else None,
+                    indicators=indicators,
+                    checklist=checklist,
+                    metadata=metadata,
+                    status_summary="SOL entry extended",
+                    strategy_name=self.name,
+                    timeframe=ctx.timeframe_primary,
+                )
+            if not range_ok:
+                return hold(
+                    "SOL signal candle range too wide",
+                    confidence=confidence,
+                    volatility=atr if atr > 0 else None,
+                    indicators=indicators,
+                    checklist=checklist,
+                    metadata=metadata,
+                    status_summary="SOL spike filter active",
+                    strategy_name=self.name,
+                    timeframe=ctx.timeframe_primary,
+                )
 
         return hold(
             "Waiting for SOL EMA20/50 pullback",

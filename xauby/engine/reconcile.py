@@ -122,8 +122,7 @@ class ReconcileMixin:
             )
             logger.error(msg)
             sc = self._sc(sym)
-            sc.trading_halted = True
-            sc.halt_reason = f"orphan spot balance {total_bal:.8f} {base_asset}"
+            sc.set_trading_halted(True, f"orphan spot balance {total_bal:.8f} {base_asset}")
             self.send_telegram_alert(msg)
         except Exception as e:
             logger.error("[%s] Spot orphan detection failed: %s", sym, e, exc_info=True)
@@ -137,11 +136,9 @@ class ReconcileMixin:
             msg = f"ORPHAN DERIVATIVE POSITION {sym} {live.get('position_side')}; trading blocked until reconciled"
             logger.error(msg)
             sc = self._sc(sym)
-            sc.feed_degraded = True
-            sc.degrade_reason = msg
+            sc.set_feed_degraded(True, msg)
             # Durable halt: a WS reconnect must not silently clear this.
-            sc.trading_halted = True
-            sc.halt_reason = msg
+            sc.set_trading_halted(True, msg)
             self.send_telegram_alert(msg)
             return
         if local_open and not live:
@@ -158,10 +155,8 @@ class ReconcileMixin:
             msg = f"POSITION SIDE MISMATCH {sym}: local={local_side} exchange={live_side}"
             logger.error(msg)
             sc = self._sc(sym)
-            sc.feed_degraded = True
-            sc.degrade_reason = msg
-            sc.trading_halted = True
-            sc.halt_reason = msg
+            sc.set_feed_degraded(True, msg)
+            sc.set_trading_halted(True, msg)
             self.send_telegram_alert(msg)
             return
         self.db.save_trade_state(

@@ -84,7 +84,8 @@ class ManualOrderEngineTests(unittest.TestCase):
         engine._pair_registry.active.return_value = [mock.Mock(symbol="BTCUSDT")]
         engine.db = mock.Mock()
         engine.db.get_trade_state.return_value = {"state": "idle"}
-        sc = mock.Mock(feed_degraded=False)
+        sc = mock.Mock()
+        sc.feed_snapshot.return_value = {"feed_degraded": False}
         sc.blocks_new_entries.return_value = False
         engine._sc = mock.Mock(return_value=sc)
         return engine

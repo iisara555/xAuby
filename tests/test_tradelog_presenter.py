@@ -23,6 +23,26 @@ class TestTradelogLayout(unittest.TestCase):
         self.assertEqual(vm.total_trades, 0)
         self.assertEqual(vm.table_rows, [])
 
+    def test_cached_view_model_returns_defensive_copy(self):
+        db = MagicMock()
+        db.get_closed_trades.return_value = []
+        vm1 = build_tradelog_view_model(
+            db,
+            {"symbol": "BTCUSDT", "regime": {}},
+            100,
+            40,
+        )
+        vm1.performance_lines.append("MUTATED")
+
+        vm2 = build_tradelog_view_model(
+            db,
+            {"symbol": "BTCUSDT", "regime": {}},
+            100,
+            40,
+        )
+
+        self.assertNotIn("MUTATED", vm2.performance_lines)
+
     def test_trade_cards_include_execution_context_and_small_qty(self):
         db = MagicMock()
         db.get_closed_trades.return_value = [

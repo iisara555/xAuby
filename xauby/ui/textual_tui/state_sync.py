@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import copy
 import threading
 import time
 from typing import Any, Dict, List, Tuple
@@ -118,10 +119,10 @@ def load_bot_state_from_disk() -> Tuple[Dict[str, Any], Dict[str, Any], str, Lis
                 and _LOAD_CACHE["state"]
             ):
                 return (
-                    _LOAD_CACHE["state"],
-                    _LOAD_CACHE["envelope"],
+                    copy.deepcopy(_LOAD_CACHE["state"]),
+                    copy.deepcopy(_LOAD_CACHE["envelope"]),
                     _LOAD_CACHE["focus"],
-                    _LOAD_CACHE["pairs"],
+                    list(_LOAD_CACHE["pairs"]),
                 )
         raw = _load_json_with_retry(path)
         state, envelope, focus, pairs = resolve_dashboard_state(raw)
@@ -134,7 +135,7 @@ def load_bot_state_from_disk() -> Tuple[Dict[str, Any], Dict[str, Any], str, Lis
                 "focus": focus,
                 "pairs": pairs,
             }
-        return state, envelope, focus, pairs
+        return copy.deepcopy(state), copy.deepcopy(envelope), focus, list(pairs)
     except Exception:
         return {}, {}, "", []
 

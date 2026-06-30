@@ -77,7 +77,7 @@ def verify_pending_exchange_activation(engine: Any, timeout: float = 12.0) -> bo
                 ready = False
                 break
             required = {"candle", "trades", "order_book"}
-            if engine.ws is not None and not required.issubset(set(sc.market_data)):
+            if engine.ws is not None and not required.issubset(set(sc.market_data_snapshot())):
                 ready = False
                 break
         if ready:
