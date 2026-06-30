@@ -7,10 +7,11 @@ where conventions that are easy to violate are spelled out.
 
 ## What this project is
 
-**xAuby** is a single-process, multi-symbol **spot** trading bot for **Binance
-Thailand** (`api.binance.th`). It ingests candles/tickers over REST + WebSocket,
-runs each whitelisted pair through its own strategy plugin, optionally routes the
-pair through a market-regime classifier, places spot orders (or simulated ones)
+**xAuby** is a single-process, multi-symbol **perpetual-swap** trading bot on
+**OKX** (`api.okx.com`), routed through the exchange-neutral **CCXT** adapter. It
+ingests candles/tickers over REST + WebSocket, runs each whitelisted pair through
+its own strategy plugin, optionally routes the pair through a market-regime
+classifier, places swap orders (or simulated ones)
 with ATR stop-loss / trailing / breakeven logic, and persists everything to
 SQLite + JSONL for replay, incidents, and a Textual dashboard. Operators drive it
 through a CLI, a Textual TUI, and Telegram.
@@ -58,7 +59,7 @@ xauby/
   backtest/         Replay engine, optimizer, metrics, data fetch (uses Global Binance by default)
   observability/    EventEmitter, JSONL store, replay validation, incidents, health
   ui/               Terminal chart + Textual TUI (textual_tui/, incl. quick_config/ native config screens), dashboard, tradelog
-  api/              Binance.th REST client + WebSocket
+  api/              CCXT adapter (OKX) REST + WebSocket + exchanges/ plugin registry
   notifications/    Telegram bot, command poller, report formatting, schedulers
   analytics/, track_record/, macro/, domain/, database/, storage/, utils/
 ```
@@ -98,30 +99,34 @@ Rollback is intentionally a flag flip to `false` — no code revert required.
 
 ## Current runtime baseline (from coin_whitelist.json / bot_config.yaml)
 
-Exchange is **Binance Thailand spot** (`exchange.provider: binance`,
-`name: binance.th`, `market_type: spot`, `margin_mode: spot`, one-way) via the
-native Binance.th REST/WebSocket adapter — **LONG-only** execution (no shorts, no
-perpetual, no funding). The gold slot trades **XAUT** (Tether Gold spot);
-backtests proxy XAU to `PAXGUSDT` (deep history on Global Binance) via
+Exchange is **OKX perpetual swap** (`exchange.provider: ccxt`, `ccxt_id: okx`,
+`name: okx`, `market_type: swap`, `margin_mode: isolated`, `position_mode:
+one_way`) via the CCXT adapter, at **1x leverage** (`derivatives.max_leverage: 1`)
+with the funding guard (`max_abs_funding_rate`) and `min_liquidation_distance_pct`
+active. The gold slot trades **XAUUSDT** (perpetual); backtests proxy XAU to
+`PAXGUSDT` (deep history on Global Binance) via
 `strategy_params.backtest_data_proxy`.
 
-All pairs are LONG-only (`allowed_sides: [long]`, `short_live_enabled: false`,
-`enable_short: false`). Live spot order flow: entries place a **LIMIT** at the
-ticker (`execution.order_type: limit`) and, when `execution.entry_market_fallback:
-true`, top up any unfilled remainder with a **MARKET** order after the timeout
-instead of cancelling (keeps live in parity with the market-fill backtest). Exits
-use MARKET on urgent triggers (CDC red / NO_TRADE / force close) and LIMIT
-otherwise; stop-losses are exchange-side `STOP_LOSS_LIMIT`.
+The single live pair (XAU) runs CDC ActionZone **long + short** as a
+stop-and-reverse (`allowed_sides: [long, short]`, `short_live_enabled: true`,
+`enable_short: true`); live shorts execute because the swap adapter advertises
+`swap` / `positions` / `reduce_only` capabilities (`xauby/api/ccxt_client.py`).
+Order flow: entries place a **LIMIT** at the ticker (`execution.order_type: limit`)
+and, when `execution.entry_market_fallback: true`, top up any unfilled remainder
+with a **MARKET** order after the timeout instead of cancelling (keeps live in
+parity with the market-fill backtest). Exits use MARKET on urgent triggers (CDC
+red / NO_TRADE / force close) and LIMIT otherwise. The current XAU pair is
+**CDC-pure** (`disable_stop_loss: true`), so there is no exchange-side stop —
+exits are zone-flip driven, and sizing uses fixed-fraction `position_pct` of
+equity rather than an SL-distance.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides |
 |--------|------|----------|-----------|-----------|-------|
-| `XAUT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long` (backtest proxy `PAXGUSDT`) |
-| `BTC`  | `live` | `donchian_trend`   | `4h` | `1d` | `long` |
-| `SOL`  | `live` | `sol_ema_pullback` | `15m`| `15m`| `long` |
+| `XAU` (XAUUSDT) | `live` | `cdc_action_zone` | `4h` | `1d` | `long` + `short` (backtest proxy `PAXGUSDT`) |
 
-> Doc drift warning: `README.md` reflects this current baseline, but
-> `README_DEV.md` and several files under `docs/` still describe the older state
-> (BTC as `sim` / `supertrend_ema200`). Treat `coin_whitelist.json` +
+> Doc drift warning: this file and `README.md` reflect the current OKX swap
+> baseline, but `README_DEV.md` and several files under `docs/` still describe the
+> older Binance.th spot / multi-pair state. Treat `coin_whitelist.json` +
 > `bot_config.yaml` as ground truth, and prefer updating stale docs when you
 > touch the baseline.
 
@@ -164,9 +169,10 @@ Production note: the `*_short` strategies (`donchian_short`, `supertrend_short`,
 `rsi2_short`) and other R&D plugins (`rsi2_meanrev`, `vol_breakout`) are research
 only (tagged `research`). The engine hard-blocks any `research`-tagged strategy
 from a `live` pair (`_load_strategy_for_symbol`), so they are sim/backtest only —
-never map them in `regime_router.mapping` for production. On the current
-Binance.th spot baseline every live pair is LONG-only, so the short path stays
-dormant; the short machinery below applies to swap/derivative venues only.
+never map them in `regime_router.mapping` for production. On the current OKX swap
+baseline the XAU pair runs CDC ActionZone **long + short** (stop-and-reverse), so
+the short path is **active** in live; the `research`-tagged `*_short` plugins still
+stay sim/backtest only.
 
 Shorts in general: a strategy emits `open_short`/`close_short`
 (`xauby/strategies/signal.py`); the engine routes them to
@@ -197,7 +203,7 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
 
 - Backtests pull from **Global Binance** (`api.binance.com`) by default for
   longer history (`backtest.data_base_url`, env override `BINANCE_BACKTEST_URL`);
-  live trading uses the configured `binance.th` endpoint.
+  live trading uses the configured OKX endpoint.
 - `python scripts/replay_backtest.py --symbol BTCUSDT --config bot_config.yaml`
 - `python scripts/optimize_pair_configs.py` (low-CPU optimizer)
 - `python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates a,b,c`
@@ -206,7 +212,7 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
 - `python scripts/regime_strategy_eval.py --timeframe 1h --grid` — gatekeeper for
   strategy changes; see `docs/regime_strategy_selection.md`.
 - Replay validation after restarts/incidents/config changes:
-  `python scripts/replay_validate.py <run_id> --symbol XAUTUSDT`.
+  `python scripts/replay_validate.py <run_id> --symbol XAUUSDT`.
 
 ## Architectural invariants (do not break)
 
