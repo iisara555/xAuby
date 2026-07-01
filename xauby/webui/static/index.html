@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>xAuby WebUI</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body data-view="overview">
+    <main class="app-shell">
+      <header class="app-top">
+        <img class="profile-avatar" src="/profile-itsara.jpg" alt="Itsara profile" />
+        <div class="title-stack">
+          <h1>Itsara</h1>
+          <div class="profile-badges">
+            <span class="badge verified">Live</span>
+            <span class="badge exchange">OKX</span>
+            <span class="badge indicator" id="indicatorLabel">Indicator</span>
+          </div>
+        </div>
+        <div class="status-pill" id="modePill">Loading</div>
+      </header>
+
+      <section class="view-stack" data-section="overview">
+        <article class="balance-card">
+          <div>
+            <span id="exchangeLabel">OKX SWAP</span>
+            <h2 id="symbolTitle">xAuby</h2>
+            <strong id="equityValue">--</strong>
+            <small id="cashValue">Trading cash --</small>
+          </div>
+          <div class="balance-chip" id="feedState">--</div>
+        </article>
+
+        <section class="market-grid">
+          <article class="mini-card">
+            <span>Price</span>
+            <strong id="priceValue">--</strong>
+            <small id="changeValue">24h --</small>
+          </article>
+          <article class="mini-card">
+            <span>Position</span>
+            <strong id="positionValue">--</strong>
+            <small id="pnlValue">PnL --</small>
+          </article>
+        </section>
+
+        <article class="panel chart-panel">
+          <div class="panel-head">
+            <h2>Market Candles</h2>
+            <span id="chartMeta">recent closes</span>
+          </div>
+          <canvas id="priceCanvas" height="220"></canvas>
+          <div class="cdc-strip" id="cdcStrip">
+            <div>
+              <span>Zone</span>
+              <strong id="cdcZone">--</strong>
+            </div>
+            <div>
+              <span>EMA12</span>
+              <strong id="cdcEmaFast">--</strong>
+            </div>
+            <div>
+              <span>EMA26</span>
+              <strong id="cdcEmaSlow">--</strong>
+            </div>
+            <div>
+              <span>Streak</span>
+              <strong id="cdcStreak">--</strong>
+            </div>
+          </div>
+        </article>
+
+        <section class="detail-grid">
+          <article>
+            <span>Signal</span>
+            <strong id="overviewSignal">--</strong>
+          </article>
+          <article>
+            <span>Regime</span>
+            <strong id="regimeState">--</strong>
+          </article>
+          <article>
+            <span>Trend</span>
+            <strong id="trendState">--</strong>
+          </article>
+          <article>
+            <span>Risk</span>
+            <strong id="overviewRisk">--</strong>
+          </article>
+          <article>
+            <span>State</span>
+            <strong id="overviewStateAge">--</strong>
+          </article>
+          <article>
+            <span>API</span>
+            <strong id="overviewApiLatency">--</strong>
+          </article>
+        </section>
+      </section>
+
+      <section class="view-stack" data-section="signal">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Signal</h2>
+            <span id="signalAction">--</span>
+          </div>
+          <p class="reason" id="signalReason">Waiting for state...</p>
+          <div class="cdc-detail" id="cdcDetail"></div>
+          <div class="checklist" id="checklist"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Regime Detail</h2>
+            <span id="regimeConfidence">--</span>
+          </div>
+          <div class="kv">
+            <span>State</span><strong id="regimeStateDetail">--</strong>
+            <span>Trend</span><strong id="trendStateDetail">--</strong>
+            <span>Risk</span><strong id="riskState">--</strong>
+            <span>Feed</span><strong id="feedStateDetail">--</strong>
+          </div>
+        </article>
+      </section>
+
+      <section class="view-stack" data-section="health">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Health</h2>
+            <span id="healthStatus">--</span>
+          </div>
+          <div class="kv">
+            <span>Engine</span><strong id="engineStatus">--</strong>
+            <span>State age</span><strong id="stateAge">--</strong>
+            <span>WS age</span><strong id="wsAge">--</strong>
+            <span>API</span><strong id="apiLatency">--</strong>
+          </div>
+          <ul class="compact-list" id="healthList"></ul>
+        </article>
+      </section>
+
+      <section class="view-stack" data-section="activity">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Recent Events</h2>
+            <span id="eventCount">--</span>
+          </div>
+          <div class="timeline" id="events"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Closed Trades</h2>
+            <span id="tradeCount">--</span>
+          </div>
+          <div class="trades" id="trades"></div>
+        </article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Dashboard sections">
+      <button class="active" type="button" data-view-target="overview"><span>Home</span></button>
+      <button type="button" data-view-target="signal"><span>Signal</span></button>
+      <button type="button" data-view-target="health"><span>Health</span></button>
+      <button type="button" data-view-target="activity"><span>Activity</span></button>
+    </nav>
+    <script src="/app.js"></script>
+  </body>
+</html>

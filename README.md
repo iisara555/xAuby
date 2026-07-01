@@ -14,7 +14,7 @@ RegimeRouter support, exchange stop-losses, Textual TUI, and Telegram operations
 [![UI](https://img.shields.io/badge/TUI-Textual-5c2dee)](https://textual.textualize.io/)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-blue)](docs/README.md)
 
-[Quick Start](#quick-start) | [Screens](#screens) | [Configuration](#configuration-essentials) | [Current Runtime State](#current-runtime-state) | [Backtest](#backtest-and-optimization) | [TUI](docs/tui.md) | [Telegram](docs/telegram.md)
+[Quick Start](#quick-start) | [Screens](#screens) | [Configuration](#configuration-essentials) | [Current Runtime State](#current-runtime-state) | [Backtest](#backtest-and-optimization) | [TUI](docs/tui.md) | [WebUI](docs/webui.md) | [Telegram](docs/telegram.md)
 
 </div>
 
@@ -165,6 +165,24 @@ python launcher.py   # opens the Textual launcher menu (engine, dashboard, confi
 xauby --sim
 python -m xauby.ui.textual_tui.app
 ```
+
+Optional read-only browser dashboard:
+
+```bash
+./scripts/start_webui.sh
+```
+
+The WebUI is mobile-first and read-only. It shows the live OKX runtime state,
+24 recent OHLC candles, CDC Action Zone summary, and EMA12/EMA26 overlays.
+
+From Windows, open it through a free SSH tunnel:
+
+```powershell
+ssh -L 8787:127.0.0.1:8787 user@your-vps-ip
+```
+
+Then browse to `http://localhost:8787`. For phone access, use Tailscale free
+tier; see [docs/webui.md](docs/webui.md).
 
 Common operations:
 
