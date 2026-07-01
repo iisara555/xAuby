@@ -47,7 +47,7 @@ textarea {
   height: 100dvh;
   margin: 0 auto;
   overflow: hidden;
-  padding: max(10px, env(safe-area-inset-top)) 14px calc(74px + env(safe-area-inset-bottom));
+  padding: max(10px, env(safe-area-inset-top)) 14px calc(86px + env(safe-area-inset-bottom));
 }
 
 .app-top {
@@ -168,7 +168,7 @@ h2 {
   display: none;
   gap: 9px;
   min-height: 0;
-  max-height: calc(100dvh - 88px);
+  max-height: calc(100dvh - 100px);
   overflow: hidden;
 }
 
@@ -180,15 +180,23 @@ body[data-view="activity"] [data-section="activity"] {
 }
 
 body:not([data-view="overview"]) .view-stack {
-  max-height: calc(100dvh - 88px);
+  max-height: calc(100dvh - 100px);
   overflow: auto;
   padding-bottom: 72px;
 }
 
 body[data-view="activity"] [data-section="activity"] {
-  overflow-y: auto;
-  padding-bottom: 84px;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  overflow: hidden;
+  padding-bottom: 78px;
   scrollbar-width: thin;
+}
+
+body[data-view="activity"] [data-section="activity"] .panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .balance-card,
@@ -409,6 +417,15 @@ canvas {
   gap: 10px;
 }
 
+body[data-view="activity"] .timeline,
+body[data-view="activity"] .trades {
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
 .event-row,
 .trade-row {
   display: grid;
@@ -445,7 +462,7 @@ canvas {
   position: fixed;
   z-index: 20;
   left: 50%;
-  bottom: max(8px, env(safe-area-inset-bottom));
+  bottom: max(10px, env(safe-area-inset-bottom));
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
