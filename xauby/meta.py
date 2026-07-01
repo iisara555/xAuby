@@ -23,12 +23,12 @@ def product_title_for_width(max_visible: int) -> str:
     return PRODUCT_NAME
 
 
-def load_bot_display_name(project_root: str = ".") -> str:
-    """Read cli_ui.bot_name from bot_config.yaml, else PRODUCT_TITLE."""
+def _load_cli_ui_config(project_root: str = ".") -> dict:
+    """Read the ``cli_ui`` block from ``bot_config.yaml``, or ``{}`` if unset."""
     try:
         import yaml
     except ImportError:
-        return PRODUCT_TITLE
+        return {}
 
     root = project_root or "."
     for path in (
@@ -41,12 +41,31 @@ def load_bot_display_name(project_root: str = ".") -> str:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
-            name = (raw.get("cli_ui") or {}).get("bot_name")
-            if isinstance(name, str) and name.strip():
-                return name.strip()
+            cli_ui = raw.get("cli_ui")
+            if isinstance(cli_ui, dict):
+                return cli_ui
         except Exception:
             continue
+    return {}
+
+
+def load_bot_display_name(project_root: str = ".") -> str:
+    """Read cli_ui.bot_name from bot_config.yaml, else PRODUCT_TITLE."""
+    name = _load_cli_ui_config(project_root).get("bot_name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
     return PRODUCT_TITLE
+
+
+DEFAULT_WEBUI_AVATAR = "/avatar-default.svg"
+
+
+def load_webui_avatar(project_root: str = ".") -> str:
+    """Read cli_ui.webui_avatar from bot_config.yaml, else a bundled default icon."""
+    avatar = _load_cli_ui_config(project_root).get("webui_avatar")
+    if isinstance(avatar, str) and avatar.strip():
+        return avatar.strip()
+    return DEFAULT_WEBUI_AVATAR
 
 
 def resolve_header_bot_title(max_visible: int, project_root: str = ".") -> str:

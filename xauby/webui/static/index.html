@@ -9,12 +9,11 @@
   <body data-view="overview">
     <main class="app-shell">
       <header class="app-top">
-        <img class="profile-avatar" src="/profile-itsara.jpg" alt="Itsara profile" />
+        <img class="profile-avatar" id="avatarImg" src="/avatar-default.svg" alt="Bot avatar" />
         <div class="title-stack">
-          <h1>Itsara</h1>
+          <h1 id="botTitle">xAuby</h1>
           <div class="profile-badges">
             <span class="badge verified">Live</span>
-            <span class="badge exchange">OKX</span>
             <span class="badge indicator" id="indicatorLabel">Indicator</span>
           </div>
         </div>
@@ -92,33 +91,6 @@
             </div>
           </div>
         </article>
-
-        <section class="detail-grid">
-          <article>
-            <span>Signal</span>
-            <strong id="overviewSignal">--</strong>
-          </article>
-          <article>
-            <span>Regime</span>
-            <strong id="regimeState">--</strong>
-          </article>
-          <article>
-            <span>Trend</span>
-            <strong id="trendState">--</strong>
-          </article>
-          <article>
-            <span>Risk</span>
-            <strong id="overviewRisk">--</strong>
-          </article>
-          <article>
-            <span>State</span>
-            <strong id="overviewStateAge">--</strong>
-          </article>
-          <article>
-            <span>API</span>
-            <strong id="overviewApiLatency">--</strong>
-          </article>
-        </section>
       </section>
 
       <section class="view-stack" data-section="signal">

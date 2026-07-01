@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urlparse
 
+from xauby.meta import load_bot_display_name, load_webui_avatar
 from xauby.observability.health import HealthMonitor
 from xauby.runtime.paths import bot_state_path, db_path as runtime_db_path
 
@@ -85,6 +86,14 @@ def _focus_snapshot(state: Dict[str, Any]) -> Dict[str, Any]:
         first = next(iter(by_symbol.values()))
         return first if isinstance(first, dict) else state
     return state
+
+
+def meta_payload(project_root: str) -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "display_name": load_bot_display_name(project_root),
+        "avatar_url": load_webui_avatar(project_root),
+    }
 
 
 def recent_events_payload(project_root: str) -> Dict[str, Any]:
@@ -248,6 +257,9 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         if path == "/api/state":
             self._send_json(load_state(self.project_root))
+            return
+        if path == "/api/meta":
+            self._send_json(meta_payload(self.project_root))
             return
         if path == "/api/health":
             self._send_json(health_payload(self.project_root))

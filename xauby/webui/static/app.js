@@ -37,7 +37,31 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
 
 let lastCandles = [];
 let currentSymbol = "";
+let currentTimeframe = "4h";
 let latestMarketPrice = null;
+
+function timeframeToMinutes(timeframe) {
+  const match = /^([0-9]+)\s*([mhdw])$/i.exec(String(timeframe || "").trim());
+  if (!match) return 240;
+  const amount = Number(match[1]);
+  const unitMinutes = { m: 1, h: 60, d: 1440, w: 10080 }[match[2].toLowerCase()] || 60;
+  return amount * unitMinutes;
+}
+
+function formatDurationAgo(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "0H";
+  if (minutes < 60) return `${Math.round(minutes)}M`;
+  const hours = minutes / 60;
+  if (hours < 48) return `${Math.round(hours)}H`;
+  return `${Math.round(hours / 24)}D`;
+}
+
+function chartAxisLabels(timeframe, candleCount) {
+  const totalMinutes = timeframeToMinutes(timeframe) * Math.max(0, candleCount - 1);
+  return [0, 1, 2, 3].map((index) => (
+    index === 3 ? "Now" : formatDurationAgo((totalMinutes * (3 - index)) / 3)
+  ));
+}
 
 function asNumber(value) {
   const n = Number(value);
@@ -268,7 +292,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   ctx.fillStyle = "rgba(246, 243, 255, 0.56)";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  ["4H", "8H", "12H", "Now"].forEach((labelText, index) => {
+  chartAxisLabels(currentTimeframe, candles.length).forEach((labelText, index) => {
     const x = leftPad + (plotW * index) / 3;
     ctx.fillText(labelText, x, h - 4);
   });
@@ -481,8 +505,11 @@ async function refresh() {
     const stateBody = state.state || {};
     const snap = focusSnapshot(stateBody);
     const symbol = snap.symbol || stateBody.focus_symbol || stateBody.symbol || currentSymbol;
+    currentTimeframe = snap.primary_timeframe || currentTimeframe;
     if (symbol) {
-      const candles = await getJson(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=4h&limit=24`);
+      const candles = await getJson(
+        `/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(currentTimeframe)}&limit=24`
+      );
       if (candles.ok && Array.isArray(candles.candles) && candles.candles.length) {
         lastCandles = candles.candles;
         drawChart(lastCandles, latestMarketPrice);
@@ -498,7 +525,22 @@ async function refresh() {
   }
 }
 
+async function applyMeta() {
+  try {
+    const meta = await getJson("/api/meta");
+    if (!meta.ok) return;
+    if (meta.display_name) text("botTitle", meta.display_name);
+    if (meta.avatar_url) {
+      const avatar = document.getElementById("avatarImg");
+      if (avatar) avatar.src = meta.avatar_url;
+    }
+  } catch (err) {
+    // Non-fatal: keep the default title/avatar if the meta endpoint fails.
+  }
+}
+
 initNavigation();
+applyMeta();
 refresh();
 setInterval(refresh, 5000);
 window.addEventListener("resize", () => drawChart(lastCandles, latestMarketPrice));
