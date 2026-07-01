@@ -575,6 +575,113 @@ body[data-view="activity"] .trades {
   color: white;
 }
 
+/* ── Semantic state colours ─────────────────────────────────────────── */
+.state-pos { color: var(--green); }
+.state-neg { color: var(--red); }
+.state-warn { color: var(--yellow); }
+.state-info { color: #b9a9ff; }
+.state-muted { color: var(--muted); }
+
+/* LIVE pill glow */
+.status-pill.live {
+  background: rgba(72, 223, 147, 0.1);
+  box-shadow: 0 0 0 1px rgba(72, 223, 147, 0.35), 0 8px 22px rgba(72, 223, 147, 0.16);
+}
+
+/* Balance card top sheen */
+.balance-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 42%);
+  pointer-events: none;
+}
+
+/* Market-micro accent bars */
+.market-micro .mini-card {
+  position: relative;
+  padding-left: 17px;
+}
+
+.market-micro .mini-card::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 13px;
+  bottom: 13px;
+  width: 3px;
+  border-radius: 3px;
+}
+
+.market-micro .mini-card:nth-child(1)::before { background: var(--violet); }
+.market-micro .mini-card:nth-child(2)::before { background: var(--cyan); }
+.market-micro .mini-card:nth-child(3)::before { background: var(--yellow); }
+
+/* ── Activity: colored type chips + robust in-card scrolling ─────────── */
+.event-row,
+.trade-row {
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+}
+
+.ev-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ev-chip {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  min-height: 42px;
+  border-radius: 13px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.ev-tag {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.chip-pos { background: rgba(72, 223, 147, 0.16); color: var(--green); }
+.chip-neg { background: rgba(255, 102, 120, 0.16); color: var(--red); }
+.chip-warn { background: rgba(244, 201, 93, 0.18); color: var(--yellow); }
+.chip-info { background: rgba(115, 87, 255, 0.22); color: #d8d0ff; }
+.chip-cyan { background: rgba(105, 240, 223, 0.14); color: var(--cyan); }
+.chip-muted { background: rgba(255, 255, 255, 0.07); color: var(--muted); }
+
+body[data-view="activity"] .timeline,
+body[data-view="activity"] .trades {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ── Bottom nav icons ───────────────────────────────────────────────── */
+.bottom-nav button {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+}
+
+.bottom-nav .nav-icon {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 @media (min-width: 860px) {
   body {
     display: grid;

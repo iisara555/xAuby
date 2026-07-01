@@ -350,7 +350,14 @@ function renderEvents(events) {
     const ts = event.ts || "";
     const payload = event.payload || {};
     const detail = payload.reason || payload.action || payload.regime || payload.price || "";
-    row.innerHTML = `<small>${escapeHtml(ts)}</small><strong>${escapeHtml(label)}${detail ? `: ${escapeHtml(detail)}` : ""}</strong>`;
+    const chip = eventChip(label);
+    row.innerHTML = `
+      <span class="ev-chip ${chip.cls}">${escapeHtml(chip.label)}</span>
+      <div class="ev-body">
+        <small>${escapeHtml(ts)}</small>
+        <strong>${escapeHtml(label)}${detail ? `: ${escapeHtml(detail)}` : ""}</strong>
+      </div>
+    `;
     root.appendChild(row);
   });
 }
@@ -364,11 +371,18 @@ function renderTrades(trades) {
   rows.forEach((trade) => {
     const pnl = Number(trade.net_pnl || 0);
     const pnlClass = pnl >= 0 ? "green" : "red";
+    const sym = String(trade.symbol || "--");
+    const short = sym.replace("USDT", "").slice(0, 3) || "--";
+    const trig = String(trade.trigger || "").toLowerCase();
+    const trigCls = /tp|take|target/.test(trig) ? "chip-pos" : /stop|sl|liq/.test(trig) ? "chip-neg" : "chip-muted";
     const row = document.createElement("div");
     row.className = "trade-row";
     row.innerHTML = `
-      <small>${escapeHtml(trade.closed_at || trade.opened_at || "--")}</small>
-      <strong>${escapeHtml(trade.symbol || "--")} <span class="${pnlClass}">${fmtMoney(pnl)}</span> <small>${escapeHtml(trade.trigger || "")}</small></strong>
+      <span class="ev-chip ${pnl >= 0 ? "chip-pos" : "chip-neg"}">${escapeHtml(short)}</span>
+      <div class="ev-body">
+        <small>${escapeHtml(trade.closed_at || trade.opened_at || "--")}</small>
+        <strong>${escapeHtml(sym)} <span class="${pnlClass}">${fmtMoney(pnl)}</span>${trade.trigger ? ` <span class="ev-tag ${trigCls}">${escapeHtml(trade.trigger)}</span>` : ""}</strong>
+      </div>
     `;
     root.appendChild(row);
   });
@@ -383,15 +397,84 @@ function parseUtcish(ts) {
   return Date.parse(hasTz ? s : `${s}Z`);
 }
 
+const STATE_CLASSES = ["state-pos", "state-neg", "state-warn", "state-info", "state-muted"];
+
+function setStateClass(id, semantic) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove(...STATE_CLASSES);
+  if (semantic) el.classList.add(`state-${semantic}`);
+}
+
+function signalSemantic(action) {
+  const a = String(action || "").toUpperCase();
+  if (/BUY|OPEN|LONG|COVER/.test(a)) return "pos";
+  if (/SELL|CLOSE|SHORT/.test(a)) return "neg";
+  return "muted";
+}
+
+function regimeSemantic(value) {
+  const r = String(value || "").toUpperCase();
+  if (r.includes("BULL")) return "pos";
+  if (r.includes("BEAR") || r.includes("PANIC") || r.includes("BREAKDOWN")) return "neg";
+  if (r.includes("RANGE") || r.includes("NEUTRAL")) return "warn";
+  return "muted";
+}
+
+function trendSemantic(value) {
+  const s = String(value || "").toUpperCase();
+  if (s.includes("UP") || s.includes("BULL")) return "pos";
+  if (s.includes("DOWN") || s.includes("BEAR")) return "neg";
+  return "muted";
+}
+
+function riskSemantic(value) {
+  const r = String(value || "").toUpperCase();
+  if (r.includes("PANIC")) return "neg";
+  if (r.includes("DEFENSIVE") || r.includes("ELEVATED") || r.includes("CAUTION")) return "warn";
+  if (r.includes("NORMAL") || r.includes("RISK_ON") || r === "OK") return "pos";
+  return "muted";
+}
+
+function healthSemantic(value) {
+  const s = String(value || "").toUpperCase();
+  if (s.includes("OFFLINE") || s.includes("CRIT") || s.includes("ERROR") || s.includes("FAIL")) return "neg";
+  if (s.includes("WARN") || s.includes("DEGRAD")) return "warn";
+  if (s.includes("OK") || s.includes("ONLINE") || s.includes("RUN")) return "pos";
+  return "muted";
+}
+
+function goldSemantic(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return "muted";
+  if (n >= 60) return "pos";
+  if (n >= 40) return "warn";
+  return "neg";
+}
+
+function eventChip(type) {
+  const t = String(type || "").toLowerCase();
+  if (t.includes("position_open") || t.includes("opened")) return { label: "OPN", cls: "chip-pos" };
+  if (t.includes("position_clos") || t.includes("closed")) return { label: "CLS", cls: "chip-neg" };
+  if (t.includes("order") || t.includes("fill")) return { label: "ORD", cls: "chip-info" };
+  if (t.includes("risk") || t.includes("reject")) return { label: "RSK", cls: "chip-warn" };
+  if (t.includes("signal")) return { label: "SIG", cls: "chip-info" };
+  if (t.includes("regime")) return { label: "REG", cls: "chip-cyan" };
+  if (t.includes("tick") || t.includes("price")) return { label: "PX", cls: "chip-muted" };
+  return { label: (t.slice(0, 3).toUpperCase() || "EVT"), cls: "chip-muted" };
+}
+
 function renderPosition(pos, markPrice) {
   const kv = document.getElementById("positionKv");
   const idle = document.getElementById("positionIdle");
   const open = String(pos.state || "") === "bought";
   const side = String(pos.position_side || "LONG").toUpperCase();
   text("positionHeadState", open ? side : "FLAT");
+  setStateClass("positionHeadState", open ? (side === "SHORT" ? "neg" : "pos") : "muted");
   if (kv) kv.hidden = !open;
   if (idle) idle.hidden = open;
   if (!open) return;
+  setStateClass("posSide", side === "SHORT" ? "neg" : "pos");
 
   const entry = asNumber(pos.entry_price) ?? 0;
   const mark = asNumber(markPrice ?? pos.mark_price) ?? entry;
@@ -472,16 +555,27 @@ function updateState(payload) {
   text("pnlValue", `PnL ${fmtMoney(pos.unrealized_pnl || 0)}`);
   text("signalAction", sig.action || "--");
   text("overviewSignal", sig.action || "--");
+  setStateClass("signalAction", signalSemantic(sig.action));
+  setStateClass("overviewSignal", signalSemantic(sig.action));
   text("signalReason", sig.reason || "No signal reason");
   text("regimeConfidence", confidence);
   text("regimeState", compactState(regime.regime));
   text("regimeStateDetail", regime.regime || "--");
+  setStateClass("regimeState", regimeSemantic(regime.regime));
+  setStateClass("regimeStateDetail", regimeSemantic(regime.regime));
   text("trendState", regime.trend || "--");
   text("trendStateDetail", regime.trend || "--");
+  setStateClass("trendState", trendSemantic(regime.trend));
+  setStateClass("trendStateDetail", trendSemantic(regime.trend));
   text("riskState", regime.risk_state || "--");
   text("overviewRisk", compactState(regime.risk_state));
-  text("feedState", pos.feed_health || (snap.degraded ? "DEGRADED" : "OK"));
-  text("feedStateDetail", pos.feed_health || (snap.degraded ? "DEGRADED" : "OK"));
+  setStateClass("riskState", riskSemantic(regime.risk_state));
+  setStateClass("overviewRisk", riskSemantic(regime.risk_state));
+  const feedText = pos.feed_health || (snap.degraded ? "DEGRADED" : "OK");
+  text("feedState", feedText);
+  text("feedStateDetail", feedText);
+  setStateClass("feedState", healthSemantic(feedText));
+  setStateClass("feedStateDetail", healthSemantic(feedText));
   text("stateAge", payload.age_sec == null ? "--" : `${payload.age_sec}s`);
   text("overviewStateAge", payload.age_sec == null ? "--" : `${payload.age_sec}s`);
   text("wsAge", wsAge);
@@ -518,7 +612,9 @@ function updateState(payload) {
   }
 
   text("overviewConfidence", confidence);
+  setStateClass("overviewConfidence", "info");
   text("overviewGold", regime.gold_score == null ? "--" : fmtNum(regime.gold_score, 0));
+  setStateClass("overviewGold", goldSemantic(regime.gold_score));
   renderPosition(pos, latestMarketPrice);
 
   renderCdcDetail(indicatorDisplay);
@@ -530,9 +626,14 @@ function updateState(payload) {
 }
 
 function updateHealth(payload) {
-  text("healthStatus", payload.status || "--");
-  text("overviewHealth", payload.status || "--");
-  text("engineStatus", (payload.process_status || {}).status || "--");
+  const status = payload.status || "--";
+  const engine = (payload.process_status || {}).status || "--";
+  text("healthStatus", status);
+  text("overviewHealth", status);
+  text("engineStatus", engine);
+  setStateClass("healthStatus", healthSemantic(status));
+  setStateClass("overviewHealth", healthSemantic(status));
+  setStateClass("engineStatus", healthSemantic(engine));
   const root = document.getElementById("healthList");
   if (!root) return;
   const anomalies = payload.anomalies || [];
