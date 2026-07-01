@@ -374,6 +374,49 @@ function renderTrades(trades) {
   });
 }
 
+function parseUtcish(ts) {
+  // Engine writes opened_at as a tz-naive UTC ISO string; treat a missing
+  // timezone as UTC so held-for doesn't drift by the viewer's offset.
+  if (!ts) return NaN;
+  const s = String(ts);
+  const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(s);
+  return Date.parse(hasTz ? s : `${s}Z`);
+}
+
+function renderPosition(pos, markPrice) {
+  const kv = document.getElementById("positionKv");
+  const idle = document.getElementById("positionIdle");
+  const open = String(pos.state || "") === "bought";
+  const side = String(pos.position_side || "LONG").toUpperCase();
+  text("positionHeadState", open ? side : "FLAT");
+  if (kv) kv.hidden = !open;
+  if (idle) idle.hidden = open;
+  if (!open) return;
+
+  const entry = asNumber(pos.entry_price) ?? 0;
+  const mark = asNumber(markPrice ?? pos.mark_price) ?? entry;
+  const qty = asNumber(pos.quantity) ?? 0;
+  const lev = asNumber(pos.leverage) ?? 1;
+  const liq = asNumber(pos.liquidation_price) ?? 0;
+  const pnl = asNumber(pos.unrealized_pnl) ?? 0;
+  const pnlPct = asNumber(pos.unrealized_pnl_pct) ?? 0;
+
+  text("posSide", side);
+  text("posEntry", fmtNum(entry, 2));
+  text("posMark", fmtNum(mark, 2));
+  text("posPnl", `${fmtMoney(pnl)} (${fmtNum(pnlPct, 2)}%)`);
+  cls("posPnl", pnl >= 0 ? "green" : "red");
+  text("posSize", `${fmtNum(qty, 4)} (${fmtMoney(qty * mark)})`);
+  text("posLeverage", `${fmtNum(lev, lev >= 10 ? 0 : 1)}x`);
+  if (liq > 0 && mark > 0) {
+    text("posLiq", `${fmtNum((Math.abs(mark - liq) / mark) * 100, 2)}% (${fmtNum(liq, 2)})`);
+  } else {
+    text("posLiq", "--");
+  }
+  const openedAt = parseUtcish(pos.opened_at);
+  text("posHeld", Number.isFinite(openedAt) ? formatDurationAgo((Date.now() - openedAt) / 60000) : "--");
+}
+
 function updateState(payload) {
   if (!payload.ok) {
     text("symbolTitle", "State unavailable");
@@ -449,6 +492,35 @@ function updateState(payload) {
   text("cdcEmaFast", compactIndicatorValue(indicators.ema_fast_4h));
   text("cdcEmaSlow", compactIndicatorValue(indicators.ema_slow_4h));
   text("cdcStreak", streak ? `${cdcZone} ${streak}` : "--");
+
+  const bid = asNumber(snap.bid) ?? 0;
+  const ask = asNumber(snap.ask) ?? 0;
+  if (ask > 0 && bid > 0) {
+    const spread = ask - bid;
+    const mid = (ask + bid) / 2;
+    text("spreadValue", fmtNum(spread, 2));
+    text("spreadBps", `${fmtNum((spread / mid) * 10000, 1)} bps`);
+  } else {
+    text("spreadValue", "--");
+    text("spreadBps", "-- bps");
+  }
+  text("atrValue", compactIndicatorValue(indicators.atr_4h));
+  const high24 = asNumber(snap.high_24h) ?? 0;
+  const low24 = asNumber(snap.low_24h) ?? 0;
+  if (high24 > 0 && low24 > 0 && high24 >= low24) {
+    text("rangeValue", `${fmtNum(low24, 0)}–${fmtNum(high24, 0)}`);
+    const span = high24 - low24;
+    const within = span > 0 ? ((price - low24) / span) * 100 : 0;
+    text("rangePos", `${fmtNum(Math.max(0, Math.min(100, within)), 0)}% of range`);
+  } else {
+    text("rangeValue", "--");
+    text("rangePos", "--");
+  }
+
+  text("overviewConfidence", confidence);
+  text("overviewGold", regime.gold_score == null ? "--" : fmtNum(regime.gold_score, 0));
+  renderPosition(pos, latestMarketPrice);
+
   renderCdcDetail(indicatorDisplay);
   renderChecklist(sig.checklist || []);
   if (!lastCandles.length) {

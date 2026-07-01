@@ -350,9 +350,17 @@ canvas {
 
 .home-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
   margin-top: 7px;
+}
+
+.market-micro {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.position-panel .kv[hidden] {
+  display: none;
 }
 
 .cdc-strip div,

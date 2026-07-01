@@ -44,6 +44,42 @@
           </article>
         </section>
 
+        <section class="market-grid market-micro">
+          <article class="mini-card">
+            <span>Spread</span>
+            <strong id="spreadValue">--</strong>
+            <small id="spreadBps">-- bps</small>
+          </article>
+          <article class="mini-card">
+            <span>ATR 4H</span>
+            <strong id="atrValue">--</strong>
+            <small>volatility</small>
+          </article>
+          <article class="mini-card">
+            <span>24h Range</span>
+            <strong id="rangeValue">--</strong>
+            <small id="rangePos">--</small>
+          </article>
+        </section>
+
+        <article class="panel position-panel" id="positionPanel">
+          <div class="panel-head">
+            <h2>Position</h2>
+            <span id="positionHeadState">--</span>
+          </div>
+          <div class="kv" id="positionKv">
+            <span>Side</span><strong id="posSide">--</strong>
+            <span>Entry</span><strong id="posEntry">--</strong>
+            <span>Mark</span><strong id="posMark">--</strong>
+            <span>PnL</span><strong id="posPnl">--</strong>
+            <span>Size</span><strong id="posSize">--</strong>
+            <span>Leverage</span><strong id="posLeverage">--</strong>
+            <span>Liq. dist</span><strong id="posLiq">--</strong>
+            <span>Held</span><strong id="posHeld">--</strong>
+          </div>
+          <p class="reason" id="positionIdle" hidden>No open position.</p>
+        </article>
+
         <article class="panel chart-panel">
           <div class="panel-head">
             <h2>Market Candles</h2>
@@ -84,6 +120,14 @@
             <div>
               <span>Risk</span>
               <strong id="overviewRisk">--</strong>
+            </div>
+            <div>
+              <span>Confidence</span>
+              <strong id="overviewConfidence">--</strong>
+            </div>
+            <div>
+              <span>Gold</span>
+              <strong id="overviewGold">--</strong>
             </div>
             <div>
               <span>Health</span>

@@ -873,6 +873,8 @@ class LoopMixin:
         snap["primary_timeframe"] = sc.primary_timeframe
         snap["exchange"] = exchange_identity
         snap["confirm_timeframe"] = sc.confirm_timeframe or ""
+        snap["high_24h"] = float(tick_snap.get("high") or 0.0)
+        snap["low_24h"] = float(tick_snap.get("low") or 0.0)
         snap["degraded"] = sc.degraded
         snap["degrade_reason"] = feed_status["degrade_reason"]
         snap["last_candle_timestamp"] = candle_status["last_candle_timestamp"]
