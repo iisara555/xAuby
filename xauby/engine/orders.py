@@ -1,5 +1,6 @@
 import logging
 import time
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple
 
@@ -14,6 +15,105 @@ logger = logging.getLogger("lite_bot")
 
 
 class OrderMixin:
+    _ORDER_DONE_STATUSES = ("FILLED", "CANCELED", "REJECTED", "EXPIRED")
+
+    def _execution_cfg(self) -> Dict[str, Any]:
+        if isinstance(getattr(self, "config", None), dict):
+            return self.config.get("execution", {}) or {}
+        return {}
+
+    def _resolve_entry_order_type(self) -> str:
+        """Pick the live BUY order type.
+
+        Legacy default remains ``execution.order_type``. Operators can opt into
+        a fast path with ``fast_entry_enabled`` and choose MARKET or LIMIT via
+        ``fast_entry_order_type``.
+        """
+        cfg = self._execution_cfg()
+        if bool(cfg.get("fast_entry_enabled", False)):
+            order_type = str(cfg.get("fast_entry_order_type") or "MARKET").upper()
+            if order_type in {"MARKET", "LIMIT", "LIMIT_MAKER"}:
+                return order_type
+        return str(cfg.get("order_type", "LIMIT")).upper()
+
+    def _entry_order_timeout(self, order_type: str) -> float:
+        cfg = self._execution_cfg()
+        default_timeout = float(cfg.get("order_timeout_seconds", 10.0) or 0.0)
+        if (
+            bool(cfg.get("fast_entry_enabled", False))
+            and str(order_type or "").upper() != "MARKET"
+            and "limit_timeout_fast_seconds" in cfg
+        ):
+            return max(0.0, float(cfg.get("limit_timeout_fast_seconds") or 0.0))
+        return max(0.0, default_timeout)
+
+    def _record_order_latency_metric(self, key: str, started_at: float) -> int:
+        elapsed_ms = int(max(0.0, time.perf_counter() - started_at) * 1000)
+        metrics = getattr(self, "_latency_metrics", None)
+        if not isinstance(metrics, dict):
+            metrics = {}
+            self._latency_metrics = metrics
+        metrics[key] = elapsed_ms
+        return elapsed_ms
+
+    def _fresh_balances_for_order(self) -> Dict[str, Any]:
+        """Use fresh-enough balance cache on the hot order path, REST fallback."""
+        snapshot_fn = getattr(self, "_balance_cache_snapshot", None)
+        ttl = float(getattr(self, "_balance_cache_ttl", 0.0) or 0.0)
+        if callable(snapshot_fn) and ttl > 0:
+            try:
+                cached, age = snapshot_fn()
+                if cached and age < ttl:
+                    return dict(cached)
+            except Exception:
+                pass
+        balances = self.client.get_balances()
+        store_fn = getattr(self, "_store_balance_cache", None)
+        if callable(store_fn):
+            try:
+                store_fn(balances)
+            except Exception:
+                pass
+        return balances
+
+    def _symbol_filters_cached(self, symbol: str) -> Dict[str, Any]:
+        """Cache exchange lot/price filters outside the hot order path."""
+        sym = symbol.upper().replace("_", "")
+        cfg = self._execution_cfg()
+        ttl = float(cfg.get("symbol_filters_cache_ttl_seconds", 3600.0) or 0.0)
+        if ttl <= 0:
+            return self.client.get_symbol_filters(sym)
+
+        lock = getattr(self, "_symbol_filter_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._symbol_filter_lock = lock
+        cache = getattr(self, "_symbol_filter_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._symbol_filter_cache = cache
+
+        now = time.time()
+        stale_filters: Optional[Dict[str, Any]] = None
+        with lock:
+            entry = cache.get(sym)
+            if entry:
+                updated_at, filters = entry
+                stale_filters = dict(filters or {})
+                if now - float(updated_at or 0.0) < ttl:
+                    return stale_filters
+
+        try:
+            filters = dict(self.client.get_symbol_filters(sym) or {})
+        except Exception:
+            if stale_filters:
+                return stale_filters
+            raise
+
+        with lock:
+            cache[sym] = (now, filters)
+        return dict(filters)
+
     def _send_protection_block_alert(self, symbol: str, reason: str) -> None:
         risk_cfg = self.config.get("risk", {}) if isinstance(self.config, dict) else {}
         try:
@@ -241,7 +341,7 @@ class OrderMixin:
         """Return the smallest base qty worth tracking as an actionable spot position."""
         sym = symbol.upper().replace("_", "")
         try:
-            filters = self.client.get_symbol_filters(sym)
+            filters = self._symbol_filters_cached(sym)
         except Exception:
             filters = {}
         min_qty = float(filters.get("minQty") or 0.0)
@@ -334,24 +434,30 @@ class OrderMixin:
         self,
         order_id: str,
         symbol: Optional[str] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, float, Dict[str, Any]]:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
-        timeout = float(self.config.get("execution", {}).get("order_timeout_seconds", 10.0))
-        poll_interval = 0.5
+        cfg = self._execution_cfg()
+        timeout = float(cfg.get("order_timeout_seconds", 10.0) if timeout is None else timeout)
+        timeout = max(0.0, timeout)
+        poll_interval = max(0.01, float(cfg.get("order_poll_initial_seconds", 0.5) or 0.5))
+        poll_max = max(poll_interval, float(cfg.get("order_poll_max_seconds", 2.0) or 2.0))
         elapsed = 0.0
         status = ""
         filled_qty = 0.0
         order_details: Dict[str, Any] = {}
 
         while elapsed < timeout:
-            time.sleep(poll_interval)
-            elapsed += poll_interval
-            poll_interval = min(2.0, poll_interval * 1.5)
+            sleep_for = min(poll_interval, timeout - elapsed)
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+                elapsed += sleep_for
+            poll_interval = min(poll_max, poll_interval * 1.5)
             try:
                 order_details = self.client.get_order(sym, order_id)
                 status = order_details.get("status", "").upper()
                 filled_qty = float(order_details.get("executedQty", 0.0) or order_details.get("filled", 0.0))
-                if status in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
+                if status in self._ORDER_DONE_STATUSES:
                     break
             except Exception as pe:
                 logger.error(f"Error polling order {order_id}: {pe}")
@@ -372,7 +478,7 @@ class OrderMixin:
             available = float(base_bal.get("available", 0.0) or 0.0)
             reserved = float(base_bal.get("reserved", 0.0) or 0.0)
             if 0 < available < attempt_qty:
-                filters = self.client.get_symbol_filters(sym)
+                filters = self._symbol_filters_cached(sym)
                 step = float(filters.get("stepSize") or 0.0)
                 capped_qty = round_step(available, step) if step > 0 else available
                 min_qty = float(filters.get("minQty") or 0.0)
@@ -1056,7 +1162,8 @@ class OrderMixin:
                 return False
 
             try:
-                b = self.client.get_balances()
+                order_total_t0 = time.perf_counter()
+                b = self._fresh_balances_for_order()
                 avail_usdt = b.get(self._quote_asset(), {}).get("available", 0.0)
                 base_coin = self._get_base_asset(sym)
                 existing_base_qty = self._asset_balance_total(b, base_coin)
@@ -1112,7 +1219,12 @@ class OrderMixin:
                         logger.error("Capped buy amount below exchange minimum. Aborting.")
                         return False
 
-                order_type_config = self.config.get("execution", {}).get("order_type", "LIMIT").upper()
+                order_type_config = self._resolve_entry_order_type()
+                order_path = (
+                    "market_fast"
+                    if order_type_config == "MARKET" and bool(self._execution_cfg().get("fast_entry_enabled", False))
+                    else ("limit_fast" if bool(self._execution_cfg().get("fast_entry_enabled", False)) else "limit_normal")
+                )
                 buy_client_id = make_client_id("buy")
                 logger.info(
                     f"Placing LIVE BUY order: {buy_amount_usdt:.2f} USDT using {order_type_config} "
@@ -1126,7 +1238,9 @@ class OrderMixin:
                     price=round(ticker_price, 2),
                     notional=round(buy_amount_usdt, 2),
                     order_type=order_type_config,
+                    order_path=order_path,
                 )
+                submit_t0 = time.perf_counter()
                 res = self.client.place_order(
                     symbol=sym,
                     side="BUY",
@@ -1135,16 +1249,24 @@ class OrderMixin:
                     price=ticker_price,
                     client_id=buy_client_id,
                 )
+                order_submit_ms = self._record_order_latency_metric("order_submit_ms", submit_t0)
+                self._latency_metrics["order_ack_ms"] = order_submit_ms
 
                 order_id = str(res.get("orderId") or res.get("id") or "")
                 status = res.get("status", "").upper()
                 filled_qty = float(res.get("executedQty", 0.0) or res.get("filled", 0.0))
                 order_details = res
 
-                if status not in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
-                    status, filled_qty, order_details = self._poll_order_adaptive(order_id, symbol=sym)
+                fill_wait_t0 = time.perf_counter()
+                if status not in self._ORDER_DONE_STATUSES:
+                    status, filled_qty, order_details = self._poll_order_adaptive(
+                        order_id,
+                        symbol=sym,
+                        timeout=self._entry_order_timeout(order_type_config),
+                    )
+                order_fill_wait_ms = self._record_order_latency_metric("order_fill_wait_ms", fill_wait_t0)
 
-                if status not in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
+                if status not in self._ORDER_DONE_STATUSES:
                     logger.warning(f"Order {order_id} timeout reached (status: {status}). Cancelling order...")
                     try:
                         self.client.cancel_order(sym, order_id)
@@ -1187,8 +1309,10 @@ class OrderMixin:
                         notional=round(remaining_quote, 2),
                         order_type="MARKET",
                         context="entry_market_fallback",
+                        order_path="limit_fast_fallback" if order_path == "limit_fast" else "limit_normal_fallback",
                     )
                     try:
+                        fb_submit_t0 = time.perf_counter()
                         fb_res = self.client.place_order(
                             symbol=sym,
                             side="BUY",
@@ -1196,10 +1320,15 @@ class OrderMixin:
                             amount=remaining_quote,
                             client_id=fb_client_id,
                         )
+                        self._record_order_latency_metric("order_fallback_submit_ms", fb_submit_t0)
                         fb_id = str(fb_res.get("orderId") or fb_res.get("id") or "")
                         fb_status = fb_res.get("status", "").upper()
-                        if fb_status not in ("FILLED", "CANCELED", "REJECTED", "EXPIRED"):
-                            fb_status, _fb_qty, fb_res = self._poll_order_adaptive(fb_id, symbol=sym)
+                        if fb_status not in self._ORDER_DONE_STATUSES:
+                            fb_status, _fb_qty, fb_res = self._poll_order_adaptive(
+                                fb_id,
+                                symbol=sym,
+                                timeout=self._entry_order_timeout("MARKET"),
+                            )
                         fb_filled_qty = float(fb_res.get("executedQty", 0.0) or fb_res.get("filled", 0.0))
                         fallback_quote_spent = float(fb_res.get("cummulativeQuoteQty", 0.0) or 0.0)
                         if fb_filled_qty > 0:
@@ -1222,6 +1351,8 @@ class OrderMixin:
                 if filled_price <= 0:
                     filled_price = ticker_price
 
+                order_total_ms = self._record_order_latency_metric("order_total_ms", order_total_t0)
+                metrics = getattr(self, "_latency_metrics", {}) or {}
                 if filled_qty > 0:
                     stop_loss = 0.0 if (disable_sl or manual_management) else (filled_price - sl_distance)
                     take_profit = (
@@ -1249,6 +1380,11 @@ class OrderMixin:
                         ref_price=round(ticker_price, 2),
                         slippage_bps=slip_bps,
                         status=status,
+                        order_path=order_path,
+                        order_submit_ms=order_submit_ms,
+                        order_ack_ms=order_submit_ms,
+                        order_fill_wait_ms=order_fill_wait_ms,
+                        order_total_ms=order_total_ms,
                     )
 
                     sl_order_id = None
@@ -1296,6 +1432,8 @@ class OrderMixin:
                         take_profit=round(take_profit, 2),
                         qty=round(filled_qty, 6),
                         status=status,
+                        order_path=order_path,
+                        order_total_ms=metrics.get("order_total_ms", order_total_ms),
                     )
                     return True
                 else:
@@ -1522,7 +1660,7 @@ class OrderMixin:
                     )
                     qty = avail_base
 
-                f = self.client.get_symbol_filters(sym)
+                f = self._symbol_filters_cached(sym)
                 min_qty = float(f.get("minQty") or 0.0)
                 step_size = float(f.get("stepSize") or 0.0001)
                 min_notional = float(f.get("minNotional") or 0.0)

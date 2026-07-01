@@ -67,7 +67,7 @@ AppFooter {
 
 .panel-box:focus {
     border: round #818cf8;
-    background: #818cf8 8%;
+    background: #818cf8 6%;
 }
 
 /* Sidebar panels */
@@ -91,17 +91,22 @@ AppFooter {
 #chart-panel {
     height: 70%;
     min-height: 20;
-    background: #18181b;
+    background: #141417;
+    border: round #4f46e5;
+    border-title-color: #22d3ee;
     layout: vertical;
 }
 
 .chart-panel {
-    padding: 0 1;
+    padding: 0 1 1 1;
 }
 
 #chart-ansi {
     height: auto;
     min-height: 15;
+    background: #141417;
+    color: #f4f4f5;
+    padding: 0 0 0 0;
 }
 
 /* Wide desktop: candle chart fills chart panel (Textual CSS has no :not()) */
@@ -118,6 +123,7 @@ AppFooter {
     height: auto;
     max-height: 3;
     background: #1c1c21;
+    color: #a1a1aa;
     padding: 0 0;
 }
 

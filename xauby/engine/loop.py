@@ -43,7 +43,8 @@ class LoopMixin:
         """
         try:
             base_coin = self._get_base_asset(symbol)
-            filters = self.client.get_symbol_filters(symbol)
+            filter_fn = getattr(self, "_symbol_filters_cached", self.client.get_symbol_filters)
+            filters = filter_fn(symbol)
             step = float(filters.get("stepSize") or 0.0)
             min_qty = float(filters.get("minQty") or 0.0)
             min_notional = float(filters.get("minNotional") or 0.0)

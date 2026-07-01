@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from textual.widget import Widget
@@ -15,8 +15,10 @@ from xauby.ui.textual_tui.system_cache import get_cached_host_metrics
 from xauby.ui.dashboard import (
     _render_strategy_checklist, render_blocker_box, _guard_status_labels,
     get_layout_profile, _chart_dimensions, _phone_regime_extras,
+    _timeframe_countdown_compact,
     get_recent_events_lines,
     format_decision_gates_compact, format_engine_status_badges,
+    format_mobile_safety_line, format_mobile_timing_line,
 )
 from xauby.ui.copy import format_monitoring_empty
 from xauby.ui.state_view import (
@@ -538,8 +540,13 @@ class StrategyChecklistPanel(Static):
         decision_lines = format_decision_gates_compact(state, profile, w)
 
         if profile.is_phone:
-            # Phone: only the compact action+chips summary (2-3 lines)
-            lines = decision_lines
+            # Phone: operator status + compact action/chips + actionable blocker hint.
+            lines = [format_mobile_safety_line(state, w)]
+            lines.append(format_mobile_timing_line(state, w))
+            lines.extend(decision_lines[:2])
+            blocker = render_blocker_box(state, items, w, is_phone=True)
+            if blocker:
+                lines.extend(blocker)
         else:
             # Tablet/wide: action summary + separator + detailed checklist + blocker box
             # Omit the inline warn line from decision (line 3+) — blocker box covers it
@@ -620,7 +627,8 @@ class PositionsPanel(Static):
         profile = get_layout_profile(w)
         by_symbol = envelope.get("by_symbol") or {}
         lines = format_all_positions_lines(by_symbol, w, is_phone=profile.is_phone)
-        if not lines:
+        self.display = not (profile.is_phone and not lines)
+        if not lines and not profile.is_phone:
             lines = [format_monitoring_empty(compact=profile.is_phone, with_subline=not profile.is_phone)]
         self.update(Text.from_ansi("\n".join(lines)))
 
@@ -633,36 +641,7 @@ class RegimePanelWidget(Static):
         self._sync_fp: tuple = ()
 
     def _countdown_compact(self, timeframe: str = "4h") -> str:
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        tf = str(timeframe).lower()
-        if tf in ("15m", "15min"):
-            tf_minutes = 15
-        elif tf in ("30m", "30min"):
-            tf_minutes = 30
-        elif tf in ("1h", "60m"):
-            tf_minutes = 60
-        elif tf in ("2h", "120m"):
-            tf_minutes = 120
-        elif tf in ("4h", "240m"):
-            tf_minutes = 240
-        elif tf in ("6h", "360m"):
-            tf_minutes = 360
-        elif tf in ("8h", "480m"):
-            tf_minutes = 480
-        elif tf in ("12h", "720m"):
-            tf_minutes = 720
-        elif tf in ("1d", "24h", "1440m", "daily"):
-            tf_minutes = 1440
-        else:
-            tf_minutes = 240
-        total_minutes = now_utc.hour * 60 + now_utc.minute
-        elapsed = total_minutes % tf_minutes
-        seconds_left = (tf_minutes - elapsed) * 60 - now_utc.second
-        if seconds_left <= 0:
-            seconds_left += tf_minutes * 60
-        hours = seconds_left // 3600
-        minutes = (seconds_left % 3600) // 60
-        return f"{hours:02d}h {minutes:02d}m"
+        return _timeframe_countdown_compact(timeframe)
 
     def sync_from_state(self, state: Dict[str, Any], layout_width: int) -> None:
         from xauby.ui.textual_tui.state_sync import regime_panel_fingerprint
@@ -727,10 +706,14 @@ class RegimePanelWidget(Static):
             ]
             lines.extend(format_regime_detail_lines(reg, compact=False))
 
-        if profile.is_phone:
+        if profile.is_phone and pos_state != "IDLE":
             lines.append(f"  {pos_str}")
 
-        events = get_recent_events_lines(state, limit=2 if profile.is_phone else 3)
+        events = get_recent_events_lines(
+            state,
+            limit=2 if profile.is_phone else 3,
+            compact=profile.is_phone,
+        )
         if events:
             lines.append("")
             lines.append("  \033[1;97mRECENT EVENTS:\033[0m")

@@ -437,6 +437,11 @@ daily_digest:
   send_telegram: true
 execution:
   order_type: limit
+  # Low-latency live entry path. Safety gates still run first (pause/read-only,
+  # min notional, balance/allocation, drawdown, stale feed). MARKET entry avoids
+  # waiting for a LIMIT timeout before fallback on liquid OKX XAUUSDT swap.
+  fast_entry_enabled: true
+  fast_entry_order_type: MARKET
   # When a LIMIT entry does not fully fill before order_timeout_seconds, top up
   # the unfilled remainder with a MARKET order instead of cancelling and skipping
   # the trade. Keeps live entries in parity with the backtest (PositionSimulator
@@ -446,6 +451,10 @@ execution:
   retry_attempts: 3
   retry_delay_seconds: 5
   order_timeout_seconds: 10
+  limit_timeout_fast_seconds: 2.0
+  order_poll_initial_seconds: 0.15
+  order_poll_max_seconds: 1.0
+  symbol_filters_cache_ttl_seconds: 3600
   # Adverse execution slippage (fill vs quoted price) above this many basis
   # points raises a Telegram alert. Slippage is also attached to ORDER_FILLED /
   # POSITION_OPENED/CLOSED events and the fill log line. 0 disables the alert.

@@ -16,6 +16,9 @@ from xauby.ui.dashboard import (
     _metric_tier,
     format_decision_gates_compact,
     format_engine_status_badges,
+    format_mobile_safety_line,
+    format_mobile_timing_line,
+    get_recent_events_lines,
     show_verbose_checklist,
     CHECKLIST_LINE_BUDGET,
 )
@@ -254,7 +257,7 @@ class TestPhoneMultiShell(unittest.TestCase):
     def test_phone_portfolio_one_line(self):
         lines = format_static_portfolio_lines(self._envelope(), 70, is_phone=True)
         self.assertEqual(len(lines), 1)
-        self.assertIn("Port", lines[0])
+        self.assertIn("Eq", lines[0])
         self.assertRegex(lines[0], r"\d,\d{3}B")
         self.assertNotIn("k", lines[0])
 
@@ -279,6 +282,8 @@ class TestPhoneMultiShell(unittest.TestCase):
         }
         lines = format_all_positions_lines(env["by_symbol"], 70, is_phone=True)
         self.assertGreaterEqual(len(lines), 2)
+        self.assertIn("SL", "\n".join(lines))
+        self.assertIn("%)", "\n".join(lines))
 
     def test_wide_positions_show_live_mark_sl_and_peak(self):
         env = self._envelope()
@@ -340,8 +345,8 @@ class TestPhoneBlockerAndBudget(unittest.TestCase):
         items = [{"label": "4H Zone", "ok": False}]
         lines = render_blocker_box(state, items, 60, is_phone=True)
         self.assertEqual(len(lines), 1)
-        self.assertIn("BLOCKED", lines[0])
         self.assertIn("NEXT", lines[0])
+        self.assertIn("4H Zone", lines[0])
 
     def test_checklist_budget_phone_blocker_smaller(self):
         state = {
@@ -411,6 +416,43 @@ class TestDecisionGatesCompact(unittest.TestCase):
         }
         lines = format_decision_gates_compact(state, get_layout_profile(80), 76)
         self.assertIn(MONITORING_LABEL, "\n".join(lines))
+
+    def test_mobile_safety_line_has_live_exchange_readonly_feed_position(self):
+        state = {
+            "simulate_only": False,
+            "read_only": False,
+            "exchange": {"name": "okx", "market_type": "swap"},
+            "position": {"state": "idle", "feed_health": "OK"},
+        }
+        line = format_mobile_safety_line(state, 60)
+        self.assertIn("LIVE", line)
+        self.assertIn("OKX", line)
+        self.assertIn("SWAP", line)
+        self.assertIn("RO:OFF", line)
+        self.assertIn("Feed:OK", line)
+        self.assertIn("Pos:IDLE", line)
+        self.assertLessEqual(visible_len(line), 60)
+
+    def test_mobile_timing_line_has_close_and_risk(self):
+        line = format_mobile_timing_line(
+            {"primary_timeframe": "4h", "risk": {"risk_pct": 0.02}},
+            60,
+        )
+        self.assertIn("Close:", line)
+        self.assertIn("Risk:", line)
+        self.assertIn("2.0%", line)
+        self.assertLessEqual(visible_len(line), 60)
+
+    def test_compact_recent_events_filters_regime_noise(self):
+        state = {
+            "recent_events": [
+                {"event_type": "regime_classified", "symbol": "XAUUSDT", "ts": "2026-06-30T01:00:00"},
+                {"event_type": "order_submitted", "symbol": "XAUUSDT", "ts": "2026-06-30T01:01:00"},
+            ]
+        }
+        text = "\n".join(get_recent_events_lines(state, compact=True))
+        self.assertIn("order_submitted", text)
+        self.assertNotIn("regime_classified", text)
 
 
 class TestEngineStatusBadges(unittest.TestCase):

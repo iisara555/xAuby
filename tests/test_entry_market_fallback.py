@@ -25,9 +25,16 @@ class _FallbackClient:
         self.fill_limit = fill_limit
         self.orders = []  # (order_type, side, amount)
         self.cancelled = []
+        self.balance_calls = 0
+        self.filter_calls = 0
 
     def get_balances(self):
+        self.balance_calls += 1
         return {"USDT": {"available": 1000.0, "reserved": 0.0}}
+
+    def get_symbol_filters(self, symbol):
+        self.filter_calls += 1
+        return {"minQty": 0.001, "stepSize": 0.001, "minNotional": 10.0}
 
     def place_order(self, symbol, side, order_type, amount, price=None, client_id=None, **kwargs):
         self.orders.append((order_type.upper(), side.upper(), float(amount)))
@@ -94,6 +101,7 @@ class _FallbackEngine(OrderMixin):
         self.read_only = False
         self.last_log_message = ""
         self.events = []
+        self._latency_metrics = {}
 
     def _sym(self):
         return "BTCUSDT"
@@ -164,6 +172,67 @@ class TestEntryMarketFallback(unittest.TestCase):
         order_types = [o[0] for o in client.orders]
         self.assertEqual(order_types, ["LIMIT"])  # filled outright, no fallback
         self.assertFalse(client.cancelled)
+
+    def test_fast_entry_uses_market_order_and_records_latency(self):
+        client = _FallbackClient(fill_limit=False)
+        engine = _FallbackEngine(client, entry_market_fallback=True)
+        engine.config["execution"].update(
+            {
+                "fast_entry_enabled": True,
+                "fast_entry_order_type": "MARKET",
+            }
+        )
+
+        ok = engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT")
+
+        self.assertTrue(ok)
+        self.assertEqual([o[0] for o in client.orders], ["MARKET"])
+        self.assertIn("order_total_ms", engine._latency_metrics)
+        filled_events = [payload for event, payload in engine.events if str(event).endswith("order_filled")]
+        self.assertTrue(filled_events)
+        self.assertEqual(filled_events[-1]["order_path"], "market_fast")
+        self.assertIn("order_ack_ms", filled_events[-1])
+
+    def test_fast_limit_uses_fast_timeout(self):
+        client = _FallbackClient(fill_limit=False)
+        engine = _FallbackEngine(client, entry_market_fallback=False)
+        engine.config["execution"].update(
+            {
+                "fast_entry_enabled": True,
+                "fast_entry_order_type": "LIMIT",
+                "order_timeout_seconds": 99.0,
+                "limit_timeout_fast_seconds": 0.0,
+            }
+        )
+
+        ok = engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT")
+
+        self.assertFalse(ok)
+        self.assertEqual([o[0] for o in client.orders], ["LIMIT"])
+        self.assertTrue(client.cancelled)
+
+    def test_live_buy_uses_fresh_balance_cache_on_hot_path(self):
+        client = _FallbackClient(fill_limit=True)
+        engine = _FallbackEngine(client, entry_market_fallback=True)
+        engine._balance_cache = {"USDT": {"available": 1000.0, "reserved": 0.0}}
+        engine._balance_last_update = 100.0
+        engine._balance_cache_ttl = 30.0
+        engine._balance_cache_snapshot = lambda: (engine._balance_cache, 1.0)
+
+        ok = engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT")
+
+        self.assertTrue(ok)
+        self.assertEqual(client.balance_calls, 0)
+
+    def test_symbol_filters_are_cached_for_order_helpers(self):
+        client = _FallbackClient(fill_limit=True)
+        engine = _FallbackEngine(client, entry_market_fallback=True)
+
+        first = engine._min_tradeable_base_qty("BTCUSDT", 100.0)
+        second = engine._min_tradeable_base_qty("BTCUSDT", 100.0)
+
+        self.assertAlmostEqual(first, second)
+        self.assertEqual(client.filter_calls, 1)
 
 
 if __name__ == "__main__":

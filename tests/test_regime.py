@@ -95,5 +95,74 @@ class TestGoldRegimeClassifier(unittest.TestCase):
         self.assertIn(regime.risk_state, {"QUIET_RISK", "CHOP_RISK"})
         self.assertIn(regime.strategy_bias["family"], {"range_or_accumulation", "chop_filter"})
 
+    def test_institutional_features_expose_quality_and_percentiles(self):
+        prices = [
+            {
+                "close": float(1000 + i * 4),
+                "high": float(1010 + i * 4),
+                "low": float(990 + i * 4),
+                "volume": 10.0 + (i % 10),
+            }
+            for i in range(260)
+        ]
+        indicators = {
+            "ema_12_4h": 2025.0,
+            "ema_26_4h": 1970.0,
+            "ema_200_4h": 1520.0,
+            "atr_4h": 28.0,
+            "volume_ratio_4h": 1.6,
+        }
+        macro = {"dxy_score": 0.6, "fred_score": 0.2, "news_score": 0.1}
+
+        regime = classify_market(prices, indicators=indicators, macro_state=macro)
+
+        self.assertEqual(regime.trend, "BULLISH")
+        self.assertGreater(regime.features["trend_quality"], 0.65)
+        self.assertGreaterEqual(regime.features["atr_percentile"], 0.0)
+        self.assertLessEqual(regime.features["atr_percentile"], 1.0)
+        self.assertGreater(regime.features["liquidity_confirmation"], 0.7)
+        self.assertIn("institutional_confidence", regime.features)
+
+    def test_macro_conflict_and_chop_reduce_confidence(self):
+        trend_prices = [
+            {"close": float(1000 + i * 4), "high": float(1010 + i * 4), "low": float(990 + i * 4), "volume": 12.0}
+            for i in range(260)
+        ]
+        chop_prices = [
+            {
+                "close": 1200.0 + (8.0 if i % 2 else -8.0),
+                "high": 1214.0,
+                "low": 1186.0,
+                "volume": 5.0,
+            }
+            for i in range(260)
+        ]
+        aligned = classify_market(
+            trend_prices,
+            indicators={
+                "ema_12_4h": 2025.0,
+                "ema_26_4h": 1970.0,
+                "ema_200_4h": 1520.0,
+                "atr_4h": 28.0,
+                "volume_ratio_4h": 1.5,
+            },
+            macro_state={"dxy_score": 0.7, "fred_score": 0.2, "news_score": 0.0},
+        )
+        conflicted_chop = classify_market(
+            chop_prices,
+            indicators={
+                "ema_12_4h": 1201.0,
+                "ema_26_4h": 1200.0,
+                "ema_200_4h": 1199.5,
+                "atr_4h": 3.0,
+                "volume_ratio_4h": 0.5,
+            },
+            macro_state={"dxy_score": -0.7, "fred_score": -0.2, "news_score": 0.0},
+        )
+
+        self.assertGreater(aligned.confidence, conflicted_chop.confidence)
+        self.assertLess(conflicted_chop.features["trend_quality"], 0.4)
+        self.assertIn(conflicted_chop.regime, {"LOW_VOL_ACCUMULATION", "LOW_VOL_RANGE", "SIDEWAYS_CHOP"})
+
 if __name__ == "__main__":
     unittest.main()

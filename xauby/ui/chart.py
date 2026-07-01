@@ -13,6 +13,7 @@ from xauby.strategies.cdc_action_zone import classify_zone
 from xauby.utils.colors import (
     C_RESET, C_PRIMARY, C_MUTED, C_DARK, C_GREEN, C_RED,
     RESET, fg_rgb, bg_rgb, make_gemini_gradient,
+    blend_rgb, shade_rgb,
 )
 from xauby.utils.common import format_to_ict, TH_TZ, get_terminal_width
 
@@ -40,6 +41,84 @@ TIMEFRAME_SECONDS = {
     "1d": 86400,
 }
 
+RGB_SLATE_MUTED = (148, 163, 184)
+RGB_SLATE_DARK = (71, 85, 105)
+RGB_PANEL_BG = (24, 24, 27)
+RGB_INDIGO = (129, 140, 248)
+
+DEFAULT_ZONE_RGB = {
+    "GREEN": (52, 211, 153),
+    "BLUE": (129, 140, 248),
+    "LBLUE": (34, 211, 238),
+    "RED": (251, 113, 133),
+    "ORANGE": (251, 146, 60),
+    "YELLOW": (253, 224, 71),
+}
+
+DEFAULT_ZONE_BG_RGB = {
+    "GREEN": (6, 78, 59),
+    "BLUE": (49, 46, 129),
+    "LBLUE": (22, 78, 99),
+    "RED": (153, 27, 27),
+    "ORANGE": (124, 45, 18),
+    "YELLOW": (120, 53, 4),
+}
+
+
+def _rgb_to_fg(rgb: tuple[int, int, int]) -> str:
+    return fg_rgb(*rgb)
+
+
+def _rgb_to_bg(rgb: tuple[int, int, int]) -> str:
+    return bg_rgb(*rgb)
+
+
+def _chart_theme_enabled() -> bool:
+    """Visual-only chart shading toggle; flat solid candles are the default."""
+    value = _load_chart_ui_config().get("chart_candle_gradient", "flat")
+    return str(value).lower() not in {"0", "false", "off", "none", "flat"}
+
+
+def _candle_body_cell(
+    zone_rgb: tuple[int, int, int],
+    bg_rgb_value: Optional[tuple[int, int, int]],
+    *,
+    row: int,
+    body_min: int,
+    body_max: int,
+) -> str:
+    """Render one shaded candle body cell using the existing palette."""
+    if not _chart_theme_enabled():
+        return _rgb_to_fg(zone_rgb) + "█" + C_RESET
+    span = max(1, body_max - body_min)
+    pos = (row - body_min) / span if span else 0.5
+    edge_distance = min(pos, 1.0 - pos) * 2.0
+    factor = 0.78 + (edge_distance * 0.25)
+    fg = shade_rgb(zone_rgb, factor)
+    bg = blend_rgb(bg_rgb_value or RGB_PANEL_BG, RGB_PANEL_BG, 0.38)
+    glyph = "█" if edge_distance > 0.55 else ("▓" if edge_distance > 0.25 else "▒")
+    return _rgb_to_bg(bg) + _rgb_to_fg(fg) + glyph + C_RESET
+
+
+def _wick_cell(zone_rgb: tuple[int, int, int]) -> str:
+    if not _chart_theme_enabled():
+        return _rgb_to_fg(zone_rgb) + "│" + C_RESET
+    return _rgb_to_fg(blend_rgb(zone_rgb, RGB_SLATE_DARK, 0.36)) + "│" + C_RESET
+
+
+def _volume_cell(base_rgb: tuple[int, int, int], norm: float, glyph: str) -> str:
+    intensity = 0.62 + (max(0.0, min(1.0, norm)) * 0.38)
+    return _rgb_to_fg(shade_rgb(base_rgb, intensity)) + glyph + C_RESET
+
+
+def _gradient_bar(base_rgb: tuple[int, int, int], filled: int, width: int) -> str:
+    chars: List[str] = []
+    for i in range(max(0, filled)):
+        t = i / max(1, filled - 1)
+        rgb = shade_rgb(base_rgb, 0.68 + (0.32 * t))
+        chars.append(f"{_rgb_to_fg(rgb)}█{C_RESET}")
+    return "".join(chars) + (" " * max(0, width - filled))
+
 
 def _load_chart_ui_config() -> Dict[str, Any]:
     """Read cli_ui chart settings from bot_config.yaml (cached)."""
@@ -49,6 +128,7 @@ def _load_chart_ui_config() -> Dict[str, Any]:
     defaults = {
         "chart_candle_cols": 1,
         "chart_max_candles": 0,
+        "chart_candle_gradient": "flat",
     }
     try:
         import yaml
@@ -60,6 +140,7 @@ def _load_chart_ui_config() -> Dict[str, Any]:
         _CHART_UI_CACHE = {
             "chart_candle_cols": cols,
             "chart_max_candles": max(0, max_c),
+            "chart_candle_gradient": ui.get("chart_candle_gradient", "flat"),
         }
     except Exception:
         _CHART_UI_CACHE = dict(defaults)
@@ -391,22 +472,10 @@ def get_chart_lines_raw(
             {"key": "ema12", "label": "EMA12", "color": (168, 85, 247), "glyph": "●"},
             {"key": "ema26", "label": "EMA26", "color": (56, 189, 248), "glyph": "◆"},
         ]
-        color_map = {
-            "GREEN": fg_rgb(52, 211, 153),
-            "BLUE": fg_rgb(129, 140, 248),
-            "LBLUE": fg_rgb(34, 211, 238),
-            "RED": fg_rgb(251, 113, 133),
-            "ORANGE": fg_rgb(251, 146, 60),
-            "YELLOW": fg_rgb(253, 224, 71),
-        }
-        bg_color_map = {
-            "GREEN": bg_rgb(6, 78, 59),
-            "BLUE": bg_rgb(49, 46, 129),
-            "LBLUE": bg_rgb(22, 78, 99),
-            "RED": bg_rgb(153, 27, 27),
-            "ORANGE": bg_rgb(124, 45, 18),
-            "YELLOW": bg_rgb(120, 53, 4),
-        }
+        zone_rgb_map = dict(DEFAULT_ZONE_RGB)
+        zone_bg_rgb_map = dict(DEFAULT_ZONE_BG_RGB)
+        color_map = {key: _rgb_to_fg(rgb) for key, rgb in zone_rgb_map.items()}
+        bg_color_map = {key: _rgb_to_bg(rgb) for key, rgb in zone_bg_rgb_map.items()}
         if registry_active:
             try:
                 from xauby.ui.chart_registry import chart_display_metadata, resolve_chart_strategy_name
@@ -418,6 +487,8 @@ def get_chart_lines_raw(
                 meta_lines = [x for x in (meta.get("lines") or []) if isinstance(x, dict)]
                 if meta_lines:
                     line_defs = meta_lines
+                zone_rgb_map = {}
+                zone_bg_rgb_map = {}
                 color_map = {}
                 bg_color_map = {}
                 for z in meta.get("zones") or []:
@@ -427,12 +498,15 @@ def get_chart_lines_raw(
                     rgb = z.get("color") or (241, 245, 249)
                     bg = z.get("bg_color") or z.get("background")
                     if key and isinstance(rgb, (list, tuple)) and len(rgb) == 3:
+                        zone_rgb_map[key] = tuple(int(x) for x in rgb)
                         color_map[key] = fg_rgb(*rgb)
                     if key and isinstance(bg, (list, tuple)) and len(bg) == 3:
+                        zone_bg_rgb_map[key] = tuple(int(x) for x in bg)
                         bg_color_map[key] = bg_rgb(*bg)
             except Exception:
                 pass
-        default_candle_color = fg_rgb(148, 163, 184)
+        default_candle_rgb = RGB_SLATE_MUTED
+        default_candle_color = _rgb_to_fg(default_candle_rgb)
 
         cross_candle_idx: set[int] = set()
         cross_line_keys = [str(x.get("key", "")) for x in line_defs[:2]]
@@ -499,6 +573,16 @@ def get_chart_lines_raw(
 
         price_step = _nice_price_step(price_range)
         axis_labels = _price_axis_label_rows(min_l, max_h, candle_height, price_step)
+        try:
+            marker_price = (
+                float(current_price)
+                if current_price is not None and float(current_price) > 0
+                else float(df_chart.iloc[-1]["close"])
+            )
+            current_price_row = price_to_row(marker_price)
+        except Exception:
+            marker_price = 0.0
+            current_price_row = None
 
         # Draw from top row (candle_height-1) down to 0
         for r in range(candle_height - 1, -1, -1):
@@ -514,7 +598,8 @@ def get_chart_lines_raw(
                 char = " "
                 color = ""
                 zone = item.get("zone", "")
-                candle_color = color_map.get(zone, default_candle_color)
+                candle_rgb = zone_rgb_map.get(zone, default_candle_rgb)
+                body_bg_rgb = zone_bg_rgb_map.get(zone)
                 body_bg = bg_color_map.get(zone, "")
 
                 show_cross = bool(cross_glyph) and item.get("cross") and item.get("cross_row") == r
@@ -528,11 +613,19 @@ def get_chart_lines_raw(
                     line_color = str(line_hit.get("color") or default_candle_color)
                     color = (body_bg + line_color) if is_body and body_bg else line_color
                 elif is_body:
-                    char = "█"
-                    color = candle_color
+                    gap = " " if candle_cols >= 2 else ""
+                    row_str += _candle_body_cell(
+                        candle_rgb,
+                        body_bg_rgb,
+                        row=r,
+                        body_min=body_min,
+                        body_max=body_max,
+                    ) + gap
+                    continue
                 elif is_wick:
-                    char = "│"
-                    color = candle_color
+                    gap = " " if candle_cols >= 2 else ""
+                    row_str += _wick_cell(candle_rgb) + gap
+                    continue
 
                 gap = " " if candle_cols >= 2 else ""
                 if color:
@@ -541,11 +634,20 @@ def get_chart_lines_raw(
                     row_str += (" " if candle_cols >= 2 else " ") + gap
                     
             tick_price = axis_labels.get(r)
-            if tick_price is not None:
+            is_current_price_row = current_price_row is not None and r == current_price_row
+            axis_divider = f"{C_DARK}│{C_RESET}"
+            if is_current_price_row and marker_price > 0:
+                price_label = (
+                    f"{_rgb_to_bg((49, 46, 129))}"
+                    f"{_rgb_to_fg((199, 210, 254))}"
+                    f" {_format_price_axis(marker_price, price_step)} {C_RESET}"
+                )
+                axis_divider = f"{_rgb_to_fg(RGB_INDIGO)}┤{C_RESET}"
+            elif tick_price is not None:
                 price_label = f"{C_MUTED}{_format_price_axis(tick_price, price_step)}{C_RESET}"
             else:
                 price_label = f"{C_DARK}│{C_RESET}"
-            chart_lines.append(f"  {row_str}{C_DARK}│{C_RESET} {price_label}")
+            chart_lines.append(f"  {row_str}{axis_divider} {price_label}")
 
         # Footer labels sized to the chart row budget (not full terminal when embedded)
         line_budget = max_line_width if max_line_width is not None else get_terminal_width()
@@ -657,9 +759,8 @@ def format_volume_bars_lines(
     vol_rows = max(1, min(4, vol_rows))
     lines: List[str] = []
 
-    # Premium HSL colors matching candlestick chart
-    VOL_GREEN = fg_rgb(52, 211, 153)
-    VOL_RED = fg_rgb(251, 113, 133)
+    vol_green = DEFAULT_ZONE_RGB["GREEN"]
+    vol_red = DEFAULT_ZONE_RGB["RED"]
     
     for vol_row in range(vol_rows):
         v_str = ""
@@ -670,14 +771,14 @@ def format_volume_bars_lines(
             
             if color_by_direction:
                 is_up = closes[idx] >= opens[idx]
-                color = VOL_GREEN if is_up else VOL_RED
+                base_rgb = vol_green if is_up else vol_red
             else:
-                color = C_GREEN
+                base_rgb = vol_green
                 
             if norm >= threshold:
-                v_str += f"{color}█{C_RESET}{vol_gap}"
+                v_str += f"{_volume_cell(base_rgb, norm, '█')}{vol_gap}"
             elif norm >= threshold - (0.5 / vol_rows):
-                v_str += f"{color}▒{C_RESET}{vol_gap}"
+                v_str += f"{_volume_cell(base_rgb, norm, '▒')}{vol_gap}"
             else:
                 v_str += (" " if cols >= 2 else " ") + vol_gap
         
@@ -804,14 +905,7 @@ def get_zone_distribution(db: IDatabaseRepository, symbol: str, limit: int = 50)
 def get_bar_chart_lines(db: IDatabaseRepository, symbol: str, width: int = 50) -> List[str]:
     counts = get_zone_distribution(db, symbol, limit=50)
     total = sum(counts.values()) or 1
-    color_map = {
-        "GREEN": fg_rgb(52, 211, 153),
-        "BLUE": fg_rgb(129, 140, 248),
-        "LBLUE": fg_rgb(34, 211, 238),
-        "RED": fg_rgb(251, 113, 133),
-        "ORANGE": fg_rgb(251, 146, 60),
-        "YELLOW": fg_rgb(253, 224, 71),
-    }
+    bar_rgb_map = dict(DEFAULT_ZONE_RGB)
     label_map = {
         "GREEN": "Green (Buy)",
         "BLUE": "PreBuy 2",
@@ -833,7 +927,7 @@ def get_bar_chart_lines(db: IDatabaseRepository, symbol: str, width: int = 50) -
                 if key:
                     label_map[key] = str(z.get("label") or key)
                 if key and isinstance(rgb, (list, tuple)) and len(rgb) == 3:
-                    color_map[key] = fg_rgb(*rgb)
+                    bar_rgb_map[key] = tuple(int(x) for x in rgb)
     except Exception:
         pass
 
@@ -848,11 +942,11 @@ def get_bar_chart_lines(db: IDatabaseRepository, symbol: str, width: int = 50) -
         count = counts.get(zone, 0)
         pct = (count / total) * 100.0
         bar_len = int((count / total) * max_bar_len)
-        bar_str = "█" * bar_len
-        color = color_map.get(zone, fg_rgb(241, 245, 249))
+        bar_rgb = bar_rgb_map.get(zone, RGB_SLATE_MUTED)
+        bar_str = _gradient_bar(bar_rgb, bar_len, max_bar_len)
         label = label_map.get(zone, zone).ljust(max_label)
         suffix = f"{C_PRIMARY}{count:>2}{C_RESET} {C_MUTED}({pct:.1f}%){C_RESET}" if width < 70 else f"{C_PRIMARY}{count:>2}{C_RESET} {C_MUTED}candles ({pct:.1f}%){C_RESET}"
-        lines.append(f"  {C_MUTED}{label}{C_RESET} {C_DARK}│{C_RESET} {color}{bar_str:<{max_bar_len}}{RESET} {suffix}")
+        lines.append(f"  {C_MUTED}{label}{C_RESET} {C_DARK}│{C_RESET} {bar_str} {suffix}")
     return lines
 
 def get_capital_curve_lines(

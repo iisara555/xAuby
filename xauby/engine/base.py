@@ -201,6 +201,8 @@ class BaseEngine:
         self._balance_refresh_thread: Optional[threading.Thread] = None
         self._last_equity: Optional[float] = None
         self._sim_balance_lock = threading.Lock()
+        self._symbol_filter_cache: Dict[str, tuple[float, Dict[str, Any]]] = {}
+        self._symbol_filter_lock = threading.RLock()
 
         from xauby.engine.brokers import LiveBroker, SimBroker
 

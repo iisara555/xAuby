@@ -6,6 +6,30 @@ def fg_rgb(r: int, g: int, b: int) -> str:
 def bg_rgb(r: int, g: int, b: int) -> str:
     return f"\033[48;2;{r};{g};{b}m"
 
+def clamp_rgb(value: int) -> int:
+    return max(0, min(255, int(value)))
+
+def blend_rgb(
+    start: tuple[int, int, int],
+    end: tuple[int, int, int],
+    t: float,
+) -> tuple[int, int, int]:
+    """Blend two RGB colors; t=0 returns start, t=1 returns end."""
+    mix = max(0.0, min(1.0, float(t)))
+    return (
+        clamp_rgb(start[0] + (end[0] - start[0]) * mix),
+        clamp_rgb(start[1] + (end[1] - start[1]) * mix),
+        clamp_rgb(start[2] + (end[2] - start[2]) * mix),
+    )
+
+def shade_rgb(color: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
+    """Darken or brighten an RGB color while staying in the original hue family."""
+    return (
+        clamp_rgb(color[0] * factor),
+        clamp_rgb(color[1] * factor),
+        clamp_rgb(color[2] * factor),
+    )
+
 # Core Color Theme Palette (Gemini Inspired Minimalist Slate)
 C_RESET = "\033[0m"
 C_BOLD = "\033[1m"

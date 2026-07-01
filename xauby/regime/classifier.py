@@ -86,6 +86,15 @@ def _range_pct(highs: List[float], lows: List[float], close: float, lookback: in
     return (hh - ll) / close if close > 0 else 0.0
 
 
+def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
+    try:
+        if not math.isfinite(value):
+            return lo
+        return max(lo, min(hi, float(value)))
+    except (TypeError, ValueError):
+        return lo
+
+
 def _safe_round(value: float, places: int = 4) -> float:
     try:
         if math.isfinite(value):
@@ -93,6 +102,104 @@ def _safe_round(value: float, places: int = 4) -> float:
     except (TypeError, ValueError):
         pass
     return 0.0
+
+
+def _pct_returns(values: List[float], lookback: int = 60) -> List[float]:
+    vals = values[-(lookback + 1):] if lookback > 0 else values
+    out: List[float] = []
+    for i in range(1, len(vals)):
+        prev = vals[i - 1]
+        if prev > 0:
+            out.append((vals[i] - prev) / prev)
+    return out
+
+
+def _stdev(values: List[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    avg = sum(values) / len(values)
+    var = sum((v - avg) ** 2 for v in values) / (len(values) - 1)
+    return math.sqrt(max(0.0, var))
+
+
+def _percentile_rank(value: float, sample: List[float]) -> float:
+    clean = [float(v) for v in sample if v is not None and math.isfinite(float(v))]
+    if not clean:
+        return 0.5
+    below = sum(1 for v in clean if v < value)
+    equal = sum(1 for v in clean if v == value)
+    return _clamp((below + 0.5 * equal) / len(clean))
+
+
+def _historical_atr_ratios(
+    highs: List[float],
+    lows: List[float],
+    closes: List[float],
+    *,
+    period: int = 14,
+    lookback: int = 120,
+) -> List[float]:
+    ratios: List[float] = []
+    if len(closes) < period + 2:
+        return ratios
+    start = max(period + 1, len(closes) - lookback)
+    for end in range(start, len(closes) + 1):
+        close = closes[end - 1]
+        if close <= 0:
+            continue
+        atr = compute_atr(highs[:end], lows[:end], closes[:end], period)
+        if atr > 0:
+            ratios.append(atr / close)
+    return ratios
+
+
+def _directional_consistency(closes: List[float], lookback: int = 20) -> float:
+    returns = _pct_returns(closes, lookback)
+    if not returns:
+        return 0.0
+    up = sum(1 for r in returns if r > 0)
+    down = sum(1 for r in returns if r < 0)
+    total = max(1, up + down)
+    return (up - down) / total
+
+
+def _trend_quality_score(
+    *,
+    trend: str,
+    ema_spread_pct: float,
+    ema200_distance_pct: float,
+    momentum_20: float,
+    directional_consistency: float,
+) -> float:
+    if trend == "NEUTRAL":
+        return 0.0
+    direction = 1.0 if trend == "BULLISH" else -1.0
+    spread_score = _clamp(abs(ema_spread_pct) / 0.006)
+    distance_score = _clamp(abs(ema200_distance_pct) / 0.025)
+    momentum_score = _clamp(abs(momentum_20) / 0.04)
+    consistency_score = _clamp(direction * directional_consistency)
+    return _clamp(
+        0.30 * spread_score
+        + 0.25 * distance_score
+        + 0.25 * momentum_score
+        + 0.20 * consistency_score
+    )
+
+
+def _macro_conviction_score(combined_macro: float) -> float:
+    return _clamp(abs(combined_macro) / 1.2)
+
+
+def _liquidity_confirmation_score(volume_ratio: float) -> float:
+    if volume_ratio <= 0:
+        return 0.35
+    if volume_ratio >= 1.5:
+        return 1.0
+    if volume_ratio >= 1.0:
+        return 0.75
+    if volume_ratio >= 0.65:
+        return 0.55
+    return 0.25
 
 
 def _trend_strength(
@@ -117,17 +224,22 @@ def _trend_strength(
     return "CHOPPY"
 
 
-def _volatility_state(volatility: str, vol_ratio: float, avg_vol_ratio: float) -> str:
+def _volatility_state(
+    volatility: str,
+    vol_ratio: float,
+    avg_vol_ratio: float,
+    vol_percentile: float = 0.5,
+) -> str:
     if avg_vol_ratio <= 0:
         return volatility
     rel = vol_ratio / avg_vol_ratio
-    if rel >= 1.8:
+    if rel >= 1.8 or vol_percentile >= 0.95:
         return "EXTREME_EXPANSION"
-    if rel >= 1.3:
+    if rel >= 1.3 or vol_percentile >= 0.80:
         return "EXPANDING"
-    if rel <= 0.55:
+    if rel <= 0.55 or vol_percentile <= 0.10:
         return "COMPRESSION"
-    if rel <= 0.75:
+    if rel <= 0.75 or vol_percentile <= 0.25:
         return "QUIET"
     return "NORMAL"
 
@@ -163,23 +275,28 @@ def _synthesise_detailed_regime(
     momentum_20: float,
     range_pct_20: float,
     ema200_distance_pct: float,
+    trend_quality: float,
+    vol_percentile: float,
 ) -> Dict[str, Any]:
     macro_alignment = _macro_alignment(trend, macro_bias)
     panic_like = (
         trend == "BEARISH"
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
         and (macro_bias == "RISK-OFF" or momentum_20 <= -0.025)
+        and (trend_quality >= 0.55 or vol_percentile >= 0.90)
     )
     bull_breakout = (
         trend == "BULLISH"
         and trend_strength in {"WEAK_UP", "STRONG_UP"}
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
         and liquidity_state in {"CONFIRMING", "SURGE"}
+        and trend_quality >= 0.55
     )
     bear_breakdown = (
         trend == "BEARISH"
         and trend_strength in {"WEAK_DOWN", "STRONG_DOWN"}
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
+        and trend_quality >= 0.55
     )
     low_vol = volatility_state in {"COMPRESSION", "QUIET"} or volatility == "LOW"
     near_ema200 = abs(ema200_distance_pct) <= 0.008
@@ -339,24 +456,18 @@ def classify_market(
     ema200_distance_pct = (latest_close - ema_200) / latest_close if latest_close > 0 else 0.0
     momentum_5 = _pct_change(closes, 5)
     momentum_20 = _pct_change(closes, 20)
+    direction_consistency = _directional_consistency(closes, 20)
+    realized_vol_20 = _stdev(_pct_returns(closes, 20))
+    realized_vol_60 = _stdev(_pct_returns(closes, 60))
     range_pct_20 = _range_pct(highs, lows, latest_close, 20)
 
     # 2. Volatility Classification via ATR
     atr = float(ind.get(f"atr{tf_suffix}") or compute_atr(highs, lows, closes, 14))
     vol_ratio = atr / latest_close if latest_close > 0 else 0.0
 
-    # Calculate average volatility ratio dynamically if enough data exists
-    historical_vols = []
-    for i in range(min(50, len(closes))):
-        sub_closes = closes[:len(closes)-i]
-        sub_highs = highs[:len(highs)-i]
-        sub_lows = lows[:len(lows)-i]
-        if len(sub_closes) >= 15:
-            sub_atr = compute_atr(sub_highs, sub_lows, sub_closes, 14)
-            sub_ratio = sub_atr / sub_closes[-1] if sub_closes[-1] > 0 else 0.0
-            historical_vols.append(sub_ratio)
-            
+    historical_vols = _historical_atr_ratios(highs, lows, closes, period=14, lookback=120)
     avg_vol_ratio = sum(historical_vols) / len(historical_vols) if historical_vols else 0.005
+    vol_percentile = _percentile_rank(vol_ratio, historical_vols) if historical_vols else 0.5
     if vol_ratio > avg_vol_ratio * 1.3:
         volatility = "HIGH"
     elif vol_ratio < avg_vol_ratio * 0.7:
@@ -371,7 +482,14 @@ def classify_market(
         ema200_distance_pct=ema200_distance_pct,
         momentum_20=momentum_20,
     )
-    detailed_volatility_state = _volatility_state(volatility, vol_ratio, avg_vol_ratio)
+    trend_quality = _trend_quality_score(
+        trend=trend,
+        ema_spread_pct=ema_spread_pct,
+        ema200_distance_pct=ema200_distance_pct,
+        momentum_20=momentum_20,
+        directional_consistency=direction_consistency,
+    )
+    detailed_volatility_state = _volatility_state(volatility, vol_ratio, avg_vol_ratio, vol_percentile)
     liquidity_state = _liquidity_state(volume_ratio)
 
     # 3. Macro Bias from macro guard parameters
@@ -391,6 +509,7 @@ def classify_market(
         + weights["dxy"] * dxy_score
         + weights["fred"] * fred_score
     )
+    macro_conviction = _macro_conviction_score(combined_macro)
     
     if combined_macro < -0.3:
         macro_bias = "RISK-OFF"
@@ -409,43 +528,42 @@ def classify_market(
         momentum_20=momentum_20,
         range_pct_20=range_pct_20,
         ema200_distance_pct=ema200_distance_pct,
+        trend_quality=trend_quality,
+        vol_percentile=vol_percentile,
     )
 
     # 4. Target Regime Synthesis
-    confidence = 0.5
-    confidence_factors = []
-
-    # Trend confidence
-    if trend == "BULLISH":
-        if ema_12 > ema_26 * 1.002:
-            confidence_factors.append(1.0)
-        else:
-            confidence_factors.append(0.7)
-    elif trend == "BEARISH":
-        if ema_12 < ema_26 * 0.998:
-            confidence_factors.append(1.0)
-        else:
-            confidence_factors.append(0.7)
-    else:
-        confidence_factors.append(0.6)
-
-    # Volatility / Macro confidence
-    if macro_bias == "RISK-ON" and trend == "BULLISH":
-        confidence_factors.append(1.0)
-    elif macro_bias == "RISK-OFF" and trend == "BEARISH":
-        confidence_factors.append(1.0)
-    else:
-        confidence_factors.append(0.7)
-
     regime = detailed["regime"]
+    macro_alignment_score = 0.72
     if detailed["macro_alignment"] == "ALIGNED":
-        confidence_factors.append(0.95)
+        macro_alignment_score = 0.95
     elif detailed["macro_alignment"] == "CONFLICT":
-        confidence_factors.append(0.55)
-    if detailed["transition_risk"] in {"HIGH", "EXTREME"}:
-        confidence_factors.append(0.55)
-
-    confidence = sum(confidence_factors) / len(confidence_factors) if confidence_factors else 0.5
+        macro_alignment_score = 0.42
+    vol_clarity = abs(vol_percentile - 0.5) * 2.0
+    liquidity_score = _liquidity_confirmation_score(volume_ratio)
+    regime_stability = 1.0
+    if detailed["transition_risk"] == "MEDIUM":
+        regime_stability = 0.72
+    elif detailed["transition_risk"] == "HIGH":
+        regime_stability = 0.55
+    elif detailed["transition_risk"] == "EXTREME":
+        regime_stability = 0.85
+    trend_component = trend_quality if trend != "NEUTRAL" else 0.45
+    confidence = (
+        0.34 * trend_component
+        + 0.20 * macro_alignment_score
+        + 0.14 * macro_conviction
+        + 0.14 * vol_clarity
+        + 0.10 * liquidity_score
+        + 0.08 * regime_stability
+    )
+    if regime in {"LOW_VOL_RANGE", "LOW_VOL_ACCUMULATION", "SIDEWAYS_CHOP"}:
+        confidence = max(confidence, 0.48 + 0.20 * (1.0 - trend_quality))
+    if detailed["macro_alignment"] == "CONFLICT":
+        confidence -= 0.08
+    if detailed["transition_risk"] == "HIGH":
+        confidence -= 0.08
+    confidence = _clamp(confidence, 0.05, 0.98)
     gold_score = int(round(confidence * 100))
     reasons = _build_user_reasons(
         trend=trend,
@@ -461,11 +579,19 @@ def classify_market(
         "ema200_distance_pct": _safe_round(ema200_distance_pct),
         "atr_pct": _safe_round(vol_ratio),
         "avg_atr_pct": _safe_round(avg_vol_ratio),
+        "atr_percentile": _safe_round(vol_percentile),
         "volume_ratio": _safe_round(volume_ratio),
         "momentum_5_pct": _safe_round(momentum_5),
         "momentum_20_pct": _safe_round(momentum_20),
+        "realized_vol_20_pct": _safe_round(realized_vol_20),
+        "realized_vol_60_pct": _safe_round(realized_vol_60),
         "range_20_pct": _safe_round(range_pct_20),
+        "directional_consistency": _safe_round(direction_consistency),
+        "trend_quality": _safe_round(trend_quality),
+        "macro_conviction": _safe_round(macro_conviction),
+        "liquidity_confirmation": _safe_round(liquidity_score),
         "macro_alignment": detailed["macro_alignment"],
+        "institutional_confidence": _safe_round(confidence),
     }
 
     return GoldRegime(

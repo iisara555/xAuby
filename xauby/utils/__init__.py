@@ -1,7 +1,7 @@
 # xauby.utils package initialization
 
 from xauby.utils.colors import (
-    fg_rgb, bg_rgb,
+    fg_rgb, bg_rgb, clamp_rgb, blend_rgb, shade_rgb,
     C_RESET, C_BOLD, C_PRIMARY, C_MUTED, C_DARK, C_BORDER,
     C_GEMINI_BLUE, C_GEMINI_PURPLE, C_GEMINI_PINK, C_GEMINI_CYAN,
     C_GREEN, C_RED, C_YELLOW, C_BLUE,

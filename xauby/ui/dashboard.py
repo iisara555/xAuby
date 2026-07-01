@@ -157,6 +157,74 @@ def _phone_regime_extras(
     return guard_inline, close_text, risk_text
 
 
+def _timeframe_countdown_compact(timeframe: str = "4h") -> str:
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    tf = str(timeframe).lower()
+    if tf in ("15m", "15min"):
+        tf_minutes = 15
+    elif tf in ("30m", "30min"):
+        tf_minutes = 30
+    elif tf in ("1h", "60m"):
+        tf_minutes = 60
+    elif tf in ("2h", "120m"):
+        tf_minutes = 120
+    elif tf in ("4h", "240m"):
+        tf_minutes = 240
+    elif tf in ("6h", "360m"):
+        tf_minutes = 360
+    elif tf in ("8h", "480m"):
+        tf_minutes = 480
+    elif tf in ("12h", "720m"):
+        tf_minutes = 720
+    elif tf in ("1d", "24h", "1440m", "daily"):
+        tf_minutes = 1440
+    else:
+        tf_minutes = 240
+    total_minutes = now_utc.hour * 60 + now_utc.minute
+    elapsed = total_minutes % tf_minutes
+    seconds_left = (tf_minutes - elapsed) * 60 - now_utc.second
+    if seconds_left <= 0:
+        seconds_left += tf_minutes * 60
+    hours = seconds_left // 3600
+    minutes = (seconds_left % 3600) // 60
+    return f"{hours:02d}h {minutes:02d}m"
+
+
+def format_mobile_safety_line(state: Dict[str, Any], max_width: int) -> str:
+    """One-line phone operator status: live/read-only/feed/position."""
+    exchange = state.get("exchange") or {}
+    if not isinstance(exchange, dict):
+        exchange = {}
+    ex_name = str(exchange.get("name") or exchange.get("id") or "").upper()
+    market_type = str(exchange.get("market_type") or "").upper()
+    mode = "SIM" if state.get("simulate_only") else "LIVE"
+    ro = "ON" if state.get("read_only") else "OFF"
+    pos = state.get("position") or {}
+    feed = str(pos.get("feed_health") or "OK").upper()
+    pos_state = str(pos.get("state") or "idle").upper()
+
+    parts = [mode]
+    if ex_name:
+        parts.append(ex_name)
+    if market_type:
+        parts.append(market_type)
+    parts.extend([f"RO:{ro}", f"Feed:{feed}", f"Pos:{pos_state}"])
+    line = f"  {C_MUTED}{' | '.join(parts)}{C_RESET}"
+    return _fit_checklist_line(line, max_width)
+
+
+def format_mobile_timing_line(state: Dict[str, Any], max_width: int) -> str:
+    """One-line phone timing/risk context for the signal panel."""
+    chart_tf = str(state.get("primary_timeframe") or "4h")
+    risk = state.get("risk") or {}
+    risk_pct = float(risk.get("risk_pct", 0.01) or 0.01) * 100.0
+    line = (
+        f"  {C_MUTED}Close:{C_RESET}{_timeframe_countdown_compact(chart_tf)} "
+        f"{C_MUTED}| Risk:{C_RESET}{C_YELLOW}{risk_pct:.1f}%{C_RESET}"
+    )
+    return _fit_checklist_line(line, max_width)
+
+
 def _multi_phone_focus_line(
     focus_title: str,
     curr_price: float,
@@ -682,10 +750,12 @@ def render_blocker_box(
 
     if is_phone:
         one = (
-            f"  {C_YELLOW}⚠{C_RESET} {C_BOLD}BLOCKED:{C_RESET} {C_RED}{blocked}{C_RESET} "
-            f"{C_MUTED}│{C_RESET} {C_BOLD}NEXT:{C_RESET} {C_PRIMARY}{next_hint}{C_RESET}"
+            f"  {C_YELLOW}⚠{C_RESET} {C_BOLD}NEXT:{C_RESET} {C_PRIMARY}{next_hint}{C_RESET} "
+            f"{C_MUTED}│{C_RESET} {C_RED}{blocked}{C_RESET}"
         )
         budget = min(max_width, CHECKLIST_LINE_BUDGET)
+        if visible_len(one) > budget:
+            one = f"  {C_YELLOW}⚠{C_RESET} {C_BOLD}NEXT:{C_RESET} {C_PRIMARY}{next_hint}{C_RESET}"
         if visible_len(one) > budget:
             one = _fit_checklist_line(one, budget)
         return [one]
@@ -731,9 +801,16 @@ def _guard_status_labels(g_info: Dict[str, Any]) -> tuple:
     )
 
 
-def get_recent_events_lines(state: Dict[str, Any], limit: int = 3) -> List[str]:
+def get_recent_events_lines(
+    state: Dict[str, Any],
+    limit: int = 3,
+    *,
+    compact: bool = False,
+) -> List[str]:
     """Render recent observability events from state snapshot (noise filtered)."""
-    skip_types = frozenset({"tick", "heartbeat"})
+    skip_types = {"tick", "heartbeat"}
+    if compact:
+        skip_types.add("regime_classified")
     events = state.get("recent_events") or []
     filtered: List[Dict[str, Any]] = []
     for ev in events:

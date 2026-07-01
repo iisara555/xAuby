@@ -78,7 +78,7 @@ def main():
         engine.start()
     except ConfigError as e:
         print(f"\nConfiguration error: {e}")
-        sys.exit(1)
+        sys.exit(100)  # systemd RestartPreventExitStatus: do not restart-loop on bad config
     except RuntimeError as e:
         msg = str(e)
         if "already running" in msg:

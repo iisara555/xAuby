@@ -521,7 +521,8 @@ class CDCActionZoneStrategy(Strategy):
             ]
 
         ema_gap_pct = ((ema_fast - ema_slow) / ema_slow * 100.0) if ema_slow else 0.0
-        enable_short = bool(ctx.config.get("enable_short", False))
+        ctx_config = getattr(ctx, "config", {}) or {}
+        enable_short = bool(ctx_config.get("enable_short", False))
         short_bias = enable_short and h4_zone == "RED"
         target_zone = "RED" if short_bias else "GREEN"
         target_streak = red_streak if short_bias else green_streak

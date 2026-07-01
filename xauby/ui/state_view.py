@@ -296,7 +296,7 @@ def format_static_portfolio_lines(
         thb_str = f"/{_format_portfolio_thb(thb_total)}" if thb_total > 0 else ""
         cash_str = f"  {C_MUTED}C:{C_RESET}{C_GREEN}{usdt_bal:,.0f}U{C_RESET}" if usdt_bal > 0 else ""
         lines.append(pad_line(
-            f"  {C_BOLD}Port{C_RESET} {C_GREEN}{total:,.0f}U{C_RESET}{C_MUTED}{thb_str}{C_RESET}"
+            f"  {C_BOLD}Eq{C_RESET} {C_GREEN}{total:,.0f}U{C_RESET}{C_MUTED}{thb_str}{C_RESET}"
             f"  {bar_str} {alloc_str}{cash_str}",
             width,
         ))
@@ -434,7 +434,7 @@ def format_all_positions_lines(
                     pad_line(
                         f"  {C_PRIMARY}{sym}{C_RESET} {st_disp} Mark {mark_str} "
                         f"{pnl_c}{pnl:+,.2f} {quote_label} ({pnl_pct:+.2f}%){C_RESET} "
-                        f"SL {sl_str}",
+                        f"SL {sl_str} ({sl_gap_pct:+.2f}%)",
                         width,
                     )
                 )
