@@ -48,7 +48,11 @@
         <article class="panel chart-panel">
           <div class="panel-head">
             <h2>Market Candles</h2>
-            <span id="chartMeta">recent closes</span>
+            <div class="chart-head-meta">
+              <span class="legend-dot ema-fast"></span><span>EMA12</span>
+              <span class="legend-dot ema-slow"></span><span>EMA26</span>
+              <span id="chartMeta">recent closes</span>
+            </div>
           </div>
           <canvas id="priceCanvas" height="220"></canvas>
           <div class="cdc-strip" id="cdcStrip">
@@ -67,6 +71,24 @@
             <div>
               <span>Streak</span>
               <strong id="cdcStreak">--</strong>
+            </div>
+          </div>
+          <div class="home-summary">
+            <div>
+              <span>Signal</span>
+              <strong id="overviewSignal">--</strong>
+            </div>
+            <div>
+              <span>Regime</span>
+              <strong id="regimeState">--</strong>
+            </div>
+            <div>
+              <span>Risk</span>
+              <strong id="overviewRisk">--</strong>
+            </div>
+            <div>
+              <span>Health</span>
+              <strong id="overviewHealth">--</strong>
             </div>
           </div>
         </article>

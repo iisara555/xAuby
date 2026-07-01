@@ -20,6 +20,13 @@ const cls = (id, value) => {
   if (el) el.className = value;
 };
 
+const addStateClass = (id, baseClass, value) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const state = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  el.className = `${baseClass} ${state}`.trim();
+};
+
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
   "&": "&amp;",
   "<": "&lt;",
@@ -30,6 +37,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
 
 let lastCandles = [];
 let currentSymbol = "";
+let latestMarketPrice = null;
 
 function asNumber(value) {
   const n = Number(value);
@@ -40,6 +48,16 @@ function compactIndicatorValue(value) {
   const n = Number(value);
   if (Number.isFinite(n)) return fmtNum(n, n >= 100 ? 0 : 2);
   return String(value ?? "--");
+}
+
+function compactState(value) {
+  const raw = String(value || "--").toUpperCase();
+  return raw
+    .replace("BEAR_TREND_", "BEAR ")
+    .replace("BULL_TREND_", "BULL ")
+    .replace("RANGE_", "RANGE ")
+    .replace("RISK_", "")
+    .replace(/_/g, " ");
 }
 
 function normalizeCandles(values) {
@@ -110,7 +128,7 @@ function focusSnapshot(state) {
   return state;
 }
 
-function drawChart(values) {
+function drawChart(values, referencePrice = latestMarketPrice) {
   const canvas = document.getElementById("priceCanvas");
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
@@ -150,13 +168,19 @@ function drawChart(values) {
   text("chartMeta", `${candles.length} candles`);
   const emaFast = emaSeries(candles, 12);
   const emaSlow = emaSeries(candles, 26);
+  const livePrice = referencePrice == null ? null : asNumber(referencePrice);
   const scaleValues = [
     ...candles.flatMap((c) => [c.low, c.high]),
     ...emaFast,
     ...emaSlow,
+    livePrice,
   ].filter(Number.isFinite);
-  const min = Math.min(...scaleValues);
-  const max = Math.max(...scaleValues);
+  const rawMin = Math.min(...scaleValues);
+  const rawMax = Math.max(...scaleValues);
+  const rawSpan = rawMax - rawMin || Math.max(Math.abs(rawMax) * 0.002, 1);
+  const pad = rawSpan * 0.12;
+  const min = rawMin - pad;
+  const max = rawMax + pad;
   const span = max - min || 1;
 
   const yFor = (value) => topPad + (max - value) / span * plotH;
@@ -225,7 +249,7 @@ function drawChart(values) {
     ctx.fillText(fmtNum(value, 0), w - rightPad + 8, y);
   }
 
-  const latest = candles[candles.length - 1].close;
+  const latest = livePrice ?? candles[candles.length - 1].close;
   const latestY = yFor(latest);
   ctx.fillStyle = "#7357ff";
   const label = fmtNum(latest, 0);
@@ -340,7 +364,16 @@ function updateState(payload) {
   const symbol = snap.symbol || state.focus_symbol || state.symbol || "xAuby";
   const mode = snap.execution_mode || (snap.simulate_only || state.simulate_only ? "sim" : "live");
   const modeText = String(mode || "").toUpperCase();
-  const price = snap.current_price || state.current_price || 0;
+  const rawPrice = snap.current_price ?? state.current_price;
+  const price = asNumber(rawPrice) ?? 0;
+  latestMarketPrice = rawPrice == null ? null : asNumber(rawPrice);
+  const pct24h = Number(
+    snap.percent_change_24h
+    ?? snap.price_change_24h_pct
+    ?? state.percent_change_24h
+    ?? state.price_change_24h_pct
+    ?? 0
+  );
   const equity = snap.total_equity_usdt || state.total_equity_usdt || (state.aggregate || {}).total_equity_usdt || 0;
   const bd = snap.equity_breakdown || {};
   const pos = snap.position || {};
@@ -366,19 +399,20 @@ function updateState(payload) {
   text("equityValue", fmtMoney(equity));
   text("cashValue", `Trading cash ${fmtMoney(bd.usdt_balance_usdt || (snap.portfolio || {}).USDT || 0)}`);
   text("priceValue", fmtNum(price, 2));
-  text("changeValue", `24h ${fmtNum(snap.percent_change_24h || state.percent_change_24h || 0, 2)}%`);
+  text("changeValue", `24h ${fmtNum(pct24h, 2)}%`);
+  cls("changeValue", `change-value ${pct24h > 0 ? "positive" : pct24h < 0 ? "negative" : "neutral"}`);
   text("positionValue", `${pos.state || "idle"} ${(pos.position_side || "").toUpperCase()}`.trim());
   text("pnlValue", `PnL ${fmtMoney(pos.unrealized_pnl || 0)}`);
   text("signalAction", sig.action || "--");
   text("overviewSignal", sig.action || "--");
   text("signalReason", sig.reason || "No signal reason");
   text("regimeConfidence", confidence);
-  text("regimeState", regime.regime || "--");
+  text("regimeState", compactState(regime.regime));
   text("regimeStateDetail", regime.regime || "--");
   text("trendState", regime.trend || "--");
   text("trendStateDetail", regime.trend || "--");
   text("riskState", regime.risk_state || "--");
-  text("overviewRisk", regime.risk_state || "--");
+  text("overviewRisk", compactState(regime.risk_state));
   text("feedState", pos.feed_health || (snap.degraded ? "DEGRADED" : "OK"));
   text("feedStateDetail", pos.feed_health || (snap.degraded ? "DEGRADED" : "OK"));
   text("stateAge", payload.age_sec == null ? "--" : `${payload.age_sec}s`);
@@ -387,6 +421,7 @@ function updateState(payload) {
   text("apiLatency", latency.api_latency_ms == null ? "--" : `${latency.api_latency_ms}ms`);
   text("overviewApiLatency", latency.api_latency_ms == null ? "--" : `${latency.api_latency_ms}ms`);
   text("cdcZone", cdcZone);
+  addStateClass("cdcZone", "zone-value", cdcZone);
   text("cdcEmaFast", compactIndicatorValue(indicators.ema_fast_4h));
   text("cdcEmaSlow", compactIndicatorValue(indicators.ema_slow_4h));
   text("cdcStreak", streak ? `${cdcZone} ${streak}` : "--");
@@ -394,12 +429,13 @@ function updateState(payload) {
   renderChecklist(sig.checklist || []);
   if (!lastCandles.length) {
     lastCandles = indicators.recent_candles_4h || indicators.candles_4h || indicators.ohlcv_4h || indicators.recent_ohlcv_4h || indicators.recent_closes_4h || [];
-    drawChart(lastCandles);
+    drawChart(lastCandles, latestMarketPrice);
   }
 }
 
 function updateHealth(payload) {
   text("healthStatus", payload.status || "--");
+  text("overviewHealth", payload.status || "--");
   text("engineStatus", (payload.process_status || {}).status || "--");
   const root = document.getElementById("healthList");
   if (!root) return;
@@ -420,7 +456,7 @@ function setView(view) {
   if (location.hash !== `#${view}`) {
     history.replaceState(null, "", `#${view}`);
   }
-  requestAnimationFrame(() => drawChart(lastCandles));
+  requestAnimationFrame(() => drawChart(lastCandles, latestMarketPrice));
 }
 
 function initNavigation() {
@@ -449,7 +485,7 @@ async function refresh() {
       const candles = await getJson(`/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=4h&limit=24`);
       if (candles.ok && Array.isArray(candles.candles) && candles.candles.length) {
         lastCandles = candles.candles;
-        drawChart(lastCandles);
+        drawChart(lastCandles, latestMarketPrice);
       }
     }
     updateHealth(health);
@@ -465,4 +501,4 @@ async function refresh() {
 initNavigation();
 refresh();
 setInterval(refresh, 5000);
-window.addEventListener("resize", () => drawChart(lastCandles));
+window.addEventListener("resize", () => drawChart(lastCandles, latestMarketPrice));

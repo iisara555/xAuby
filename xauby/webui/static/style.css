@@ -74,8 +74,10 @@ textarea {
 }
 
 .panel-head span,
+.chart-head-meta,
 .cdc-strip span,
 .cdc-detail span,
+.home-summary span,
 .mini-card span,
 .mini-card small,
 .balance-card span,
@@ -280,6 +282,18 @@ body[data-view="activity"] [data-section="activity"] .panel {
   white-space: nowrap;
 }
 
+.mini-card small.change-value.positive {
+  color: var(--green);
+}
+
+.mini-card small.change-value.negative {
+  color: var(--red);
+}
+
+.mini-card small.change-value.neutral {
+  color: var(--muted);
+}
+
 .panel {
   min-width: 0;
   border-radius: 20px;
@@ -294,25 +308,56 @@ body[data-view="activity"] [data-section="activity"] .panel {
   margin-bottom: 8px;
 }
 
+.chart-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-dot.ema-fast {
+  background: #a855f7;
+}
+
+.legend-dot.ema-slow {
+  background: #38bdf8;
+}
+
 .chart-panel {
-  min-height: 286px;
+  min-height: 330px;
 }
 
 canvas {
   display: block;
   width: 100%;
-  height: 196px;
+  height: 180px;
 }
 
 .cdc-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
-  margin-top: 8px;
+  margin-top: 7px;
+}
+
+.home-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 7px;
 }
 
 .cdc-strip div,
-.cdc-detail div {
+.cdc-detail div,
+.home-summary div {
   min-width: 0;
   border-radius: 13px;
   padding: 7px 8px;
@@ -320,12 +365,37 @@ canvas {
 }
 
 .cdc-strip strong,
-.cdc-detail strong {
+.cdc-detail strong,
+.home-summary strong {
   display: block;
   margin-top: 4px;
   font-size: 11px;
   line-height: 1.1;
   overflow-wrap: anywhere;
+}
+
+.home-summary strong {
+  font-size: 9px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.zone-value.red {
+  color: var(--red);
+}
+
+.zone-value.green {
+  color: var(--green);
+}
+
+.zone-value.yellow,
+.zone-value.orange {
+  color: var(--yellow);
+}
+
+.zone-value.blue,
+.zone-value.lblue {
+  color: var(--cyan);
 }
 
 .cdc-detail {
@@ -339,6 +409,10 @@ canvas {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+body[data-view="overview"] .detail-grid {
+  display: none;
 }
 
 .detail-grid article {
