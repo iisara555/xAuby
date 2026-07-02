@@ -3,20 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#191712" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="xAuby" />
+    <meta name="format-detection" content="telephone=no" />
     <title>xAuby WebUI</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body data-view="overview">
     <main class="app-shell">
       <header class="app-top">
-        <img class="profile-avatar" src="/profile-itsara.jpg" alt="Itsara profile" />
+        <span class="avatar-ring">
+          <img class="profile-avatar" id="profileAvatar" src="/avatar-default.svg" alt="Operator profile" />
+        </span>
         <div class="title-stack">
-          <h1>Itsara</h1>
-          <div class="profile-badges">
-            <span class="badge verified">Live</span>
-            <span class="badge exchange">OKX</span>
-            <span class="badge indicator" id="indicatorLabel">Indicator</span>
-          </div>
+          <h1 id="botName">xAuby</h1>
+          <p class="profile-sub">
+            <span class="gold-dot" aria-hidden="true"></span>
+            <span id="exchangeBadge">OKX</span>
+            <span class="sep" aria-hidden="true">&middot;</span>
+            <span id="indicatorLabel">CDC ActionZone</span>
+          </p>
         </div>
         <div class="header-status">
           <div class="status-pill" id="modePill">Loading</div>
@@ -157,22 +166,22 @@
           <div class="trades" id="trades"></div>
         </article>
       </section>
-    </main>
 
-    <nav class="bottom-nav" aria-label="Dashboard sections">
-      <button class="active" type="button" data-view-target="overview" aria-label="Home">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/></svg>
-        <span>Home</span>
-      </button>
-      <button type="button" data-view-target="signal" aria-label="Signal">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg>
-        <span>Signal</span>
-      </button>
-      <button type="button" data-view-target="activity" aria-label="Activity">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg>
-        <span>Activity</span>
-      </button>
-    </nav>
+      <nav class="bottom-nav" aria-label="Dashboard sections">
+        <button class="active" type="button" data-view-target="overview" aria-label="Home">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/></svg>
+          <span>Home</span>
+        </button>
+        <button type="button" data-view-target="signal" aria-label="Signal">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg>
+          <span>Signal</span>
+        </button>
+        <button type="button" data-view-target="activity" aria-label="Activity">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg>
+          <span>Activity</span>
+        </button>
+      </nav>
+    </main>
     <script src="/app.js"></script>
   </body>
 </html>

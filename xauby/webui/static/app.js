@@ -69,6 +69,17 @@ function relativeTime(value) {
   return `${Math.round(diffHour / 24)}d ago`;
 }
 
+function compactSecs(sec) {
+  const n = Number(sec);
+  if (!Number.isFinite(n) || n < 0) return "--";
+  if (n < 90) return `${Math.round(n)}s`;
+  const minutes = n / 60;
+  if (minutes < 90) return `${Math.round(minutes)}m`;
+  const hours = minutes / 60;
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
 function shortStatus(value, fallback = "--") {
   const raw = String(value || fallback).toUpperCase();
   if (raw === "RUNNING") return "RUN";
@@ -178,6 +189,18 @@ async function getJson(url) {
   return res.json();
 }
 
+async function loadMeta() {
+  try {
+    const meta = await getJson("/api/meta");
+    if (!meta.ok) return;
+    if (meta.display_name) text("botName", meta.display_name);
+    const avatar = document.getElementById("profileAvatar");
+    if (avatar && meta.avatar_url) avatar.src = meta.avatar_url;
+  } catch (err) {
+    /* header falls back to the bundled defaults */
+  }
+}
+
 function focusSnapshot(state) {
   const bySymbol = state.by_symbol || {};
   const keys = Object.keys(bySymbol);
@@ -208,7 +231,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   const plotW = w - leftPad - rightPad;
   const plotH = h - topPad - bottomPad;
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.045)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 7]);
   for (let i = 1; i < 4; i += 1) {
@@ -249,7 +272,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   candles.forEach((c, i) => {
     const x = leftPad + slot * i + slot / 2;
     const up = c.close >= c.open;
-    const color = up ? "#31d07f" : "#ff6678";
+    const color = up ? "#4cc38f" : "#e56571";
     const yOpen = yFor(c.open);
     const yClose = yFor(c.close);
     const yHigh = yFor(c.high);
@@ -296,11 +319,11 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     if (started) ctx.stroke();
     ctx.restore();
   };
-  drawEma(emaSlow, "#38bdf8");
-  drawEma(emaFast, "#a855f7");
+  drawEma(emaSlow, "#8fb7e8");
+  drawEma(emaFast, "#e3b558");
 
-  ctx.fillStyle = "rgba(246, 243, 255, 0.62)";
-  ctx.font = "11px Inter, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(240, 236, 226, 0.58)";
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   for (let i = 0; i < 5; i += 1) {
@@ -311,9 +334,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
 
   const latest = livePrice ?? candles[candles.length - 1].close;
   const latestY = yFor(latest);
-  ctx.fillStyle = "#7c4dff";
-  ctx.shadowColor = "rgba(124, 77, 255, 0.42)";
-  ctx.shadowBlur = 8;
+  ctx.fillStyle = "#e3b558";
   const label = fmtNum(latest, 0);
   const labelW = ctx.measureText(label).width + 16;
   ctx.beginPath();
@@ -323,12 +344,11 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   } else {
     ctx.fillRect(w - labelW - 3, latestY - 12, labelW, 24);
   }
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#211b0e";
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);
 
-  ctx.fillStyle = "rgba(246, 243, 255, 0.56)";
+  ctx.fillStyle = "rgba(240, 236, 226, 0.55)";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   chartAxisLabels(currentTimeframe, candles.length).forEach((labelText, index) => {
@@ -535,7 +555,7 @@ function updateState(payload) {
   const latency = snap.latency || state.latency || {};
   const indicators = snap.indicators || {};
   const indicatorDisplay = snap.indicator_display || {};
-  const wsAge = latency.ws_tick_age_ms == null ? "--" : `${Math.round(latency.ws_tick_age_ms / 1000)}s`;
+  const wsAge = latency.ws_tick_age_ms == null ? "--" : compactSecs(latency.ws_tick_age_ms / 1000);
   const confidence = `${fmtNum((regime.confidence || sig.confidence || 0) * 100, 0)}%`;
   const zoneItem = (indicatorDisplay.panel_items || []).find((item) => item.label === "Zone");
   const cdcZone = indicators.cdc_zone_4h || (zoneItem || {}).value || "--";
@@ -546,10 +566,21 @@ function updateState(payload) {
   text("exchangeLabel", `${(exchange.id || "exchange").toUpperCase()} ${(exchange.market_type || "").toUpperCase()}`);
   text("symbolTitle", symbol);
   currentSymbol = symbol;
-  text("indicatorLabel", "Indicator");
-  text("modePill", modeText);
-  cls("modePill", `status-pill ${modeText === "LIVE" ? "live" : "warn"}`);
-  text("equityValue", fmtMoney(equity));
+  text("exchangeBadge", (exchange.id || "OKX").toUpperCase());
+  const strategyName = snap.strategy || snap.strategy_name || "";
+  if (strategyName) text("indicatorLabel", compactState(strategyName));
+  const stale = Boolean(payload.stale);
+  text("modePill", stale ? "STALE" : modeText);
+  cls("modePill", `status-pill ${!stale && modeText === "LIVE" ? "live" : "warn"}`);
+  const equityEl = document.getElementById("equityValue");
+  if (equityEl) {
+    equityEl.textContent = "";
+    equityEl.append(fmtNum(equity, 2), " ");
+    const unit = document.createElement("span");
+    unit.className = "unit";
+    unit.textContent = "USDT";
+    equityEl.appendChild(unit);
+  }
   text("cashValue", `Trading cash ${fmtMoney(bd.usdt_balance_usdt || (snap.portfolio || {}).USDT || 0)}`);
   text("priceValue", fmtNum(price, 2));
   text("changeValue", `24h ${fmtNum(pct24h, 2)}%`);
@@ -579,7 +610,7 @@ function updateState(payload) {
   text("feedStateDetail", feedText);
   setStateClass("feedState", healthSemantic(feedText));
   setStateClass("feedStateDetail", healthSemantic(feedText));
-  text("stateAge", payload.age_sec == null ? "S --" : `S ${payload.age_sec}s`);
+  text("stateAge", payload.age_sec == null ? "S --" : `S ${compactSecs(payload.age_sec)}`);
   text("wsAge", `W ${wsAge}`);
   text("apiLatency", latency.api_latency_ms == null ? "A --" : `A ${latency.api_latency_ms}`);
   text("cdcZone", cdcZone);
@@ -666,6 +697,7 @@ async function refresh() {
 }
 
 initNavigation();
+loadMeta();
 refresh();
 setInterval(refresh, 5000);
 window.addEventListener("resize", () => drawChart(lastCandles, latestMarketPrice));
