@@ -114,6 +114,9 @@ def health_payload(project_root: str) -> Dict[str, Any]:
     process = monitor.check_process_status()
     event_store = monitor.check_event_store()
     logs = monitor.scan_recent_logs()
+    # Counts only over HTTP: raw log lines can carry exchange error bodies,
+    # filesystem paths, and order details the dashboard never renders.
+    logs = {k: v for k, v in logs.items() if k not in ("errors_found", "warnings_found")}
     anomalies = []
     disk = (resources.get("disk") or {}) if isinstance(resources, dict) else {}
     if float(disk.get("pct_used") or 0.0) > 90.0:

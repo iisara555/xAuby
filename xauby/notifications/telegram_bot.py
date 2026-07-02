@@ -106,6 +106,18 @@ class TelegramCommandPoller:
     def _is_authorized(self, chat_id: Any) -> bool:
         return str(chat_id) == self.chat_id
 
+    def _is_authorized_actor(self, sender: Any) -> bool:
+        """Gate on who pressed/sent, not only which chat it came from.
+
+        With a private chat configured (positive id), a present sender must be
+        that same user. A group chat id (negative) has no member allowlist to
+        check against, and updates without ``from`` (e.g. channel posts) carry
+        no sender to verify — the chat gate remains the only control there."""
+        if self.chat_id.startswith("-"):
+            return True
+        sender_id = str((sender or {}).get("id") or "")
+        return not sender_id or sender_id == self.chat_id
+
     def _reply(self, chat_id: str, text: str, reply_markup: Optional[dict] = None) -> None:
         svc = getattr(self.engine, "_tg_service", None)
         if svc and hasattr(svc, "send_immediate"):
@@ -158,6 +170,8 @@ class TelegramCommandPoller:
         chat = message.get("chat") or {}
         if not self._is_authorized(chat.get("id")):
             return
+        if not self._is_authorized_actor(message.get("from")):
+            return
         text = (message.get("text") or "").strip()
         if not text.startswith("/"):
             return
@@ -181,6 +195,8 @@ class TelegramCommandPoller:
         message = callback.get("message") or {}
         chat = message.get("chat") or {}
         if not self._is_authorized(chat.get("id")):
+            return
+        if not self._is_authorized_actor(callback.get("from")):
             return
         data = callback.get("data") or ""
         cb_id = callback.get("id", "")

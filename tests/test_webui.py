@@ -8,7 +8,13 @@ from urllib.error import HTTPError
 from urllib.request import urlopen
 from unittest import mock
 
-from xauby.webui.server import candles_payload, create_server, recent_events_payload, trades_payload
+from xauby.webui.server import (
+    candles_payload,
+    create_server,
+    health_payload,
+    recent_events_payload,
+    trades_payload,
+)
 
 
 class WebUIServerTest(unittest.TestCase):
@@ -193,6 +199,31 @@ class WebUIServerTest(unittest.TestCase):
             urlopen(f"{base}/../bot_config.yaml", timeout=3)
 
         self.assertEqual(raised.exception.code, 404)
+
+    def test_health_payload_reports_log_counts_without_raw_lines(self):
+        log_dir = os.path.join(self.project_root, "core", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, "xauby_bot.log"), "w", encoding="utf-8") as handle:
+            handle.write("2026-07-02 ERROR order rejected: secret-ish detail\n")
+            handle.write("2026-07-02 WARNING funding rate spike\n")
+
+        payload = health_payload(self.project_root)
+
+        log_scan = payload["log_scan"]
+        self.assertEqual(log_scan["errors_count"], 1)
+        self.assertEqual(log_scan["warnings_count"], 1)
+        self.assertNotIn("errors_found", log_scan)
+        self.assertNotIn("warnings_found", log_scan)
+        self.assertIn("Recent log errors: 1", payload["anomalies"])
+
+    def test_health_payload_does_not_create_db_file(self):
+        # The health probe must stay a pure reader: no core/xauby.db appearing
+        # as a side effect of polling /api/health before the engine ever ran.
+        health_payload(self.project_root)
+
+        self.assertFalse(
+            os.path.exists(os.path.join(self.project_root, "core", "xauby.db"))
+        )
 
     def test_missing_state_returns_error_payload(self):
         base = self.serve()

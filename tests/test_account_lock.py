@@ -113,6 +113,21 @@ class TestLockContention(unittest.TestCase):
         d._release_account_lock()
         c._release_account_lock()
 
+    def test_losing_contender_does_not_wipe_holder_info(self):
+        a = _stub_engine(simulate_only=False, live_allowed=True, fp="acct9")
+        a._acquire_account_lock()
+        try:
+            b = _stub_engine(simulate_only=False, live_allowed=True, fp="acct9")
+            with self.assertRaises(RuntimeError) as raised:
+                b._acquire_account_lock()
+            # The refusal message names the holder, which requires the
+            # contender's open() not to have truncated the lock file.
+            self.assertIn(f"pid {os.getpid()}", str(raised.exception))
+            with open(account_lock_path("acct9"), "r") as fp:
+                self.assertIn(f"pid {os.getpid()}", fp.read())
+        finally:
+            a._release_account_lock()
+
 
 if __name__ == "__main__":
     unittest.main()

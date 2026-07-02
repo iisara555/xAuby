@@ -824,7 +824,9 @@ class BaseEngine:
             if not lock_name:
                 config_name = os.path.splitext(os.path.basename(self.config_path))[0]
                 lock_name = runtime_path(f".{config_name}.lock")
-            self._lock_fp = open(lock_name, "w")
+            # "a+" instead of "w": opening must not truncate — a losing
+            # contender would wipe the holder's PID before flock even fails.
+            self._lock_fp = open(lock_name, "a+")
             try:
                 fcntl.flock(self._lock_fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError:
@@ -844,6 +846,8 @@ class BaseEngine:
                     f"If the previous process crashed, remove the lock file and retry:\n"
                     f"  rm {lock_name}"
                 ) from None
+            self._lock_fp.seek(0)
+            self._lock_fp.truncate()
             self._lock_fp.write(str(os.getpid()))
             self._lock_fp.flush()
         except ImportError:
@@ -902,7 +906,9 @@ class BaseEngine:
 
         path = account_lock_path(self._account_fp)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        fp = open(path, "w")
+        # "a+" instead of "w": opening must not truncate — a losing contender
+        # would wipe the holder's "pid ... cfg ..." info before flock fails.
+        fp = open(path, "a+")
         try:
             fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
@@ -920,6 +926,8 @@ class BaseEngine:
                 f"risk — give each its own subaccount/API key, or stop the other "
                 f"instance. Account lock: {path}"
             ) from None
+        fp.seek(0)
+        fp.truncate()
         fp.write(f"pid {os.getpid()} cfg {self.config_path}")
         fp.flush()
         self._account_lock_fp = fp

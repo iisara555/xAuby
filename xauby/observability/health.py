@@ -57,6 +57,14 @@ class HealthMonitor:
         self.db_path = os.path.join(project_root, db_path or _db_path())
         self.events_dir = os.path.join(project_root, events_dir or _events_dir())
 
+    def _connect_db_readonly(self) -> "sqlite3.Connection":
+        """Read-only SQLite connection: health checks must never take write
+        locks against the live engine's DB or create the file as a side
+        effect."""
+        return sqlite3.connect(
+            f"file:{os.path.abspath(self.db_path)}?mode=ro", uri=True, timeout=10.0
+        )
+
     def get_server_resources(self) -> Dict[str, Any]:
         res: Dict[str, Any] = {}
         try:
@@ -197,7 +205,7 @@ class HealthMonitor:
                         time.time() - os.path.getmtime(latest), 1
                     )
             if HAS_SQLITE and os.path.exists(self.db_path):
-                conn = sqlite3.connect(self.db_path)
+                conn = self._connect_db_readonly()
                 try:
                     cur = conn.cursor()
                     cur.execute("SELECT COUNT(*) FROM events")
@@ -317,7 +325,7 @@ class HealthMonitor:
         if os.path.exists(self.db_path) and HAS_SQLITE:
             conn = None
             try:
-                conn = sqlite3.connect(self.db_path)
+                conn = self._connect_db_readonly()
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("SELECT * FROM trade_states")
