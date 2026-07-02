@@ -125,6 +125,8 @@ def main() -> int:
     parser.add_argument("--roi", default=None, help='Custom ladder "age_min:roi_pct,..." (replaces presets)')
     parser.add_argument("--csv", default=None, help="Offline OHLCV CSV instead of the data service")
     parser.add_argument("--force-download", action="store_true")
+    parser.add_argument("--only", default=None, help="Comma-separated variant names to run (default: all)")
+    parser.add_argument("--json-out", default=None, help="Also write rows as JSON to this path")
     args = parser.parse_args()
 
     with open(args.config, "r", encoding="utf-8") as f:
@@ -155,8 +157,14 @@ def main() -> int:
     )
 
     custom_roi = parse_roi(args.roi) if args.roi else None
+    variants = build_variants(custom_roi)
+    if args.only:
+        wanted = {v.strip() for v in args.only.split(",") if v.strip()}
+        variants = [(n, o) for n, o in variants if n in wanted]
+        if not variants:
+            raise SystemExit(f"--only matched no variants: {args.only}")
     rows: List[Dict[str, Any]] = []
-    for name, override in build_variants(custom_roi):
+    for name, override in variants:
         result = run_replay_from_bundle(bundle, strat_cfg_override=override)
         if not result.meta.run_ok:
             print(f"  {name}: FAILED ({result.meta.error})")
@@ -175,6 +183,11 @@ def main() -> int:
 
     if not rows:
         raise SystemExit("No variant produced results")
+
+    if args.json_out:
+        import json
+        with open(args.json_out, "w", encoding="utf-8") as f:
+            json.dump(rows, f)
 
     baseline = next((r for r in rows if r["variant"] == "baseline"), rows[0])
     rows.sort(key=lambda r: r["profit%"], reverse=True)
