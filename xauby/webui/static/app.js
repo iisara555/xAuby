@@ -612,6 +612,8 @@ function updateState(payload) {
   const stale = Boolean(payload.stale);
   text("modePill", stale ? "STALE" : modeText);
   cls("modePill", `status-pill ${!stale && modeText === "LIVE" ? "live" : "warn"}`);
+  text("signalRegimeLabel", stale ? "STALE" : modeText);
+  setStateClass("signalRegimeLabel", stale ? "warn" : healthSemantic(modeText));
   const equityEl = document.getElementById("equityValue");
   if (equityEl) {
     equityEl.textContent = "";
@@ -638,6 +640,7 @@ function updateState(payload) {
   setStateClass("overviewSignal", signalSemantic(sig.action));
   text("signalReason", sig.reason || "No signal reason");
   text("regimeConfidence", confidence);
+  setStateClass("regimeConfidence", signalSemantic(sig.action));
   text("regimeState", compactState(regime.regime));
   text("regimeStateDetail", regime.regime || "--");
   setStateClass("regimeState", regimeSemantic(regime.regime));

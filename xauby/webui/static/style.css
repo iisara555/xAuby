@@ -48,7 +48,7 @@
   --weight-label: 560;
   --nav-height: 68px;
   /* Extra clearance so Safari's bottom toolbar / home indicator never covers the nav */
-  --nav-bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 16px);
+  --nav-bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 36px);
   --z-nav: 20;
 }
 
@@ -101,7 +101,8 @@ strong,
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   width: min(430px, 100%);
-  height: 100dvh;
+  height: 100vh;
+  height: 100svh;
   margin: 0 auto;
   overflow: hidden;
   padding: max(12px, env(safe-area-inset-top)) var(--space-6) 0;
@@ -579,6 +580,11 @@ canvas {
 
 /* ---------- Signal view ---------- */
 
+body[data-view="signal"] [data-section="signal"] {
+  gap: var(--space-3);
+  padding-bottom: calc(var(--nav-height) + var(--nav-bottom) + 28px);
+}
+
 .signal-card {
   border-color: rgba(255, 255, 255, 0.88);
   background:
@@ -587,26 +593,65 @@ canvas {
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
 }
 
-.signal-card .panel-head h2 {
-  color: #080b06;
+.signal-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
-.signal-card .panel-head > span {
+.eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: rgba(8, 11, 6, 0.5);
+  font-size: var(--type-label);
+  font-weight: var(--weight-label);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.signal-hero h2 {
+  display: block;
+  color: #080b06;
+  font-size: 32px;
+  font-weight: 740;
+  line-height: 0.98;
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+}
+
+.confidence-pill,
+.regime-card .panel-head > span,
+.activity-panel .panel-head > span {
   border-radius: var(--radius-pill);
   padding: 7px 11px;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-label);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.confidence-pill {
   color: #080b06;
   background: var(--lime);
 }
 
-.signal-card .panel-head > span.state-muted,
-.signal-card .panel-head > span.state-warn,
-.signal-card .panel-head > span.state-neg {
+.signal-hero h2.state-muted,
+.signal-hero h2.state-warn,
+.signal-hero h2.state-neg {
+  color: rgba(8, 11, 6, 0.78);
+}
+
+.confidence-pill.state-muted,
+.confidence-pill.state-warn,
+.confidence-pill.state-neg {
   color: rgba(8, 11, 6, 0.72);
   background: rgba(8, 11, 6, 0.08);
 }
 
 .reason {
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-3);
   font-size: 13px;
   line-height: 1.45;
   color: var(--ink-2);
@@ -614,6 +659,10 @@ canvas {
 }
 
 .signal-card .reason {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   color: rgba(8, 11, 6, 0.68);
 }
 
@@ -624,12 +673,12 @@ canvas {
 
 .check-item {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
-  min-height: 44px;
-  border-radius: var(--radius-sm);
-  padding: 9px 11px;
+  min-height: 40px;
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
   background: var(--tile);
 }
 
@@ -649,11 +698,24 @@ canvas {
 }
 
 .signal-card .dot {
-  background: rgba(8, 11, 6, 0.24);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  background: rgba(8, 11, 6, 0.1);
 }
 
 .signal-card .ok .dot {
   background: var(--lime);
+}
+
+.signal-card .ok .dot::after {
+  width: 6px;
+  height: 10px;
+  border: solid #080b06;
+  border-width: 0 2px 2px 0;
+  content: "";
+  transform: rotate(42deg) translateY(-1px);
 }
 
 .check-item strong {
@@ -684,6 +746,18 @@ canvas {
   overflow-wrap: anywhere;
 }
 
+.regime-card {
+  background:
+    linear-gradient(180deg, rgba(186, 255, 53, 0.045), transparent 42%),
+    var(--surface);
+}
+
+.regime-card .panel-head > span,
+.activity-panel .panel-head > span {
+  color: var(--pos);
+  background: var(--pos-tint);
+}
+
 .kv.regime-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -691,7 +765,9 @@ canvas {
 }
 
 .regime-grid > div {
-  padding: 9px 11px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid rgba(186, 255, 53, 0.06);
 }
 
 .regime-grid span {
@@ -708,11 +784,15 @@ canvas {
 
 /* ---------- Activity ---------- */
 
+body[data-view="activity"] [data-section="activity"] {
+  gap: var(--space-4);
+}
+
 .timeline,
 .trades {
   display: grid;
   align-content: start;
-  gap: var(--space-2);
+  gap: var(--space-1);
   min-height: 0;
 }
 
@@ -734,10 +814,29 @@ body[data-view="activity"] .panel {
   overflow: hidden;
 }
 
+.activity-panel {
+  padding: 0;
+  background:
+    linear-gradient(180deg, rgba(186, 255, 53, 0.04), transparent 34%),
+    var(--surface);
+}
+
+.activity-panel .panel-head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  margin: 0;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  background:
+    linear-gradient(180deg, rgba(19, 23, 17, 0.98), rgba(19, 23, 17, 0.92));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
 body[data-view="activity"] .timeline,
 body[data-view="activity"] .trades {
   overflow-y: auto;
-  padding-right: var(--space-1);
+  padding: 0 var(--space-3) var(--space-3);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   scrollbar-color: rgba(186, 255, 53, 0.65) transparent;
@@ -758,22 +857,33 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 .event-row,
 .trade-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 38px minmax(0, 1fr);
   align-items: start;
   gap: var(--space-3);
-  border-radius: var(--radius-md);
-  padding: var(--space-4) var(--space-5);
-  background: var(--tile);
+  min-height: 58px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  padding: 10px var(--space-3);
+  background: rgba(255, 255, 255, 0.045);
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, transform 120ms ease-out;
+}
+
+.event-row:active,
+.trade-row:active {
+  border-color: var(--line-strong);
+  background: rgba(186, 255, 53, 0.08);
+  transform: scale(0.99);
 }
 
 .ev-body {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
 .ev-body strong {
-  font-size: 12px;
+  color: var(--ink-2);
+  font-size: 12.5px;
   font-weight: var(--weight-title);
   line-height: 1.28;
 }
@@ -781,9 +891,9 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 .ev-chip {
   display: grid;
   place-items: center;
-  width: 34px;
-  min-height: 34px;
-  border-radius: 11px;
+  width: 38px;
+  min-height: 38px;
+  border-radius: 12px;
   font-size: var(--type-label);
   font-weight: 640;
   letter-spacing: 0.02em;
@@ -1024,6 +1134,10 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 
   .mini-card strong {
     font-size: 18px;
+  }
+
+  .signal-hero h2 {
+    font-size: 32px;
   }
 
   .cdc-strip {
