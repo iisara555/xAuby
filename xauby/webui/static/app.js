@@ -56,6 +56,42 @@ function formatDurationAgo(minutes) {
   return `${Math.round(hours / 24)}D`;
 }
 
+function relativeTime(value) {
+  if (!value) return "--";
+  const ts = parseUtcish(value);
+  if (!Number.isFinite(ts)) return "--";
+  const diffSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (diffSec < 45) return "Just now";
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 48) return `${diffHour}h ago`;
+  return `${Math.round(diffHour / 24)}d ago`;
+}
+
+function shortStatus(value, fallback = "--") {
+  const raw = String(value || fallback).toUpperCase();
+  if (raw === "RUNNING") return "RUN";
+  if (raw === "DEGRADED") return "DEG";
+  if (raw === "STOPPED") return "STOP";
+  return raw;
+}
+
+function compactTrigger(trigger) {
+  const raw = String(trigger || "").trim();
+  if (!raw) return "closed";
+  const lower = raw.toLowerCase();
+  if (lower.includes("fixed tp") || lower.includes("tp reached") || lower.includes("take profit")) return "target";
+  if (lower.includes("exchange-side stop") || lower.includes("stop loss") || lower.includes("sl")) return "stop";
+  return raw.replace(/\s+/g, " ").slice(0, 42);
+}
+
+function compactEventDetail(value) {
+  const raw = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  return raw.length > 58 ? `${raw.slice(0, 55)}...` : raw;
+}
+
 function chartAxisLabels(timeframe, candleCount) {
   const totalMinutes = timeframeToMinutes(timeframe) * Math.max(0, candleCount - 1);
   return [0, 1, 2, 3].map((index) => (
@@ -172,10 +208,10 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   const plotW = w - leftPad - rightPad;
   const plotH = h - topPad - bottomPad;
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.075)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.045)";
   ctx.lineWidth = 1;
-  ctx.setLineDash([4, 5]);
-  for (let i = 0; i < 5; i += 1) {
+  ctx.setLineDash([4, 7]);
+  for (let i = 1; i < 4; i += 1) {
     const y = topPad + i * (plotH / 4);
     ctx.beginPath();
     ctx.moveTo(leftPad, y);
@@ -275,7 +311,9 @@ function drawChart(values, referencePrice = latestMarketPrice) {
 
   const latest = livePrice ?? candles[candles.length - 1].close;
   const latestY = yFor(latest);
-  ctx.fillStyle = "#7357ff";
+  ctx.fillStyle = "#7c4dff";
+  ctx.shadowColor = "rgba(124, 77, 255, 0.42)";
+  ctx.shadowBlur = 8;
   const label = fmtNum(latest, 0);
   const labelW = ctx.measureText(label).width + 16;
   ctx.beginPath();
@@ -285,6 +323,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   } else {
     ctx.fillRect(w - labelW - 3, latestY - 12, labelW, 24);
   }
+  ctx.shadowBlur = 0;
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);
@@ -349,12 +388,12 @@ function renderEvents(events) {
     const label = event.event_type || event.event || "--";
     const ts = event.ts || "";
     const payload = event.payload || {};
-    const detail = payload.reason || payload.action || payload.regime || payload.price || "";
+    const detail = compactEventDetail(payload.reason || payload.action || payload.regime || payload.price || "");
     const chip = eventChip(label);
     row.innerHTML = `
       <span class="ev-chip ${chip.cls}">${escapeHtml(chip.label)}</span>
       <div class="ev-body">
-        <small>${escapeHtml(ts)}</small>
+        <small>${escapeHtml(relativeTime(ts))}</small>
         <strong>${escapeHtml(label)}${detail ? `: ${escapeHtml(detail)}` : ""}</strong>
       </div>
     `;
@@ -380,8 +419,8 @@ function renderTrades(trades) {
     row.innerHTML = `
       <span class="ev-chip ${pnl >= 0 ? "chip-pos" : "chip-neg"}">${escapeHtml(short)}</span>
       <div class="ev-body">
-        <small>${escapeHtml(trade.closed_at || trade.opened_at || "--")}</small>
-        <strong>${escapeHtml(sym)} <span class="${pnlClass}">${fmtMoney(pnl)}</span>${trade.trigger ? ` <span class="ev-tag ${trigCls}">${escapeHtml(trade.trigger)}</span>` : ""}</strong>
+        <small>${escapeHtml(relativeTime(trade.closed_at || trade.opened_at))}</small>
+        <strong>${escapeHtml(sym)} <span class="${pnlClass}">${fmtMoney(pnl)}</span>${trade.trigger ? ` <span class="ev-tag ${trigCls}">${escapeHtml(compactTrigger(trade.trigger))}</span>` : ""}</strong>
       </div>
     `;
     root.appendChild(row);
@@ -464,42 +503,6 @@ function eventChip(type) {
   return { label: (t.slice(0, 3).toUpperCase() || "EVT"), cls: "chip-muted" };
 }
 
-function renderPosition(pos, markPrice) {
-  const kv = document.getElementById("positionKv");
-  const idle = document.getElementById("positionIdle");
-  const open = String(pos.state || "") === "bought";
-  const side = String(pos.position_side || "LONG").toUpperCase();
-  text("positionHeadState", open ? side : "FLAT");
-  setStateClass("positionHeadState", open ? (side === "SHORT" ? "neg" : "pos") : "muted");
-  if (kv) kv.hidden = !open;
-  if (idle) idle.hidden = open;
-  if (!open) return;
-  setStateClass("posSide", side === "SHORT" ? "neg" : "pos");
-
-  const entry = asNumber(pos.entry_price) ?? 0;
-  const mark = asNumber(markPrice ?? pos.mark_price) ?? entry;
-  const qty = asNumber(pos.quantity) ?? 0;
-  const lev = asNumber(pos.leverage) ?? 1;
-  const liq = asNumber(pos.liquidation_price) ?? 0;
-  const pnl = asNumber(pos.unrealized_pnl) ?? 0;
-  const pnlPct = asNumber(pos.unrealized_pnl_pct) ?? 0;
-
-  text("posSide", side);
-  text("posEntry", fmtNum(entry, 2));
-  text("posMark", fmtNum(mark, 2));
-  text("posPnl", `${fmtMoney(pnl)} (${fmtNum(pnlPct, 2)}%)`);
-  cls("posPnl", pnl >= 0 ? "green" : "red");
-  text("posSize", `${fmtNum(qty, 4)} (${fmtMoney(qty * mark)})`);
-  text("posLeverage", `${fmtNum(lev, lev >= 10 ? 0 : 1)}x`);
-  if (liq > 0 && mark > 0) {
-    text("posLiq", `${fmtNum((Math.abs(mark - liq) / mark) * 100, 2)}% (${fmtNum(liq, 2)})`);
-  } else {
-    text("posLiq", "--");
-  }
-  const openedAt = parseUtcish(pos.opened_at);
-  text("posHeld", Number.isFinite(openedAt) ? formatDurationAgo((Date.now() - openedAt) / 60000) : "--");
-}
-
 function updateState(payload) {
   if (!payload.ok) {
     text("symbolTitle", "State unavailable");
@@ -576,46 +579,19 @@ function updateState(payload) {
   text("feedStateDetail", feedText);
   setStateClass("feedState", healthSemantic(feedText));
   setStateClass("feedStateDetail", healthSemantic(feedText));
-  text("stateAge", payload.age_sec == null ? "--" : `${payload.age_sec}s`);
-  text("overviewStateAge", payload.age_sec == null ? "--" : `${payload.age_sec}s`);
-  text("wsAge", wsAge);
-  text("apiLatency", latency.api_latency_ms == null ? "--" : `${latency.api_latency_ms}ms`);
-  text("overviewApiLatency", latency.api_latency_ms == null ? "--" : `${latency.api_latency_ms}ms`);
+  text("stateAge", payload.age_sec == null ? "S --" : `S ${payload.age_sec}s`);
+  text("wsAge", `W ${wsAge}`);
+  text("apiLatency", latency.api_latency_ms == null ? "A --" : `A ${latency.api_latency_ms}`);
   text("cdcZone", cdcZone);
   addStateClass("cdcZone", "zone-value", cdcZone);
   text("cdcEmaFast", compactIndicatorValue(indicators.ema_fast_4h));
   text("cdcEmaSlow", compactIndicatorValue(indicators.ema_slow_4h));
   text("cdcStreak", streak ? `${cdcZone} ${streak}` : "--");
 
-  const bid = asNumber(snap.bid) ?? 0;
-  const ask = asNumber(snap.ask) ?? 0;
-  if (ask > 0 && bid > 0) {
-    const spread = ask - bid;
-    const mid = (ask + bid) / 2;
-    text("spreadValue", fmtNum(spread, 2));
-    text("spreadBps", `${fmtNum((spread / mid) * 10000, 1)} bps`);
-  } else {
-    text("spreadValue", "--");
-    text("spreadBps", "-- bps");
-  }
-  text("atrValue", compactIndicatorValue(indicators.atr_4h));
-  const high24 = asNumber(snap.high_24h) ?? 0;
-  const low24 = asNumber(snap.low_24h) ?? 0;
-  if (high24 > 0 && low24 > 0 && high24 >= low24) {
-    text("rangeValue", `${fmtNum(low24, 0)}–${fmtNum(high24, 0)}`);
-    const span = high24 - low24;
-    const within = span > 0 ? ((price - low24) / span) * 100 : 0;
-    text("rangePos", `${fmtNum(Math.max(0, Math.min(100, within)), 0)}% of range`);
-  } else {
-    text("rangeValue", "--");
-    text("rangePos", "--");
-  }
-
   text("overviewConfidence", confidence);
   setStateClass("overviewConfidence", "info");
   text("overviewGold", regime.gold_score == null ? "--" : fmtNum(regime.gold_score, 0));
   setStateClass("overviewGold", goldSemantic(regime.gold_score));
-  renderPosition(pos, latestMarketPrice);
 
   renderCdcDetail(indicatorDisplay);
   renderChecklist(sig.checklist || []);
@@ -628,21 +604,10 @@ function updateState(payload) {
 function updateHealth(payload) {
   const status = payload.status || "--";
   const engine = (payload.process_status || {}).status || "--";
-  text("healthStatus", status);
   text("overviewHealth", status);
-  text("engineStatus", engine);
-  setStateClass("healthStatus", healthSemantic(status));
+  text("engineStatus", `E ${shortStatus(engine)}`);
   setStateClass("overviewHealth", healthSemantic(status));
   setStateClass("engineStatus", healthSemantic(engine));
-  const root = document.getElementById("healthList");
-  if (!root) return;
-  const anomalies = payload.anomalies || [];
-  root.innerHTML = "";
-  anomalies.slice(0, 5).forEach((item) => {
-    const li = document.createElement("li");
-    li.textContent = item;
-    root.appendChild(li);
-  });
 }
 
 function setView(view) {
@@ -661,8 +626,10 @@ function initNavigation() {
     button.addEventListener("click", () => setView(button.dataset.viewTarget));
   });
   const initial = location.hash.replace("#", "");
-  if (["overview", "signal", "health", "activity"].includes(initial)) {
+  if (["overview", "signal", "activity"].includes(initial)) {
     setView(initial);
+  } else if (initial === "health") {
+    setView("overview");
   }
 }
 
@@ -698,22 +665,7 @@ async function refresh() {
   }
 }
 
-async function applyMeta() {
-  try {
-    const meta = await getJson("/api/meta");
-    if (!meta.ok) return;
-    if (meta.display_name) text("botTitle", meta.display_name);
-    if (meta.avatar_url) {
-      const avatar = document.getElementById("avatarImg");
-      if (avatar) avatar.src = meta.avatar_url;
-    }
-  } catch (err) {
-    // Non-fatal: keep the default title/avatar if the meta endpoint fails.
-  }
-}
-
 initNavigation();
-applyMeta();
 refresh();
 setInterval(refresh, 5000);
 window.addEventListener("resize", () => drawChart(lastCandles, latestMarketPrice));

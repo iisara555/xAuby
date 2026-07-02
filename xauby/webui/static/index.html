@@ -9,22 +9,36 @@
   <body data-view="overview">
     <main class="app-shell">
       <header class="app-top">
-        <img class="profile-avatar" id="avatarImg" src="/avatar-default.svg" alt="Bot avatar" />
+        <img class="profile-avatar" src="/profile-itsara.jpg" alt="Itsara profile" />
         <div class="title-stack">
-          <h1 id="botTitle">xAuby</h1>
+          <h1>Itsara</h1>
           <div class="profile-badges">
             <span class="badge verified">Live</span>
+            <span class="badge exchange">OKX</span>
             <span class="badge indicator" id="indicatorLabel">Indicator</span>
           </div>
         </div>
-        <div class="status-pill" id="modePill">Loading</div>
+        <div class="header-status">
+          <div class="status-pill" id="modePill">Loading</div>
+          <div class="health-strip" aria-label="System health">
+            <span id="engineStatus">E --</span>
+            <span id="stateAge">S --</span>
+            <span id="wsAge">W --</span>
+            <span id="apiLatency">A --</span>
+          </div>
+        </div>
       </header>
 
       <section class="view-stack" data-section="overview">
         <article class="balance-card">
           <div>
-            <span id="exchangeLabel">OKX SWAP</span>
-            <h2 id="symbolTitle">xAuby</h2>
+            <div class="asset-title">
+              <img class="asset-logo" id="assetLogo" src="/xau-logo.svg" alt="XAU logo" />
+              <div>
+                <span id="exchangeLabel">OKX SWAP</span>
+                <h2 id="symbolTitle">xAuby</h2>
+              </div>
+            </div>
             <strong id="equityValue">--</strong>
             <small id="cashValue">Trading cash --</small>
           </div>
@@ -43,42 +57,6 @@
             <small id="pnlValue">PnL --</small>
           </article>
         </section>
-
-        <section class="market-grid market-micro">
-          <article class="mini-card">
-            <span>Spread</span>
-            <strong id="spreadValue">--</strong>
-            <small id="spreadBps">-- bps</small>
-          </article>
-          <article class="mini-card">
-            <span>ATR 4H</span>
-            <strong id="atrValue">--</strong>
-            <small>volatility</small>
-          </article>
-          <article class="mini-card">
-            <span>24h Range</span>
-            <strong id="rangeValue">--</strong>
-            <small id="rangePos">--</small>
-          </article>
-        </section>
-
-        <article class="panel position-panel" id="positionPanel">
-          <div class="panel-head">
-            <h2>Position</h2>
-            <span id="positionHeadState">--</span>
-          </div>
-          <div class="kv" id="positionKv">
-            <span>Side</span><strong id="posSide">--</strong>
-            <span>Entry</span><strong id="posEntry">--</strong>
-            <span>Mark</span><strong id="posMark">--</strong>
-            <span>PnL</span><strong id="posPnl">--</strong>
-            <span>Size</span><strong id="posSize">--</strong>
-            <span>Leverage</span><strong id="posLeverage">--</strong>
-            <span>Liq. dist</span><strong id="posLiq">--</strong>
-            <span>Held</span><strong id="posHeld">--</strong>
-          </div>
-          <p class="reason" id="positionIdle" hidden>No open position.</p>
-        </article>
 
         <article class="panel chart-panel">
           <div class="panel-head">
@@ -153,28 +131,12 @@
             <h2>Regime Detail</h2>
             <span id="regimeConfidence">--</span>
           </div>
-          <div class="kv">
-            <span>State</span><strong id="regimeStateDetail">--</strong>
-            <span>Trend</span><strong id="trendStateDetail">--</strong>
-            <span>Risk</span><strong id="riskState">--</strong>
-            <span>Feed</span><strong id="feedStateDetail">--</strong>
+          <div class="kv regime-grid">
+            <div><span>State</span><strong id="regimeStateDetail">--</strong></div>
+            <div><span>Trend</span><strong id="trendStateDetail">--</strong></div>
+            <div><span>Risk</span><strong id="riskState">--</strong></div>
+            <div><span>Feed</span><strong id="feedStateDetail">--</strong></div>
           </div>
-        </article>
-      </section>
-
-      <section class="view-stack" data-section="health">
-        <article class="panel">
-          <div class="panel-head">
-            <h2>Health</h2>
-            <span id="healthStatus">--</span>
-          </div>
-          <div class="kv">
-            <span>Engine</span><strong id="engineStatus">--</strong>
-            <span>State age</span><strong id="stateAge">--</strong>
-            <span>WS age</span><strong id="wsAge">--</strong>
-            <span>API</span><strong id="apiLatency">--</strong>
-          </div>
-          <ul class="compact-list" id="healthList"></ul>
         </article>
       </section>
 
@@ -205,10 +167,6 @@
       <button type="button" data-view-target="signal" aria-label="Signal">
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg>
         <span>Signal</span>
-      </button>
-      <button type="button" data-view-target="health" aria-label="Health">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h3l2-4 3 8 2-5 2 3h6"/></svg>
-        <span>Health</span>
       </button>
       <button type="button" data-view-target="activity" aria-label="Activity">
         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg>
