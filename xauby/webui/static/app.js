@@ -4,6 +4,36 @@ const fmtMoney = (value, digits = 2) => {
   return `${n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits })} USDT`;
 };
 
+const fmtThb = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "฿--";
+  return `฿${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+};
+
+const fmtThbLine = (currency, equity) => {
+  const baht = fmtThb(equityBaht(currency, equity));
+  const rate = Number((currency || {}).usd_thb_rate);
+  if (!Number.isFinite(rate) || rate <= 0 || baht === "฿--") return baht;
+  return `${baht} · ${rate.toFixed(2)}/USDT`;
+};
+
+function splitTagline(value) {
+  const raw = String(value || "").replace(/\s+/g, " ").trim();
+  if (!raw) return ["Alternative Store of Value", "Trading System"];
+  const match = /^(.*?)(?:\s+)?(Trading System)$/i.exec(raw);
+  if (match) return [match[1].trim(), match[2].trim()];
+  return [raw, ""];
+}
+
+const equityBaht = (currency, equity) => {
+  const direct = Number((currency || {}).equity_thb);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const rate = Number((currency || {}).usd_thb_rate);
+  const usdt = Number(equity);
+  if (Number.isFinite(rate) && rate > 0 && Number.isFinite(usdt) && usdt > 0) return usdt * rate;
+  return NaN;
+};
+
 const fmtNum = (value, digits = 2) => {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return "--";
@@ -193,9 +223,19 @@ async function loadMeta() {
   try {
     const meta = await getJson("/api/meta");
     if (!meta.ok) return;
-    if (meta.display_name) text("botName", meta.display_name);
-    const avatar = document.getElementById("profileAvatar");
-    if (avatar && meta.avatar_url) avatar.src = meta.avatar_url;
+    if (meta.display_name) {
+      const name = document.getElementById("botName");
+      const subtitleMain = document.getElementById("botSubtitleMain");
+      const subtitleFine = document.getElementById("botSubtitleFine");
+      const parts = String(meta.display_name).split(/\s*:\s*/);
+      if (name) {
+        name.textContent = parts[0] || "xAuby";
+        name.title = meta.display_name;
+      }
+      const [main, fine] = splitTagline(parts.slice(1).join(" : "));
+      if (subtitleMain) subtitleMain.textContent = main;
+      if (subtitleFine) subtitleFine.textContent = fine;
+    }
   } catch (err) {
     /* header falls back to the bundled defaults */
   }
@@ -231,11 +271,11 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   const plotW = w - leftPad - rightPad;
   const plotH = h - topPad - bottomPad;
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+  ctx.strokeStyle = "rgba(244, 247, 239, 0.07)";
   ctx.lineWidth = 1;
-  ctx.setLineDash([4, 7]);
-  for (let i = 1; i < 4; i += 1) {
-    const y = topPad + i * (plotH / 4);
+  ctx.setLineDash([3, 8]);
+  for (let i = 1; i < 5; i += 1) {
+    const y = topPad + i * (plotH / 5);
     ctx.beginPath();
     ctx.moveTo(leftPad, y);
     ctx.lineTo(leftPad + plotW, y);
@@ -248,7 +288,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     text("chartMeta", "no candles");
     return;
   }
-  text("chartMeta", `${candles.length} candles`);
+  text("chartMeta", String(currentTimeframe || "4h").toUpperCase());
   const emaFast = emaSeries(candles, 12);
   const emaSlow = emaSeries(candles, 26);
   const livePrice = referencePrice == null ? null : asNumber(referencePrice);
@@ -268,20 +308,20 @@ function drawChart(values, referencePrice = latestMarketPrice) {
 
   const yFor = (value) => topPad + (max - value) / span * plotH;
   const slot = plotW / candles.length;
-  const bodyW = Math.max(5, Math.min(15, slot * 0.52));
+  const bodyW = Math.max(6, Math.min(18, slot * 0.64));
   candles.forEach((c, i) => {
     const x = leftPad + slot * i + slot / 2;
     const up = c.close >= c.open;
-    const color = up ? "#4cc38f" : "#e56571";
+    const color = up ? "#baff35" : "#4e5a3b";
     const yOpen = yFor(c.open);
     const yClose = yFor(c.close);
     const yHigh = yFor(c.high);
     const yLow = yFor(c.low);
     const bodyY = Math.min(yOpen, yClose);
-    const bodyH = Math.max(3, Math.abs(yClose - yOpen));
+    const bodyH = Math.max(4, Math.abs(yClose - yOpen));
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
     ctx.moveTo(x, yHigh);
     ctx.lineTo(x, yLow);
@@ -319,10 +359,10 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     if (started) ctx.stroke();
     ctx.restore();
   };
-  drawEma(emaSlow, "#8fb7e8");
-  drawEma(emaFast, "#e3b558");
+  drawEma(emaSlow, "rgba(244, 247, 239, 0.46)");
+  drawEma(emaFast, "#baff35");
 
-  ctx.fillStyle = "rgba(240, 236, 226, 0.58)";
+  ctx.fillStyle = "rgba(244, 247, 239, 0.52)";
   ctx.font = "11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -334,21 +374,33 @@ function drawChart(values, referencePrice = latestMarketPrice) {
 
   const latest = livePrice ?? candles[candles.length - 1].close;
   const latestY = yFor(latest);
-  ctx.fillStyle = "#e3b558";
   const label = fmtNum(latest, 0);
   const labelW = ctx.measureText(label).width + 16;
+  const labelX = w - labelW - 3;
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(186, 255, 53, 0.78)";
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(leftPad, latestY);
+  ctx.lineTo(Math.max(leftPad, labelX - 8), latestY);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = "#baff35";
   ctx.beginPath();
   if (ctx.roundRect) {
-    ctx.roundRect(w - labelW - 3, latestY - 12, labelW, 24, 12);
+    ctx.roundRect(labelX, latestY - 12, labelW, 24, 12);
     ctx.fill();
   } else {
-    ctx.fillRect(w - labelW - 3, latestY - 12, labelW, 24);
+    ctx.fillRect(labelX, latestY - 12, labelW, 24);
   }
-  ctx.fillStyle = "#211b0e";
+  ctx.fillStyle = "#10150c";
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);
 
-  ctx.fillStyle = "rgba(240, 236, 226, 0.55)";
+  ctx.fillStyle = "rgba(244, 247, 239, 0.5)";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   chartAxisLabels(currentTimeframe, candles.length).forEach((labelText, index) => {
@@ -399,9 +451,9 @@ function renderCdcDetail(indicatorDisplay) {
 function renderEvents(events) {
   const root = document.getElementById("events");
   if (!root) return;
-  const rows = Array.isArray(events) ? events.slice(-12).reverse() : [];
+  const rows = Array.isArray(events) ? events.slice(-40).reverse() : [];
   text("eventCount", `${rows.length}`);
-  root.innerHTML = rows.length ? "" : `<div class="event-row"><small>--</small><strong>No events</strong></div>`;
+  root.innerHTML = rows.length ? "" : `<div class="empty-state">No recent events</div>`;
   rows.forEach((event) => {
     const row = document.createElement("div");
     row.className = "event-row";
@@ -424,9 +476,9 @@ function renderEvents(events) {
 function renderTrades(trades) {
   const root = document.getElementById("trades");
   if (!root) return;
-  const rows = Array.isArray(trades) ? trades.slice(0, 10) : [];
+  const rows = Array.isArray(trades) ? trades.slice(0, 30) : [];
   text("tradeCount", `${rows.length}`);
-  root.innerHTML = rows.length ? "" : `<div class="trade-row"><small>--</small><strong>No closed trades</strong></div>`;
+  root.innerHTML = rows.length ? "" : `<div class="empty-state">No closed trades</div>`;
   rows.forEach((trade) => {
     const pnl = Number(trade.net_pnl || 0);
     const pnlClass = pnl >= 0 ? "green" : "red";
@@ -503,14 +555,6 @@ function healthSemantic(value) {
   return "muted";
 }
 
-function goldSemantic(score) {
-  const n = Number(score);
-  if (!Number.isFinite(n)) return "muted";
-  if (n >= 60) return "pos";
-  if (n >= 40) return "warn";
-  return "neg";
-}
-
 function eventChip(type) {
   const t = String(type || "").toLowerCase();
   if (t.includes("position_open") || t.includes("opened")) return { label: "OPN", cls: "chip-pos" };
@@ -548,7 +592,6 @@ function updateState(payload) {
     ?? 0
   );
   const equity = snap.total_equity_usdt || state.total_equity_usdt || (state.aggregate || {}).total_equity_usdt || 0;
-  const bd = snap.equity_breakdown || {};
   const pos = snap.position || {};
   const sig = snap.signal_meta || {};
   const regime = snap.regime || {};
@@ -566,9 +609,6 @@ function updateState(payload) {
   text("exchangeLabel", `${(exchange.id || "exchange").toUpperCase()} ${(exchange.market_type || "").toUpperCase()}`);
   text("symbolTitle", symbol);
   currentSymbol = symbol;
-  text("exchangeBadge", (exchange.id || "OKX").toUpperCase());
-  const strategyName = snap.strategy || snap.strategy_name || "";
-  if (strategyName) text("indicatorLabel", compactState(strategyName));
   const stale = Boolean(payload.stale);
   text("modePill", stale ? "STALE" : modeText);
   cls("modePill", `status-pill ${!stale && modeText === "LIVE" ? "live" : "warn"}`);
@@ -581,12 +621,17 @@ function updateState(payload) {
     unit.textContent = "USDT";
     equityEl.appendChild(unit);
   }
-  text("cashValue", `Trading cash ${fmtMoney(bd.usdt_balance_usdt || (snap.portfolio || {}).USDT || 0)}`);
+  text("cashValue", fmtThbLine(payload.currency, equity));
   text("priceValue", fmtNum(price, 2));
   text("changeValue", `24h ${fmtNum(pct24h, 2)}%`);
   cls("changeValue", `change-value ${pct24h > 0 ? "positive" : pct24h < 0 ? "negative" : "neutral"}`);
-  text("positionValue", `${pos.state || "idle"} ${(pos.position_side || "").toUpperCase()}`.trim());
-  text("pnlValue", `PnL ${fmtMoney(pos.unrealized_pnl || 0)}`);
+  const positionOpen = String(pos.state || "").toLowerCase() === "bought";
+  const positionSide = String(pos.position_side || "LONG").toUpperCase();
+  text("positionValue", positionOpen ? positionSide : "FLAT");
+  cls("positionValue", `position-status ${positionOpen ? (positionSide === "SHORT" ? "state-neg" : "state-pos") : "state-muted"}`);
+  const positionPnl = Number(pos.unrealized_pnl || 0);
+  text("pnlValue", positionOpen ? `PnL ${fmtMoney(positionPnl)}` : "PnL --");
+  cls("pnlValue", positionOpen ? (positionPnl > 0 ? "positive" : positionPnl < 0 ? "negative" : "neutral") : "neutral");
   text("signalAction", sig.action || "--");
   text("overviewSignal", sig.action || "--");
   setStateClass("signalAction", signalSemantic(sig.action));
@@ -613,16 +658,12 @@ function updateState(payload) {
   text("stateAge", payload.age_sec == null ? "S --" : `S ${compactSecs(payload.age_sec)}`);
   text("wsAge", `W ${wsAge}`);
   text("apiLatency", latency.api_latency_ms == null ? "A --" : `A ${latency.api_latency_ms}`);
+  text("chartMeta", String(snap.primary_timeframe || currentTimeframe || "4h").toUpperCase());
   text("cdcZone", cdcZone);
   addStateClass("cdcZone", "zone-value", cdcZone);
   text("cdcEmaFast", compactIndicatorValue(indicators.ema_fast_4h));
   text("cdcEmaSlow", compactIndicatorValue(indicators.ema_slow_4h));
   text("cdcStreak", streak ? `${cdcZone} ${streak}` : "--");
-
-  text("overviewConfidence", confidence);
-  setStateClass("overviewConfidence", "info");
-  text("overviewGold", regime.gold_score == null ? "--" : fmtNum(regime.gold_score, 0));
-  setStateClass("overviewGold", goldSemantic(regime.gold_score));
 
   renderCdcDetail(indicatorDisplay);
   renderChecklist(sig.checklist || []);
@@ -633,11 +674,8 @@ function updateState(payload) {
 }
 
 function updateHealth(payload) {
-  const status = payload.status || "--";
   const engine = (payload.process_status || {}).status || "--";
-  text("overviewHealth", status);
   text("engineStatus", `E ${shortStatus(engine)}`);
-  setStateClass("overviewHealth", healthSemantic(status));
   setStateClass("engineStatus", healthSemantic(engine));
 }
 
@@ -670,7 +708,7 @@ async function refresh() {
       getJson("/api/state"),
       getJson("/api/health"),
       getJson("/api/recent-events"),
-      getJson("/api/trades?limit=10"),
+      getJson("/api/trades?limit=30"),
     ]);
     updateState(state);
     const stateBody = state.state || {};

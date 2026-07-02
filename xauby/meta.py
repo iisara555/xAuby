@@ -57,7 +57,7 @@ def load_bot_display_name(project_root: str = ".") -> str:
     return PRODUCT_TITLE
 
 
-DEFAULT_WEBUI_AVATAR = "/avatar-default.svg"
+DEFAULT_WEBUI_AVATAR = "/xau-logo.svg"
 
 
 def load_webui_avatar(project_root: str = ".") -> str:

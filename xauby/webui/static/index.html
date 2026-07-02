@@ -15,16 +15,11 @@
   <body data-view="overview">
     <main class="app-shell">
       <header class="app-top">
-        <span class="avatar-ring">
-          <img class="profile-avatar" id="profileAvatar" src="/avatar-default.svg" alt="Operator profile" />
-        </span>
         <div class="title-stack">
           <h1 id="botName">xAuby</h1>
-          <p class="profile-sub">
-            <span class="gold-dot" aria-hidden="true"></span>
-            <span id="exchangeBadge">OKX</span>
-            <span class="sep" aria-hidden="true">&middot;</span>
-            <span id="indicatorLabel">CDC ActionZone</span>
+          <p class="profile-sub" id="botSubtitle">
+            <span id="botSubtitleMain">Alternative Store of Value</span>
+            <span id="botSubtitleFine">Trading System</span>
           </p>
         </div>
         <div class="header-status">
@@ -42,14 +37,13 @@
         <article class="balance-card">
           <div>
             <div class="asset-title">
-              <img class="asset-logo" id="assetLogo" src="/xau-logo.svg" alt="XAU logo" />
               <div>
                 <span id="exchangeLabel">OKX SWAP</span>
                 <h2 id="symbolTitle">xAuby</h2>
               </div>
             </div>
             <strong id="equityValue">--</strong>
-            <small id="cashValue">Trading cash --</small>
+            <small id="cashValue">฿--</small>
           </div>
           <div class="balance-chip" id="feedState">--</div>
         </article>
@@ -69,11 +63,11 @@
 
         <article class="panel chart-panel">
           <div class="panel-head">
-            <h2>Market Candles</h2>
+            <h2>Market</h2>
             <div class="chart-head-meta">
               <span class="legend-dot ema-fast"></span><span>EMA12</span>
               <span class="legend-dot ema-slow"></span><span>EMA26</span>
-              <span id="chartMeta">recent closes</span>
+              <span id="chartMeta">4H</span>
             </div>
           </div>
           <canvas id="priceCanvas" height="220"></canvas>
@@ -108,24 +102,12 @@
               <span>Risk</span>
               <strong id="overviewRisk">--</strong>
             </div>
-            <div>
-              <span>Confidence</span>
-              <strong id="overviewConfidence">--</strong>
-            </div>
-            <div>
-              <span>Gold</span>
-              <strong id="overviewGold">--</strong>
-            </div>
-            <div>
-              <span>Health</span>
-              <strong id="overviewHealth">--</strong>
-            </div>
           </div>
         </article>
       </section>
 
       <section class="view-stack" data-section="signal">
-        <article class="panel">
+        <article class="panel signal-card">
           <div class="panel-head">
             <h2>Signal</h2>
             <span id="signalAction">--</span>
@@ -152,7 +134,7 @@
       <section class="view-stack" data-section="activity">
         <article class="panel">
           <div class="panel-head">
-            <h2>Recent Events</h2>
+            <h2>Events</h2>
             <span id="eventCount">--</span>
           </div>
           <div class="timeline" id="events"></div>
@@ -160,7 +142,7 @@
 
         <article class="panel">
           <div class="panel-head">
-            <h2>Closed Trades</h2>
+            <h2>Trades</h2>
             <span id="tradeCount">--</span>
           </div>
           <div class="trades" id="trades"></div>

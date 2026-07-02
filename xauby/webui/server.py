@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 
 from xauby.meta import load_bot_display_name, load_webui_avatar
 from xauby.observability.health import HealthMonitor
-from xauby.runtime.paths import bot_state_path, db_path as runtime_db_path
+from xauby.runtime.paths import bot_state_path, db_path as runtime_db_path, usd_thb_rate_path
 
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
@@ -74,6 +74,7 @@ def load_state(project_root: str) -> Dict[str, Any]:
         "path": path,
         "age_sec": age,
         "stale": bool(age is not None and age > 120),
+        "currency": _state_currency_payload(data, project_root),
     }
 
 
@@ -86,6 +87,39 @@ def _focus_snapshot(state: Dict[str, Any]) -> Dict[str, Any]:
         first = next(iter(by_symbol.values()))
         return first if isinstance(first, dict) else state
     return state
+
+
+def _state_currency_payload(state: Dict[str, Any], project_root: str) -> Dict[str, Any]:
+    focus = _focus_snapshot(state)
+    equity = (
+        focus.get("total_equity_usdt")
+        or state.get("total_equity_usdt")
+        or (state.get("aggregate") or {}).get("total_equity_usdt")
+        or 0
+    )
+    try:
+        equity_usdt = float(equity or 0)
+    except (TypeError, ValueError):
+        equity_usdt = 0.0
+    rate_path = _project_path(project_root, usd_thb_rate_path())
+    try:
+        with open(rate_path, "r", encoding="utf-8") as handle:
+            rate_data = json.load(handle)
+        rate = float(rate_data.get("rate") or 0)
+        if rate <= 0:
+            raise ValueError("invalid cached rate")
+        return {
+            "usd_thb_rate": rate,
+            "equity_thb": equity_usdt * rate,
+            "rate_path": rate_path,
+        }
+    except Exception as exc:
+        return {
+            "usd_thb_rate": None,
+            "equity_thb": None,
+            "currency_error": exc.__class__.__name__,
+            "rate_path": rate_path,
+        }
 
 
 def meta_payload(project_root: str) -> Dict[str, Any]:
