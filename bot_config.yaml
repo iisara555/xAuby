@@ -212,6 +212,19 @@ strategy:
       breakeven_activation_atr_mult: 1.5
       breakeven_buffer_atr_mult: 0.1
       cool_down_minutes: 240
+      # --- Optional profit/quality features (default off = CDC-pure) -------
+      # Validate on real data first: python scripts/compare_cdc_ab.py --symbol XAUUSDT
+      # Slope filter: enter long only while EMA26 rises (short: falls) over
+      # slow_slope_bars bars — cuts whipsaw crosses in chop.
+      require_slow_slope: false
+      slow_slope_bars: 3
+      # Minimal ROI ladder (freqtrade-style, engine-managed exit shared with
+      # backtest): {position age in minutes: required ROI %}. Example:
+      # minimal_roi:
+      #   "0": 8.0        # from entry: lock profit at +8%
+      #   "1440": 5.0     # after 1 day: settle for +5%
+      #   "2880": 3.0     # after 2 days: settle for +3%
+      minimal_roi: {}
     simple_scalp_plus:
       # SimpleScalp+ 8-point confluence scalper (long-only port from
       # Binance_Cryptonice). Primary/confirm TF are driven per-pair from the

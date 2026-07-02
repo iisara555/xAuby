@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from xauby.runtime.exits import minimal_roi_pct
 from xauby.strategies.context import MarketContext
 from xauby.strategies.sandbox import StrategyRunner
 from xauby.strategies.signal import Signal, hold as _hold_signal
@@ -120,6 +121,7 @@ class PositionSimulator:
         position_pct: float = 1.0,
         funding_rate_8h: float = 0.0,
         bar_hours: float = 0.0,
+        minimal_roi: Optional[List[Tuple[float, float]]] = None,
     ):
         self.balance = initial_balance
         self._initial_balance = initial_balance
@@ -133,6 +135,8 @@ class PositionSimulator:
         self.sl_atr_mult = sl_atr_mult
         self.trailing_atr_mult = trailing_atr_mult
         self.fixed_tp_pct = max(0.0, float(fixed_tp_pct or 0.0))
+        # Sorted [(age_minutes, roi_pct)] ladder from resolve_minimal_roi().
+        self.minimal_roi: List[Tuple[float, float]] = list(minimal_roi or [])
         self.be_enabled = be_enabled
         self.be_activation_atr_mult = be_activation_atr_mult
         self.be_buffer_atr_mult = be_buffer_atr_mult
@@ -472,6 +476,24 @@ class PositionSimulator:
                 events.append({"event_type": "position_closed", "exit": tp_price})
                 return events
 
+        # Minimal ROI ladder (engine-managed, mirrors live tick check). When the
+        # active threshold is already met at the open (e.g. it just stepped
+        # down), exit at the open like a live market order; otherwise treat the
+        # threshold price as a limit filled intrabar.
+        if self.minimal_roi and pos.entry_price > 0:
+            age_minutes = max(0.0, (bar_time - pos.entry_time) / 60.0)
+            roi_pct = minimal_roi_pct(self.minimal_roi, age_minutes)
+            if roi_pct > 0:
+                roi_price = pos.entry_price * (1.0 + roi_pct / 100.0)
+                exit_p = open_p if open_p >= roi_price else (roi_price if high >= roi_price else 0.0)
+                if exit_p > 0:
+                    events.append({"event_type": "minimal_roi_triggered",
+                                   "price": exit_p, "roi_pct": roi_pct,
+                                   "age_minutes": age_minutes})
+                    self._close(exit_p, bar_time, "MINIMAL_ROI")
+                    events.append({"event_type": "position_closed", "exit": exit_p})
+                    return events
+
         pos.highest_price = max(pos.highest_price, high)
         # CDC-pure mode: no trailing stop — exit is driven only by the RED zone.
         if self.disable_stop_loss:
@@ -530,6 +552,21 @@ class PositionSimulator:
                 self._close(tp_price, bar_time, "FIXED_TP")
                 events.append({"event_type": "position_closed", "exit": tp_price})
                 return events
+
+        # Minimal ROI ladder for a short: profit target sits BELOW entry.
+        if self.minimal_roi and pos.entry_price > 0:
+            age_minutes = max(0.0, (bar_time - pos.entry_time) / 60.0)
+            roi_pct = minimal_roi_pct(self.minimal_roi, age_minutes)
+            if roi_pct > 0:
+                roi_price = pos.entry_price * (1.0 - roi_pct / 100.0)
+                exit_p = open_p if open_p <= roi_price else (roi_price if low <= roi_price else 0.0)
+                if exit_p > 0:
+                    events.append({"event_type": "minimal_roi_triggered",
+                                   "price": exit_p, "roi_pct": roi_pct,
+                                   "age_minutes": age_minutes})
+                    self._close(exit_p, bar_time, "MINIMAL_ROI")
+                    events.append({"event_type": "position_closed", "exit": exit_p})
+                    return events
 
         pos.lowest_price = min(pos.lowest_price or pos.entry_price, low)
         if self.disable_stop_loss:

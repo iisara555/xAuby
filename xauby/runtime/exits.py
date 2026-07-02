@@ -8,7 +8,7 @@ in an engine-only block would break that parity (see CLAUDE.md).
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Per-strategy default fixed take-profit (% above entry). 0 / absent = disabled.
 # Explicit ``fixed_tp_pct`` in strategy config overrides these.
@@ -47,3 +47,62 @@ def fixed_take_profit_price(
     if pct <= 0:
         return 0.0
     return entry_price * (1.0 + pct / 100.0)
+
+
+# --------------------------------------------------------------------------- #
+# Minimal ROI ladder (freqtrade-style, time-decaying take-profit)             #
+# --------------------------------------------------------------------------- #
+
+def resolve_minimal_roi(
+    strategy_cfg: Optional[Dict[str, Any]],
+) -> List[Tuple[float, float]]:
+    """Parse the strategy's ``minimal_roi`` table into a sorted step list.
+
+    Config shape (freqtrade convention: keys = position age in MINUTES,
+    values = required net ROI in PERCENT of entry price — percent, not
+    fraction, to match ``fixed_tp_pct`` in this codebase)::
+
+        minimal_roi:
+          "0": 10.0      # from entry: take profit at +10%
+          "2880": 5.0    # after 2 days: settle for +5%
+          "5760": 2.5    # after 4 days: settle for +2.5%
+
+    Returns ``[(age_minutes, roi_pct), ...]`` sorted by age ascending; an
+    empty list disables the ladder. Steps with roi <= 0 are dropped (a "0%
+    ROI" step would exit every trade instantly on noise; use a small positive
+    value to emulate time-based flat exits).
+    """
+    cfg = strategy_cfg or {}
+    raw = cfg.get("minimal_roi")
+    if not isinstance(raw, dict) or not raw:
+        return []
+    steps: List[Tuple[float, float]] = []
+    for key, value in raw.items():
+        try:
+            age = float(key)
+            roi = float(value)
+        except (TypeError, ValueError):
+            continue
+        if age < 0 or roi <= 0:
+            continue
+        steps.append((age, roi))
+    steps.sort(key=lambda s: s[0])
+    return steps
+
+
+def minimal_roi_pct(
+    steps: List[Tuple[float, float]],
+    age_minutes: float,
+) -> float:
+    """Active ROI threshold (percent) for a position of ``age_minutes``.
+
+    The active step is the one with the largest age <= position age
+    (freqtrade semantics). 0.0 = no step active yet / ladder disabled.
+    """
+    active = 0.0
+    for age, roi in steps:
+        if age_minutes >= age:
+            active = roi
+        else:
+            break
+    return active

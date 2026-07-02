@@ -4,7 +4,11 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import pandas as pd
-import pandas_ta as ta
+
+try:
+    import pandas_ta as ta
+except ImportError:  # pragma: no cover - exercised in envs without pandas_ta
+    from xauby.utils import ta_fallback as ta
 
 from xauby.strategies.cdc_action_zone.indicators import _action_price, classify_zone
 from xauby.strategies.indicators.base import Indicator

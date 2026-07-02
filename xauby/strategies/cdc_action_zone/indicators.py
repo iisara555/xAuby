@@ -9,7 +9,13 @@ import logging
 from typing import Any, Dict, Optional
 
 import pandas as pd
-import pandas_ta as ta
+
+try:
+    import pandas_ta as ta
+except ImportError:  # pragma: no cover - exercised in envs without pandas_ta
+    # Same math, pure pandas — parity is asserted by tests/test_ta_fallback.py
+    # wherever the real dependency is installed.
+    from xauby.utils import ta_fallback as ta
 
 logger = logging.getLogger("xauby.strategies.cdc")
 
@@ -81,6 +87,7 @@ def compute_indicators(
     ap_smoothing: int = 2,
     use_d1_regime: bool = False,
     last_bar_is_forming: bool = True,
+    slope_bars: int = 3,
 ) -> Dict[str, Any]:
     """Compute every indicator the CDC strategy needs in one pass.
 
@@ -102,6 +109,9 @@ def compute_indicators(
         "ema_fast_d1_prev": 0.0,
         "ema_slow_d1_prev": 0.0,
         "ap_smoothing": int(ap_smoothing),
+        # Slow-EMA slope over ``slope_bars`` bars; None = not enough data, so
+        # the strategy's slope filter must treat None as "no opinion" (pass).
+        "ema_slow_4h_slope": None,
         "rsi_4h": 0.0,
         "volume_ratio_4h": 0.0,
         "atr_4h": 0.0,
@@ -160,6 +170,12 @@ def compute_indicators(
                     res["cdc_zone_4h_prev"] = classify_zone(p_prev, f_prev, s_prev)
                     res["ema_fast_4h_prev"] = f_prev
                     res["ema_slow_4h_prev"] = s_prev
+
+                n = max(1, int(slope_bars))
+                if len(ema_slow_4h) > n and not pd.isna(ema_slow_4h.iloc[-1 - n]):
+                    res["ema_slow_4h_slope"] = float(
+                        ema_slow_4h.iloc[-1] - ema_slow_4h.iloc[-1 - n]
+                    )
 
                 # Count consecutive GREEN bars ending at the latest bar so the
                 # strategy can treat a transition as "fresh" within a window of

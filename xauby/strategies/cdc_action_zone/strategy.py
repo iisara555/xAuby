@@ -62,6 +62,14 @@ class CDCActionZoneStrategy(Strategy):
             "breakeven_sl_enabled": False,
             "breakeven_activation_atr_mult": 1.5,
             "breakeven_buffer_atr_mult": 0.1,
+            # Slope filter: only enter long when the slow EMA is rising over
+            # the last `slow_slope_bars` bars (short mirror: falling). Filters
+            # counter-trend whipsaw crosses in chop. Off by default.
+            "require_slow_slope": False,
+            "slow_slope_bars": 3,
+            # Engine-managed minimal ROI ladder (freqtrade-style), resolved by
+            # xauby.runtime.exits: {age_minutes: roi_pct}. Empty = disabled.
+            "minimal_roi": {},
         }
 
     def validate_config(self) -> List[str]:
@@ -101,6 +109,9 @@ class CDCActionZoneStrategy(Strategy):
             "breakeven_sl_enabled": {"type": "bool", "default": False, "description": "Enable breakeven stop loss"},
             "breakeven_activation_atr_mult": {"type": "float", "default": 1.5, "description": "ATR mult to activate breakeven SL"},
             "breakeven_buffer_atr_mult": {"type": "float", "default": 0.1, "description": "ATR mult buffer above entry for breakeven SL"},
+            "require_slow_slope": {"type": "bool", "default": False, "description": "Require slow EMA rising (long) / falling (short) over slow_slope_bars"},
+            "slow_slope_bars": {"type": "int", "default": 3, "description": "Bars for the slow-EMA slope lookback"},
+            "minimal_roi": {"type": "dict", "default": {}, "description": "Time-decaying take-profit ladder {age_minutes: roi_pct}; engine-managed exit"},
         }
 
     # ------------------------------------------------------------------ #
@@ -289,6 +300,8 @@ class CDCActionZoneStrategy(Strategy):
         require_fresh_zone = cfg_bool("require_fresh_zone", True)
         fresh_zone_window = cfg_int("fresh_zone_window", 3)
         ap_smoothing = cfg_int("ap_smoothing", 2)
+        require_slow_slope = cfg_bool("require_slow_slope", False)
+        slow_slope_bars = cfg_int("slow_slope_bars", 3)
 
         indicators = compute_indicators(
             ctx.df_primary,
@@ -296,6 +309,7 @@ class CDCActionZoneStrategy(Strategy):
             ap_smoothing,
             use_d1_regime=use_d1_regime,
             last_bar_is_forming=bool(ctx.extras.get("last_bar_is_forming", True)),
+            slope_bars=slow_slope_bars,
         )
         atr = float(indicators.get("atr_4h", 0.0))
         d1_status = indicators["cdc_zone_d1"] if use_d1_regime else "OFF"
@@ -344,6 +358,25 @@ class CDCActionZoneStrategy(Strategy):
                 return hold(f"Volume ratio {vol_ratio:.2f}x below {vol_min_ratio:.2f}x", **common)
             return None
 
+        def slope_blocks(direction: int) -> Optional[Signal]:
+            """Slope filter: slow EMA must point with the trade (None = no data, pass)."""
+            if not require_slow_slope:
+                return None
+            slope = indicators.get("ema_slow_4h_slope")
+            if slope is None:
+                return None
+            if direction > 0 and float(slope) <= 0:
+                return hold(
+                    f"Slow EMA slope not rising ({float(slope):+.4f} over {slow_slope_bars} bars)",
+                    **common,
+                )
+            if direction < 0 and float(slope) >= 0:
+                return hold(
+                    f"Slow EMA slope not falling ({float(slope):+.4f} over {slow_slope_bars} bars)",
+                    **common,
+                )
+            return None
+
         # ---------------- ENTRY (no position) ----------------
         if not ctx.has_position:
             # ----- LONG on a fresh GREEN zone -----
@@ -365,6 +398,9 @@ class CDCActionZoneStrategy(Strategy):
                     d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
                     if d1_zone not in ("GREEN", "YELLOW", "ORANGE"):
                         return hold(f"Daily regime filter blocked (D1 zone: {d1_zone})", **common)
+                blocked = slope_blocks(+1)
+                if blocked is not None:
+                    return blocked
                 blocked = filters_pass()
                 if blocked is not None:
                     return blocked
@@ -397,6 +433,9 @@ class CDCActionZoneStrategy(Strategy):
                     d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
                     if d1_zone not in ("RED", "BLUE", "LBLUE"):
                         return hold(f"Daily regime filter blocked for short (D1 zone: {d1_zone})", **common)
+                blocked = slope_blocks(-1)
+                if blocked is not None:
+                    return blocked
                 blocked = filters_pass()
                 if blocked is not None:
                     return blocked

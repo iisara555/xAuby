@@ -16,6 +16,7 @@ from xauby.runtime.paths import dashboard_focus_path, sentiment_guard_state_path
 from xauby.runtime.manual_orders import claim_manual_order_request
 from xauby.engine.regime_policy import apply_regime_policy, regime_policy_enabled
 from xauby.runtime.candle_utils import candle_is_stale, drop_forming_bar, use_closed_candles
+from xauby.runtime.exits import minimal_roi_pct, resolve_minimal_roi
 from xauby.runtime.trading_config import resolve_trading_config
 from xauby.utils.atomic_io import atomic_json_write
 from xauby.api.utils import round_step
@@ -176,6 +177,49 @@ class LoopMixin:
         ):
             op = "<=" if is_short else ">="
             return "SELL", f"Fixed TP reached ({ticker_price:.2f} {op} {take_profit:.2f})"
+        return action, reason
+
+    def _apply_minimal_roi_exit(
+        self,
+        state: Dict[str, Any],
+        action: str,
+        reason: str,
+        ticker_price: float,
+        *,
+        sl_confirmed: bool,
+        strat_conf: Dict[str, Any],
+    ) -> tuple[str, str]:
+        """Turn HOLD into SELL when the minimal-ROI ladder threshold is met.
+
+        Freqtrade-style time-decaying take-profit: ``minimal_roi`` in strategy
+        config maps position age (minutes) to the ROI percent that locks in
+        the profit. Shares the resolver with the backtest PositionSimulator so
+        replay results reflect the exits that actually happen live.
+        """
+        if (
+            state.get("state") != "bought"
+            or action == "SELL"
+            or sl_confirmed
+            or ticker_price <= 0
+        ):
+            return action, reason
+        steps = resolve_minimal_roi(strat_conf)
+        if not steps:
+            return action, reason
+        entry = float(state.get("entry_price", 0.0) or 0.0)
+        if entry <= 0:
+            return action, reason
+        age_minutes = self._position_age_minutes(state.get("opened_at"))
+        threshold = minimal_roi_pct(steps, age_minutes)
+        if threshold <= 0:
+            return action, reason
+        is_short = str(state.get("position_side") or "LONG").upper() == "SHORT"
+        roi_pct = ((entry - ticker_price) if is_short else (ticker_price - entry)) / entry * 100.0
+        if roi_pct >= threshold:
+            return "SELL", (
+                f"Minimal ROI reached (+{roi_pct:.2f}% >= {threshold:.2f}% "
+                f"after {age_minutes / 60.0:.1f}h)"
+            )
         return action, reason
 
     def _apply_drawdown_force_close(
@@ -1840,6 +1884,8 @@ class LoopMixin:
                 price=round(ticker_price, 2),
             )
 
+        strat_conf = self._get_strategy_config(sym)
+
         action, reason = self._apply_fixed_tp_exit(
             state,
             action,
@@ -1847,11 +1893,18 @@ class LoopMixin:
             ticker_price,
             sl_confirmed=sl_confirmed,
         )
+        action, reason = self._apply_minimal_roi_exit(
+            state,
+            action,
+            reason,
+            ticker_price,
+            sl_confirmed=sl_confirmed,
+            strat_conf=strat_conf,
+        )
         action, reason = self._apply_drawdown_force_close(
             state, action, reason, symbol=sym
         )
 
-        strat_conf = self._get_strategy_config(sym)
         atr = float(signal.volatility) if signal.volatility else 0.0
 
         if self.trading_mode == "semi_auto":
