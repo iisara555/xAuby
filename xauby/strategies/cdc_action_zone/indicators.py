@@ -112,6 +112,9 @@ def compute_indicators(
         # Slow-EMA slope over ``slope_bars`` bars; None = not enough data, so
         # the strategy's slope filter must treat None as "no opinion" (pass).
         "ema_slow_4h_slope": None,
+        # Close position of the last CLOSED bar within its high-low range
+        # (0 = closed at the low, 1 = at the high); None when range is zero.
+        "bar_close_pos_4h": None,
         "rsi_4h": 0.0,
         "volume_ratio_4h": 0.0,
         "atr_4h": 0.0,
@@ -200,6 +203,15 @@ def compute_indicators(
                         res["cdc_zone_4h_green_streak"] = streak
                     else:
                         res["cdc_zone_4h_red_streak"] = streak
+
+            closed_idx = -2 if last_bar_is_forming and len(close_4h) >= 2 else -1
+            bar_high = float(high_4h.iloc[closed_idx])
+            bar_low = float(low_4h.iloc[closed_idx])
+            bar_range = bar_high - bar_low
+            if bar_range > 0:
+                res["bar_close_pos_4h"] = round(
+                    (float(close_4h.iloc[closed_idx]) - bar_low) / bar_range, 4
+                )
 
             rsi_series = ta.rsi(close_4h, length=14)
             if rsi_series is not None and len(rsi_series) > 0:

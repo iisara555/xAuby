@@ -67,6 +67,14 @@ class CDCActionZoneStrategy(Strategy):
             # counter-trend whipsaw crosses in chop. Off by default.
             "require_slow_slope": False,
             "slow_slope_bars": 3,
+            # Short entries fall back to the shared rsi_min/rsi_max unless a
+            # dedicated band is set (a long-biased band otherwise blocks
+            # mirror-image shorts).
+            "rsi_short_min": None,
+            "rsi_short_max": None,
+            # Cross bar must close with the trade: >= this fraction of its
+            # range for longs, <= (1 - fraction) for shorts. 0 disables.
+            "entry_thrust_min": 0.0,
             # Engine-managed minimal ROI ladder (freqtrade-style), resolved by
             # xauby.runtime.exits: {age_minutes: roi_pct}. Empty = disabled.
             "minimal_roi": {},
@@ -111,6 +119,9 @@ class CDCActionZoneStrategy(Strategy):
             "breakeven_buffer_atr_mult": {"type": "float", "default": 0.1, "description": "ATR mult buffer above entry for breakeven SL"},
             "require_slow_slope": {"type": "bool", "default": False, "description": "Require slow EMA rising (long) / falling (short) over slow_slope_bars"},
             "slow_slope_bars": {"type": "int", "default": 3, "description": "Bars for the slow-EMA slope lookback"},
+            "rsi_short_min": {"type": "float", "default": None, "description": "Short-entry RSI floor (falls back to rsi_min)"},
+            "rsi_short_max": {"type": "float", "default": None, "description": "Short-entry RSI cap (falls back to rsi_max)"},
+            "entry_thrust_min": {"type": "float", "default": 0.0, "description": "Cross bar must close within this top fraction of its range (long; mirrored for short). 0 = off"},
             "minimal_roi": {"type": "dict", "default": {}, "description": "Time-decaying take-profit ladder {age_minutes: roi_pct}; engine-managed exit"},
         }
 
@@ -350,12 +361,39 @@ class CDCActionZoneStrategy(Strategy):
         ema_slow_prev = float(indicators.get("ema_slow_4h_prev", 0.0))
         enable_short = cfg_bool("enable_short", False)
 
-        def filters_pass() -> Optional[Signal]:
-            """Shared RSI / volume gates for both long and short entries."""
-            if not (rsi_min <= rsi <= rsi_max):
-                return hold(f"RSI {rsi:.1f} out of bounds [{rsi_min}, {rsi_max}]", **common)
+        def filters_pass(direction: int = +1) -> Optional[Signal]:
+            """RSI / volume / thrust gates for an entry in ``direction``.
+
+            Shorts use their own RSI band (``rsi_short_min``/``rsi_short_max``)
+            when configured — a long-biased shared band would otherwise block
+            mirror-image short setups. The thrust gate requires the cross bar
+            to close with the trade: top of its range for longs, bottom for
+            shorts (``entry_thrust_min`` in 0..1, 0 = off).
+            """
+            lo, hi = rsi_min, rsi_max
+            if direction < 0:
+                lo = cfg_float("rsi_short_min", rsi_min)
+                hi = cfg_float("rsi_short_max", rsi_max)
+            if not (lo <= rsi <= hi):
+                side = "short " if direction < 0 else ""
+                return hold(f"RSI {rsi:.1f} out of {side}bounds [{lo}, {hi}]", **common)
             if vol_ratio < vol_min_ratio:
                 return hold(f"Volume ratio {vol_ratio:.2f}x below {vol_min_ratio:.2f}x", **common)
+            thrust_min = cfg_float("entry_thrust_min", 0.0)
+            if thrust_min > 0:
+                pos = indicators.get("bar_close_pos_4h")
+                if pos is not None:
+                    pos = float(pos)
+                    if direction > 0 and pos < thrust_min:
+                        return hold(
+                            f"Weak close for long ({pos:.2f} of bar range < {thrust_min:.2f})",
+                            **common,
+                        )
+                    if direction < 0 and pos > 1.0 - thrust_min:
+                        return hold(
+                            f"Weak close for short ({pos:.2f} of bar range > {1.0 - thrust_min:.2f})",
+                            **common,
+                        )
             return None
 
         def slope_blocks(direction: int) -> Optional[Signal]:
@@ -436,7 +474,7 @@ class CDCActionZoneStrategy(Strategy):
                 blocked = slope_blocks(-1)
                 if blocked is not None:
                     return blocked
-                blocked = filters_pass()
+                blocked = filters_pass(-1)
                 if blocked is not None:
                     return blocked
                 return open_short(
