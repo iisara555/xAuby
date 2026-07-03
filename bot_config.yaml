@@ -212,11 +212,13 @@ strategy:
       breakeven_activation_atr_mult: 1.5
       breakeven_buffer_atr_mult: 0.1
       cool_down_minutes: 240
-      # --- Optional profit/quality features (default off = CDC-pure) -------
+      # --- Optional profit/quality features ---------------------------------
       # Validate on real data first: python scripts/compare_cdc_ab.py --symbol XAUUSDT
       # Slope filter: enter long only while EMA26 rises (short: falls) over
-      # slow_slope_bars bars — cuts whipsaw crosses in chop.
-      require_slow_slope: false
+      # slow_slope_bars bars — cuts whipsaw crosses in chop. Enabled 2026-07-03
+      # after 6y PAXGUSDT A/B: WR 26.7->36.4%, maxDD 35->20%, all 2y segments
+      # >= baseline (see scripts/compare_cdc_ab.py).
+      require_slow_slope: true
       slow_slope_bars: 3
       # Minimal ROI ladder (freqtrade-style, engine-managed exit shared with
       # backtest): {position age in minutes: required ROI %}. Example:
