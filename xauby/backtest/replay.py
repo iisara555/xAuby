@@ -16,7 +16,11 @@ from xauby.backtest.data import normalize_ohlcv_df, resolve_backtest_timeframes
 from xauby.backtest.metrics import build_metrics_from_replay
 from xauby.backtest.runtime_config import extract_checklist_config
 from xauby.runtime.exchange_config import resolve_fee_pct
-from xauby.runtime.exits import resolve_fixed_tp_pct, resolve_minimal_roi
+from xauby.runtime.exits import (
+    resolve_fixed_tp_pct,
+    resolve_minimal_roi,
+    resolve_partial_tp,
+)
 
 
 def run_plugin_replay(
@@ -61,6 +65,7 @@ def run_plugin_replay(
     sl_confirm_ticks = int(trading_cfg.get("sl_confirm_ticks", 3))
     fixed_tp_pct = resolve_fixed_tp_pct(strategy_name, strat_cfg)
     minimal_roi = resolve_minimal_roi(strat_cfg)
+    partial_tp_pct, partial_tp_fraction = resolve_partial_tp(strat_cfg)
     disable_stop_loss = bool(strat_cfg.get("disable_stop_loss", False))
     position_pct = float(strat_cfg.get("position_pct", 1.0) or 1.0)
 
@@ -98,6 +103,8 @@ def run_plugin_replay(
         slippage_bps=slippage_bps,
         fixed_tp_pct=fixed_tp_pct,
         minimal_roi=minimal_roi,
+        partial_tp_pct=partial_tp_pct,
+        partial_tp_fraction=partial_tp_fraction,
         disable_stop_loss=disable_stop_loss,
         position_pct=position_pct,
         funding_rate_8h=funding_rate_8h,

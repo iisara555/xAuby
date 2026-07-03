@@ -87,6 +87,12 @@ class SimPosition:
     funding_paid: float = 0.0  # cumulative perp funding cost (>0 = paid out)
     side: int = 1  # +1 long, -1 short
     lowest_price: float = 0.0  # peak-favourable extreme for short trailing
+    # Partial take-profit bookkeeping: one banked leg per position. The final
+    # SimTrade carries the COMBINED net PnL so trade counts (and win rate)
+    # stay comparable with non-partial runs.
+    original_qty: float = 0.0
+    partial_taken: bool = False
+    banked_pnl: float = 0.0
 
 
 @dataclass
@@ -122,6 +128,8 @@ class PositionSimulator:
         funding_rate_8h: float = 0.0,
         bar_hours: float = 0.0,
         minimal_roi: Optional[List[Tuple[float, float]]] = None,
+        partial_tp_pct: float = 0.0,
+        partial_tp_fraction: float = 0.5,
     ):
         self.balance = initial_balance
         self._initial_balance = initial_balance
@@ -137,6 +145,12 @@ class PositionSimulator:
         self.fixed_tp_pct = max(0.0, float(fixed_tp_pct or 0.0))
         # Sorted [(age_minutes, roi_pct)] ladder from resolve_minimal_roi().
         self.minimal_roi: List[Tuple[float, float]] = list(minimal_roi or [])
+        # One-shot partial TP: close `fraction` of the position at +pct.
+        self.partial_tp_pct = max(0.0, float(partial_tp_pct or 0.0))
+        self.partial_tp_fraction = float(partial_tp_fraction or 0.0)
+        self._partial_enabled = (
+            self.partial_tp_pct > 0 and 0.0 < self.partial_tp_fraction < 1.0
+        )
         self.be_enabled = be_enabled
         self.be_activation_atr_mult = be_activation_atr_mult
         self.be_buffer_atr_mult = be_buffer_atr_mult
@@ -253,6 +267,7 @@ class PositionSimulator:
                 entry_time=bar_time,
                 initial_sl=0.0,
             )
+            self.position.original_qty = self.position.qty
             self.sl_breach_bars = 0
             return True
 
@@ -291,6 +306,7 @@ class PositionSimulator:
             entry_time=bar_time,
             initial_sl=sl,
         )
+        self.position.original_qty = self.position.qty
         self.sl_breach_bars = 0
         return True
 
@@ -319,6 +335,7 @@ class PositionSimulator:
                 lowest_price=fill_price, qty=qty, entry_time=bar_time,
                 initial_sl=0.0, side=-1,
             )
+            self.position.original_qty = self.position.qty
             self.sl_breach_bars = 0
             return True
 
@@ -353,6 +370,7 @@ class PositionSimulator:
             lowest_price=fill_price, qty=qty, entry_time=bar_time,
             initial_sl=sl, side=-1,
         )
+        self.position.original_qty = self.position.qty
         self.sl_breach_bars = 0
         return True
 
@@ -371,20 +389,59 @@ class PositionSimulator:
         )
         net = pnl - fee - pos.funding_paid
         self.balance += net
-        cost = pos.entry_price * pos.qty
+        # One SimTrade per position: combine any banked partial-TP leg so the
+        # trade count (and thus win rate) matches non-partial runs, and use the
+        # ORIGINAL notional as the percent base.
+        total_net = net + pos.banked_pnl
+        cost = pos.entry_price * (pos.original_qty or pos.qty)
         self.trades.append(
             SimTrade(
                 entry_time=pos.entry_time,
                 exit_time=bar_time,
                 entry_price=pos.entry_price,
                 exit_price=fill_price,
-                pnl=net,
-                pnl_pct=(net / cost * 100) if cost > 0 else 0.0,
+                pnl=total_net,
+                pnl_pct=(total_net / cost * 100) if cost > 0 else 0.0,
                 trigger=trigger,
             )
         )
         self.position = None
         self.sl_breach_bars = 0
+
+    def _take_partial(
+        self,
+        pos: SimPosition,
+        fill_basis: float,
+        bar_time: int,
+        events: List[Dict[str, Any]],
+    ) -> None:
+        """Bank ``partial_tp_fraction`` of the position at ``fill_basis``.
+
+        The banked leg realizes its own fees and its share of accrued funding;
+        the remainder keeps riding with proportionally reduced qty/funding so
+        later accrual and the final close stay exact.
+        """
+        slip = self.slippage_bps / 10000.0
+        fill = fill_basis * ((1.0 - slip) if pos.side > 0 else (1.0 + slip))
+        qty_p = pos.qty * self.partial_tp_fraction
+        pnl = pos.side * (fill - pos.entry_price) * qty_p
+        fee = (pos.entry_price * qty_p * self.fee_pct) + (fill * qty_p * self.fee_pct)
+        funding_share = pos.funding_paid * self.partial_tp_fraction
+        net = pnl - fee - funding_share
+        self.balance += net
+        pos.banked_pnl += net
+        pos.funding_paid -= funding_share
+        pos.qty -= qty_p
+        pos.partial_taken = True
+        events.append(
+            {
+                "event_type": "partial_tp_triggered",
+                "price": fill,
+                "qty": qty_p,
+                "banked_pnl": net,
+                "bar_time": bar_time,
+            }
+        )
 
     def on_bar(
         self,
@@ -494,6 +551,15 @@ class PositionSimulator:
                     events.append({"event_type": "position_closed", "exit": exit_p})
                     return events
 
+        # One-shot partial TP for a long: target sits ABOVE entry. A bar that
+        # opens beyond it fills at the (better) open; otherwise the target acts
+        # as a resting limit filled intrabar.
+        if self._partial_enabled and not pos.partial_taken and pos.entry_price > 0:
+            target = pos.entry_price * (1.0 + self.partial_tp_pct / 100.0)
+            basis = open_p if open_p >= target else (target if high >= target else 0.0)
+            if basis > 0:
+                self._take_partial(pos, basis, bar_time, events)
+
         pos.highest_price = max(pos.highest_price, high)
         # CDC-pure mode: no trailing stop — exit is driven only by the RED zone.
         if self.disable_stop_loss:
@@ -567,6 +633,13 @@ class PositionSimulator:
                     self._close(exit_p, bar_time, "MINIMAL_ROI")
                     events.append({"event_type": "position_closed", "exit": exit_p})
                     return events
+
+        # One-shot partial TP for a short: target sits BELOW entry.
+        if self._partial_enabled and not pos.partial_taken and pos.entry_price > 0:
+            target = pos.entry_price * (1.0 - self.partial_tp_pct / 100.0)
+            basis = open_p if open_p <= target else (target if low <= target else 0.0)
+            if basis > 0:
+                self._take_partial(pos, basis, bar_time, events)
 
         pos.lowest_price = min(pos.lowest_price or pos.entry_price, low)
         if self.disable_stop_loss:

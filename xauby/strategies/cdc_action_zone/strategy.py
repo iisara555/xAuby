@@ -78,6 +78,11 @@ class CDCActionZoneStrategy(Strategy):
             # Engine-managed minimal ROI ladder (freqtrade-style), resolved by
             # xauby.runtime.exits: {age_minutes: roi_pct}. Empty = disabled.
             "minimal_roi": {},
+            # One-shot partial take-profit: bank `fraction` of the position at
+            # +pct, let the rest ride to the normal CDC exit. 0 = disabled.
+            # Backtest-validated feature; live order path not yet wired.
+            "partial_tp_pct": 0.0,
+            "partial_tp_fraction": 0.5,
         }
 
     def validate_config(self) -> List[str]:

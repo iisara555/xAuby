@@ -90,6 +90,27 @@ def resolve_minimal_roi(
     return steps
 
 
+def resolve_partial_tp(
+    strategy_cfg: Optional[Dict[str, Any]],
+) -> Tuple[float, float]:
+    """Resolve the partial take-profit as ``(trigger_pct, fraction)``.
+
+    ``partial_tp_pct`` > 0 enables it: when unrealized profit reaches that
+    percent of entry, ``partial_tp_fraction`` of the position (0 < f < 1,
+    default 0.5) is closed once and the remainder rides to the normal
+    strategy exit. Returns (0.0, 0.0) when disabled or misconfigured.
+    """
+    cfg = strategy_cfg or {}
+    try:
+        pct = float(cfg.get("partial_tp_pct", 0.0) or 0.0)
+        fraction = float(cfg.get("partial_tp_fraction", 0.5) or 0.5)
+    except (TypeError, ValueError):
+        return (0.0, 0.0)
+    if pct <= 0 or not (0.0 < fraction < 1.0):
+        return (0.0, 0.0)
+    return (pct, fraction)
+
+
 def minimal_roi_pct(
     steps: List[Tuple[float, float]],
     age_minutes: float,
