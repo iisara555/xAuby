@@ -896,6 +896,14 @@ class LoopMixin:
         }
         feed_status = sc.feed_snapshot()
         candle_status = sc.candle_snapshot()
+        partial_tp_pct, partial_tp_fraction = resolve_partial_tp(self._get_strategy_config(sym))
+        partial_tp_trigger_price = 0.0
+        if state["state"] == "bought" and partial_tp_pct > 0:
+            entry = float(state.get("entry_price") or 0.0)
+            if entry > 0:
+                is_short = str(state.get("position_side") or "LONG").upper() == "SHORT"
+                factor = 1.0 - (partial_tp_pct / 100.0) if is_short else 1.0 + (partial_tp_pct / 100.0)
+                partial_tp_trigger_price = entry * factor
         snap = self._state_exporter.build(
             pid=os.getpid(),
             engine_started_at=self.engine_started_at,
@@ -926,6 +934,10 @@ class LoopMixin:
                 "liquidation_price": state.get("liquidation_price", 0.0),
                 "funding_paid": state.get("funding_paid", 0.0),
                 "management_mode": state.get("management_mode", "strategy"),
+                "partial_tp_taken": bool(state.get("partial_tp_taken", False)),
+                "partial_tp_pct": partial_tp_pct,
+                "partial_tp_fraction": partial_tp_fraction,
+                "partial_tp_trigger_price": partial_tp_trigger_price,
                 "mark_price": current_price,
                 "exchange": exchange_id,
                 "market_type": exchange_identity["market_type"].upper(),

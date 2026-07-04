@@ -7,16 +7,17 @@ cd "$ROOT"
 
 PY="${PYTHON:-./venv/bin/python}"
 LOG_PATH="${XAUBY_ENGINE_LOG:-core/logs/xauby_engine_bg.log}"
+ENGINE_PATTERN="[p]ython.*run_xauby.py"
 
 echo "[1/4] Running restart preflight..."
 "$PY" scripts/controlled_restart_preflight.py
 
 echo "[2/4] Stopping current run_xauby.py processes..."
-pkill -TERM -f "python.*run_xauby.py" || true
+pkill -TERM -f "$ENGINE_PATTERN" || true
 sleep 3
-if pgrep -f "python.*run_xauby.py" >/dev/null; then
+if pgrep -f "$ENGINE_PATTERN" >/dev/null; then
   echo "[WARN] Engine still running after SIGTERM; sending SIGKILL."
-  pkill -KILL -f "python.*run_xauby.py" || true
+  pkill -KILL -f "$ENGINE_PATTERN" || true
   sleep 1
 fi
 
@@ -28,7 +29,7 @@ PID="$!"
 echo "[4/4] Waiting for state update..."
 for _ in $(seq 1 10); do
   sleep 1
-  if pgrep -f "python.*run_xauby.py" >/dev/null; then
+  if kill -0 "$PID" 2>/dev/null; then
     echo "[OK] Engine restarted. pid=$PID log=$LOG_PATH"
     exit 0
   fi

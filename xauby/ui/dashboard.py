@@ -1142,9 +1142,14 @@ def _position_checklist_lines(
     market_type = str(pos.get("market_type") or "SPOT").upper()
     feed_health = str(pos.get("feed_health") or "OK").upper()
     management_mode = str(pos.get("management_mode") or "strategy").lower()
+    partial_tp_pct = float(pos.get("partial_tp_pct") or 0.0)
+    partial_tp_fraction = float(pos.get("partial_tp_fraction") or 0.0)
+    partial_tp_trigger = float(pos.get("partial_tp_trigger_price") or 0.0)
+    partial_tp_taken = bool(pos.get("partial_tp_taken"))
 
     chk_ok = f"{fg_rgb(52, 211, 153)}[✓]{RESET}"
     chk_err = f"{fg_rgb(251, 113, 133)}[✗]{RESET}"
+    chk_pending = f"{C_MUTED}[ ]{RESET}"
     pnl_color = C_GREEN if unr_pnl >= 0 else C_RED
     pnl_sign = "+" if unr_pnl >= 0 else ""
     sl_ok = sl > 0 and (curr_price < sl if side == "SHORT" else curr_price > sl)
@@ -1153,6 +1158,14 @@ def _position_checklist_lines(
         pnl_str = f"{pnl_color}{pnl_sign}{unr_pnl:,.2f} ({unr_pct:+.1f}%){C_RESET}"
         sl_str = f"{chk_ok if sl_ok else chk_err} SL {C_RED}{sl:,.2f}{C_RESET}"
         hdr = [_fit_checklist_line(f"  {side} {leverage:.0f}x {pnl_str}  {sl_str}", max_width)]
+        if partial_tp_pct > 0 and 0 < partial_tp_fraction < 1:
+            tp_mark = chk_ok if partial_tp_taken else chk_pending
+            tp_target = f"{partial_tp_trigger:,.0f}" if partial_tp_trigger > 0 else "-"
+            tp_status = "banked" if partial_tp_taken else "pending"
+            hdr.append(_fit_checklist_line(
+                f"  {tp_mark} PTP {partial_tp_fraction * 100:.0f}% @ {tp_target} ({tp_status})",
+                max_width,
+            ))
         return hdr + _render_strategy_checklist(items, profile, max_width)
 
     hdr: List[str] = []
@@ -1169,6 +1182,15 @@ def _position_checklist_lines(
         hdr.append(_fit_checklist_line(
             f"  {C_MUTED}Entry{C_RESET} {C_PRIMARY}{entry:,.2f}{C_RESET}"
             f"  {pnl_color}{pnl_sign}{unr_pnl:,.4f} USDT ({unr_pct:+.2f}%){C_RESET}",
+            max_width,
+        ))
+    if partial_tp_pct > 0 and 0 < partial_tp_fraction < 1:
+        tp_mark = chk_ok if partial_tp_taken else chk_pending
+        tp_target = f"{partial_tp_trigger:,.2f}" if partial_tp_trigger > 0 else "-"
+        tp_status = f"{C_GREEN}banked{C_RESET}" if partial_tp_taken else f"{C_MUTED}pending{C_RESET}"
+        hdr.append(_fit_checklist_line(
+            f"  {tp_mark} Partial TP : {C_PRIMARY}{partial_tp_fraction * 100:.0f}%{C_RESET} "
+            f"@ {C_PRIMARY}{tp_target}{C_RESET} (+{partial_tp_pct:.1f}%) {tp_status}",
             max_width,
         ))
     if sl > 0:

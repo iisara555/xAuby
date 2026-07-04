@@ -22,8 +22,21 @@ Keep the engine running separately as usual. The WebUI reads:
 - recent health, log, and event files
 
 The mobile Home view shows live OKX runtime status, 24 recent OHLC candles,
-EMA12/EMA26 overlays, and CDC Action Zone details. Activity uses its own
-scrolling view for events and closed trades.
+EMA12/EMA26 overlays, CDC Action Zone details, and open-position partial TP
+status. Activity uses its own scrolling view for events and closed trades.
+
+## Partial TP Status
+
+On the Home view, the Position card appends partial take-profit status to the
+PnL line when the active strategy has it configured:
+
+- `PTP 50% @ 4,604` means the one-shot partial close is still pending at that
+  trigger price.
+- `PTP banked` means the partial close has already executed for the current
+  position and the remainder is riding to the normal strategy exit.
+
+The WebUI is read-only; it only reflects the engine state file and does not
+manually trigger or cancel partial TP orders.
 
 ## Windows Access
 

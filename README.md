@@ -176,7 +176,8 @@ Optional read-only browser dashboard:
 ```
 
 The WebUI is mobile-first and read-only. It shows the live OKX runtime state,
-24 recent OHLC candles, CDC Action Zone summary, and EMA12/EMA26 overlays.
+24 recent OHLC candles, CDC Action Zone summary, EMA12/EMA26 overlays, and
+partial take-profit status for open positions.
 
 From Windows, open it through a free SSH tunnel:
 
@@ -282,7 +283,7 @@ leverage only.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Notes |
 |--------|------|----------|------------|------------|-------|-------|
-| `XAUUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long`, `short` | OKX swap, 1x isolated, RegimeRouter off |
+| `XAUUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | `long`, `short` | OKX swap, 1x isolated, RegimeRouter off, partial TP 50% at +12% |
 
 Risk and allocation defaults:
 
@@ -342,6 +343,11 @@ Manual BUY has two modes:
 Manual-managed positions are shown in the dashboard as `Manual sell only`.
 They still count as open `bought` positions for allocation/max-position guards,
 and `/pause` continues to block new manual BUY requests.
+
+For strategy-managed positions, the dashboard/TUI/WebUI show partial TP as
+`PTP` or `Partial TP`. `pending` means the configured one-shot leg has not yet
+closed; `banked` means the partial close has executed and the remainder is
+riding to the normal strategy exit.
 
 ---
 

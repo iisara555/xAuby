@@ -195,13 +195,13 @@ strategy:
       confirm_timeframe: 1d
       use_d1_regime_filter: false
       ap_smoothing: 2
-      # CDC ActionZone V3 2020 Spot: Fresh GREEN opens LONG and RED exits.
-      # No SHORT, stop loss, trailing stop, or fixed take profit.
-      enable_short: false
+      # CDC ActionZone V3 2020 on OKX perpetual: fresh GREEN opens LONG,
+      # fresh RED opens SHORT, opposite zone exits.
+      enable_short: true
       require_fresh_zone: true
       fresh_zone_window: 1
       disable_stop_loss: true
-      position_pct: 1.0          # สัดส่วน equity ต่อไม้ (1.0 = เต็มพอร์ต). ลดเพื่อหด drawdown
+      position_pct: 0.95         # keep futures margin buffer so OKX max-size checks pass
       rsi_min: 0.0
       rsi_max: 100.0
       vol_min_ratio: 0.0
@@ -576,7 +576,7 @@ backtest:
   # simulator accrues it per bar (scaled by bar_hours/8) for held positions —
   # longs pay, shorts receive. Set to your venue's typical rate when
   # backtesting the OKX swap (e.g. 0.0001 = 0.01%/8h ~ 0.03%/day). 0.0 = off
-  # (correct for spot) and keeps results identical to before.
+  # (set 0.0 only for spot backtests).
   funding_rate_8h: 0.00004
   acceptance:
     compare_against: long_only
@@ -678,7 +678,7 @@ cli_ui:
   # Optional: path served by the WebUI for the header avatar (e.g.
   # "/profile-itsara.jpg"). Unset uses the bundled generic icon
   # (xauby/webui/static/avatar-default.svg).
-  webui_avatar:
+  webui_avatar: /profile-itsara.jpg
   command_listener_enabled: true
   chart_enabled: true
   chart_candle_cols: 2

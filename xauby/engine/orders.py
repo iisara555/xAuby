@@ -131,6 +131,29 @@ class OrderMixin:
             last_sent[key] = now
             self._protection_alert_last = last_sent
 
+    def _halt_unrecoverable_order_error(self, symbol: str, error: ExchangeAPIError) -> None:
+        raw_text = str(getattr(error, "raw", "") or "") + " " + str(getattr(error, "msg", "") or "")
+        code_text = str(getattr(error, "code", "") or "")
+        if code_text != "AccountNotEnabled" and "51010" not in raw_text:
+            return
+        reason = "OKX account mode does not support configured swap/isolated contract orders"
+        try:
+            self._sc(symbol).set_trading_halted(True, reason)
+        except Exception:
+            return
+        logger.critical("Trading halted for %s: %s", symbol, reason)
+
+    def _live_swap_contract_size(self, symbol: str) -> float:
+        caps = getattr(self.client, "capabilities", {}) or {}
+        if not caps.get("swap"):
+            return 1.0
+        try:
+            native = self.client._to_ccxt_symbol(symbol)
+            market = self.client._load_markets().get(native, {}) or {}
+            return max(float(market.get("contractSize") or 1.0), 1e-12)
+        except Exception:
+            return 1.0
+
     def execute_open_short(self, signal: Any, ticker_price: float, symbol: Optional[str] = None) -> bool:
         """Open an isolated one-way SHORT; live mode is explicit and fail-closed."""
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
@@ -1365,10 +1388,19 @@ class OrderMixin:
 
             try:
                 order_total_t0 = time.perf_counter()
+                caps = getattr(self.client, "capabilities", {}) or {}
+                is_live_swap = bool(caps.get("swap"))
+                contract_size = self._live_swap_contract_size(sym) if is_live_swap else 1.0
+                if is_live_swap:
+                    if not all(caps.get(k) for k in ("positions", "reduce_only")):
+                        raise RuntimeError("exchange lacks swap/position/reduce-only capabilities")
+                    leverage = float((self.config.get("derivatives") or {}).get("default_leverage", 1) or 1)
+                    self.client.set_margin_mode(sym, "isolated")
+                    self.client.set_leverage(sym, leverage)
                 b = self._fresh_balances_for_order()
                 avail_usdt = b.get(self._quote_asset(), {}).get("available", 0.0)
                 base_coin = self._get_base_asset(sym)
-                existing_base_qty = self._asset_balance_total(b, base_coin)
+                existing_base_qty = 0.0 if is_live_swap else self._asset_balance_total(b, base_coin)
                 existing_base_value = existing_base_qty * ticker_price
                 if existing_base_value >= min_order_amt:
                     msg = (
@@ -1443,13 +1475,24 @@ class OrderMixin:
                     order_path=order_path,
                 )
                 submit_t0 = time.perf_counter()
+                order_amount = qty if is_live_swap else buy_amount_usdt
+                order_kwargs = {}
+                if is_live_swap:
+                    order_kwargs.update(
+                        {
+                            "amount_in_base": True,
+                            "position_side": "LONG",
+                            "reduce_only": False,
+                        }
+                    )
                 res = self.client.place_order(
                     symbol=sym,
                     side="BUY",
                     order_type=order_type_config,
-                    amount=buy_amount_usdt,
+                    amount=order_amount,
                     price=ticker_price,
                     client_id=buy_client_id,
+                    **order_kwargs,
                 )
                 order_submit_ms = self._record_order_latency_metric("order_submit_ms", submit_t0)
                 self._latency_metrics["order_ack_ms"] = order_submit_ms
@@ -1519,8 +1562,9 @@ class OrderMixin:
                             symbol=sym,
                             side="BUY",
                             order_type="MARKET",
-                            amount=remaining_quote,
+                            amount=(remaining_quote / ticker_price if is_live_swap else remaining_quote),
                             client_id=fb_client_id,
+                            **order_kwargs,
                         )
                         self._record_order_latency_metric("order_fallback_submit_ms", fb_submit_t0)
                         fb_id = str(fb_res.get("orderId") or fb_res.get("id") or "")
@@ -1546,8 +1590,9 @@ class OrderMixin:
                 cummulative_quote_qty = (
                     float(order_details.get("cummulativeQuoteQty", 0.0) or 0.0) + fallback_quote_spent
                 )
-                if filled_qty > 0 and cummulative_quote_qty > 0:
-                    filled_price = cummulative_quote_qty / filled_qty
+                filled_base_qty = filled_qty * contract_size if is_live_swap else filled_qty
+                if filled_base_qty > 0 and cummulative_quote_qty > 0:
+                    filled_price = cummulative_quote_qty / filled_base_qty
                 else:
                     filled_price = float(order_details.get("price", 0.0) or ticker_price)
                 if filled_price <= 0:
@@ -1555,7 +1600,7 @@ class OrderMixin:
 
                 order_total_ms = self._record_order_latency_metric("order_total_ms", order_total_t0)
                 metrics = getattr(self, "_latency_metrics", {}) or {}
-                if filled_qty > 0:
+                if filled_base_qty > 0:
                     stop_loss = 0.0 if (disable_sl or manual_management) else (filled_price - sl_distance)
                     take_profit = (
                         0.0
@@ -1577,7 +1622,7 @@ class OrderMixin:
                         side="BUY",
                         order_id=order_id,
                         client_id=buy_client_id,
-                        qty=round(filled_qty, 6),
+                        qty=round(filled_base_qty, 6),
                         price=round(filled_price, 2),
                         ref_price=round(ticker_price, 2),
                         slippage_bps=slip_bps,
@@ -1591,7 +1636,7 @@ class OrderMixin:
 
                     sl_order_id = None
                     if not disable_sl and not manual_management:
-                        sl_res = self._place_sl_with_retry(filled_qty, stop_loss, symbol=sym)
+                        sl_res = self._place_sl_with_retry(filled_base_qty, stop_loss, symbol=sym)
                         sl_order_id = sl_res[0] if sl_res else None
                         if not sl_order_id:
                             self.send_telegram_alert(
@@ -1606,11 +1651,14 @@ class OrderMixin:
                         stop_loss=stop_loss,
                         take_profit=take_profit,
                         highest_price_seen=filled_price,
-                        quantity=filled_qty,
+                        quantity=filled_base_qty,
                         opened_at=now_iso,
                         last_transition_at=now_iso,
                         stop_loss_order_id=sl_order_id,
                         management_mode=position_management_mode,
+                        position_side="LONG",
+                        leverage=float((self.config.get("derivatives") or {}).get("default_leverage", 1) or 1),
+                        margin_mode="isolated" if is_live_swap else "spot",
                     )
                     
                     base_coin = self._get_base_asset(sym)
@@ -1620,9 +1668,9 @@ class OrderMixin:
                         sl_msg = "no SL — CDC exit on RED" if disable_sl else f"SL set to {stop_loss:.2f}"
                     slip_msg = f" | slip {slip_bps:+.1f}bps"
                     if status == "FILLED":
-                        msg = f"🚀 [LIVE BUY FILLED] {filled_qty:.6f} {base_coin} @ {filled_price:.2f} USDT. {sl_msg}{slip_msg}"
+                        msg = f"🚀 [LIVE BUY FILLED] {filled_base_qty:.6f} {base_coin} @ {filled_price:.2f} USDT. {sl_msg}{slip_msg}"
                     else:
-                        msg = f"⚠️ [LIVE BUY PARTIAL FILL] {filled_qty:.6f} {base_coin} @ {filled_price:.2f} USDT (Ordered: {qty:.6f}). Status: {status}. {sl_msg}{slip_msg}"
+                        msg = f"⚠️ [LIVE BUY PARTIAL FILL] {filled_base_qty:.6f} {base_coin} @ {filled_price:.2f} USDT (Ordered: {qty:.6f}). Status: {status}. {sl_msg}{slip_msg}"
                     
                     logger.info(msg)
                     self.last_log_message = msg
@@ -1632,7 +1680,7 @@ class OrderMixin:
                         entry=round(filled_price, 2),
                         stop_loss=round(stop_loss, 2),
                         take_profit=round(take_profit, 2),
-                        qty=round(filled_qty, 6),
+                        qty=round(filled_base_qty, 6),
                         status=status,
                         order_path=order_path,
                         order_total_ms=metrics.get("order_total_ms", order_total_ms),
@@ -1648,6 +1696,7 @@ class OrderMixin:
                 logger.error(msg)
                 self.last_log_message = msg
                 self.send_telegram_alert(msg)
+                self._halt_unrecoverable_order_error(sym, e)
                 self._emit_event(
                     EventType.ORDER_FAILED,
                     context="execute_buy",

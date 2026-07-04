@@ -26,7 +26,7 @@ flowchart TD
   O -->|pass| Q{"action + state machine"}
   Q -->|idle + BUY| R["execute_buy / semi_auto queue"]
   Q -->|bought + SELL| S["execute_sell"]
-  Q -->|bought + HOLD| T["Trailing SL / breakeven"]
+  Q -->|bought + HOLD| T["Partial TP / trailing SL / breakeven"]
   R --> U["save_trade_state + events"]
   S --> U
   T --> U
@@ -48,12 +48,30 @@ flowchart TD
 Triggers include:
 
 - Strategy SELL signal
+- One-shot partial take-profit (`partial_tp_pct` / `partial_tp_fraction`) banks
+  part of the position, records a partial closed trade, and keeps the remainder
+  open for the normal strategy exit
 - Local SL confirmed over `sl_confirm_ticks`
 - Exchange SL fill detection
 - RegimeRouter NO_TRADE force close after configured candles
 - `max_hold_hours` / minimal ROI tables when configured
 
 Failed sells attempt SL restoration; a critical Telegram alert is sent if restore fails.
+
+## Partial take-profit path
+
+Partial TP runs only after the full-exit pipeline has had a chance to sell. If
+the same tick also produces a full exit, the full exit wins. Otherwise, for a
+`bought` state with `partial_tp_taken=false`, the engine compares mark price to
+the configured threshold from entry:
+
+- LONG: `mark >= entry * (1 + partial_tp_pct / 100)`
+- SHORT: `mark <= entry * (1 - partial_tp_pct / 100)`
+
+When hit, `execute_partial_tp()` closes the configured fraction through the
+broker abstraction, resizes any exchange-side stop to the remaining quantity,
+sets `partial_tp_taken=true`, emits `partial_tp_executed`, and leaves the
+remaining quantity under the existing strategy/CDC exit.
 
 ## Strategy handoff
 

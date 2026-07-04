@@ -88,6 +88,28 @@ macro_sentiment_guard:
 
 `risk_pct` is intentionally kept at `0.45` in both trading and portfolio sizing.
 
+## Partial take-profit
+
+Strategy configs may enable a one-shot partial take-profit:
+
+```yaml
+strategy:
+  params:
+    cdc_action_zone:
+      partial_tp_pct: 12.0
+      partial_tp_fraction: 0.5
+```
+
+When an open position reaches `partial_tp_pct` return from entry, the engine
+closes `partial_tp_fraction` of the remaining position with a reduce-only close
+on live swaps (or the SimBroker in sim), records a partial closed trade, marks
+`trade_states.partial_tp_taken=1`, and leaves the rest to the normal strategy
+exit. The trigger is one-shot per position and persists across restarts.
+
+For the current XAU live baseline this banks 50% at +12% and lets the remainder
+ride until CDC exits. UI surfaces show the target as `PTP`, `Partial TP`, or
+`PTP banked` once taken.
+
 ## Whitelist schema
 
 ```json

@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from xauby.api import create_exchange_client, create_exchange_websocket
 from xauby.api.ccxt_client import CCXTAPIError, CCXTExchangeClient
@@ -142,6 +142,27 @@ class TestCCXTClient(unittest.TestCase):
         self.assertAlmostEqual(self.exchange.created_orders[0]["amount"], 0.02)
         self.assertEqual(self.exchange.created_orders[0]["clientOrderId"], "cid-1")
 
+    def test_okx_client_order_id_is_alphanumeric_max_32(self):
+        okx_client = CCXTExchangeClient(
+            config={"exchange": {"provider": "ccxt", "ccxt_id": "okx"}},
+            exchange_instance=self.exchange,
+        )
+
+        order = okx_client.place_order(
+            "BTCUSDT",
+            "BUY",
+            "LIMIT",
+            amount=1000,
+            price=50000,
+            client_id="xauby-buy-1783008033123-63584f05",
+        )
+
+        client_id = self.exchange.created_orders[-1]["clientOrderId"]
+        self.assertEqual(client_id, "xaubybuy178300803312363584f05")
+        self.assertLessEqual(len(client_id), 32)
+        self.assertTrue(client_id.isalnum())
+        self.assertEqual(order.client_id, client_id)
+
     def test_stop_loss_limit_is_explicitly_unsupported_by_default(self):
         with self.assertRaises(CCXTAPIError):
             self.client.place_order(
@@ -175,20 +196,28 @@ class TestCCXTClient(unittest.TestCase):
         # registry builder: CCXTExchangeClient(api_key, api_secret, base_url, config=...)
         self.assertEqual(client_cls.call_args.args[0], "k")
 
-    def test_ccxt_non_binance_has_no_builtin_websocket(self):
-        kraken_ws = create_exchange_websocket(
-            {"exchange": {"provider": "ccxt", "ccxt_id": "kraken", "name": "kraken"}},
-            ["BTCUSDT"],
-            lambda tick: None,
-        )
-        binance_ws = create_exchange_websocket(
-            {"exchange": {"provider": "ccxt", "ccxt_id": "binance"}},
-            ["BTCUSDT"],
-            lambda tick: None,
-        )
+    def test_ccxt_websocket_uses_ccxtpro_when_available(self):
+        fake_module = MagicMock()
+        fake_module.kraken = MagicMock()
+        fake_module.binance = MagicMock()
+        import xauby.api.exchanges.exchange_ccxt as mod
 
-        self.assertIsNone(kraken_ws)
-        self.assertIsNone(binance_ws)
+        with patch.object(mod, "_import_ccxtpro", return_value=fake_module):
+            kraken_ws = create_exchange_websocket(
+                {"exchange": {"provider": "ccxt", "ccxt_id": "kraken", "name": "kraken"}},
+                ["BTCUSDT"],
+                lambda tick: None,
+            )
+            binance_ws = create_exchange_websocket(
+                {"exchange": {"provider": "ccxt", "ccxt_id": "binance"}},
+                ["BTCUSDT"],
+                lambda tick: None,
+            )
+
+        self.assertEqual(type(kraken_ws).__name__, "CCXTProWebSocket")
+        self.assertEqual(type(binance_ws).__name__, "CCXTProWebSocket")
+        self.assertEqual(kraken_ws.exchange_id, "kraken")
+        self.assertEqual(binance_ws.exchange_id, "binance")
 
 
 class TestCCXTProWebSocket(unittest.TestCase):

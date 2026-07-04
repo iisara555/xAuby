@@ -45,6 +45,40 @@ const text = (id, value) => {
   if (el) el.textContent = value;
 };
 
+const prefersReducedMotion = () => (
+  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+);
+
+function markValueUpdated(el) {
+  if (!el || prefersReducedMotion()) return;
+  el.classList.remove("value-updated");
+  void el.offsetWidth;
+  el.classList.add("value-updated");
+  window.setTimeout(() => el.classList.remove("value-updated"), 380);
+}
+
+function liveText(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const next = String(value);
+  const previous = el.dataset.liveValue;
+  if (previous !== undefined && previous !== next) {
+    markValueUpdated(el);
+  }
+  el.dataset.liveValue = next;
+  el.textContent = value;
+}
+
+function noteLiveValue(el, value) {
+  if (!el) return;
+  const next = String(value);
+  const previous = el.dataset.liveValue;
+  if (previous !== undefined && previous !== next) {
+    markValueUpdated(el);
+  }
+  el.dataset.liveValue = next;
+}
+
 const cls = (id, value) => {
   const el = document.getElementById(id);
   if (el) el.className = value;
@@ -66,9 +100,12 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
 }[ch]));
 
 let lastCandles = [];
+let lastPortfolioSegments = [];
 let currentSymbol = "";
 let currentTimeframe = "4h";
 let latestMarketPrice = null;
+
+const PORTFOLIO_COLORS = ["#ff431a", "#97aef0", "#ff7040", "#f8f4ee", "#70e0c2", "#c6b7ff"];
 
 function timeframeToMinutes(timeframe) {
   const match = /^([0-9]+)\s*([mhdw])$/i.exec(String(timeframe || "").trim());
@@ -151,6 +188,88 @@ function compactIndicatorValue(value) {
   return String(value ?? "--");
 }
 
+function baseFromSymbol(symbol) {
+  const normalized = String(symbol || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const quotes = ["USDT", "USDC", "USD", "THB", "BTC", "ETH"];
+  const quote = quotes.find((suffix) => normalized.endsWith(suffix));
+  return quote ? normalized.slice(0, -quote.length) || normalized : normalized;
+}
+
+function mergeSegment(map, label, value, includeZero = false) {
+  const amount = Number(value);
+  if (!label || !Number.isFinite(amount) || amount < 0) return;
+  if (amount === 0 && !includeZero && !map.has(label)) return;
+  map.set(label, (map.get(label) || 0) + amount);
+}
+
+function portfolioSegmentsFromState(state, snap, fallbackEquity) {
+  const bySymbol = state.by_symbol && typeof state.by_symbol === "object" ? state.by_symbol : {};
+  const entries = Object.keys(bySymbol).length
+    ? Object.entries(bySymbol)
+    : [[snap.symbol || state.symbol || currentSymbol || "PORTFOLIO", snap || state]];
+  const merged = new Map();
+  let cashAdded = false;
+
+  entries.forEach(([symbol, rawSnap]) => {
+    const item = rawSnap && typeof rawSnap === "object" ? rawSnap : {};
+    const breakdown = item.equity_breakdown || {};
+    const portfolio = item.portfolio || {};
+    const base = String(breakdown.base_asset || baseFromSymbol(symbol || item.symbol)).toUpperCase();
+    const price = asNumber(item.current_price ?? item.mark_price ?? snap.current_price ?? state.current_price);
+
+    if (!cashAdded) {
+      const cash = asNumber(breakdown.usdt_balance_usdt ?? portfolio.USDT ?? portfolio.USD);
+      if (cash != null) mergeSegment(merged, "USDT", cash);
+      cashAdded = true;
+    }
+
+    const explicitBaseValue = asNumber(breakdown.base_value_usdt);
+    if (explicitBaseValue != null) {
+      mergeSegment(merged, base, explicitBaseValue, true);
+      return;
+    }
+
+    const baseQty = asNumber(portfolio[base] ?? breakdown.base_quantity);
+    if (baseQty != null && price != null && price > 0) {
+      mergeSegment(merged, base, baseQty * price, true);
+      return;
+    }
+
+    mergeSegment(merged, base, 0, true);
+  });
+
+  const segments = Array.from(merged.entries())
+    .map(([label, value], index) => ({
+      label,
+      value,
+      color: PORTFOLIO_COLORS[index % PORTFOLIO_COLORS.length],
+    }))
+    .sort((a, b) => (a.label === "USDT" ? -1 : b.label === "USDT" ? 1 : b.value - a.value));
+
+  if (!segments.length && Number(fallbackEquity) > 0) {
+    return [{ label: "USDT", value: Number(fallbackEquity), color: PORTFOLIO_COLORS[0] }];
+  }
+  return segments;
+}
+
+function fmtCompactUsdt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "--";
+  const digits = Math.abs(n) >= 100 ? 0 : 2;
+  return `${fmtNum(n, digits)} U`;
+}
+
+function partialTpSummary(pos, positionOpen) {
+  if (!positionOpen) return "";
+  const pct = Number(pos.partial_tp_pct || 0);
+  const fraction = Number(pos.partial_tp_fraction || 0);
+  if (!(pct > 0 && fraction > 0 && fraction < 1)) return "";
+  if (pos.partial_tp_taken) return "PTP banked";
+  const trigger = Number(pos.partial_tp_trigger_price || 0);
+  const target = trigger > 0 ? fmtNum(trigger, trigger >= 100 ? 0 : 2) : `${fmtNum(pct, 1)}%`;
+  return `PTP ${fmtNum(fraction * 100, 0)}% @ ${target}`;
+}
+
 function compactState(value) {
   const raw = String(value || "--").toUpperCase();
   return raw
@@ -223,6 +342,10 @@ async function loadMeta() {
   try {
     const meta = await getJson("/api/meta");
     if (!meta.ok) return;
+    if (meta.avatar_url) {
+      const avatar = document.getElementById("userAvatar");
+      if (avatar) avatar.src = meta.avatar_url;
+    }
     if (meta.display_name) {
       const name = document.getElementById("botName");
       const subtitleMain = document.getElementById("botSubtitleMain");
@@ -271,7 +394,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   const plotW = w - leftPad - rightPad;
   const plotH = h - topPad - bottomPad;
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = "rgba(244, 247, 239, 0.07)";
+  ctx.strokeStyle = "rgba(248, 244, 238, 0.07)";
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 8]);
   for (let i = 1; i < 5; i += 1) {
@@ -312,7 +435,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   candles.forEach((c, i) => {
     const x = leftPad + slot * i + slot / 2;
     const up = c.close >= c.open;
-    const color = up ? "#baff35" : "#4e5a3b";
+    const color = up ? "#ff7040" : "#97aef0";
     const yOpen = yFor(c.open);
     const yClose = yFor(c.close);
     const yHigh = yFor(c.high);
@@ -359,10 +482,10 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     if (started) ctx.stroke();
     ctx.restore();
   };
-  drawEma(emaSlow, "rgba(244, 247, 239, 0.46)");
-  drawEma(emaFast, "#baff35");
+  drawEma(emaSlow, "rgba(151, 174, 240, 0.76)");
+  drawEma(emaFast, "#ff7040");
 
-  ctx.fillStyle = "rgba(244, 247, 239, 0.52)";
+  ctx.fillStyle = "rgba(248, 244, 238, 0.52)";
   ctx.font = "11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -379,7 +502,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   const labelX = w - labelW - 3;
 
   ctx.save();
-  ctx.strokeStyle = "rgba(186, 255, 53, 0.78)";
+  ctx.strokeStyle = "rgba(255, 67, 26, 0.78)";
   ctx.lineWidth = 1.4;
   ctx.setLineDash([6, 6]);
   ctx.beginPath();
@@ -388,7 +511,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   ctx.stroke();
   ctx.restore();
 
-  ctx.fillStyle = "#baff35";
+  ctx.fillStyle = "#ff7040";
   ctx.beginPath();
   if (ctx.roundRect) {
     ctx.roundRect(labelX, latestY - 12, labelW, 24, 12);
@@ -396,17 +519,114 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   } else {
     ctx.fillRect(labelX, latestY - 12, labelW, 24);
   }
-  ctx.fillStyle = "#10150c";
+  ctx.fillStyle = "#161618";
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);
 
-  ctx.fillStyle = "rgba(244, 247, 239, 0.5)";
+  ctx.fillStyle = "rgba(248, 244, 238, 0.5)";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   chartAxisLabels(currentTimeframe, candles.length).forEach((labelText, index) => {
     const x = leftPad + (plotW * index) / 3;
     ctx.fillText(labelText, x, h - 4);
   });
+}
+
+function drawPortfolio(segments = lastPortfolioSegments) {
+  const canvas = document.getElementById("portfolioCanvas");
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  const cssWidth = Math.max(96, rect.width || 128);
+  const cssHeight = Math.max(96, rect.height || 128);
+  canvas.width = Math.floor(cssWidth * ratio);
+  canvas.height = Math.floor(cssHeight * ratio);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(ratio, ratio);
+  const cx = cssWidth / 2;
+  const cy = cssHeight / 2;
+  const radius = Math.min(cssWidth, cssHeight) / 2 - 9;
+  const lineWidth = Math.max(14, radius * 0.3);
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  if (total > 0) {
+    let start = -Math.PI / 2;
+    const gap = Math.min(0.05, (Math.PI * 2) / Math.max(segments.length, 1) * 0.16);
+    segments.forEach((segment) => {
+      const angle = (segment.value / total) * Math.PI * 2;
+      const end = start + Math.max(0, angle - gap);
+      ctx.strokeStyle = segment.color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, start, end);
+      ctx.stroke();
+      start += angle;
+    });
+  }
+
+  ctx.fillStyle = "rgba(248, 244, 238, 0.54)";
+  ctx.font = "10px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Portfolio", cx, cy - 7);
+  ctx.fillStyle = "#f8f4ee";
+  ctx.font = "600 13px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
+  ctx.fillText(total > 0 ? `${segments.length} Asset${segments.length === 1 ? "" : "s"}` : "--", cx, cy + 9);
+}
+
+function renderPortfolio(state, snap, equity) {
+  const root = document.getElementById("portfolioLegend");
+  const header = document.getElementById("portfolioTotal");
+  const statsRoot = document.getElementById("portfolioStats");
+  const segments = portfolioSegmentsFromState(state, snap, equity);
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+  lastPortfolioSegments = segments;
+  if (header) header.textContent = fmtMoney(equity || total, 2);
+  if (root) {
+    root.innerHTML = "";
+    if (!segments.length || total <= 0) {
+      root.innerHTML = `<div class="empty-state">No portfolio data</div>`;
+    } else {
+      segments.slice(0, 5).forEach((segment) => {
+        const pct = total > 0 ? (segment.value / total) * 100 : 0;
+        const row = document.createElement("div");
+        row.className = "portfolio-row";
+        row.innerHTML = `
+          <i style="background:${escapeHtml(segment.color)}"></i>
+          <strong>${escapeHtml(segment.label)}</strong>
+          <span>${fmtNum(pct, 0)}%</span>
+        `;
+        root.appendChild(row);
+      });
+    }
+  }
+  if (statsRoot) {
+    const cash = segments.find((segment) => segment.label === "USDT")?.value || 0;
+    const base = Math.max(0, total - cash);
+    const top = segments.reduce((best, segment) => (
+      segment.value > (best?.value ?? -1) ? segment : best
+    ), null);
+    const topPct = top && total > 0 ? (top.value / total) * 100 : 0;
+    const stats = [
+      ["Cash", fmtCompactUsdt(cash)],
+      ["Base", fmtCompactUsdt(base)],
+      ["Top", top ? `${top.label} ${fmtNum(topPct, 0)}%` : "--"],
+    ];
+    statsRoot.innerHTML = stats.map(([label, value]) => `
+      <div class="portfolio-stat">
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+      </div>
+    `).join("");
+  }
+  drawPortfolio(segments);
 }
 
 function renderChecklist(items) {
@@ -616,26 +836,35 @@ function updateState(payload) {
   setStateClass("signalRegimeLabel", stale ? "warn" : healthSemantic(modeText));
   const equityEl = document.getElementById("equityValue");
   if (equityEl) {
+    const equityText = fmtNum(equity, 2);
+    equityEl.dataset.liveValue = equityText;
     equityEl.textContent = "";
-    equityEl.append(fmtNum(equity, 2), " ");
+    equityEl.append(equityText, " ");
     const unit = document.createElement("span");
     unit.className = "unit";
     unit.textContent = "USDT";
     equityEl.appendChild(unit);
   }
   text("cashValue", fmtThbLine(payload.currency, equity));
-  text("priceValue", fmtNum(price, 2));
+  renderPortfolio(state, snap, equity);
+  liveText("priceValue", fmtNum(price, 2));
   text("changeValue", `24h ${fmtNum(pct24h, 2)}%`);
   cls("changeValue", `change-value ${pct24h > 0 ? "positive" : pct24h < 0 ? "negative" : "neutral"}`);
   const positionOpen = String(pos.state || "").toLowerCase() === "bought";
   const positionSide = String(pos.position_side || "LONG").toUpperCase();
-  text("positionValue", positionOpen ? positionSide : "FLAT");
   cls("positionValue", `position-status ${positionOpen ? (positionSide === "SHORT" ? "state-neg" : "state-pos") : "state-muted"}`);
+  liveText("positionValue", positionOpen ? positionSide : "FLAT");
   const positionPnl = Number(pos.unrealized_pnl || 0);
-  text("pnlValue", positionOpen ? `PnL ${fmtMoney(positionPnl)}` : "PnL --");
   cls("pnlValue", positionOpen ? (positionPnl > 0 ? "positive" : positionPnl < 0 ? "negative" : "neutral") : "neutral");
-  text("signalAction", sig.action || "--");
-  text("overviewSignal", sig.action || "--");
+  const partialTp = partialTpSummary(pos, positionOpen);
+  liveText(
+    "pnlValue",
+    positionOpen
+      ? `PnL ${fmtMoney(positionPnl)}${partialTp ? ` · ${partialTp}` : ""}`
+      : "PnL --"
+  );
+  liveText("signalAction", sig.action || "--");
+  liveText("overviewSignal", sig.action || "--");
   setStateClass("signalAction", signalSemantic(sig.action));
   setStateClass("overviewSignal", signalSemantic(sig.action));
   text("signalReason", sig.reason || "No signal reason");
@@ -682,15 +911,27 @@ function updateHealth(payload) {
   setStateClass("engineStatus", healthSemantic(engine));
 }
 
-function setView(view) {
+function setView(view, animateNav = true) {
+  const previousView = document.body.dataset.view;
+  const shouldAnimateNav = animateNav && previousView !== view && !prefersReducedMotion();
   document.body.dataset.view = view;
   document.querySelectorAll("[data-view-target]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.viewTarget === view);
+    const active = button.dataset.viewTarget === view;
+    button.classList.toggle("active", active);
+    button.classList.remove("nav-activated");
+    if (active && shouldAnimateNav) {
+      void button.offsetWidth;
+      button.classList.add("nav-activated");
+      window.setTimeout(() => button.classList.remove("nav-activated"), 320);
+    }
   });
   if (location.hash !== `#${view}`) {
     history.replaceState(null, "", `#${view}`);
   }
-  requestAnimationFrame(() => drawChart(lastCandles, latestMarketPrice));
+  requestAnimationFrame(() => {
+    drawChart(lastCandles, latestMarketPrice);
+    drawPortfolio(lastPortfolioSegments);
+  });
 }
 
 function initNavigation() {
@@ -699,9 +940,9 @@ function initNavigation() {
   });
   const initial = location.hash.replace("#", "");
   if (["overview", "signal", "activity"].includes(initial)) {
-    setView(initial);
+    setView(initial, false);
   } else if (initial === "health") {
-    setView("overview");
+    setView("overview", false);
   }
 }
 
@@ -741,4 +982,7 @@ initNavigation();
 loadMeta();
 refresh();
 setInterval(refresh, 5000);
-window.addEventListener("resize", () => drawChart(lastCandles, latestMarketPrice));
+window.addEventListener("resize", () => {
+  drawChart(lastCandles, latestMarketPrice);
+  drawPortfolio(lastPortfolioSegments);
+});

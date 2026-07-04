@@ -97,11 +97,18 @@ class TestExchangeRegistry(unittest.TestCase):
     def test_ccxt_websocket_returns_none_without_ccxtpro(self):
         # ccxt provider with ccxt.pro unavailable -> None so the engine uses
         # REST polling (no flag needed).
-        ws = create_exchange_websocket(
-            {"exchange": {"provider": "ccxt", "ccxt_id": "kraken"}},
-            ["BTCUSDT"],
-            lambda tick: None,
-        )
+        import xauby.api.exchanges.exchange_ccxt as mod
+
+        with patch.object(
+            mod,
+            "_import_ccxtpro",
+            side_effect=ImportError("no ccxt.pro"),
+        ):
+            ws = create_exchange_websocket(
+                {"exchange": {"provider": "ccxt", "ccxt_id": "kraken"}},
+                ["BTCUSDT"],
+                lambda tick: None,
+            )
         self.assertIsNone(ws)
 
 

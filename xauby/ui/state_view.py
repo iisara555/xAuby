@@ -402,6 +402,10 @@ def format_all_positions_lines(
             peak = float(pos.get("highest_price_seen", 0) or 0)
             pnl = float(pos.get("unrealized_pnl", 0) or 0)
             pnl_pct = float(pos.get("unrealized_pnl_pct", 0) or 0)
+            partial_tp_pct = float(pos.get("partial_tp_pct", 0) or 0)
+            partial_tp_fraction = float(pos.get("partial_tp_fraction", 0) or 0)
+            partial_tp_trigger = float(pos.get("partial_tp_trigger_price", 0) or 0)
+            partial_tp_taken = bool(pos.get("partial_tp_taken"))
             if pnl_pct == 0 and entry > 0 and mark > 0:
                 direction = -1.0 if side == "SHORT" else 1.0
                 pnl_pct = direction * ((mark - entry) / entry) * 100
@@ -415,6 +419,15 @@ def format_all_positions_lines(
             entry_str = f"{entry:,.2f}" if entry > 0 else "-"
             sl_str = f"{sl:,.2f}" if sl > 0 else "-"
             peak_str = f"{peak:,.2f}" if peak > 0 else "-"
+            partial_tp_str = f"{partial_tp_trigger:,.2f}" if partial_tp_trigger > 0 else "-"
+            partial_tp_label = ""
+            if partial_tp_pct > 0 and 0 < partial_tp_fraction < 1:
+                status = "banked" if partial_tp_taken else "pending"
+                status_color = C_GREEN if partial_tp_taken else C_MUTED
+                partial_tp_label = (
+                    f"PTP {partial_tp_fraction * 100:.0f}% @ {partial_tp_str} "
+                    f"({partial_tp_pct:.1f}%, {status_color}{status}{C_RESET})"
+                )
             extreme_label = "Low" if side == "SHORT" else "Peak"
             bidask = ""
             if bid > 0 and ask > 0 and not is_phone:
@@ -438,6 +451,8 @@ def format_all_positions_lines(
                         width,
                     )
                 )
+                if partial_tp_label:
+                    lines.append(pad_line(f"  {C_MUTED}{partial_tp_label}{C_RESET}", width))
             else:
                 lines.append(
                     pad_line(
@@ -455,6 +470,8 @@ def format_all_positions_lines(
                         width,
                     )
                 )
+                if partial_tp_label:
+                    lines.append(pad_line(f"    {partial_tp_label}", width))
                 lines.append(
                     pad_line(
                         f"    SL {sl_c}{sl_str}{C_RESET} ({sl_gap_pct:+.2f}% to SL) | {extreme_label} {peak_str}",

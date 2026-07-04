@@ -4,7 +4,9 @@ keeping live entries in parity with the market-fill backtest."""
 
 import unittest
 
+from xauby.api.errors import ExchangeAPIError
 from xauby.engine.orders import OrderMixin
+from xauby.engine.symbol_context import SymbolContext
 
 
 class _IdleDB:
@@ -67,6 +69,16 @@ class _FallbackClient:
         self.cancelled.append(order_id)
 
 
+class _AccountModeClient(_FallbackClient):
+    def place_order(self, symbol, side, order_type, amount, price=None, client_id=None, **kwargs):
+        self.orders.append((order_type.upper(), side.upper(), float(amount)))
+        raise ExchangeAPIError(
+            "AccountNotEnabled",
+            "okx account mode rejected request",
+            raw={"data": [{"sCode": "51010"}]},
+        )
+
+
 class _FallbackEngine(OrderMixin):
     def __init__(self, client, *, entry_market_fallback=True):
         self.config = {
@@ -102,6 +114,7 @@ class _FallbackEngine(OrderMixin):
         self.last_log_message = ""
         self.events = []
         self._latency_metrics = {}
+        self._context = SymbolContext("BTCUSDT")
 
     def _sym(self):
         return "BTCUSDT"
@@ -117,6 +130,9 @@ class _FallbackEngine(OrderMixin):
 
     def _strategy_name_for_symbol(self, symbol=None):
         return "cdc_action_zone"
+
+    def _sc(self, symbol):
+        return self._context
 
     def get_equity(self, ticker_price=None, symbol=None):
         return 1000.0
@@ -233,6 +249,18 @@ class TestEntryMarketFallback(unittest.TestCase):
 
         self.assertAlmostEqual(first, second)
         self.assertEqual(client.filter_calls, 1)
+
+    def test_okx_account_mode_error_halts_next_entries(self):
+        client = _AccountModeClient(fill_limit=False)
+        engine = _FallbackEngine(client, entry_market_fallback=True)
+        engine.config["execution"].update({"fast_entry_enabled": True, "fast_entry_order_type": "MARKET"})
+
+        ok = engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT")
+
+        self.assertFalse(ok)
+        feed = engine._context.feed_snapshot()
+        self.assertTrue(feed["trading_halted"])
+        self.assertIn("account mode", feed["halt_reason"])
 
 
 if __name__ == "__main__":

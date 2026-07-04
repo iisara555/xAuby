@@ -118,7 +118,10 @@ parity with the market-fill backtest). Exits use MARKET on urgent triggers (CDC
 red / NO_TRADE / force close) and LIMIT otherwise. The current XAU pair is
 **CDC-pure** (`disable_stop_loss: true`), so there is no exchange-side stop —
 exits are zone-flip driven, and sizing uses fixed-fraction `position_pct` of
-equity rather than an SL-distance.
+equity rather than an SL-distance. CDC also has one-shot partial TP enabled:
+`partial_tp_pct: 12.0`, `partial_tp_fraction: 0.5`; the engine banks half the
+position at +12%, marks `trade_states.partial_tp_taken`, and lets the remainder
+exit on CDC.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides |
 |--------|------|----------|-----------|-----------|-------|
@@ -221,6 +224,8 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
   mutates trades.
 - Exactly one engine instance; `core/.engine.lock` guards against doubles.
 - Engine stays strategy-agnostic; signal/exit logic belongs to plugins/config.
+- TUI/WebUI surface partial TP as `PTP` / `Partial TP` with `pending` or
+  `banked` state from the exported position.
 - Strategy + indicator plugins ship together.
 
 ## Conventions

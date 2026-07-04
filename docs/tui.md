@@ -95,6 +95,20 @@ The UI adapts to terminal width (see `xauby/ui/textual_tui/layout.py`):
 
 Charts use each pair's `primary_timeframe` from the whitelist. Current baseline: XAUT uses 4H and BTC uses 1H.
 
+## Position partial TP display
+
+When a position is open and the strategy config includes `partial_tp_pct`, the
+positions panel shows a `PTP` row with:
+
+- fraction to bank, e.g. `50%`
+- trigger price, e.g. `@ 4,604.21`
+- status: `pending` until the one-shot partial close succeeds, then `banked`
+
+The Signal/checklist panel shows the same `Partial TP` status so an operator can
+confirm whether the open remainder has already banked the configured leg. This
+reads from `core/logs/xauby_bot_state.json`; if the state file is stale, confirm
+the engine process before trusting the displayed target.
+
 ## Running the TUI
 
 With tmux, recommended on VPS:

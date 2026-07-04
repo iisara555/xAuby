@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#191712" />
+    <meta name="theme-color" content="#161618" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -15,12 +15,18 @@
   <body data-view="overview">
     <main class="app-shell">
       <header class="app-top">
-        <div class="title-stack">
-          <h1 id="botName">xAuby</h1>
-          <p class="profile-sub" id="botSubtitle">
-            <span id="botSubtitleMain">Alternative Store of Value</span>
-            <span id="botSubtitleFine">Trading System</span>
-          </p>
+        <div class="profile-head">
+          <div class="title-stack">
+            <h1 id="botName">xAuby</h1>
+            <p class="profile-sub" id="botSubtitle">
+              <span id="botSubtitleMain">Alternative Store of Value</span>
+              <span id="botSubtitleFine">Trading System</span>
+            </p>
+            <div class="user-profile">
+              <img id="userAvatar" class="user-avatar" src="/profile-itsara.jpg" alt="Itsara Kaewruang" />
+              <span class="user-name" id="userName">Itsara Kaewruang</span>
+            </div>
+          </div>
         </div>
         <div class="header-status">
           <div class="status-pill" id="modePill">Loading</div>
@@ -60,6 +66,18 @@
             <small id="pnlValue">PnL --</small>
           </article>
         </section>
+
+        <article class="panel portfolio-panel">
+          <div class="panel-head">
+            <h2>Portfolio</h2>
+            <span id="portfolioTotal">--</span>
+          </div>
+          <div class="portfolio-body">
+            <canvas id="portfolioCanvas" width="144" height="144" aria-label="Portfolio allocation"></canvas>
+            <div class="portfolio-legend" id="portfolioLegend"></div>
+          </div>
+          <div class="portfolio-stats" id="portfolioStats"></div>
+        </article>
 
         <article class="panel chart-panel">
           <div class="panel-head">

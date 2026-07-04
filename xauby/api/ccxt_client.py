@@ -141,6 +141,14 @@ class CCXTExchangeClient(IExchangeGateway):
         safe = "".join(c for c in prefix if c.isalnum() or c in "-_")[:12]
         return f"xauby-{safe}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
 
+    def _format_client_order_id(self, client_id: str) -> str:
+        raw = str(client_id or "")
+        if self.exchange_id == "okx":
+            # OKX `clOrdId` only accepts case-sensitive alphanumerics, max 32.
+            safe = "".join(c for c in raw if c.isalnum())[:32]
+            return safe or self.make_client_id("xb").replace("-", "")[:32]
+        return raw[:36]
+
     def _call(self, method: str, *args: Any, **kwargs: Any) -> Any:
         fn = getattr(self.exchange, method)
         t0 = time.time()
@@ -256,8 +264,10 @@ class CCXTExchangeClient(IExchangeGateway):
         order_id = str(order.get("id") or order.get("orderId") or "")
         client_id = str(
             order.get("clientOrderId")
+            or order.get("clOrdId")
             or (order.get("info") or {}).get("clientOrderId")
             or (order.get("info") or {}).get("clientOrderID")
+            or (order.get("info") or {}).get("clOrdId")
             or ""
         )
         filled = float(order.get("filled") or order.get("executedQty") or 0.0)
@@ -369,7 +379,8 @@ class CCXTExchangeClient(IExchangeGateway):
         mode = str(margin_mode or self.derivatives["margin_mode"]).lower()
         if mode != "isolated":
             raise ValueError("v1 perpetual support only permits isolated margin")
-        return self._call("set_margin_mode", mode, self._to_ccxt_symbol(symbol))
+        params = {"lever": str(int(float(self.derivatives.get("default_leverage") or 1)))}
+        return self._call("set_margin_mode", mode, self._to_ccxt_symbol(symbol), params)
 
     def get_exchange_info(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         markets = self._load_markets()
@@ -519,11 +530,12 @@ class CCXTExchangeClient(IExchangeGateway):
             if "reduce_only" in kwargs:
                 params.setdefault("reduceOnly", bool(kwargs["reduce_only"]))
             position_side = str(kwargs.get("position_side") or "").lower()
-            if position_side:
+            if position_side and self.derivatives["position_mode"] != "one_way":
                 params.setdefault("posSide", position_side)
         if client_id:
-            params.setdefault("clientOrderId", str(client_id)[:36])
-            params.setdefault("newClientOrderId", str(client_id)[:36])
+            formatted_client_id = self._format_client_order_id(client_id)
+            params.setdefault("clientOrderId", formatted_client_id)
+            params.setdefault("newClientOrderId", formatted_client_id)
         if post_only or order_type_uc == "LIMIT_MAKER":
             params.setdefault("postOnly", True)
         if stop_price is not None:

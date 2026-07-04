@@ -43,7 +43,7 @@ Signal: `signal_evaluated`, `guard_blocked`
 
 Connectivity: `ws_disconnected`, `ws_reconnected`
 
-Orders: `order_submitted`, `order_filled`
+Orders: `order_submitted`, `order_filled`, `partial_tp_executed`
 
 Routing and safety: regime changes, NO_TRADE blocks, and strategy handoff events are emitted when RegimeRouter is active.
 
