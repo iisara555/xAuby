@@ -283,6 +283,193 @@ class OrderMixin:
             )
         return ok
 
+    def execute_partial_tp(
+        self,
+        state: Dict[str, Any],
+        ticker_price: float,
+        *,
+        fraction: float,
+        threshold_pct: float,
+        symbol: Optional[str] = None,
+    ) -> bool:
+        """Bank ``fraction`` of an open position at the partial-TP threshold.
+
+        One-shot per position (``partial_tp_taken`` persists across restarts).
+        Closes via the broker abstraction — reduce-only MARKET on the live
+        swap adapter, ledger-aware close in the SimBroker — records the leg
+        with ``_record_partial_closed_trade`` and keeps the remainder riding
+        to the normal strategy exit. Mirrors the backtest PositionSimulator.
+        """
+        sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        if self.read_only:
+            return False
+        qty_total = float(state.get("quantity") or 0.0)
+        entry = float(state.get("entry_price") or 0.0)
+        if (
+            state.get("state") != "bought"
+            or bool(state.get("partial_tp_taken"))
+            or qty_total <= 0
+            or entry <= 0
+            or ticker_price <= 0
+            or not (0.0 < float(fraction) < 1.0)
+        ):
+            return False
+        side = str(state.get("position_side") or "LONG").upper()
+
+        try:
+            filters = self._symbol_filters_cached(sym)
+        except Exception:
+            filters = {}
+        step = float(filters.get("stepSize") or 0.0)
+        qty_part = qty_total * float(fraction)
+        if step > 0:
+            qty_part = round_step(qty_part, step)
+        remaining = qty_total - qty_part
+        min_tradeable = self._min_tradeable_base_qty(sym, ticker_price)
+        if qty_part <= 0 or (
+            min_tradeable > 0 and (qty_part < min_tradeable or remaining < min_tradeable)
+        ):
+            # Position too small to split — persist the flag so this is not
+            # retried on every tick; the full CDC exit still manages the trade.
+            logger.warning(
+                "%s partial TP skipped: qty %.8f cannot split into tradeable "
+                "legs (min %.8f). Marking as taken.",
+                sym, qty_total, min_tradeable,
+            )
+            self._save_state_partial_taken(state, sym, qty_total)
+            return False
+
+        if self._use_sim_broker(sym):
+            ticker_price = self._sim_fill_price(sym, ticker_price)
+        broker = self._broker_for_symbol(sym)
+        funding_total = float(state.get("funding_paid") or 0.0)
+        trigger_reason = f"Partial TP +{float(threshold_pct):.1f}% (banked {float(fraction)*100:.0f}%)"
+        self._emit_event(
+            EventType.ORDER_SUBMITTED,
+            side="BUY" if side == "SHORT" else "SELL",
+            qty=round(qty_part, 6),
+            price=round(ticker_price, 2),
+            order_type="MARKET",
+            trigger=trigger_reason,
+        )
+        try:
+            result = broker.execute_close(
+                sym, side, qty_part, ticker_price, entry, entry * qty_part, funding_total
+            )
+        except Exception as exc:
+            logger.error("Partial TP close failed for %s: %s", sym, exc, exc_info=True)
+            return False
+        if not result.success:
+            logger.error("Partial TP close failed for %s: %s", sym, result.error)
+            return False
+
+        fill_price = float(result.price or ticker_price)
+        fee_pct = self._symbol_fee_pct(sym)
+        entry_fee = entry * qty_part * fee_pct
+        exit_fee = float(result.fees or fill_price * qty_part * fee_pct)
+        fraction_actual = qty_part / qty_total if qty_total > 0 else float(fraction)
+        funding_share = funding_total * fraction_actual
+        self._emit_event(
+            EventType.ORDER_FILLED,
+            side="BUY" if side == "SHORT" else "SELL",
+            qty=round(qty_part, 6),
+            price=round(fill_price, 2),
+            status="FILLED",
+        )
+        self._record_partial_closed_trade(
+            state,
+            qty_part,
+            fill_price,
+            trigger_reason,
+            entry_fee=entry_fee,
+            exit_fee=exit_fee,
+            symbol=sym,
+            side="SHORT" if side == "SHORT" else "BUY",
+            funding_share=funding_share,
+        )
+
+        # A live exchange-side stop still covers the ORIGINAL qty — re-place it
+        # for the remainder (CDC-pure has no SL, so this is usually a no-op).
+        sl_order_id = state.get("stop_loss_order_id")
+        new_sl_id = sl_order_id
+        if sl_order_id and not self._use_sim_broker(sym) and not self.simulate_only:
+            try:
+                self.client.cancel_order(sym, sl_order_id)
+            except Exception as exc:
+                logger.error("Failed to cancel SL %s before partial TP resize: %s", sl_order_id, exc)
+            sl_res = self._place_sl_with_retry(
+                remaining, float(state.get("stop_loss", 0.0) or 0.0), symbol=sym
+            )
+            new_sl_id = sl_res[0] if sl_res else None
+
+        now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        self.db.save_trade_state(
+            symbol=sym,
+            state="bought",
+            entry_price=entry,
+            stop_loss=float(state.get("stop_loss", 0.0) or 0.0),
+            take_profit=float(state.get("take_profit", 0.0) or 0.0),
+            highest_price_seen=float(state.get("highest_price_seen", 0.0) or 0.0),
+            quantity=remaining,
+            opened_at=state.get("opened_at"),
+            last_transition_at=now_iso,
+            stop_loss_order_id=new_sl_id,
+            position_side=side,
+            leverage=float(state.get("leverage", 1.0) or 1.0),
+            margin_mode=str(state.get("margin_mode") or "spot"),
+            liquidation_price=float(state.get("liquidation_price", 0.0) or 0.0),
+            funding_paid=funding_total - funding_share,
+            management_mode=str(state.get("management_mode") or "strategy"),
+            partial_tp_taken=True,
+        )
+
+        pnl_sign = (entry - fill_price) if side == "SHORT" else (fill_price - entry)
+        net_pnl = pnl_sign * qty_part - entry_fee - exit_fee - funding_share
+        base_coin = self._get_base_asset(sym)
+        msg = (
+            f"💰 [PARTIAL TP] {sym} {side}: banked {qty_part:.6f} {base_coin} "
+            f"@ {fill_price:.2f} ({float(fraction)*100:.0f}% of position) | "
+            f"PnL {net_pnl:+.2f} USDT | remaining {remaining:.6f} rides to CDC exit"
+        )
+        logger.info(msg)
+        self.last_log_message = msg
+        self.send_telegram_alert(msg)
+        self._emit_event(
+            "partial_tp_executed",
+            symbol=sym,
+            position_side=side,
+            qty=round(qty_part, 6),
+            price=round(fill_price, 2),
+            pnl=round(net_pnl, 2),
+            remaining_qty=round(remaining, 6),
+            threshold_pct=float(threshold_pct),
+        )
+        return True
+
+    def _save_state_partial_taken(
+        self, state: Dict[str, Any], sym: str, qty: float
+    ) -> None:
+        """Persist partial_tp_taken=True without touching anything else."""
+        self.db.save_trade_state(
+            symbol=sym,
+            state=str(state.get("state") or "bought"),
+            entry_price=float(state.get("entry_price", 0.0) or 0.0),
+            stop_loss=float(state.get("stop_loss", 0.0) or 0.0),
+            take_profit=float(state.get("take_profit", 0.0) or 0.0),
+            highest_price_seen=float(state.get("highest_price_seen", 0.0) or 0.0),
+            quantity=qty,
+            opened_at=state.get("opened_at"),
+            last_transition_at=state.get("last_transition_at"),
+            stop_loss_order_id=state.get("stop_loss_order_id"),
+            position_side=str(state.get("position_side") or "LONG").upper(),
+            leverage=float(state.get("leverage", 1.0) or 1.0),
+            margin_mode=str(state.get("margin_mode") or "spot"),
+            liquidation_price=float(state.get("liquidation_price", 0.0) or 0.0),
+            funding_paid=float(state.get("funding_paid", 0.0) or 0.0),
+            management_mode=str(state.get("management_mode") or "strategy"),
+            partial_tp_taken=True,
+        )
+
     def _report_slippage(
         self,
         *,
@@ -365,19 +552,34 @@ class OrderMixin:
         entry_fee: float = 0.0,
         exit_fee: float = 0.0,
         symbol: Optional[str] = None,
+        side: str = "BUY",
+        funding_share: float = 0.0,
     ) -> bool:
-        """Record a partial exit without resetting the remaining position."""
+        """Record a partial exit without resetting the remaining position.
+
+        ``side`` follows the closed_trades convention: "BUY" for a long exit,
+        "SHORT" for a short cover (mirrors close_position_atomic). Short PnL
+        is inverted (profit when exit < entry) and both sides subtract the
+        position's ``funding_share`` for the closed fraction.
+        """
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         entry_price = float(state.get("entry_price", 0.0))
         entry_cost = filled_qty * entry_price
         gross_exit = filled_qty * filled_price
         total_fees = float(entry_fee or 0.0) + float(exit_fee or 0.0)
-        net_pnl, net_pnl_pct = self._closed_pnl_after_fees(
-            entry_cost=entry_cost,
-            gross_exit=gross_exit,
-            entry_fee=entry_fee,
-            exit_fee=exit_fee,
-        )
+        if str(side).upper() == "SHORT":
+            net_pnl = (entry_price - filled_price) * filled_qty - total_fees - float(funding_share or 0.0)
+            net_pnl_pct = (net_pnl / entry_cost * 100.0) if entry_cost > 0 else 0.0
+        else:
+            net_pnl, net_pnl_pct = self._closed_pnl_after_fees(
+                entry_cost=entry_cost,
+                gross_exit=gross_exit,
+                entry_fee=entry_fee,
+                exit_fee=exit_fee,
+            )
+            if funding_share:
+                net_pnl -= float(funding_share)
+                net_pnl_pct = (net_pnl / entry_cost * 100.0) if entry_cost > 0 else 0.0
         closed_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         opened_at = state.get("opened_at")
         try:
@@ -389,7 +591,7 @@ class OrderMixin:
         try:
             self.db.save_closed_trade(
                 sym,
-                side="BUY",
+                side=str(side).upper() if str(side).upper() == "SHORT" else "BUY",
                 amount=filled_qty,
                 entry_price=entry_price,
                 exit_price=filled_price,

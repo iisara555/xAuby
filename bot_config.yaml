@@ -220,6 +220,12 @@ strategy:
       # >= baseline (see scripts/compare_cdc_ab.py).
       require_slow_slope: true
       slow_slope_bars: 3
+      # One-shot partial take-profit: bank 50% of the position at +12%, let
+      # the rest ride to the CDC exit. Enabled 2026-07-03 after 6y PAXGUSDT
+      # A/B: PF 1.66->1.78, T3 DD 19.7->12.1%, smooth grid, trade count
+      # unchanged (win rate untouched by design — see compare_cdc_ab.py).
+      partial_tp_pct: 12.0
+      partial_tp_fraction: 0.5
       # Minimal ROI ladder (freqtrade-style, engine-managed exit shared with
       # backtest): {position age in minutes: required ROI %}. Example:
       # minimal_roi:

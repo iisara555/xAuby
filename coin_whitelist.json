@@ -31,7 +31,9 @@
         "position_pct": 1.0,
         "fixed_tp_pct": 0.0,
         "require_slow_slope": true,
-        "slow_slope_bars": 3
+        "slow_slope_bars": 3,
+        "partial_tp_pct": 12.0,
+        "partial_tp_fraction": 0.5
       },
       "mode": "live",
       "allowed_sides": [

@@ -16,7 +16,7 @@ from xauby.runtime.paths import dashboard_focus_path, sentiment_guard_state_path
 from xauby.runtime.manual_orders import claim_manual_order_request
 from xauby.engine.regime_policy import apply_regime_policy, regime_policy_enabled
 from xauby.runtime.candle_utils import candle_is_stale, drop_forming_bar, use_closed_candles
-from xauby.runtime.exits import minimal_roi_pct, resolve_minimal_roi
+from xauby.runtime.exits import minimal_roi_pct, resolve_minimal_roi, resolve_partial_tp
 from xauby.runtime.trading_config import resolve_trading_config
 from xauby.utils.atomic_io import atomic_json_write
 from xauby.api.utils import round_step
@@ -221,6 +221,53 @@ class LoopMixin:
                 f"after {age_minutes / 60.0:.1f}h)"
             )
         return action, reason
+
+    def _maybe_take_partial_tp(
+        self,
+        state: Dict[str, Any],
+        action: str,
+        ticker_price: float,
+        strat_conf: Dict[str, Any],
+        *,
+        symbol: str,
+    ) -> Dict[str, Any]:
+        """Bank the one-shot partial TP when its threshold is reached.
+
+        Runs after the exit pipeline so a full exit (SELL) always wins the
+        tick; on success returns the refreshed state (reduced quantity +
+        partial_tp_taken) for the rest of the tick to work with.
+        """
+        if (
+            action == "SELL"
+            or state.get("state") != "bought"
+            or bool(state.get("partial_tp_taken"))
+            or ticker_price <= 0
+        ):
+            return state
+        threshold_pct, fraction = resolve_partial_tp(strat_conf)
+        if threshold_pct <= 0:
+            return state
+        entry = float(state.get("entry_price", 0.0) or 0.0)
+        if entry <= 0:
+            return state
+        is_short = str(state.get("position_side") or "LONG").upper() == "SHORT"
+        roi_pct = ((entry - ticker_price) if is_short else (ticker_price - entry)) / entry * 100.0
+        if roi_pct < threshold_pct:
+            return state
+        try:
+            done = self.execute_partial_tp(
+                state,
+                ticker_price,
+                fraction=fraction,
+                threshold_pct=threshold_pct,
+                symbol=symbol,
+            )
+        except Exception as exc:
+            logger.error("Partial TP execution error for %s: %s", symbol, exc, exc_info=True)
+            return state
+        if done:
+            return self.db.get_trade_state(symbol)
+        return state
 
     def _apply_drawdown_force_close(
         self,
@@ -1903,6 +1950,10 @@ class LoopMixin:
         )
         action, reason = self._apply_drawdown_force_close(
             state, action, reason, symbol=sym
+        )
+
+        state = self._maybe_take_partial_tp(
+            state, action, ticker_price, strat_conf, symbol=sym
         )
 
         atr = float(signal.volatility) if signal.volatility else 0.0

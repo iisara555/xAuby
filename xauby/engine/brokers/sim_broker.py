@@ -277,15 +277,26 @@ class SimBroker:
             ledger = self._ledgers.get(sym, SimPositionLedger())
             if ledger.quantity <= 0 or ledger.position_side != "SHORT":
                 return FillResult(False, error=f"No SHORT position for {sym}")
+            # Partial close: release margin and funding proportionally so the
+            # remainder keeps riding with a consistent ledger. qty >= ledger
+            # quantity keeps the legacy full-close behaviour.
+            qty = min(float(qty), float(ledger.quantity))
+            fraction = qty / float(ledger.quantity)
             notional_exit = qty * price
             fees = notional_exit * self._fee_pct(sym)
-            funding_total = float(funding_paid or ledger.funding_paid)
+            funding_total = float(funding_paid or ledger.funding_paid) * fraction
+            margin_release = float(ledger.margin_reserved) * fraction
             pnl = (entry_price - price) * qty - fees - funding_total
-            credit = ledger.margin_reserved + pnl
+            credit = margin_release + pnl
             ledger.realized_pnl += pnl
-            ledger.quantity = 0.0
-            ledger.unrealized_pnl = 0.0
-            ledger.funding_paid = funding_total
+            ledger.quantity = float(ledger.quantity) - qty
+            ledger.margin_reserved = float(ledger.margin_reserved) - margin_release
+            ledger.funding_paid = float(ledger.funding_paid) - funding_total
+            if ledger.quantity <= 1e-12:
+                ledger.quantity = 0.0
+                ledger.margin_reserved = 0.0
+                ledger.unrealized_pnl = 0.0
+                ledger.funding_paid = funding_total
             self._ledgers[sym] = ledger
             data = self._read_state_unlocked()
             data["USDT"] = float(self._read_balance_unlocked() + credit)
