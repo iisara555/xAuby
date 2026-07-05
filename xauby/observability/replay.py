@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -130,6 +130,9 @@ class PositionSimulator:
         minimal_roi: Optional[List[Tuple[float, float]]] = None,
         partial_tp_pct: float = 0.0,
         partial_tp_fraction: float = 0.5,
+        throttle_after_losses: int = 0,
+        throttle_scale: float = 0.5,
+        entry_size_scale: Optional[Callable[[int], float]] = None,
     ):
         self.balance = initial_balance
         self._initial_balance = initial_balance
@@ -151,6 +154,15 @@ class PositionSimulator:
         self._partial_enabled = (
             self.partial_tp_pct > 0 and 0.0 < self.partial_tp_fraction < 1.0
         )
+        # Chop-defence sizing: halve (throttle_scale) entries after N straight
+        # losing positions until a winner resets the streak, and/or scale by a
+        # caller-supplied per-bar factor (e.g. regime/ADX). Entries and exits
+        # are untouched — only qty scales, so per-trade pnl% and win rate stay
+        # identical to an unthrottled run.
+        self.throttle_after_losses = max(0, int(throttle_after_losses or 0))
+        self.throttle_scale = min(1.0, max(0.0, float(throttle_scale or 0.5)))
+        self.entry_size_scale = entry_size_scale
+        self._loss_streak = 0
         self.be_enabled = be_enabled
         self.be_activation_atr_mult = be_activation_atr_mult
         self.be_buffer_atr_mult = be_buffer_atr_mult
@@ -165,6 +177,18 @@ class PositionSimulator:
         self.trades: List[SimTrade] = []
         self._equity_curve: List[float] = []  # per-bar mark-to-close equity
         self.bars_in_position: int = 0  # bars held — for exposure %
+
+    def _entry_scale(self, bar_time: int) -> float:
+        """Combined chop-defence size multiplier for an entry at ``bar_time``."""
+        scale = 1.0
+        if self.throttle_after_losses > 0 and self._loss_streak >= self.throttle_after_losses:
+            scale *= self.throttle_scale
+        if self.entry_size_scale is not None:
+            try:
+                scale *= max(0.0, min(1.0, float(self.entry_size_scale(bar_time))))
+            except Exception:
+                pass
+        return scale
 
     @property
     def has_position(self) -> bool:
@@ -255,7 +279,7 @@ class PositionSimulator:
         fill_price = entry_price * slip_factor
 
         if self.disable_stop_loss:
-            buy_amount_usdt = self.balance * self.position_pct
+            buy_amount_usdt = self.balance * self.position_pct * self._entry_scale(bar_time)
             qty = buy_amount_usdt / fill_price if fill_price > 0 else 0.0
             if qty <= 0:
                 return False
@@ -280,7 +304,7 @@ class PositionSimulator:
         if sl_distance <= 0 and not has_strategy_sl:
             return False
 
-        risk_amount = self.balance * self.risk_pct
+        risk_amount = self.balance * self.risk_pct * self._entry_scale(bar_time)
         qty = risk_amount / sl_distance
         buy_amount_usdt = qty * fill_price
 
@@ -326,7 +350,7 @@ class PositionSimulator:
         fill_price = entry_price * slip_factor
 
         if self.disable_stop_loss:
-            sell_amount_usdt = self.balance * self.position_pct
+            sell_amount_usdt = self.balance * self.position_pct * self._entry_scale(bar_time)
             qty = sell_amount_usdt / fill_price if fill_price > 0 else 0.0
             if qty <= 0:
                 return False
@@ -355,7 +379,11 @@ class PositionSimulator:
         if sl_distance <= 0 and not has_strategy_sl:
             return False
 
-        qty = (self.balance * self.risk_pct) / sl_distance if sl_distance > 0 else 0.0
+        qty = (
+            (self.balance * self.risk_pct * self._entry_scale(bar_time)) / sl_distance
+            if sl_distance > 0
+            else 0.0
+        )
         notional = qty * fill_price
         if self.max_position_pct > 0:
             max_usdt = self.balance * self.max_position_pct
@@ -407,6 +435,12 @@ class PositionSimulator:
         )
         self.position = None
         self.sl_breach_bars = 0
+        # Loss-streak throttle bookkeeping: a losing POSITION (combined with
+        # any banked partial leg) extends the streak; a winner resets it.
+        if total_net <= 0:
+            self._loss_streak += 1
+        else:
+            self._loss_streak = 0
 
     def _take_partial(
         self,
