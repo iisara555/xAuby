@@ -28,7 +28,7 @@
         "breakeven_activation_atr_mult": 1.5,
         "breakeven_buffer_atr_mult": 0.1,
         "disable_stop_loss": true,
-        "position_pct": 1.0,
+        "position_pct": 0.95,
         "fixed_tp_pct": 0.0,
         "require_slow_slope": true,
         "slow_slope_bars": 3,

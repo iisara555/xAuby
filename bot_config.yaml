@@ -145,7 +145,10 @@ risk:
   # persisted under the runtime root so it survives restarts.
   drawdown_guard:
     enabled: true
-    max_drawdown_pct: 20.0
+    # Widened 20 -> 25 (2026-07-04): measured 6y backtest maxDD is 18.5%, so a
+    # 20% guard sat 1.5pp from tripping at the exact bottom of a normal chop
+    # cycle (Dec-2022 analogue) and would have blocked the recovery entries.
+    max_drawdown_pct: 25.0
     close_positions: false
     auto_rebase_capital_flows: true
     capital_flow_min_abs_usdt: 20.0
