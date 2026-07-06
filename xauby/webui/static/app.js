@@ -40,6 +40,13 @@ const fmtNum = (value, digits = 2) => {
   return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 };
 
+const fmtSignedPct = (value, digits = 1) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits })}%`;
+};
+
 const text = (id, value) => {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
@@ -839,7 +846,10 @@ function updateState(payload) {
     const equityText = fmtNum(equity, 2);
     equityEl.dataset.liveValue = equityText;
     equityEl.textContent = "";
-    equityEl.append(equityText, " ");
+    const number = document.createElement("span");
+    number.className = "equity-number";
+    number.textContent = equityText;
+    equityEl.appendChild(number);
     const unit = document.createElement("span");
     unit.className = "unit";
     unit.textContent = "USDT";
@@ -852,8 +862,12 @@ function updateState(payload) {
   cls("changeValue", `change-value ${pct24h > 0 ? "positive" : pct24h < 0 ? "negative" : "neutral"}`);
   const positionOpen = String(pos.state || "").toLowerCase() === "bought";
   const positionSide = String(pos.position_side || "LONG").toUpperCase();
+  const positionPnlPct = asNumber(pos.unrealized_pnl_pct);
+  const positionLabel = positionOpen
+    ? `${positionSide}${positionPnlPct == null ? "" : ` ${fmtSignedPct(positionPnlPct, 1)}`}`
+    : "FLAT";
   cls("positionValue", `position-status ${positionOpen ? (positionSide === "SHORT" ? "state-neg" : "state-pos") : "state-muted"}`);
-  liveText("positionValue", positionOpen ? positionSide : "FLAT");
+  liveText("positionValue", positionLabel);
   const positionPnl = Number(pos.unrealized_pnl || 0);
   cls("pnlValue", positionOpen ? (positionPnl > 0 ? "positive" : positionPnl < 0 ? "negative" : "neutral") : "neutral");
   const partialTp = partialTpSummary(pos, positionOpen);
@@ -918,11 +932,11 @@ function setView(view, animateNav = true) {
   document.querySelectorAll("[data-view-target]").forEach((button) => {
     const active = button.dataset.viewTarget === view;
     button.classList.toggle("active", active);
-    button.classList.remove("nav-activated");
+    button.classList.remove("nav-pressed");
     if (active && shouldAnimateNav) {
       void button.offsetWidth;
-      button.classList.add("nav-activated");
-      window.setTimeout(() => button.classList.remove("nav-activated"), 320);
+      button.classList.add("nav-pressed");
+      window.setTimeout(() => button.classList.remove("nav-pressed"), 180);
     }
   });
   if (location.hash !== `#${view}`) {
@@ -947,35 +961,42 @@ function initNavigation() {
 }
 
 async function refresh() {
-  try {
-    const [state, health, events, trades] = await Promise.all([
-      getJson("/api/state"),
-      getJson("/api/health"),
-      getJson("/api/recent-events"),
-      getJson("/api/trades?limit=30"),
-    ]);
+  const [stateResult, healthResult, eventsResult, tradesResult] = await Promise.allSettled([
+    getJson("/api/state"),
+    getJson("/api/health"),
+    getJson("/api/recent-events"),
+    getJson("/api/trades?limit=30"),
+  ]);
+
+  if (stateResult.status === "fulfilled") {
+    const state = stateResult.value;
     updateState(state);
     const stateBody = state.state || {};
     const snap = focusSnapshot(stateBody);
     const symbol = snap.symbol || stateBody.focus_symbol || stateBody.symbol || currentSymbol;
     currentTimeframe = snap.primary_timeframe || currentTimeframe;
     if (symbol) {
-      const candles = await getJson(
-        `/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(currentTimeframe)}&limit=24`
-      );
-      if (candles.ok && Array.isArray(candles.candles) && candles.candles.length) {
-        lastCandles = candles.candles;
-        drawChart(lastCandles, latestMarketPrice);
+      try {
+        const candles = await getJson(
+          `/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(currentTimeframe)}&limit=24`
+        );
+        if (candles.ok && Array.isArray(candles.candles) && candles.candles.length) {
+          lastCandles = candles.candles;
+          drawChart(lastCandles, latestMarketPrice);
+        }
+      } catch (err) {
+        /* Candle refresh is non-critical; keep the last rendered chart. */
       }
     }
-    updateHealth(health);
-    renderEvents(events.events || []);
-    renderTrades(trades.trades || []);
-  } catch (err) {
-    text("signalReason", `WebUI refresh failed: ${err}`);
+  } else {
+    text("signalReason", `WebUI state refresh failed: ${stateResult.reason}`);
     cls("modePill", "status-pill warn");
     text("modePill", "Offline");
   }
+
+  if (healthResult.status === "fulfilled") updateHealth(healthResult.value);
+  if (eventsResult.status === "fulfilled") renderEvents(eventsResult.value.events || []);
+  if (tradesResult.status === "fulfilled") renderTrades(tradesResult.value.trades || []);
 }
 
 initNavigation();

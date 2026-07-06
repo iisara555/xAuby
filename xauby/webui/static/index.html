@@ -10,6 +10,9 @@
     <meta name="apple-mobile-web-app-title" content="xAuby" />
     <meta name="format-detection" content="telephone=no" />
     <title>xAuby WebUI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body data-view="overview">
@@ -133,9 +136,11 @@
             </div>
             <span id="regimeConfidence" class="confidence-pill">--</span>
           </div>
-          <p class="reason" id="signalReason">Waiting for state...</p>
-          <div class="cdc-detail" id="cdcDetail"></div>
-          <div class="checklist" id="checklist"></div>
+          <div class="signal-detail-card">
+            <p class="reason" id="signalReason">Waiting for state...</p>
+            <div class="cdc-detail" id="cdcDetail"></div>
+            <div class="checklist" id="checklist"></div>
+          </div>
         </article>
 
         <article class="panel regime-card">
