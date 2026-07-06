@@ -34,6 +34,14 @@ MACRO_INPUT_CLIP: float = 1.0
 # sensitivity per deployment without editing code.
 DEFAULT_MACRO_BIAS_THRESHOLD: float = 0.3
 
+# Minimum closed bars required for a fallback-computed EMA200 to be trustworthy.
+# compute_ema() returns a value for any length (seeded at closes[0]), so with far
+# fewer than 200 bars the "EMA200" is really a slow EMA over whatever exists,
+# heavily weighted to the oldest price. Below one full period we refuse to assert
+# a BULLISH/BEARISH trend off it. When the indicator registry supplies ema_200
+# (computed over full history upstream) this floor does not apply.
+EMA200_MIN_BARS: int = 200
+
 
 def resolve_macro_weights(config: Optional[Dict[str, Any]]) -> Dict[str, float]:
     """Resolve macro combination weights from config, falling back to defaults."""
@@ -487,17 +495,32 @@ def classify_market(
     tf_suffix = f"_{timeframe.lower()}"
     ema_12 = float(ind.get(f"ema_12{tf_suffix}") or compute_ema(closes, 12))
     ema_26 = float(ind.get(f"ema_26{tf_suffix}") or compute_ema(closes, 26))
-    ema_200 = float(ind.get(f"ema_200{tf_suffix}") or compute_ema(closes, 200))
 
-    if ema_12 > ema_26 > ema_200 and latest_close > ema_200:
+    # EMA200 is only trustworthy if the registry supplied it (full-history
+    # compute) or we have at least one full period of closed bars. Otherwise the
+    # fallback is a slow EMA over too little data — see EMA200_MIN_BARS.
+    ema_200_supplied = ind.get(f"ema_200{tf_suffix}")
+    if ema_200_supplied:
+        ema_200 = float(ema_200_supplied)
+        ema_200_reliable = ema_200 > 0
+    else:
+        ema_200 = compute_ema(closes, 200)
+        ema_200_reliable = ema_200 > 0 and len(closes) >= EMA200_MIN_BARS
+
+    # Without a trustworthy EMA200 we must not assert a directional trend off it,
+    # and its distance signal must not leak into regime synthesis.
+    if ema_200_reliable and ema_12 > ema_26 > ema_200 and latest_close > ema_200:
         trend = "BULLISH"
-    elif ema_12 < ema_26 < ema_200 and latest_close < ema_200:
+    elif ema_200_reliable and ema_12 < ema_26 < ema_200 and latest_close < ema_200:
         trend = "BEARISH"
     else:
         trend = "NEUTRAL"
 
     ema_spread_pct = (ema_12 - ema_26) / latest_close if latest_close > 0 else 0.0
-    ema200_distance_pct = (latest_close - ema_200) / latest_close if latest_close > 0 else 0.0
+    if ema_200_reliable and latest_close > 0:
+        ema200_distance_pct = (latest_close - ema_200) / latest_close
+    else:
+        ema200_distance_pct = 0.0
     momentum_5 = _pct_change(closes, 5)
     momentum_20 = _pct_change(closes, 20)
     direction_consistency = _directional_consistency(closes, 20)
@@ -615,6 +638,11 @@ def classify_market(
         confidence -= 0.08
     if detailed["transition_risk"] == "HIGH":
         confidence -= 0.08
+    if not ema_200_reliable:
+        # Trend axis was suppressed for lack of a trustworthy EMA200; don't
+        # present the resulting (necessarily non-trending) call with high
+        # confidence.
+        confidence = min(confidence, 0.5) - 0.05
     confidence = _clamp(confidence, 0.05, 0.98)
     gold_score = int(round(confidence * 100))
     reasons = _build_user_reasons(
@@ -644,6 +672,7 @@ def classify_market(
         "liquidity_confirmation": _safe_round(liquidity_score),
         "macro_alignment": detailed["macro_alignment"],
         "institutional_confidence": _safe_round(confidence),
+        "ema200_reliable": ema_200_reliable,
     }
 
     return GoldRegime(

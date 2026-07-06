@@ -164,5 +164,40 @@ class TestGoldRegimeClassifier(unittest.TestCase):
         self.assertLess(conflicted_chop.features["trend_quality"], 0.4)
         self.assertIn(conflicted_chop.regime, {"LOW_VOL_ACCUMULATION", "LOW_VOL_RANGE", "SIDEWAYS_CHOP"})
 
+
+class TestEma200InsufficientDataGuard(unittest.TestCase):
+    """A fallback-computed EMA200 on fewer than one full period of bars is not a
+    real EMA200, so the classifier must not assert a trend off it."""
+
+    def _uptrend(self, n):
+        return [
+            {"close": float(1000 + i * 5), "high": float(1006 + i * 5),
+             "low": float(994 + i * 5), "volume": 10.0}
+            for i in range(n)
+        ]
+
+    def test_short_history_without_indicators_is_neutral(self):
+        # 150 bars, clean uptrend: without the guard the slow fallback EMA200
+        # would sit below price and (wrongly) print BULLISH.
+        regime = classify_market(self._uptrend(150))
+        self.assertEqual(regime.trend, "NEUTRAL")
+        self.assertFalse(regime.features["ema200_reliable"])
+        self.assertEqual(regime.features["ema200_distance_pct"], 0.0)
+        self.assertLessEqual(regime.confidence, 0.45)
+
+    def test_supplied_ema200_is_trusted_despite_short_history(self):
+        # The indicator registry computes EMA200 over full history upstream, so a
+        # supplied value is trusted even when this call gets few bars.
+        ind = {"ema_12_4h": 1800.0, "ema_26_4h": 1700.0,
+               "ema_200_4h": 1200.0, "atr_4h": 10.0}
+        regime = classify_market(self._uptrend(150), indicators=ind)
+        self.assertTrue(regime.features["ema200_reliable"])
+        self.assertEqual(regime.trend, "BULLISH")
+
+    def test_full_history_without_indicators_is_reliable(self):
+        regime = classify_market(self._uptrend(220))
+        self.assertTrue(regime.features["ema200_reliable"])
+
+
 if __name__ == "__main__":
     unittest.main()
