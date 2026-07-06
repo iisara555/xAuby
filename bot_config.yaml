@@ -705,6 +705,10 @@ macro_sentiment_guard:
     news: 1.0
     dxy: 1.0
     fred: 1.0
+  # |combined macro score| above this flips the regime macro bias off NEUTRAL
+  # into RISK-ON / RISK-OFF. Inputs are clamped to [-1, 1] before combining, so
+  # 0.3 means one full-strength driver (or two moderate ones) tips the bias.
+  regime_bias_threshold: 0.3
   news_provider: minimax
   news_model: MiniMax-M2.7
   news_base_url: https://api.minimax.io/anthropic

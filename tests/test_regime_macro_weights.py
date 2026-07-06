@@ -6,8 +6,10 @@ import tempfile
 import unittest
 
 from xauby.regime.classifier import (
+    DEFAULT_MACRO_BIAS_THRESHOLD,
     DEFAULT_MACRO_WEIGHTS,
     classify_market,
+    resolve_macro_bias_threshold,
     resolve_macro_weights,
 )
 from xauby.ui.state_view import default_symbol_from_whitelist
@@ -85,6 +87,72 @@ class TestMacroBiasRespondsToWeights(unittest.TestCase):
         self.assertIn("DXY Strong", strong_labels)
         self.assertFalse(strong_labels["DXY Strong"])  # not supportive
         self.assertEqual(strong_usd.macro_bias, "RISK-OFF")
+
+
+class TestResolveMacroBiasThreshold(unittest.TestCase):
+    def test_default(self):
+        self.assertEqual(resolve_macro_bias_threshold({}), DEFAULT_MACRO_BIAS_THRESHOLD)
+        self.assertEqual(resolve_macro_bias_threshold(None), DEFAULT_MACRO_BIAS_THRESHOLD)
+
+    def test_override(self):
+        cfg = {"macro_sentiment_guard": {"regime_bias_threshold": 0.6}}
+        self.assertEqual(resolve_macro_bias_threshold(cfg), 0.6)
+
+    def test_invalid_or_nonpositive_falls_back(self):
+        for bad in ("nope", 0, -0.2, None):
+            cfg = {"macro_sentiment_guard": {"regime_bias_threshold": bad}}
+            self.assertEqual(
+                resolve_macro_bias_threshold(cfg), DEFAULT_MACRO_BIAS_THRESHOLD
+            )
+
+
+class TestMacroInputsAreNormalised(unittest.TestCase):
+    """Inputs are clamped to [-1, 1] before combining so a single unbounded
+    input (news_score comes straight from an LLM and is NOT clamped upstream)
+    cannot dominate the macro bias by magnitude."""
+
+    def test_unbounded_news_is_clamped(self):
+        # A misbehaving model returns 9.0; clamped to 1.0 it is RISK-ON but does
+        # not blow up macro_conviction beyond the single-input contribution.
+        regime = classify_market(
+            _flat_prices(),
+            macro_state={"dxy_score": 0.0, "fred_score": 0.0, "news_score": 9.0},
+        )
+        self.assertEqual(regime.macro_bias, "RISK-ON")
+        # Same clamped magnitude as a well-behaved news_score of 1.0.
+        ref = classify_market(
+            _flat_prices(),
+            macro_state={"dxy_score": 0.0, "fred_score": 0.0, "news_score": 1.0},
+        )
+        self.assertEqual(regime.features["macro_conviction"], ref.features["macro_conviction"])
+
+    def test_clamped_news_cannot_flip_two_opposing_inputs(self):
+        # dxy + fred = -2 (clamped) should stay RISK-OFF even against a runaway
+        # bullish news score, because news is capped at +1.
+        regime = classify_market(
+            _flat_prices(),
+            macro_state={"dxy_score": -1.0, "fred_score": -1.0, "news_score": 50.0},
+        )
+        self.assertEqual(regime.macro_bias, "RISK-OFF")
+
+
+class TestMacroBiasThresholdControlsCutoff(unittest.TestCase):
+    def test_higher_threshold_makes_weak_signal_neutral(self):
+        macro = {"dxy_score": 0.4, "fred_score": 0.0, "news_score": 0.0}
+        # Default 0.3 -> 0.4 clears it -> RISK-ON.
+        self.assertEqual(classify_market(_flat_prices(), macro_state=macro).macro_bias, "RISK-ON")
+        # Raise the cutoff above 0.4 -> same input is NEUTRAL.
+        self.assertEqual(
+            classify_market(_flat_prices(), macro_state=macro, macro_bias_threshold=0.5).macro_bias,
+            "NEUTRAL",
+        )
+
+    def test_nonpositive_threshold_falls_back_to_default(self):
+        macro = {"dxy_score": 0.4, "fred_score": 0.0, "news_score": 0.0}
+        self.assertEqual(
+            classify_market(_flat_prices(), macro_state=macro, macro_bias_threshold=0.0).macro_bias,
+            "RISK-ON",
+        )
 
 
 class TestDefaultSymbolResolver(unittest.TestCase):

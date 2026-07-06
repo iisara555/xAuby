@@ -20,6 +20,20 @@ from xauby.regime.models import GoldRegime
 # dollar/rates is the opposite of gold's would flip the relevant sign to -1.0.
 DEFAULT_MACRO_WEIGHTS: Dict[str, float] = {"news": 1.0, "dxy": 1.0, "fred": 1.0}
 
+# The sentiment guard contract (xauby.macro.sentiment_guard) is that every macro
+# input is oriented to the traded asset and bounded to [-1, 1]. dxy_score and
+# fred_score are hard-clamped at the producer, but news_score comes straight from
+# an LLM response and is NOT clamped there — a misbehaving model returning e.g.
+# 5.0 would silently dominate the combined bias. Clamping every input to this
+# range here is the "normalise before combining" step: it puts all three on one
+# commensurable scale so none can outweigh the others purely by magnitude.
+MACRO_INPUT_CLIP: float = 1.0
+
+# |combined_macro| above this flips the macro bias off NEUTRAL. Overridable via
+# ``macro_sentiment_guard.regime_bias_threshold`` so operators can tune macro
+# sensitivity per deployment without editing code.
+DEFAULT_MACRO_BIAS_THRESHOLD: float = 0.3
+
 
 def resolve_macro_weights(config: Optional[Dict[str, Any]]) -> Dict[str, float]:
     """Resolve macro combination weights from config, falling back to defaults."""
@@ -33,6 +47,32 @@ def resolve_macro_weights(config: Optional[Dict[str, Any]]) -> Dict[str, float]:
             except (TypeError, ValueError):
                 continue
     return weights
+
+
+def resolve_macro_bias_threshold(config: Optional[Dict[str, Any]]) -> float:
+    """Resolve the RISK-ON/RISK-OFF cutoff from config, falling back to default.
+
+    Reads ``macro_sentiment_guard.regime_bias_threshold``. Non-numeric or
+    non-positive values fall back to :data:`DEFAULT_MACRO_BIAS_THRESHOLD`.
+    """
+    guard = ((config or {}).get("macro_sentiment_guard") or {})
+    raw = guard.get("regime_bias_threshold")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_MACRO_BIAS_THRESHOLD
+    return value if value > 0 else DEFAULT_MACRO_BIAS_THRESHOLD
+
+
+def _clip_macro(value: Any) -> float:
+    """Coerce a macro input to float and clamp it to the [-clip, clip] contract."""
+    try:
+        val = float(value)
+        if not math.isfinite(val):
+            return 0.0
+    except (TypeError, ValueError):
+        return 0.0
+    return max(-MACRO_INPUT_CLIP, min(MACRO_INPUT_CLIP, val))
 
 def compute_ema(values: List[float], span: int) -> float:
     if not values:
@@ -406,6 +446,7 @@ def classify_market(
     macro_state: Optional[Dict[str, Any]] = None,
     timeframe: str = "4h",
     macro_weights: Optional[Dict[str, float]] = None,
+    macro_bias_threshold: Optional[float] = None,
 ) -> GoldRegime:
     """Classify the current market regime using technical indicators and macro data.
 
@@ -413,6 +454,9 @@ def classify_market(
     'open', 'high', 'low', 'close', 'volume'. ``macro_weights`` controls how DXY,
     rates, and news combine into the macro bias; defaults are gold-tuned but can
     be overridden per asset class (see :func:`resolve_macro_weights`).
+    ``macro_bias_threshold`` sets the RISK-ON/RISK-OFF cutoff on the combined
+    macro score (defaults to :data:`DEFAULT_MACRO_BIAS_THRESHOLD`; resolve from
+    config with :func:`resolve_macro_bias_threshold`).
     """
     if not prices:
         return GoldRegime(
@@ -494,11 +538,14 @@ def classify_market(
 
     # 3. Macro Bias from macro guard parameters
     macro = macro_state or {}
-    # Incorporate DXY score, FED rates, and News sentiment score
-    dxy_score = float(macro.get("dxy_score", 0.0))
-    fred_score = float(macro.get("fred_score", 0.0))
-    news_score = float(macro.get("news_score", 0.0))
-    
+    # Incorporate DXY score, FED rates, and News sentiment score. Each input is
+    # clamped to the sentiment-guard's [-1, 1] contract before combining so the
+    # three sit on one scale — see MACRO_INPUT_CLIP for why news_score in
+    # particular needs this.
+    dxy_score = _clip_macro(macro.get("dxy_score", 0.0))
+    fred_score = _clip_macro(macro.get("fred_score", 0.0))
+    news_score = _clip_macro(macro.get("news_score", 0.0))
+
     # Combined macro score: positive is bullish (Risk-On), negative is bearish (Risk-Off).
     # The inputs are already oriented to the traded asset by the sentiment guard
     # (positive = bullish), so the default weights are all +1.0 and must not
@@ -510,10 +557,15 @@ def classify_market(
         + weights["fred"] * fred_score
     )
     macro_conviction = _macro_conviction_score(combined_macro)
-    
-    if combined_macro < -0.3:
+
+    threshold = (
+        macro_bias_threshold
+        if macro_bias_threshold is not None and macro_bias_threshold > 0
+        else DEFAULT_MACRO_BIAS_THRESHOLD
+    )
+    if combined_macro < -threshold:
         macro_bias = "RISK-OFF"
-    elif combined_macro > 0.3:
+    elif combined_macro > threshold:
         macro_bias = "RISK-ON"
     else:
         macro_bias = "NEUTRAL"

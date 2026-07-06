@@ -1561,7 +1561,11 @@ class LoopMixin:
 
         # Run Gold Regime Classification
         try:
-            from xauby.regime.classifier import classify_market, resolve_macro_weights
+            from xauby.regime.classifier import (
+                classify_market,
+                resolve_macro_bias_threshold,
+                resolve_macro_weights,
+            )
             regime_started = time.monotonic()
             
             macro_state = {}
@@ -1579,6 +1583,7 @@ class LoopMixin:
                 macro_state=macro_state,
                 timeframe=tf_primary,
                 macro_weights=resolve_macro_weights(self.config),
+                macro_bias_threshold=resolve_macro_bias_threshold(self.config),
             )
             self._latency_metrics["regime_ms"] = int(
                 (time.monotonic() - regime_started) * 1000
