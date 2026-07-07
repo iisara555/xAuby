@@ -20,6 +20,89 @@ from xauby.regime.models import GoldRegime
 # dollar/rates is the opposite of gold's would flip the relevant sign to -1.0.
 DEFAULT_MACRO_WEIGHTS: Dict[str, float] = {"news": 1.0, "dxy": 1.0, "fred": 1.0}
 
+# The sentiment guard contract (xauby.macro.sentiment_guard) is that every macro
+# input is oriented to the traded asset and bounded to [-1, 1]. dxy_score and
+# fred_score are hard-clamped at the producer, but news_score comes straight from
+# an LLM response and is NOT clamped there — a misbehaving model returning e.g.
+# 5.0 would silently dominate the combined bias. Clamping every input to this
+# range here is the "normalise before combining" step: it puts all three on one
+# commensurable scale so none can outweigh the others purely by magnitude.
+MACRO_INPUT_CLIP: float = 1.0
+
+# |combined_macro| above this flips the macro bias off NEUTRAL. Overridable via
+# ``macro_sentiment_guard.regime_bias_threshold`` so operators can tune macro
+# sensitivity per deployment without editing code.
+DEFAULT_MACRO_BIAS_THRESHOLD: float = 0.3
+
+# Minimum closed bars required for a fallback-computed EMA200 to be trustworthy.
+# compute_ema() returns a value for any length (seeded at closes[0]), so with far
+# fewer than 200 bars the "EMA200" is really a slow EMA over whatever exists,
+# heavily weighted to the oldest price. Below one full period we refuse to assert
+# a BULLISH/BEARISH trend off it. When the indicator registry supplies ema_200
+# (computed over full history upstream) this floor does not apply.
+EMA200_MIN_BARS: int = 200
+
+# ── Regime classification thresholds ──────────────────────────────────────────
+# Every hand-tuned cutoff used to categorise trend / volatility / liquidity and
+# to synthesise the detailed regime lives here, so the bands stay consistent
+# across _trend_strength, _trend_quality_score, _volatility_state and
+# _synthesise_detailed_regime — which previously repeated raw literals inline
+# (e.g. the trend-quality "strong" cutoff appeared three times). Values are
+# unchanged from those inline versions: this is a naming pass, not a retune.
+
+# EMA-spread / EMA200-distance / 20-bar-momentum bands qualifying a trend as
+# STRONG vs merely WEAK vs FLAT (all fractions of price).
+TREND_STRONG_EMA_SPREAD_PCT = 0.004
+TREND_STRONG_EMA200_DIST_PCT = 0.015
+TREND_STRONG_MOMENTUM_PCT = 0.02
+TREND_FLAT_EMA200_DIST_PCT = 0.006
+TREND_FLAT_MOMENTUM_PCT = 0.01
+
+# Trend-quality score: per-feature normalisers (a feature at its normaliser
+# scores ~1.0) and the blend weights (sum to 1.0).
+TQ_SPREAD_NORM = 0.006
+TQ_EMA200_DIST_NORM = 0.025
+TQ_MOMENTUM_NORM = 0.04
+TQ_W_SPREAD = 0.30
+TQ_W_DIST = 0.25
+TQ_W_MOMENTUM = 0.25
+TQ_W_CONSISTENCY = 0.20
+
+# |combined_macro| normaliser for the macro-conviction score.
+MACRO_CONVICTION_NORM = 1.2
+
+# Absolute ATR/price ratio vs its rolling average -> coarse HIGH/LOW volatility.
+VOL_HIGH_RATIO = 1.3
+VOL_LOW_RATIO = 0.7
+
+# Detailed volatility state: relative ATR (vs rolling avg) OR ATR percentile.
+VOL_EXTREME_REL = 1.8
+VOL_EXTREME_PCTL = 0.95
+VOL_EXPANDING_REL = 1.3
+VOL_EXPANDING_PCTL = 0.80
+VOL_COMPRESSION_REL = 0.55
+VOL_COMPRESSION_PCTL = 0.10
+VOL_QUIET_REL = 0.75
+VOL_QUIET_PCTL = 0.25
+
+# Volume-ratio bands for the discrete liquidity state.
+LIQ_SURGE_RATIO = 1.8
+LIQ_CONFIRMING_RATIO = 1.2
+LIQ_THIN_RATIO = 0.65
+
+# Volume-ratio bands for the continuous liquidity-confirmation score.
+LIQ_CONF_STRONG_RATIO = 1.5
+LIQ_CONF_OK_RATIO = 1.0
+LIQ_CONF_WEAK_RATIO = 0.65
+
+# Detailed-regime synthesis cutoffs — the ones _trend_strength and
+# _synthesise_detailed_regime effectively shared.
+TREND_QUALITY_STRONG = 0.55       # trend_quality above this = high-conviction trend
+PANIC_MOMENTUM_PCT = -0.025       # 20-bar momentum flushing into panic
+PANIC_VOL_PERCENTILE = 0.90       # ATR percentile flagging a panic vol spike
+NEAR_EMA200_DIST_PCT = 0.008      # |price-EMA200| this small = pinned to the mean
+WIDE_RANGE_PCT = 0.035            # 20-bar range this wide = volatility expansion
+
 
 def resolve_macro_weights(config: Optional[Dict[str, Any]]) -> Dict[str, float]:
     """Resolve macro combination weights from config, falling back to defaults."""
@@ -33,6 +116,32 @@ def resolve_macro_weights(config: Optional[Dict[str, Any]]) -> Dict[str, float]:
             except (TypeError, ValueError):
                 continue
     return weights
+
+
+def resolve_macro_bias_threshold(config: Optional[Dict[str, Any]]) -> float:
+    """Resolve the RISK-ON/RISK-OFF cutoff from config, falling back to default.
+
+    Reads ``macro_sentiment_guard.regime_bias_threshold``. Non-numeric or
+    non-positive values fall back to :data:`DEFAULT_MACRO_BIAS_THRESHOLD`.
+    """
+    guard = ((config or {}).get("macro_sentiment_guard") or {})
+    raw = guard.get("regime_bias_threshold")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_MACRO_BIAS_THRESHOLD
+    return value if value > 0 else DEFAULT_MACRO_BIAS_THRESHOLD
+
+
+def _clip_macro(value: Any) -> float:
+    """Coerce a macro input to float and clamp it to the [-clip, clip] contract."""
+    try:
+        val = float(value)
+        if not math.isfinite(val):
+            return 0.0
+    except (TypeError, ValueError):
+        return 0.0
+    return max(-MACRO_INPUT_CLIP, min(MACRO_INPUT_CLIP, val))
 
 def compute_ema(values: List[float], span: int) -> float:
     if not values:
@@ -174,30 +283,30 @@ def _trend_quality_score(
     if trend == "NEUTRAL":
         return 0.0
     direction = 1.0 if trend == "BULLISH" else -1.0
-    spread_score = _clamp(abs(ema_spread_pct) / 0.006)
-    distance_score = _clamp(abs(ema200_distance_pct) / 0.025)
-    momentum_score = _clamp(abs(momentum_20) / 0.04)
+    spread_score = _clamp(abs(ema_spread_pct) / TQ_SPREAD_NORM)
+    distance_score = _clamp(abs(ema200_distance_pct) / TQ_EMA200_DIST_NORM)
+    momentum_score = _clamp(abs(momentum_20) / TQ_MOMENTUM_NORM)
     consistency_score = _clamp(direction * directional_consistency)
     return _clamp(
-        0.30 * spread_score
-        + 0.25 * distance_score
-        + 0.25 * momentum_score
-        + 0.20 * consistency_score
+        TQ_W_SPREAD * spread_score
+        + TQ_W_DIST * distance_score
+        + TQ_W_MOMENTUM * momentum_score
+        + TQ_W_CONSISTENCY * consistency_score
     )
 
 
 def _macro_conviction_score(combined_macro: float) -> float:
-    return _clamp(abs(combined_macro) / 1.2)
+    return _clamp(abs(combined_macro) / MACRO_CONVICTION_NORM)
 
 
 def _liquidity_confirmation_score(volume_ratio: float) -> float:
     if volume_ratio <= 0:
         return 0.35
-    if volume_ratio >= 1.5:
+    if volume_ratio >= LIQ_CONF_STRONG_RATIO:
         return 1.0
-    if volume_ratio >= 1.0:
+    if volume_ratio >= LIQ_CONF_OK_RATIO:
         return 0.75
-    if volume_ratio >= 0.65:
+    if volume_ratio >= LIQ_CONF_WEAK_RATIO:
         return 0.55
     return 0.25
 
@@ -210,16 +319,24 @@ def _trend_strength(
     momentum_20: float,
 ) -> str:
     if trend == "BULLISH":
-        if ema_spread_pct >= 0.004 and ema200_distance_pct >= 0.015 and momentum_20 > 0.02:
+        if (
+            ema_spread_pct >= TREND_STRONG_EMA_SPREAD_PCT
+            and ema200_distance_pct >= TREND_STRONG_EMA200_DIST_PCT
+            and momentum_20 > TREND_STRONG_MOMENTUM_PCT
+        ):
             return "STRONG_UP"
         if ema_spread_pct > 0 and ema200_distance_pct > 0:
             return "WEAK_UP"
     if trend == "BEARISH":
-        if ema_spread_pct <= -0.004 and ema200_distance_pct <= -0.015 and momentum_20 < -0.02:
+        if (
+            ema_spread_pct <= -TREND_STRONG_EMA_SPREAD_PCT
+            and ema200_distance_pct <= -TREND_STRONG_EMA200_DIST_PCT
+            and momentum_20 < -TREND_STRONG_MOMENTUM_PCT
+        ):
             return "STRONG_DOWN"
         if ema_spread_pct < 0 and ema200_distance_pct < 0:
             return "WEAK_DOWN"
-    if abs(ema200_distance_pct) <= 0.006 and abs(momentum_20) <= 0.01:
+    if abs(ema200_distance_pct) <= TREND_FLAT_EMA200_DIST_PCT and abs(momentum_20) <= TREND_FLAT_MOMENTUM_PCT:
         return "FLAT"
     return "CHOPPY"
 
@@ -233,23 +350,23 @@ def _volatility_state(
     if avg_vol_ratio <= 0:
         return volatility
     rel = vol_ratio / avg_vol_ratio
-    if rel >= 1.8 or vol_percentile >= 0.95:
+    if rel >= VOL_EXTREME_REL or vol_percentile >= VOL_EXTREME_PCTL:
         return "EXTREME_EXPANSION"
-    if rel >= 1.3 or vol_percentile >= 0.80:
+    if rel >= VOL_EXPANDING_REL or vol_percentile >= VOL_EXPANDING_PCTL:
         return "EXPANDING"
-    if rel <= 0.55 or vol_percentile <= 0.10:
+    if rel <= VOL_COMPRESSION_REL or vol_percentile <= VOL_COMPRESSION_PCTL:
         return "COMPRESSION"
-    if rel <= 0.75 or vol_percentile <= 0.25:
+    if rel <= VOL_QUIET_REL or vol_percentile <= VOL_QUIET_PCTL:
         return "QUIET"
     return "NORMAL"
 
 
 def _liquidity_state(volume_ratio: float) -> str:
-    if volume_ratio >= 1.8:
+    if volume_ratio >= LIQ_SURGE_RATIO:
         return "SURGE"
-    if volume_ratio >= 1.2:
+    if volume_ratio >= LIQ_CONFIRMING_RATIO:
         return "CONFIRMING"
-    if 0.0 < volume_ratio < 0.65:
+    if 0.0 < volume_ratio < LIQ_THIN_RATIO:
         return "THIN"
     return "NORMAL"
 
@@ -282,25 +399,25 @@ def _synthesise_detailed_regime(
     panic_like = (
         trend == "BEARISH"
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
-        and (macro_bias == "RISK-OFF" or momentum_20 <= -0.025)
-        and (trend_quality >= 0.55 or vol_percentile >= 0.90)
+        and (macro_bias == "RISK-OFF" or momentum_20 <= PANIC_MOMENTUM_PCT)
+        and (trend_quality >= TREND_QUALITY_STRONG or vol_percentile >= PANIC_VOL_PERCENTILE)
     )
     bull_breakout = (
         trend == "BULLISH"
         and trend_strength in {"WEAK_UP", "STRONG_UP"}
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
         and liquidity_state in {"CONFIRMING", "SURGE"}
-        and trend_quality >= 0.55
+        and trend_quality >= TREND_QUALITY_STRONG
     )
     bear_breakdown = (
         trend == "BEARISH"
         and trend_strength in {"WEAK_DOWN", "STRONG_DOWN"}
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
-        and trend_quality >= 0.55
+        and trend_quality >= TREND_QUALITY_STRONG
     )
     low_vol = volatility_state in {"COMPRESSION", "QUIET"} or volatility == "LOW"
-    near_ema200 = abs(ema200_distance_pct) <= 0.008
-    wide_range = range_pct_20 >= 0.035
+    near_ema200 = abs(ema200_distance_pct) <= NEAR_EMA200_DIST_PCT
+    wide_range = range_pct_20 >= WIDE_RANGE_PCT
 
     if panic_like:
         regime = "PANIC_SELL"
@@ -406,6 +523,7 @@ def classify_market(
     macro_state: Optional[Dict[str, Any]] = None,
     timeframe: str = "4h",
     macro_weights: Optional[Dict[str, float]] = None,
+    macro_bias_threshold: Optional[float] = None,
 ) -> GoldRegime:
     """Classify the current market regime using technical indicators and macro data.
 
@@ -413,6 +531,9 @@ def classify_market(
     'open', 'high', 'low', 'close', 'volume'. ``macro_weights`` controls how DXY,
     rates, and news combine into the macro bias; defaults are gold-tuned but can
     be overridden per asset class (see :func:`resolve_macro_weights`).
+    ``macro_bias_threshold`` sets the RISK-ON/RISK-OFF cutoff on the combined
+    macro score (defaults to :data:`DEFAULT_MACRO_BIAS_THRESHOLD`; resolve from
+    config with :func:`resolve_macro_bias_threshold`).
     """
     if not prices:
         return GoldRegime(
@@ -443,17 +564,32 @@ def classify_market(
     tf_suffix = f"_{timeframe.lower()}"
     ema_12 = float(ind.get(f"ema_12{tf_suffix}") or compute_ema(closes, 12))
     ema_26 = float(ind.get(f"ema_26{tf_suffix}") or compute_ema(closes, 26))
-    ema_200 = float(ind.get(f"ema_200{tf_suffix}") or compute_ema(closes, 200))
 
-    if ema_12 > ema_26 > ema_200 and latest_close > ema_200:
+    # EMA200 is only trustworthy if the registry supplied it (full-history
+    # compute) or we have at least one full period of closed bars. Otherwise the
+    # fallback is a slow EMA over too little data — see EMA200_MIN_BARS.
+    ema_200_supplied = ind.get(f"ema_200{tf_suffix}")
+    if ema_200_supplied:
+        ema_200 = float(ema_200_supplied)
+        ema_200_reliable = ema_200 > 0
+    else:
+        ema_200 = compute_ema(closes, 200)
+        ema_200_reliable = ema_200 > 0 and len(closes) >= EMA200_MIN_BARS
+
+    # Without a trustworthy EMA200 we must not assert a directional trend off it,
+    # and its distance signal must not leak into regime synthesis.
+    if ema_200_reliable and ema_12 > ema_26 > ema_200 and latest_close > ema_200:
         trend = "BULLISH"
-    elif ema_12 < ema_26 < ema_200 and latest_close < ema_200:
+    elif ema_200_reliable and ema_12 < ema_26 < ema_200 and latest_close < ema_200:
         trend = "BEARISH"
     else:
         trend = "NEUTRAL"
 
     ema_spread_pct = (ema_12 - ema_26) / latest_close if latest_close > 0 else 0.0
-    ema200_distance_pct = (latest_close - ema_200) / latest_close if latest_close > 0 else 0.0
+    if ema_200_reliable and latest_close > 0:
+        ema200_distance_pct = (latest_close - ema_200) / latest_close
+    else:
+        ema200_distance_pct = 0.0
     momentum_5 = _pct_change(closes, 5)
     momentum_20 = _pct_change(closes, 20)
     direction_consistency = _directional_consistency(closes, 20)
@@ -468,9 +604,9 @@ def classify_market(
     historical_vols = _historical_atr_ratios(highs, lows, closes, period=14, lookback=120)
     avg_vol_ratio = sum(historical_vols) / len(historical_vols) if historical_vols else 0.005
     vol_percentile = _percentile_rank(vol_ratio, historical_vols) if historical_vols else 0.5
-    if vol_ratio > avg_vol_ratio * 1.3:
+    if vol_ratio > avg_vol_ratio * VOL_HIGH_RATIO:
         volatility = "HIGH"
-    elif vol_ratio < avg_vol_ratio * 0.7:
+    elif vol_ratio < avg_vol_ratio * VOL_LOW_RATIO:
         volatility = "LOW"
     else:
         volatility = "NORMAL"
@@ -494,11 +630,14 @@ def classify_market(
 
     # 3. Macro Bias from macro guard parameters
     macro = macro_state or {}
-    # Incorporate DXY score, FED rates, and News sentiment score
-    dxy_score = float(macro.get("dxy_score", 0.0))
-    fred_score = float(macro.get("fred_score", 0.0))
-    news_score = float(macro.get("news_score", 0.0))
-    
+    # Incorporate DXY score, FED rates, and News sentiment score. Each input is
+    # clamped to the sentiment-guard's [-1, 1] contract before combining so the
+    # three sit on one scale — see MACRO_INPUT_CLIP for why news_score in
+    # particular needs this.
+    dxy_score = _clip_macro(macro.get("dxy_score", 0.0))
+    fred_score = _clip_macro(macro.get("fred_score", 0.0))
+    news_score = _clip_macro(macro.get("news_score", 0.0))
+
     # Combined macro score: positive is bullish (Risk-On), negative is bearish (Risk-Off).
     # The inputs are already oriented to the traded asset by the sentiment guard
     # (positive = bullish), so the default weights are all +1.0 and must not
@@ -510,10 +649,15 @@ def classify_market(
         + weights["fred"] * fred_score
     )
     macro_conviction = _macro_conviction_score(combined_macro)
-    
-    if combined_macro < -0.3:
+
+    threshold = (
+        macro_bias_threshold
+        if macro_bias_threshold is not None and macro_bias_threshold > 0
+        else DEFAULT_MACRO_BIAS_THRESHOLD
+    )
+    if combined_macro < -threshold:
         macro_bias = "RISK-OFF"
-    elif combined_macro > 0.3:
+    elif combined_macro > threshold:
         macro_bias = "RISK-ON"
     else:
         macro_bias = "NEUTRAL"
@@ -563,6 +707,11 @@ def classify_market(
         confidence -= 0.08
     if detailed["transition_risk"] == "HIGH":
         confidence -= 0.08
+    if not ema_200_reliable:
+        # Trend axis was suppressed for lack of a trustworthy EMA200; don't
+        # present the resulting (necessarily non-trending) call with high
+        # confidence.
+        confidence = min(confidence, 0.5) - 0.05
     confidence = _clamp(confidence, 0.05, 0.98)
     gold_score = int(round(confidence * 100))
     reasons = _build_user_reasons(
@@ -592,6 +741,7 @@ def classify_market(
         "liquidity_confirmation": _safe_round(liquidity_score),
         "macro_alignment": detailed["macro_alignment"],
         "institutional_confidence": _safe_round(confidence),
+        "ema200_reliable": ema_200_reliable,
     }
 
     return GoldRegime(

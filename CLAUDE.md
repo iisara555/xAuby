@@ -94,8 +94,16 @@ Portfolio config, never in engine-only blocks. The engine is strategy-agnostic.
 
 `whitelist_strict`, `indicator_registry_enabled`, `sync_yaml_pairs_from_whitelist`,
 `tui_indicator_registry`, `per_symbol_execution_mode`, `sim_broker_enabled`,
-`regime_router_enabled`, `regime_confidence_filter`, `event_bus_enabled`.
+`regime_router_enabled`, `regime_confidence_filter`,
+`regime_statistical_crosscheck`, `event_bus_enabled`.
 Rollback is intentionally a flag flip to `false` — no code revert required.
+
+`regime_statistical_crosscheck` (default off) fits an independent
+Gaussian-mixture regime model each tick (`xauby/regime/statistical.py`) and
+attaches its label / posterior / agreement to the rule-based regime as `stat_*`
+features. It is advisory only — it never overrides the rule-based regime or
+routing — so it is safe to arm for observation. Tune via the optional top-level
+`regime_statistical:` block (`components`, `min_bars`).
 
 ## Current runtime baseline (from coin_whitelist.json / bot_config.yaml)
 
