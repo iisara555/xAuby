@@ -308,8 +308,12 @@ and <span class="mono">bot_config.yaml</span>:</p>
 <span class="mono">position_mode: one_way</span>) at <strong>1x leverage</strong>
 (<span class="mono">derivatives.max_leverage: 1</span>) with the funding guard
 (<span class="mono">max_abs_funding_rate</span>) and <span class="mono">min_liquidation_distance_pct</span>
-active. The gold slot uses the <span class="mono">XAUUSDT</span> (perpetual) symbol; backtests proxy
-gold to <span class="mono">PAXGUSDT</span> since it has deeper price history on Global Binance.</p>
+active — <span class="mono">1</span> is the value actually in use for the XAU pair right now (not a hard
+system-wide ceiling). The system technically supports higher leverage, specifically on the short side
+(capped at a maximum of 3x, see section 6.5), but that requires changing
+<span class="mono">derivatives.max_leverage</span> and explicit operator approval first. The gold slot
+uses the <span class="mono">XAUUSDT</span> (perpetual) symbol; backtests proxy gold to
+<span class="mono">PAXGUSDT</span> since it has deeper price history on Global Binance.</p>
 
 <p>The single live gold pair runs CDC Action Zone as <strong>long and short simultaneously</strong>, in
 a stop-and-reverse pattern (<span class="mono">allowed_sides: [long, short]</span>,
@@ -794,10 +798,16 @@ for that pair.</li>
 <tr><td><span class="mono">strategy</span></td><td>plugin id</td><td>Required when <span class="mono">whitelist_strict: true</span></td></tr>
 <tr><td><span class="mono">strategy_params</span></td><td>object</td><td>Per-pair overrides merged into strategy config</td></tr>
 <tr><td><span class="mono">mode</span></td><td><span class="mono">sim</span>, <span class="mono">live</span></td><td>Requires <span class="mono">per_symbol_execution_mode: true</span></td></tr>
+<tr><td><span class="mono">allowed_sides</span></td><td>array, e.g. <span class="mono">["long"]</span>, <span class="mono">["long","short"]</span></td><td>Sides this pair may open — must include <span class="mono">"short"</span> before any short-capable strategy can act (see section 6.5)</td></tr>
+<tr><td><span class="mono">leverage</span></td><td>number</td><td>This pair's leverage; must not exceed the engine-level <span class="mono">derivatives.max_leverage</span></td></tr>
+<tr><td><span class="mono">short_live_enabled</span></td><td>bool</td><td>An additional gate for going short with real money — if off, shorts are paper-only even when <span class="mono">allowed_sides</span> includes <span class="mono">"short"</span></td></tr>
 <tr><td><span class="mono">regime_router_enabled</span></td><td>bool</td><td>Pair-level RegimeRouter gate</td></tr>
 <tr><td><span class="mono">regime_router_live_confirmed</span></td><td>bool</td><td>Required before a live pair may route strategies</td></tr>
 <tr><td><span class="mono">sim_fee_pct</span></td><td>number</td><td>Percent, e.g. <span class="mono">0.05</span> = 0.05%</td></tr>
 </table>
+
+<p class="small">Note: <span class="mono">strategy_params</span> is not shown in the JSON example above
+since it's an optional field — see the real values used for the XAU pair in section 5.2.</p>
 
 <h2 id="s4-5">4.5 Environment Variables</h2>
 
@@ -813,7 +823,17 @@ for that pair.</li>
 <tr><td><span class="mono">DEFAULT_SYMBOL</span></td><td>-</td><td>Optional single-pair override</td></tr>
 <tr><td><span class="mono">XAUBY_HOME</span></td><td><span class="mono">core</span></td><td>Base directory for runtime data — relocate to run instances side by side (see Part 10)</td></tr>
 <tr><td><span class="mono">XAUBY_INSTANCE_ID</span></td><td>-</td><td>Optional sub-namespace under the runtime root</td></tr>
+<tr><td><span class="mono">XAUBY_DEFAULT_SYMBOL</span></td><td><span class="mono">XAUTUSDT</span></td><td>Last-resort dashboard symbol when the whitelist is empty/unreadable (asset-neutral — not hardcoded to gold)</td></tr>
+<tr><td><span class="mono">XAUBY_FOCUS_SYMBOL</span></td><td>-</td><td>Forces which pair the TUI/dashboard focuses on at startup; used alongside <span class="mono">DEFAULT_SYMBOL</span> in the live startup command (see sections 1.3/11.1)</td></tr>
+<tr><td><span class="mono">OKX_BASE_URL</span></td><td>auto</td><td>Overrides the OKX REST endpoint (the variable name comes from <span class="mono">exchange.base_url_env</span>)</td></tr>
+<tr><td><span class="mono">BINANCE_BACKTEST_URL</span></td><td><span class="mono">api.binance.com</span></td><td>Overrides the Global Binance backtest data source (see section 7.1)</td></tr>
 </table>
+
+<p class="small">The "recommended live startup" command in sections 1.3/11.1 runs
+<span class="mono">env -u DEFAULT_SYMBOL</span> (unsetting the older generic variable) and sets
+<span class="mono">XAUBY_DEFAULT_SYMBOL</span> and <span class="mono">XAUBY_FOCUS_SYMBOL</span> instead —
+this prevents a stale <span class="mono">DEFAULT_SYMBOL</span> left over from another session from
+overriding the symbol actually intended.</p>
 
 <h3>Regime classifier macro weights</h3>
 <p>The market regime classifier combines DXY, interest rates, and news into a macro bias. Weights are
@@ -851,7 +871,7 @@ across edits.</p>
 <div class="chapter-kicker">Part 5 — Strategies and the Market Regime Detector</div>
 <h1>5.1 Every Strategy Plugin in the System</h1>
 
-<p>The system ships 15 strategy plugins total. Some run in production, others are research-only
+<p>The system ships 14 strategy plugins total. Some run in production, others are research-only
 (sim/backtest):</p>
 
 <table>
@@ -866,7 +886,7 @@ across edits.</p>
 <tr><td><span class="mono">sol_ema_pullback</span></td><td><span class="mono">sol_ema_pullback</span></td><td>Trend/Pullback/Reclaim/Neutral</td><td>EMA20, EMA50</td></tr>
 <tr><td><span class="mono">vol_breakout</span> (research)</td><td><span class="mono">vol_breakout</span></td><td>Breakout/ATR Expansion/Neutral</td><td>Range High, Exit EMA</td></tr>
 <tr><td><span class="mono">xauby_vwap_pullback</span></td><td><span class="mono">xauby_vwap_pullback</span></td><td>Entry/Pullback/Trend/Wait/Trend lost</td><td>EMA20/50/200, VWAP</td></tr>
-<tr><td><span class="mono">donchian_trend</span></td><td>-</td><td>-</td><td>Turtle breakout above EMA200 + ADX filter</td></tr>
+<tr><td><span class="mono">donchian_trend</span> (candidate)</td><td>-</td><td>-</td><td>Turtle breakout above EMA200 + ADX filter — a challenger that has not passed selection criteria; not in the production mapping (see 5.7)</td></tr>
 <tr><td><span class="mono">donchian_short</span> / <span class="mono">supertrend_short</span> / <span class="mono">rsi2_short</span> (research)</td><td>-</td><td colspan="2">Short-side, research only — never in production</td></tr>
 </table>
 
@@ -1054,6 +1074,23 @@ below is the mapping configured in the system, ready to use once the flag is ena
 <p>When the backtest regime filter is enabled, it mirrors this routing: BUY signals are suppressed
 whenever the classifier's regime falls outside the active strategy's target regime set, keeping replay
 results close to the live entry gate.</p>
+
+<div class="warn">
+<strong>A known contradiction in the source documents:</strong> the mapping above follows the table in
+the root <span class="mono">README.md</span>, but <span class="mono">docs/configuration.md</span> lists a
+different mapping for some keys — e.g. <span class="mono">BEAR_TREND_WEAK</span> →
+<span class="mono">donchian_trend</span> (instead of <span class="mono">cdc_action_zone</span>) and the
+low-volatility group → <span class="mono">bbkc_squeeze</span> (instead of
+<span class="mono">bbrsi_mean_reversion</span>). The root README also states that
+<span class="mono">donchian_trend</span> "was deployed on BTCUSDT 1h," while
+<span class="mono">docs/regime_strategy_selection.md</span> (which has fuller methodology and a later
+date, 2026-06-11) concludes the opposite: <strong>no candidate passed the criteria, and the incumbent
+mapping was kept unchanged.</strong> This is a genuine doc-drift conflict between two files in the same
+project. This book follows <span class="mono">docs/regime_strategy_selection.md</span> in section 5.7,
+since it has more detailed methodology and a more recent date — but an operator should always check the
+real <span class="mono">regime_router.mapping</span> in <span class="mono">bot_config.yaml</span> rather
+than trusting either document alone.
+</div>
 
 <h2 id="s5-7">5.7 Data-Driven Strategy Selection (R&amp;D)</h2>
 
@@ -1550,6 +1587,7 @@ reduce local work or polling/logging frequency.</p>
 <tr><th>Command</th><th>Purpose</th></tr>
 <tr><td><span class="mono">python -m unittest discover -s tests -q</span></td><td>Runs the full test suite</td></tr>
 <tr><td><span class="mono">python health_check.py</span></td><td>One-shot health probe</td></tr>
+<tr><td><span class="mono">python scripts/replay_backtest.py --symbol XAUUSDT --config bot_config.yaml</span></td><td>Runs a backtest</td></tr>
 <tr><td><span class="mono">python scripts/incident_explorer.py list</span></td><td>Lists recorded incidents</td></tr>
 <tr><td><span class="mono">python scripts/replay_validate.py &lt;run_id&gt; --symbol XAUUSDT</span></td><td>Validates replay after a restart</td></tr>
 <tr><td><span class="mono">python scripts/evaluate_okx_xau_migration.py</span></td><td>Evaluates the OKX XAU migration</td></tr>
