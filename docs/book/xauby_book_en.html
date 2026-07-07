@@ -1,0 +1,1397 @@
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>xAuby Guide</title>
+<style>
+@page { size: A4; margin: 2.2cm 1.6cm 2cm 1.6cm; }
+
+* { box-sizing: border-box; }
+html, body {
+  font-family: "Noto Sans", "Noto Sans Thai", sans-serif;
+  color: #1a1a1a;
+  font-size: 11pt;
+  line-height: 1.6;
+}
+body { margin: 0; }
+
+h1, h2, h3, h4 { font-family: "Noto Sans", sans-serif; font-weight: 700; color: #12202c; page-break-after: avoid; }
+h1 { font-size: 22pt; margin: 0 0 6mm 0; }
+h2 { font-size: 15pt; margin: 10mm 0 4mm 0; border-bottom: 2px solid #b8860b; padding-bottom: 2mm; }
+h3 { font-size: 12.5pt; margin: 7mm 0 3mm 0; color: #14324a; }
+h4 { font-size: 11pt; margin: 5mm 0 2mm 0; color: #333; }
+p { margin: 0 0 3mm 0; text-align: left; }
+ul, ol { margin: 0 0 3.5mm 0; padding-left: 5.5mm; }
+li { margin-bottom: 1.3mm; }
+strong { color: #12202c; }
+code, .mono { font-family: "DejaVu Sans Mono", monospace; font-size: 9.3pt; background: #f1efe8; color: #7a3b12; padding: 0.5px 4px; border-radius: 3px; }
+pre { background: #1c2530; color: #eae6da; font-family: "DejaVu Sans Mono", monospace; font-size: 8.7pt; line-height: 1.5; padding: 3mm 4mm; border-radius: 4px; overflow-x: auto; margin: 0 0 4mm 0; page-break-inside: avoid; }
+pre code { background: none; color: inherit; padding: 0; }
+
+table { border-collapse: collapse; width: 100%; margin: 0 0 5mm 0; font-size: 9.6pt; page-break-inside: avoid; }
+th, td { border: 0.5px solid #ccc4b0; padding: 1.6mm 2.4mm; text-align: left; vertical-align: top; }
+th { background: #12202c; color: #f4ecd8; font-weight: 700; }
+tr:nth-child(even) td { background: #faf8f2; }
+.note { background: #fff7e6; border-left: 4px solid #b8860b; padding: 3mm 4mm; margin: 0 0 4mm 0; font-size: 10pt; }
+.warn { background: #fdeceb; border-left: 4px solid #c0392b; padding: 3mm 4mm; margin: 0 0 4mm 0; font-size: 10pt; }
+.tip { background: #eaf5ec; border-left: 4px solid #3d8f5b; padding: 3mm 4mm; margin: 0 0 4mm 0; font-size: 10pt; }
+.tag { display:inline-block; background:#12202c; color:#f4ecd8; font-size: 8.3pt; padding: 0.5mm 2.2mm; border-radius: 3px; margin-right:1.5mm;}
+
+.part { page-break-before: always; }
+.chapter { page-break-before: always; }
+.chapter-kicker { color: #b8860b; font-size: 10.5pt; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 2mm; }
+
+/* Cover */
+.cover { page-break-after: always; height: 253mm; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align:center; background: linear-gradient(160deg,#12202c 0%, #1c3347 55%, #0d1720 100%); color: #f4ecd8; margin: -2.2cm -1.6cm -2cm -1.6cm; padding: 0 20mm;}
+.cover .kicker { letter-spacing: 3px; font-size: 11pt; color: #d9b46a; margin-bottom: 8mm; text-transform: uppercase;}
+.cover h1 { color: #fbf3df; font-size: 42pt; margin-bottom: 4mm; }
+.cover .sub { font-size: 14pt; color: #d9cdb0; margin-bottom: 14mm; max-width: 130mm; }
+.cover .meta { font-size: 10pt; color: #a9a08a; border-top: 1px solid #4b5a68; padding-top: 6mm; margin-top: 10mm; width: 90mm; }
+
+/* TOC */
+.toc-page { page-break-after: always; }
+.toc a { color: #12202c; text-decoration: none; }
+.toc ol { list-style: none; padding-left: 0; margin: 0; }
+.toc > ol > li { margin-bottom: 4mm; }
+.toc .part-title { font-weight: 700; font-size: 12pt; color: #b8860b; }
+.toc ol ol { padding-left: 6mm; margin-top: 1.5mm; }
+.toc ol ol li { font-size: 10pt; margin-bottom: 1mm; display:flex; justify-content: space-between; }
+.toc .dots { flex: 1; border-bottom: 1px dotted #999; margin: 0 2mm; position: relative; top: -1.5mm; }
+
+.small { font-size: 9pt; color: #555; }
+.center { text-align: center; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+.figcap { font-size: 9pt; color: #666; text-align:center; margin-top: -2mm; margin-bottom: 4mm;}
+hr.sep { border: none; border-top: 1px solid #ddd; margin: 6mm 0; }
+</style>
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<div class="cover">
+  <div class="kicker">Automated Gold Trading System</div>
+  <h1>xAuby</h1>
+  <div class="sub">A Plain-Language Guide — for people getting started with the gold trading bot</div>
+  <div class="meta">
+    Compiled and rewritten from every project document<br>
+    Rewritten for clarity, with technical jargon minimized for beginners<br>
+    Reflects the system's latest state as of July 2026<br>
+    Prepared for education and internal use only
+  </div>
+</div>
+
+<!-- ===================== TOC ===================== -->
+<div class="toc-page toc">
+<h1>Table of Contents</h1>
+<ol>
+  <li><div class="part-title">Preface and Current System Status</div></li>
+
+  <li><div class="part-title">Part 1 — Meet xAuby</div>
+    <ol>
+      <li><a href="#s1-1">1.1 What is xAuby</a></li>
+      <li><a href="#s1-2">1.2 The Thinking Behind the Design</a></li>
+      <li><a href="#s1-3">1.3 How the System Is Configured Right Now</a></li>
+      <li><a href="#s1-4">1.4 What This Bot Does and Doesn't Do</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 2 — Getting Started</div>
+    <ol>
+      <li><a href="#s2-1">2.1 Installation</a></li>
+      <li><a href="#s2-2">2.2 Setting Up Your OKX API Key</a></li>
+      <li><a href="#s2-3">2.3 Always Run Simulation First</a></li>
+      <li><a href="#s2-4">2.4 Common Commands</a></li>
+      <li><a href="#s2-5">2.5 Checklist Before Going Live</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 3 — How the System Works Behind the Scenes</div>
+    <ol>
+      <li><a href="#s3-1">3.1 A Simple Overview of the Pieces</a></li>
+      <li><a href="#s3-2">3.2 What Happens on Every Cycle</a></li>
+      <li><a href="#s3-3">3.3 How Multiple Trading Pairs Stay Separate</a></li>
+      <li><a href="#s3-4">3.4 Ground Rules the System Always Follows</a></li>
+      <li><a href="#s3-5">3.5 Strategies and Charts Must Travel Together</a></li>
+      <li><a href="#s3-6">3.6 Feature Switches</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 4 — Configuration</div>
+    <ol>
+      <li><a href="#s4-1">4.1 The Three Main Configuration Files</a></li>
+      <li><a href="#s4-2">4.2 Why Configuration Is Split Into Three Groups</a></li>
+      <li><a href="#s4-3">4.3 Exchange Setup (OKX via CCXT)</a></li>
+      <li><a href="#s4-4">4.4 The List of Active Trading Pairs</a></li>
+      <li><a href="#s4-5">4.5 Environment Variables Worth Knowing</a></li>
+      <li><a href="#s4-6">4.6 The Built-in Quick Config Menu</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 5 — Strategies and the Market Regime Detector</div>
+    <ol>
+      <li><a href="#s5-1">5.1 Every Strategy in the System</a></li>
+      <li><a href="#s5-2">5.2 CDC Action Zone — the Strategy Actually Trading Live</a></li>
+      <li><a href="#s5-3">5.3 What Is the Market Regime Detector</a></li>
+      <li><a href="#s5-4">5.4 A Statistical Second Opinion</a></li>
+      <li><a href="#s5-5">5.5 How Accurate Is the Regime Detector, Really</a></li>
+      <li><a href="#s5-6">5.6 Automatically Picking a Strategy for the Market</a></li>
+      <li><a href="#s5-7">5.7 How Strategy Changes Get Decided With Real Data</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 6 — Risk Management</div>
+    <ol>
+      <li><a href="#s6-1">6.1 How the Bot Sizes a Position</a></li>
+      <li><a href="#s6-2">6.2 Stop-Loss, Trailing, and Breakeven</a></li>
+      <li><a href="#s6-3">6.3 Taking Partial Profit Early</a></li>
+      <li><a href="#s6-4">6.4 The Portfolio-Wide Loss Switch</a></li>
+      <li><a href="#s6-5">6.5 Short Trading and Its Safety Conditions</a></li>
+      <li><a href="#s6-6">6.6 Keeping Risk Settings Consistent</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 7 — Backtesting and Research</div>
+    <ol>
+      <li><a href="#s7-1">7.1 Where Backtest Data Comes From</a></li>
+      <li><a href="#s7-2">7.2 Backtest Commands</a></li>
+      <li><a href="#s7-3">7.3 Regime-Aware Replay</a></li>
+      <li><a href="#s7-4">7.4 Validating Correctness After a Restart</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 8 — User Interfaces</div>
+    <ol>
+      <li><a href="#s8-1">8.1 The Terminal Dashboard (TUI)</a></li>
+      <li><a href="#s8-2">8.2 The Read-Only Mobile WebUI</a></li>
+      <li><a href="#s8-3">8.3 Design Philosophy</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 9 — Telegram</div>
+    <ol>
+      <li><a href="#s9-1">9.1 Setting Up the Telegram Bot</a></li>
+      <li><a href="#s9-2">9.2 All Commands</a></li>
+      <li><a href="#s9-3">9.3 Automatic Alerts</a></li>
+      <li><a href="#s9-4">9.4 Confirm-Before-Buy Mode and the Emergency Pause</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 10 — Multiple Accounts and Exchanges</div>
+    <ol>
+      <li><a href="#s10-1">10.1 Running Several Bots on One Machine</a></li>
+      <li><a href="#s10-2">10.2 Switching to a Different Exchange</a></li>
+      <li><a href="#s10-3">10.3 OKX Perpetuals and Short-Trading Safety</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Part 11 — Operations</div>
+    <ol>
+      <li><a href="#s11-1">11.1 Deploying on a VPS</a></li>
+      <li><a href="#s11-2">11.2 Update and Restart Commands</a></li>
+      <li><a href="#s11-3">11.3 Diagnosing a Slow VPS</a></li>
+      <li><a href="#s11-4">11.4 The Full Safety Checklist</a></li>
+    </ol>
+  </li>
+
+  <li><div class="part-title">Appendix</div>
+    <ol>
+      <li><a href="#appA">A. Glossary</a></li>
+      <li><a href="#appB">B. Project Layout</a></li>
+      <li><a href="#appC">C. Command Reference</a></li>
+      <li><a href="#appD">D. Risk Disclaimer</a></li>
+    </ol>
+  </li>
+</ol>
+</div>
+
+<!-- ===================== PREFACE ===================== -->
+<div class="part">
+<div class="chapter-kicker">Preface</div>
+<h1>Preface and Current System Status</h1>
+
+<p>This book gathers every document in the xAuby project into a single reading order, written in a
+plain, conversational style, with as much technical jargon stripped out as possible while keeping
+every important detail. It's written for someone who has just started using this bot and isn't yet
+comfortable with trading or programming terminology.</p>
+
+<div class="tip">
+<strong>Where to start reading:</strong> if you just want to get up and running quickly, read in this
+order first — <strong>Part 1 → Part 2 → Part 6 → Part 11</strong> (meet the system, install it,
+understand the risk, and the checklist before using real money). <strong>Part 3, sections 5.3-5.7, and
+8.3</strong> go deeper into how things work internally — feel free to skip them on a first read and come
+back later when you're curious.
+</div>
+
+<div class="warn">
+<strong>A note on the older docs:</strong> some of the project's older documentation still describes an
+earlier version of the system (back when it traded on a different exchange with two pairs running at
+once). That's out of date now. This book is based on the system's real configuration files, so
+everything written here matches what the system actually does today, not an older version that has
+since changed.
+</div>
+
+<h3>The System's Real Current Setup (Quick Summary)</h3>
+<table>
+<tr><th>Item</th><th>Actual Value</th></tr>
+<tr><td>Exchange used</td><td>OKX (through a connector called CCXT that lets the bot talk to several exchanges)</td></tr>
+<tr><td>Pair actually trading live</td><td><span class="mono">XAUUSDT</span> (gold) — just this one pair</td></tr>
+<tr><td>Strategy in use</td><td><span class="mono">cdc_action_zone</span> — trades both up moves (long) and down moves (short)</td></tr>
+<tr><td>Timeframe watched</td><td>Main chart every 4 hours, daily chart to confirm the bigger direction</td></tr>
+<tr><td>Leverage</td><td>1x (no borrowed money added to the risk)</td></tr>
+<tr><td>Risk per trade</td><td>Risks 2% of the portfolio on each entry</td></tr>
+<tr><td>Maximum position size</td><td>No more than 25% of the portfolio per trade</td></tr>
+<tr><td>Maximum daily loss</td><td>If losses reach 6% in a day, the bot stops opening new trades</td></tr>
+<tr><td>Max trades open at once</td><td>Just 1</td></tr>
+<tr><td>Stop-loss</td><td>Disabled — this strategy exits purely on a signal flip, not a fixed stop price</td></tr>
+<tr><td>Early partial profit-taking</td><td>Sells off half the position once profit hits 12%</td></tr>
+<tr><td>Automatic strategy switching by market condition</td><td>Turned off — the bot uses one fixed strategy, it doesn't switch on its own</td></tr>
+</table>
+
+<p class="small">These numbers can change whenever the operator updates the configuration. Always check
+the real configuration files before relying on any of this for an important decision.</p>
+</div>
+
+<!-- ===================== PART 1 ===================== -->
+<div class="chapter" id="s1-1">
+<div class="chapter-kicker">Part 1 — Meet xAuby</div>
+<h1>1.1 What is xAuby</h1>
+
+<p><strong>xAuby</strong> is an automated gold trading program. It runs around the clock on
+<strong>OKX</strong> without anyone needing to watch a screen. The bot continuously pulls in the latest
+gold price, analyzes it against the strategy it's configured with, and decides on its own whether to
+buy or sell — complete with risk protection and Telegram alerts so the owner can check in from
+anywhere, anytime.</p>
+
+<p>The system can run several trading pairs at once (right now only one — gold — is actually turned on),
+and can be controlled through several channels: terminal commands, a terminal dashboard screen, and
+Telegram.</p>
+
+<h2 id="s1-2">1.2 The Thinking Behind the Design</h2>
+
+<p>The principles the system has followed from the start, in plain terms:</p>
+<ul>
+<li><strong>Everything is configured through files, not code changes</strong> — want to change the
+trading pair, the strategy, or any setting? Edit a configuration file. You don't need to be a
+programmer.</li>
+<li><strong>Strategies plug in and out like modules</strong> — the core engine isn't tied to any one
+strategy. New strategies can be added without touching the rest of the system.</li>
+<li><strong>Configuration is split into three clear groups</strong> (details in Part 4) so that backtest
+results always match what happens in live trading.</li>
+<li><strong>Safe by default</strong> — the system always starts in simulation mode. Switching to real
+money requires setting several confirmations at once (see section 2.5), which prevents accidentally
+trading real funds.</li>
+<li><strong>Each trading pair is fully isolated</strong> — if several pairs are running, a problem with
+one won't affect another. The trading capital itself is intentionally shared across all pairs.</li>
+<li><strong>Features can be switched off instantly</strong> — every major feature can be turned back off
+with a single flip of a setting, no code changes or reinstalling required.</li>
+</ul>
+
+<h2 id="s1-3">1.3 How the System Is Configured Right Now</h2>
+
+<table>
+<tr><th>Pair</th><th>Mode</th><th>Strategy</th><th>Main chart</th><th>Confirm chart</th><th>Sides allowed</th></tr>
+<tr><td><span class="mono">XAUUSDT</span></td><td>Live</td><td><span class="mono">cdc_action_zone</span></td>
+<td>4 hours</td><td>Daily</td><td>Long + Short</td></tr>
+</table>
+
+<p>The bot trades <strong>OKX Perpetual Swaps</strong> (contracts with no expiry date) at
+<strong>1x leverage</strong> — meaning no borrowed money is added to the risk at all. It also checks the
+funding rate (the interest rate paid between long and short traders) to make sure it isn't abnormally
+high, and always keeps a safe distance from the liquidation price. Backtesting uses a gold-tracking
+token instead of the live gold contract, since it has a much longer price history that closely mirrors
+real gold.</p>
+
+<p>The live strategy can open <strong>both long and short at once</strong>, in a
+<strong>stop-and-reverse</strong> style — in plain terms: if the bot is holding a long position and the
+signal flips to bearish, it closes the long and opens a short immediately, in the same beat, with no
+waiting.</p>
+
+<p><strong>How orders get sent:</strong> when entering a trade, the bot first places a limit order at a
+set price. If that order sits unfilled too long, the bot switches to a market order instead, so it
+doesn't miss the move. When exiting in an emergency (a sudden signal flip, or a forced close), the bot
+always uses a market order for speed. Otherwise it uses the set-price order.</p>
+
+<p>The current gold strategy has <strong>no traditional stop-loss</strong> — every exit is driven purely
+by the signal changing, and position size is calculated as a fixed fraction of capital rather than
+based on stop distance. It also takes an early partial profit: once profit reaches 12%, the bot sells
+50% of the position, then lets the rest ride on the normal exit signal.</p>
+
+<div class="note">
+<strong>An important safeguard:</strong> if a live trading pair has automatic strategy-switching turned
+on but hasn't been formally approved by the operator, the bot will <strong>automatically force that pair
+back into simulation mode</strong> — this keeps unapproved features from ever touching real money. And
+whenever the market is judged to be in a dangerous zone (like a panic sell-off), the bot won't open new
+trades, keeps existing protection in place, tightens its safety margins, and can force-close a position
+if the dangerous conditions drag on too long.
+</div>
+
+<h2 id="s1-4">1.4 What This Bot Does and Doesn't Do</h2>
+
+<h3>What it does</h3>
+<ul>
+<li>Analyzes trading signals from price charts, based on the configured settings</li>
+<li>Opens and closes real positions on the exchange, or simulated ones for testing</li>
+<li>Keeps basic risk protection active at all times</li>
+<li>Logs every event so you can review it later on-screen, when troubleshooting, or via Telegram</li>
+</ul>
+
+<h3>What it doesn't do</h3>
+<ul>
+<li>It does not guarantee any profit</li>
+<li>It does not manage funds sitting in any OKX wallet other than the one configured for trading</li>
+<li>It does not automatically make a strategy written by someone else safe, unless the code-scanning
+feature is turned on (see Part 3)</li>
+<li>It does not replace your own review of risk, leverage, fees, and the exchange's rules</li>
+</ul>
+
+<div class="warn">
+<strong>Warnings for new users:</strong>
+<ol>
+<li>Right now the system is configured for exactly one live market: gold
+(<span class="mono">XAUUSDT</span>) on OKX.</li>
+<li>You must get simulation mode working successfully before ever considering real money.</li>
+<li>Trading with real money requires three conditions set at the same time: a command-line flag, a
+confirmation environment variable, and that specific pair marked as live in its configuration.</li>
+<li>The bot only reads the account actually configured for trading on OKX — not every wallet in your
+OKX account. If the dashboard shows a balance of 0.00, check that your funds are sitting in the trading
+account, and that the API key has permission to read/trade that account.</li>
+<li><strong>Never enable withdrawal permission on the API key.</strong> The bot only ever needs
+permission to read and to trade — it never needs to withdraw funds.</li>
+<li>Only run one instance of the bot per data folder. If you need multiple accounts, you must separate
+the data folders (see Part 10).</li>
+</ol>
+</div>
+</div>
+
+<!-- ===================== PART 2 ===================== -->
+<div class="chapter" id="s2-1">
+<div class="chapter-kicker">Part 2 — Getting Started</div>
+<h1>2.1 Installation</h1>
+
+<p>What you need first: a machine with Python 3.12 or newer, an exchange API key, and a Telegram bot
+(optional, only if you want alerts).</p>
+
+<pre>git clone https://github.com/iisara555/xAuby.git
+cd xAuby
+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+
+cp .env.example .env
+python run_xauby.py --simulate
+python health_check.py</pre>
+
+<h2 id="s2-2">2.2 Setting Up Your OKX API Key</h2>
+
+<p>Before going live, open the <span class="mono">.env</span> file and fill in your OKX connection
+details:</p>
+
+<pre>OKX_API_KEY=...
+OKX_API_SECRET=...
+OKX_API_PASSPHRASE=...
+LIVE_TRADING=true</pre>
+
+<p>OKX requires all three: an API Key, a Secret, and a Passphrase (an extra API password).
+<strong>Never upload your <span class="mono">.env</span> file to Git or anywhere public</strong> —
+it's the key to your trading account.</p>
+
+<p>Before trading for real, verify the pair and exchange connection:</p>
+<pre>python scripts/evaluate_okx_xau_migration.py --config configs/okx_xau_paper.yaml --whitelist configs/okx_xau_whitelist.json
+DEFAULT_SYMBOL=XAUUSDT python health_check.py</pre>
+
+<h2 id="s2-3">2.3 Always Run Simulation First</h2>
+
+<p>The system always starts in <strong>simulation mode</strong> by default. No matter what gets
+misconfigured, the system leans toward the safe option. Switching to live trading requires an explicit
+set of steps — see section 2.5.</p>
+
+<p>Other ways to launch the bot:</p>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><span class="mono">python run_xauby.py --simulate</span> / <span class="mono">--live</span></td><td>Starts the trading engine directly (simulation / live)</td></tr>
+<tr><td><span class="mono">python launcher.py</span></td><td>Opens an interactive menu (engine plus dashboard options)</td></tr>
+<tr><td><span class="mono">xauby</span> / <span class="mono">xauby --sim</span> / <span class="mono">xauby --live</span></td><td>Shortcut commands, available once installed</td></tr>
+<tr><td><span class="mono">xauby restart [--live]</span></td><td>Restarts with a safety check first</td></tr>
+<tr><td><span class="mono">xauby update</span></td><td>Pulls the latest code from GitHub, then restarts</td></tr>
+<tr><td><span class="mono">python -m xauby.ui.textual_tui.app</span></td><td>Opens the dashboard screen on its own</td></tr>
+<tr><td><span class="mono">python health_check.py</span></td><td>Runs a one-time health check</td></tr>
+</table>
+
+<h2 id="s2-4">2.4 Common Commands</h2>
+
+<p>Recommended command to go live, after simulation and a health check have both passed:</p>
+<pre>env -u DEFAULT_SYMBOL XAUBY_DEFAULT_SYMBOL=XAUUSDT XAUBY_FOCUS_SYMBOL=XAUUSDT \
+  SIMULATE_ONLY=false BOT_READ_ONLY=false \
+  ./venv/bin/python run_xauby.py --live --pair XAUUSDT</pre>
+
+<p>To open a read-only dashboard from your phone or browser:</p>
+<pre>./scripts/start_webui.sh</pre>
+
+<p>Commands you'll use often while operating the bot:</p>
+<pre>xauby restart        # Restart the engine, with a safety check first
+xauby restart --live # Force a checked restart specifically for live mode
+xauby update          # Pull the latest code from GitHub, then restart</pre>
+
+<p>The checked restart path will accept positions the bot is already tracking, but will refuse to
+proceed if it finds an unknown balance or an untracked order — this stops the bot from touching
+anything it didn't open itself.</p>
+
+<h2 id="s2-5">2.5 Checklist Before Going Live</h2>
+
+<p>Going live requires every one of these conditions at the same time. Miss even one, and the bot won't
+send a real order:</p>
+<ol>
+<li>Pass a live flag when you run the command</li>
+<li>Set the live-trading confirmation environment variable</li>
+<li>The YAML setting must not be set to simulation-only</li>
+<li>That specific pair must be marked as live in the pair list file</li>
+</ol>
+
+<table>
+<tr><th>Mode</th><th>How to turn it on</th><th>Behavior</th></tr>
+<tr><td>Simulation</td><td>Default, or set per pair</td><td>No real orders — like a practice run</td></tr>
+<tr><td>Live</td><td>Requires all 4 conditions above</td><td>Sends real orders to the exchange</td></tr>
+<tr><td>Read-only</td><td>A specific setting</td><td>Processes signals only, never sends any order</td></tr>
+<tr><td>Confirm-before-buy</td><td>A semi-automatic mode setting</td><td>Waits for a Telegram confirmation before every buy</td></tr>
+<tr><td>Pause via Telegram</td><td>Type <span class="mono">/pause</span>, then confirm</td><td>Blocks all new buys system-wide; <span class="mono">/resume</span> to continue</td></tr>
+</table>
+
+<div class="note">
+The full, detailed safety checklist lives in section <strong>11.4</strong> at the end of this book — read
+it in full before ever putting real money in.
+</div>
+</div>
+
+<!-- ===================== PART 3 ===================== -->
+<div class="chapter" id="s3-1">
+<div class="chapter-kicker">Part 3 — How the System Works Behind the Scenes</div>
+<h1>3.1 A Simple Overview of the Pieces</h1>
+
+<div class="tip">
+This part explains how the bot works under the hood — useful if you want a deeper understanding. If you
+just want to operate the bot, feel free to skip ahead to Part 4 (Configuration) and come back later.
+</div>
+
+<p>xAuby splits its work across 5 cooperating pieces:</p>
+
+<table>
+<tr><th>Piece</th><th>What it's responsible for</th></tr>
+<tr><td>Human control layer</td><td>Terminal commands, the dashboard screen, and Telegram — where a person gives instructions</td></tr>
+<tr><td>Core engine</td><td>Makes the actual trading decisions, manages risk, and sends orders</td></tr>
+<tr><td>Strategy layer</td><td>Calculates trading signals and chart data</td></tr>
+<tr><td>Data layer</td><td>Pulls prices from the exchange and stores data</td></tr>
+<tr><td>Event logging</td><td>Records everything that happens, for later review and for driving the screens</td></tr>
+</table>
+
+<p>The rough flow: a person starts the bot → the bot loads its configured trading pairs → each pair is
+processed separately → (if enabled) a strategy is picked automatically based on market conditions →
+trading signals are calculated → risk conditions are checked → a real or simulated order is sent →
+everything gets logged to the database → the screens update with the latest result.</p>
+
+<h2 id="s3-2">3.2 What Happens on Every Cycle</h2>
+
+<p>The bot works in cycles, called "ticks" (for example, checking in every 60 seconds). On every cycle,
+it goes through this sequence for each active trading pair:</p>
+
+<h3>Steps for each trading pair</h3>
+<ol>
+<li>Pull the latest price candles from the exchange</li>
+<li>Check whether the fast price feed (WebSocket) is still fresh — if it's too stale, fall back to a
+backup price source instead</li>
+<li>Check whether a position is currently open</li>
+<li>Load the strategy and capital settings for that pair</li>
+<li>(If enabled) analyze market conditions and automatically pick the right strategy</li>
+<li>If market conditions are judged dangerous, skip opening new trades and tighten protection</li>
+<li>Otherwise, let the strategy calculate its trading signal as normal</li>
+<li>Check for abnormal news/market conditions before allowing any buy</li>
+<li>Act on the signal: open a new trade, close one, or hold while managing partial profit-taking and the
+trailing stop</li>
+<li>Log everything and update the screens</li>
+</ol>
+
+<h3>When opening a new trade</h3>
+<ol>
+<li>Check whether today's trade count or loss limit has already been hit</li>
+<li>Check that the order size isn't too small, or the price too far from what was intended</li>
+<li>Calculate position size from the available capital and the configured risk percentage</li>
+<li>Send a real or simulated order, depending on that pair's mode</li>
+<li>Set risk protection (if that strategy uses one)</li>
+<li>Send a Telegram alert confirming the buy/sell went through</li>
+</ol>
+
+<h3>When closing a trade</h3>
+<p>Several things can trigger an exit: a sell signal from the strategy, an early partial profit-take
+hitting its target, a stop-loss that's been confirmed repeatedly, detecting that a stop order already
+filled on the exchange, a forced close after too long in a dangerous market condition, or a maximum
+holding time being reached. If a sell fails, the system tries to re-establish protection and sends a
+critical Telegram alert if that also fails.</p>
+
+<h3>Taking partial profit early</h3>
+<p>This feature only runs <strong>after</strong> the system has already confirmed there's no full-exit
+signal in the same cycle (a full exit always wins if both happen at once). Once the current price is
+better than the entry price by the configured percentage, the bot sells part of the position, resizes
+any protection to match what's left, and lets the remainder ride on the normal exit signal.</p>
+
+<h3>Safely handing off between strategies</h3>
+<p>Think of it like changing drivers mid-trip — if the system switches strategies while a position is
+open, the original strategy keeps managing that position until it closes. The new strategy won't touch
+it until there's nothing left open. This avoids confusion over who's responsible for which trade.</p>
+
+<h3>When the market is in a dangerous zone</h3>
+<p>Once market conditions are classified as dangerous, the bot will: block all new trades, keep the
+existing protection on any open position, tighten its safety margins, wait for conditions to normalize
+for a while before trading again, and can force-close a position if the dangerous conditions persist
+too long.</p>
+
+<h3>Short trading</h3>
+<p>Strategies that support short trades send separate "open short" / "close short" signals rather than
+reusing the normal buy/sell signals. The stop-loss for a short sits above the entry price (the mirror
+image of a long). The bot always double-checks its recorded position against the real position on the
+exchange, and will stop trading immediately if they don't match — this prevents the bot from getting
+confused about what it's actually holding.</p>
+
+<h2 id="s3-3">3.3 How Multiple Trading Pairs Stay Separate</h2>
+
+<p>The system loads its list of trading pairs from a configuration file. If the "pair list is the single
+source of truth" setting is on, that file governs everything, and if "auto reload" is also on, the
+system checks that file periodically and picks up new pairs without needing a restart.</p>
+
+<p>Each active trading pair keeps its own fully separate data, including:</p>
+<ul>
+<li>Its latest price</li>
+<li>The strategy currently in use (and a handoff target, if one is in progress)</li>
+<li>Its latest market condition</li>
+<li>Its mode — simulation or live</li>
+<li>Any pending confirm-before-buy state</li>
+<li>Its latest signal data, for the screens and Telegram</li>
+</ul>
+<p>Trading pairs are isolated at the strategy and processing level, but the trading capital and overall
+risk conditions (like the daily maximum loss) are intentionally shared across all of them.</p>
+
+<h2 id="s3-4">3.4 Ground Rules the System Always Follows</h2>
+
+<table>
+<tr><th>Rule</th><th>Why</th></tr>
+<tr><td>Event logging never depends on the core engine</td><td>So you can still review history even if the engine itself has a problem</td></tr>
+<tr><td>The dashboard screen only ever reads data</td><td>The screen must never block or accidentally change trading data</td></tr>
+<tr><td>Secrets live only in the <span class="mono">.env</span> file</td><td>The main configuration file can be shared safely, since it never holds any keys</td></tr>
+<tr><td>Only one instance runs per data folder</td><td>Prevents accidental duplicate trading</td></tr>
+<tr><td>A strategy and its chart must always travel together</td><td>What you see on the chart must match what the strategy is actually doing</td></tr>
+<tr><td>The core engine is never tied to one specific strategy</td><td>All trading logic lives in configuration/plugins only</td></tr>
+</table>
+
+<h2 id="s3-5">3.5 Strategies and Charts Must Travel Together</h2>
+
+<p>This is the most important rule for extending the system: <strong>every new strategy must ship with a
+matching chart display</strong>. Add a new strategy without a compatible chart, and the screen will show
+something that doesn't match what the strategy is actually doing — leaving the user with a wrong
+impression of what the bot is up to.</p>
+
+<p>A strategy must be a "pure analyst" only — it must never send orders itself, touch the database, or
+call Telegram directly. Its only job is to analyze and hand back a signal. The core engine is the one
+that actually decides what to do with that signal.</p>
+
+<h3>Checklist for adding a new strategy (for developers)</h3>
+<ol>
+<li>Write the new strategy and register it with the system</li>
+<li>Write a matching chart display (or reuse a compatible one)</li>
+<li>Add the strategy-to-chart mapping in the configuration file</li>
+<li>Write tests covering the strategy, its chart display, and the on-screen legend</li>
+</ol>
+
+<div class="note">
+Some strategies in the system are tagged "research only" — the system will
+<strong>automatically block</strong> that entire group from ever running on a live pair. They can only
+be used in simulation or backtesting.
+</div>
+
+<h2 id="s3-6">3.6 Feature Switches</h2>
+
+<p>Every major feature in the system has an on/off switch in the configuration file. To disable any
+feature temporarily or permanently, just flip its switch off — no code changes needed.</p>
+
+<table>
+<tr><th>Feature</th><th>What it does</th></tr>
+<tr><td>Pair list as single source of truth</td><td>Makes the pair list file the one source of pairs/strategies, with validation before startup</td></tr>
+<tr><td>Plugin-based chart rendering</td><td>Charts compute their lines through a plugin system instead of hard-coded logic</td></tr>
+<tr><td>Auto-sync pair list</td><td>Keeps the active pair list in sync with the configuration file automatically</td></tr>
+<tr><td>Per-pair execution mode</td><td>Lets each pair choose simulation or live independently</td></tr>
+<tr><td>Simulated broker with real ledger</td><td>Simulated orders get their own proper account ledger, just like a real one</td></tr>
+<tr><td>Automatic strategy switching by market condition</td><td>The master switch for this feature (still needs to be enabled per pair too — see 5.6)</td></tr>
+<tr><td>Market-condition confidence filter</td><td>Suppresses a market-condition switch when confidence is below the threshold</td></tr>
+<tr><td>Statistical regime cross-check</td><td>Turns on the parallel statistical checker (advisory only — see section 5.4)</td></tr>
+<tr><td>Strategy code scanning before use</td><td>Rejects (not just warns about) a strategy whose code looks untrustworthy — useful when using plugins from other people</td></tr>
+</table>
+</div>
+
+<!-- ===================== PART 4 ===================== -->
+<div class="chapter" id="s4-1">
+<div class="chapter-kicker">Part 4 — Configuration</div>
+<h1>4.1 The Three Main Configuration Files</h1>
+
+<table>
+<tr><th>File</th><th>Safe to commit to Git?</th><th>What it holds</th></tr>
+<tr><td><span class="mono">.env</span></td><td>No (contains secrets)</td><td>API keys, the live-trading flag, Telegram settings</td></tr>
+<tr><td><span class="mono">.env.example</span></td><td>Yes</td><td>A blank template for new installs</td></tr>
+<tr><td><span class="mono">bot_config.yaml</span></td><td>Yes</td><td>Engine, strategy, portfolio, and notification settings</td></tr>
+<tr><td><span class="mono">coin_whitelist.json</span></td><td>Yes</td><td>Active trading pairs, strategy per pair, mode</td></tr>
+</table>
+
+<p>Files the bot creates while running (database, logs, simulated balances) are specific to that
+machine — never commit them to Git, and don't copy them straight to another machine unless you actually
+intend to move the whole running system.</p>
+
+<h2 id="s4-2">4.2 Why Configuration Is Split Into Three Groups</h2>
+
+<p>All settings are divided into three clearly separated groups. Putting a value in the wrong group is
+the most common source of bugs, because backtesting and live trading must read values from the same
+place — get it wrong, and backtest results will stop matching live results.</p>
+
+<table>
+<tr><th>Group</th><th>Owns</th><th>Must not own</th></tr>
+<tr><td><strong>Engine settings</strong></td>
+<td>Exchange connection, logging, notifications, overall risk limits, feature switches</td>
+<td>Strategy signal/exit parameters</td></tr>
+<tr><td><strong>Strategy settings</strong></td>
+<td>Indicator values, stop-loss, trailing, breakeven, timeframe, signal/exit logic</td>
+<td>Secrets or position sizing</td></tr>
+<tr><td><strong>Portfolio settings</strong></td>
+<td>Position sizing, capital allocation</td>
+<td>Indicator/signal rules</td></tr>
+</table>
+
+<p><strong>The rule to remember:</strong> anything that can change a backtest result belongs in the
+strategy or portfolio group only — never in the engine group.</p>
+
+<h2 id="s4-3">4.3 Exchange Setup (OKX via CCXT)</h2>
+
+<p>The <span class="mono">exchange:</span> block in the main configuration file is the single source of
+truth for which exchange to trade on. Every part of the system (the engine, backtesting, health checks)
+reads this same value, so simulation and live trading always stay consistent.</p>
+
+<pre>exchange:
+  provider: ccxt
+  ccxt_id: okx
+  name: okx
+  quote_asset: USDT
+  settle_asset: USDT
+  fee_pct: 0.0005
+  market_type: swap
+  margin_mode: isolated
+  position_mode: one_way
+  api_key_env: OKX_API_KEY
+  api_secret_env: OKX_API_SECRET
+  base_url_env: OKX_BASE_URL</pre>
+
+<ul>
+<li><strong>Connection details:</strong> read from the environment variables named in this setting.
+OKX needs all three: API Key, Secret, and Passphrase.</li>
+<li><strong>Trading fee:</strong> the system checks several places in order — a pair-specific setting
+wins for that pair specifically, if one is set.</li>
+<li>CCXT is the main connector actually used for OKX right now.</li>
+</ul>
+
+<h2 id="s4-4">4.4 The List of Active Trading Pairs</h2>
+
+<pre>{
+  "version": 1,
+  "quote_asset": "USDT",
+  "assets": [
+    {
+      "symbol": "XAU",
+      "enabled": true,
+      "primary_timeframe": "4h",
+      "confirm_timeframe": "1d",
+      "strategy": "cdc_action_zone",
+      "mode": "live",
+      "allowed_sides": ["long", "short"],
+      "leverage": 1.0,
+      "short_live_enabled": true,
+      "regime_router_enabled": false,
+      "regime_router_live_confirmed": false,
+      "sim_fee_pct": 0.05
+    }
+  ]
+}</pre>
+
+<table>
+<tr><th>Field</th><th>Possible values</th><th>Notes</th></tr>
+<tr><td><span class="mono">symbol</span></td><td>Base asset, e.g. <span class="mono">XAU</span></td><td>The system automatically appends the quote currency</td></tr>
+<tr><td><span class="mono">enabled</span></td><td>true/false</td><td>Disabled pairs are skipped entirely</td></tr>
+<tr><td><span class="mono">primary_timeframe</span></td><td>e.g. 1h, 4h</td><td>Used for live trading, backtesting, and charts</td></tr>
+<tr><td><span class="mono">strategy</span></td><td>Strategy name</td><td>Required when "pair list as single source of truth" is enabled</td></tr>
+<tr><td><span class="mono">mode</span></td><td>Simulation / Live</td><td>Requires per-pair execution mode to be enabled first</td></tr>
+<tr><td><span class="mono">regime_router_enabled</span></td><td>true/false</td><td>The per-pair switch for automatic strategy selection</td></tr>
+<tr><td><span class="mono">regime_router_live_confirmed</span></td><td>true/false</td><td>Must be on before a live pair can use automatic strategy selection</td></tr>
+<tr><td><span class="mono">sim_fee_pct</span></td><td>Number</td><td>Simulated trading fee, as a percentage</td></tr>
+</table>
+
+<h2 id="s4-5">4.5 Environment Variables Worth Knowing</h2>
+
+<table>
+<tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+<tr><td><span class="mono">OKX_API_KEY / OKX_API_SECRET / OKX_API_PASSPHRASE</span></td><td>-</td><td>OKX connection details</td></tr>
+<tr><td><span class="mono">LIVE_TRADING</span></td><td>Off</td><td>An extra gate that must be on to allow real orders</td></tr>
+<tr><td><span class="mono">BOT_READ_ONLY</span></td><td>Off</td><td>Skips sending any order at all</td></tr>
+<tr><td><span class="mono">TELEGRAM_ENABLED</span></td><td>Off</td><td>The master switch for Telegram alerts</td></tr>
+<tr><td><span class="mono">TELEGRAM_BOT_TOKEN</span></td><td>-</td><td>Your bot's token from @BotFather</td></tr>
+<tr><td><span class="mono">TELEGRAM_CHAT_ID</span></td><td>-</td><td>The chat authorized to control the bot</td></tr>
+<tr><td><span class="mono">XAUBY_HOME</span></td><td><span class="mono">core</span></td><td>The folder holding the bot's data — relocate it to run multiple instances side by side (see Part 10)</td></tr>
+</table>
+
+<h2 id="s4-6">4.6 The Built-in Quick Config Menu</h2>
+
+<p>Open the launcher menu and choose <strong>Quick Configuration</strong> for a point-and-click settings
+screen — no manual YAML editing required. Navigate with arrow keys, Enter, or the mouse; secrets are
+always hidden. Editing through this menu never destroys existing comments or structure in the
+configuration file.</p>
+
+<table>
+<tr><th>Menu group</th><th>What you can edit</th></tr>
+<tr><td>Trading &amp; Risk</td><td>Mode, risk % per pair, stop-loss distance, strategy</td></tr>
+<tr><td>Overall Trading</td><td>Max open trades, timeframe, minimum order size</td></tr>
+<tr><td>Risk Guards</td><td>Portfolio-wide stop switch, maximum daily loss %</td></tr>
+<tr><td>Portfolio</td><td>Starting capital, allocation % per pair</td></tr>
+<tr><td>Automatic Strategy Selection</td><td>On/off, thresholds, market-condition-to-strategy mapping</td></tr>
+<tr><td>Telegram Alerts</td><td>Connection details/testing, daily/weekly report schedule</td></tr>
+<tr><td>Exchange</td><td>A guided wizard to switch exchanges step by step, connection testing</td></tr>
+</table>
+</div>
+
+<!-- ===================== PART 5 ===================== -->
+<div class="chapter" id="s5-1">
+<div class="chapter-kicker">Part 5 — Strategies and the Market Regime Detector</div>
+<h1>5.1 Every Strategy in the System</h1>
+
+<p>The system ships with 15 strategies total. Some are used in live trading; others are research-only
+and can't yet be traded with real money:</p>
+
+<table>
+<tr><th>Strategy</th><th>Style</th></tr>
+<tr><td><span class="mono">cdc_action_zone</span> ⭐ Live</td><td>Trend-following using two moving averages, auto-reverses direction</td></tr>
+<tr><td><span class="mono">supertrend_ema200</span></td><td>Trend-following using a SuperTrend line and a 200-period moving average</td></tr>
+<tr><td><span class="mono">bbkc_squeeze</span></td><td>Waits for price to squeeze tight, then trades the breakout</td></tr>
+<tr><td><span class="mono">bbrsi_mean_reversion</span></td><td>Buys dips and sells rallies (short-term mean reversion)</td></tr>
+<tr><td><span class="mono">btc_ema_pullback</span></td><td>Follows the trend, then waits for a pullback to enter</td></tr>
+<tr><td><span class="mono">ict_lite_strategy</span></td><td>Based on liquidity-hunt concepts, then waits for a reversal</td></tr>
+<tr><td><span class="mono">rsi2_meanrev</span> (research)</td><td>Buys short dips within an uptrend</td></tr>
+<tr><td><span class="mono">sol_ema_pullback</span></td><td>Follows the trend, then waits for a pullback to enter</td></tr>
+<tr><td><span class="mono">vol_breakout</span> (research)</td><td>Buys when volatility starts expanding out of a range</td></tr>
+<tr><td><span class="mono">xauby_vwap_pullback</span></td><td>Follows the trend, referencing volume-weighted average price</td></tr>
+<tr><td><span class="mono">donchian_trend</span></td><td>Buys when price breaks above its recent high/low range</td></tr>
+<tr><td>Research-only short-side group</td><td>Short versions of the strategies above, for testing only</td></tr>
+</table>
+
+<p class="small">⭐ = the strategy currently trading live (the gold pair)</p>
+
+<h2 id="s5-2">5.2 CDC Action Zone — the Strategy Actually Trading Live</h2>
+
+<p><span class="mono">cdc_action_zone</span> is the only strategy currently trading live. It runs
+<strong>stop-and-reverse</strong> style — flipping between long and short as the underlying signal color
+changes. There's no traditional stop-loss; every exit is driven purely by the signal changing. Position
+size is calculated as a fixed fraction of capital, and it takes an early one-time partial profit:
+selling 50% of the position at +12% profit.</p>
+
+<table>
+<tr><th>Actual configured value</th><th>Plain-language meaning</th></tr>
+<tr><td>Initial protection distance</td><td>2x the market's average volatility</td></tr>
+<tr><td>Trailing distance</td><td>1.8x the market's average volatility</td></tr>
+<tr><td>Move stop to breakeven</td><td>Disabled</td></tr>
+<tr><td>Capital used per trade</td><td>95% of allocated capital</td></tr>
+<tr><td>Early partial profit</td><td>Sell 50% once profit hits 12%</td></tr>
+<tr><td>Backtest price source</td><td>Uses a different gold-tracking token, since it has a longer history</td></tr>
+</table>
+
+<h2 id="s5-3">5.3 What Is the Market Regime Detector</h2>
+
+<p>The Market Regime Detector is the part of the system that keeps watch over what kind of market is
+currently in play — a strong uptrend, a strong downtrend, sideways chop, or a panic sell-off — and tags
+the current state with a label. That label helps decide how much risk to take, and (if enabled) can
+automatically pick the strategy best suited to that condition. It analyzes the market from four angles
+and produces one of 11 possible labels:</p>
+
+<h3>The four angles it analyzes</h3>
+<ul>
+<li><strong>Trend direction</strong> — how short- and long-term moving averages line up, and how far the
+current price sits from the long-term average</li>
+<li><strong>Volatility</strong> — whether price is swinging more or less than usual, compared against its
+own behavior over the last 120 candles (relative, not a fixed number — which is exactly what makes it
+work across different assets and eras)</li>
+<li><strong>Liquidity</strong> — trading volume compared to its 20-candle average</li>
+<li><strong>Macro factors</strong> — combines the dollar index, interest rates, and news sentiment into
+one score, capping each input so no single one (say, a stray news score) can dominate the result</li>
+</ul>
+
+<h3>All 11 possible labels</h3>
+<table>
+<tr><th>Label</th><th>Meaning</th></tr>
+<tr><td><span class="mono">BULL_BREAKOUT</span></td><td>An upside breakout with volume confirmation and expanding volatility</td></tr>
+<tr><td><span class="mono">BULL_TREND_STRONG</span></td><td>A strong uptrend with clear momentum</td></tr>
+<tr><td><span class="mono">BULL_TREND_WEAK</span></td><td>A weak uptrend, or macro factors conflicting with the trend</td></tr>
+<tr><td><span class="mono">BEAR_BREAKDOWN</span></td><td>A downside breakdown with expanding volatility</td></tr>
+<tr><td><span class="mono">BEAR_TREND_STRONG</span></td><td>A strong downtrend</td></tr>
+<tr><td><span class="mono">BEAR_TREND_WEAK</span></td><td>A weak downtrend</td></tr>
+<tr><td><span class="mono">PANIC_SELL</span></td><td>A panic sell-off — a sharp downtrend with a spike in volatility</td></tr>
+<tr><td><span class="mono">LOW_VOL_ACCUMULATION</span></td><td>Low volatility, price hugging the long-term average — an accumulation phase</td></tr>
+<tr><td><span class="mono">LOW_VOL_RANGE</span></td><td>Low volatility, but not close enough to the long-term average</td></tr>
+<tr><td><span class="mono">VOLATILITY_EXPANSION</span></td><td>Expanding volatility with no clear direction</td></tr>
+<tr><td><span class="mono">SIDEWAYS_CHOP</span></td><td>Doesn't fit any other condition — directionless chop</td></tr>
+</table>
+
+<h3>Confidence score</h3>
+<p>Every label comes with a confidence score, from 5% to 98%. The higher the score, the more confident
+the system is that the label is correct. It's calculated from several combined factors (trend clarity,
+how well macro factors align, how clear the volatility reading is, and more) — not a simple yes/no like
+a basic system would give.</p>
+
+<h3>Protecting against bad calls from too little data</h3>
+<p>The regime detector needs at least 200 candles of price history to calculate a reliable long-term
+average. If it's given less than that, it won't dare call the market bullish or bearish — it labels the
+condition "not yet clear" instead and lowers its confidence score. This protects against a wrong call
+made from insufficient data.</p>
+
+<h2 id="s5-4">5.4 A Statistical Second Opinion</h2>
+
+<p>Beyond the main rule-based detector — whose thresholds were set by hand by a person — the system also
+runs a second checker in parallel that uses pure statistics instead of fixed rules, acting as a
+<strong>"second opinion"</strong> that carries no bias from anyone's pre-set thresholds.</p>
+
+<ul>
+<li>It lets the computer try grouping price data on its own, based purely on recent price direction and
+volatility, without using any fixed rule at all (this method is called a Gaussian Mixture Model, or
+GMM)</li>
+<li>It only looks at these two things (direction and volatility) because real data proved the system
+separates volatility far more clearly than direction</li>
+<li>The result is whichever group the latest candle is closest to, along with a confidence level and how
+long that group has historically tended to last</li>
+</ul>
+
+<p>This result is purely <strong>supporting information — it never changes the main regime label or the
+strategy selection</strong>. It's off by default; you have to turn it on yourself if you want to see this
+extra data.</p>
+
+<h2 id="s5-5">5.5 How Accurate Is the Regime Detector, Really</h2>
+
+<p>A lot of people ask "how accurate is this thing, really?" The answer isn't a percentage-correct
+score like a school test, because nobody actually knows the "correct" answer for what the market was
+doing at any given moment. A more meaningful way to measure it is to look at three things instead:</p>
+<ol>
+<li><strong>Does it actually separate volatility?</strong> — when the system says the market is in one
+condition, is the price actually more or less volatile than in a different condition? (This is the main
+job, since it drives how much risk to take.)</li>
+<li><strong>Does a label last long enough to matter?</strong> — if the label changed on every single
+candle, it would be useless for decision-making.</li>
+<li><strong>How accurate is it at predicting direction?</strong> — this is a bonus, not the main
+measure. It's normal and expected for this to be weak in any market-analysis system.</li>
+</ol>
+
+<p>We tested this using several years of real gold and Bitcoin price history, measuring how clearly the
+labels separated actual volatility, and how likely that result was to be pure chance.</p>
+
+<table>
+<tr><th>What was measured</th><th>Gold</th><th>Bitcoin (comparison test)</th></tr>
+<tr><td>How clearly volatility was separated</td><td><strong>Very high confidence</strong> this isn't chance</td><td><strong>Very high confidence</strong> this isn't chance</td></tr>
+<tr><td>How accurate at predicting the next move</td><td>Very weak (close to a coin flip)</td><td>Weak, but somewhat reliable</td></tr>
+<tr><td>Average candles before a label changes</td><td>About 6-7 candles</td><td>About 5 candles</td></tr>
+<tr><td>How often the label flips</td><td>15% of the time</td><td>19% of the time</td></tr>
+<tr><td>Did uptrends actually outperform downtrends</td><td>Yes ✓</td><td>Yes ✓</td></tr>
+<tr><td>Agreement with the statistical second opinion</td><td>50%</td><td>45%</td></tr>
+</table>
+
+<p><strong>The takeaway:</strong> the regime detector does its main job well — it genuinely and reliably
+separates volatility (not by chance), labels stick around long enough to actually be useful (roughly
+5-7 candles on average), and uptrends really do outperform downtrends as expected. Predicting the very
+next move is weak, which is normal for every market-analysis system out there.
+<strong>The practical conclusion: use the regime label to decide how much risk to take, not to predict
+whether price goes up or down next.</strong></p>
+
+<div class="note">
+The statistical second opinion agrees with the main detector only about half the time, and that's by
+design. If the two agreed almost 100% of the time, having a second checker wouldn't add anything. When
+they disagree, that's a sign the market is genuinely hard to read at that moment — useful information,
+not a bug in either system.
+</div>
+
+<h3>Limitations worth knowing</h3>
+<ul>
+<li>The volatility-separation result is <em>small</em> in absolute terms — most of the market is just
+noise, and no market-analysis system explains a huge share of it. "Very high confidence" means the
+separation is real and reliable, not that it's huge.</li>
+<li>The gold price history used for testing comes from a tracking token, since the live gold contract
+itself has a shorter history.</li>
+<li>The thresholds are still set by hand — they haven't been automatically tuned per asset yet. The
+statistical second opinion is a first step toward a more data-driven system in the future.</li>
+<li>The return figures measured are descriptive statistics, not a backtest proving any particular
+strategy is profitable.</li>
+</ul>
+
+<h2 id="s5-6">5.6 Automatically Picking a Strategy for the Market</h2>
+
+<p>This feature maps each market condition to the strategy best suited for it. It's opt-in per trading
+pair, not turned on automatically:</p>
+<ol>
+<li>The system-wide master switch must be on</li>
+<li>The switch for that specific pair must also be on</li>
+<li>If it's a live pair, it also needs explicit operator approval</li>
+</ol>
+<p>If a live pair enables this without approval, the bot automatically forces it back to simulation
+mode. Other behavior: it waits for the market-condition signal to repeat for 3 candles before confirming
+a real change (to avoid false signals); during a dangerous condition it blocks new trades but keeps
+existing protection in place; and it requires a stretch of normal, tradeable candles before returning to
+full trading — with a safe strategy handoff as described in section 3.2.</p>
+
+<div class="note">
+<strong>Current real status:</strong> the gold pair has this feature turned off — meaning the bot is
+running CDC Action Zone directly, with no automatic strategy selection involved. The table below shows
+the mapping configured in the system, ready to use whenever this switch gets turned on in the future:
+</div>
+
+<table>
+<tr><th>Market condition</th><th>Strategy it would pick</th><th>Allowed to buy?</th></tr>
+<tr><td><span class="mono">BULL_BREAKOUT</span></td><td><span class="mono">cdc_action_zone</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">BULL_TREND_STRONG</span></td><td><span class="mono">cdc_action_zone</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">BULL_TREND_WEAK</span></td><td><span class="mono">cdc_action_zone</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">LOW_VOL_ACCUMULATION</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">LOW_VOL_RANGE</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">VOLATILITY_EXPANSION</span></td><td><span class="mono">supertrend_ema200</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">SIDEWAYS_CHOP</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">BEAR_TREND_WEAK</span></td><td><span class="mono">cdc_action_zone</span></td><td>Yes</td></tr>
+<tr><td><span class="mono">PANIC_SELL</span></td><td>None</td><td>No (dangerous zone)</td></tr>
+<tr><td><span class="mono">BEAR_BREAKDOWN</span></td><td>None</td><td>No (dangerous zone)</td></tr>
+<tr><td><span class="mono">BEAR_TREND_STRONG</span></td><td>None</td><td>No (dangerous zone)</td></tr>
+</table>
+
+<h2 id="s5-7">5.7 How Strategy Changes Get Decided With Real Data</h2>
+
+<p>The system has a review process before ever swapping out the strategy assigned to a given market
+condition — a challenger strategy can only replace the current one if it proves it makes more profit
+across both the data used to tune it and fresh data it has never seen, with enough trades and losses
+staying within an acceptable range. <strong>The data makes the decision, not a gut feeling.</strong></p>
+
+<div class="note">
+<strong>Latest test result:</strong> testing against over 26,000 candles of Bitcoin history, no
+challenger strategy passed every requirement, so the existing strategy stays in place for every market
+condition. This test was run on Bitcoin, which isn't currently a live trading pair — it serves as an
+example of the process for deciding on future strategy changes.
+</div>
+</div>
+
+<!-- ===================== PART 6 ===================== -->
+<div class="chapter" id="s6-1">
+<div class="chapter-kicker">Part 6 — Risk Management</div>
+<h1>6.1 How the Bot Sizes a Position</h1>
+
+<p>Every position size is calculated from two things: the total portfolio value right now, and the risk
+percentage that's configured. In plain terms: as the portfolio grows from profits, the next trade's size
+automatically grows along with it (compounding) — always capped by a maximum, so no single trade can
+ever get too large.</p>
+
+<div class="warn">
+<strong>Important:</strong> the risk percentage must be set consistently everywhere in the configuration
+file, because live trading and backtesting read it from different spots. If they don't match, backtest
+results stop reflecting live results. The system currently uses 2% everywhere. There's also a startup
+check that immediately rejects any risk setting above 10%, since that would be dangerously high.
+</div>
+
+<h2 id="s6-2">6.2 Stop-Loss, Trailing, and Breakeven</h2>
+
+<p>Risk-protection mechanisms the system supports (not every strategy uses all of them — see the actual
+CDC settings in section 5.2):</p>
+<ul>
+<li><strong>Initial stop-loss</strong> — sets a distance from the entry price based on market
+volatility</li>
+<li><strong>Trailing stop</strong> — as price moves favorably, the protection level moves along with it
+to lock in some profit</li>
+<li><strong>Breakeven</strong> — once profit hits a set threshold, the stop moves to the entry price
+exactly, so that trade can no longer lose money (if this is enabled)</li>
+<li><strong>Multi-check confirmation</strong> — for strategies with no stop-loss directly on the
+exchange, the signal must repeat across several checks before the bot actually closes the trade, to
+avoid a false signal from a brief price spike</li>
+</ul>
+
+<h2 id="s6-3">6.3 Taking Partial Profit Early</h2>
+
+<p>Configurable in the strategy settings:</p>
+<pre>strategy:
+  params:
+    cdc_action_zone:
+      partial_tp_pct: 12.0
+      partial_tp_fraction: 0.5</pre>
+
+<p>Once an open position's profit reaches the configured percentage from entry, the bot immediately
+sells the configured fraction, records it as a partial close, then lets the remainder ride on the
+normal exit signal. This only fires once per trade, and it remembers that it already fired even across
+a bot restart. For the current gold setup, that means banking 50% profit at +12%, then letting the rest
+ride until the signal changes. The screen shows this as "pending" or "profit already taken."</p>
+
+<h2 id="s6-4">6.4 The Portfolio-Wide Loss Switch</h2>
+
+<p>The system has a portfolio-wide emergency switch: if the total portfolio value drops below a set
+percentage from its highest point ever recorded, the bot immediately blocks new trades (and can be set
+to force-close open positions too). Think of it as an emergency brake against compounding losses during
+a prolonged bad stretch.</p>
+
+<h2 id="s6-5">6.5 Short Trading and Its Safety Conditions</h2>
+
+<p>The current pair can genuinely open short positions with real money, because the connected exchange
+supports everything that's required. Safety conditions for short trading:</p>
+<ul>
+<li>Must be explicitly allowed for that specific pair in the configuration</li>
+<li>Going live requires an extra switch to be turned on — otherwise it's paper-trading only</li>
+<li>If the connected exchange doesn't support everything required, the system refuses to start at all
+(choosing safety whenever it isn't sure)</li>
+<li>Leverage defaults to 1x, capped at a maximum of 3x</li>
+<li>If the real-time price feed runs into trouble, the system immediately blocks any new short trades</li>
+</ul>
+
+<h2 id="s6-6">6.6 Keeping Risk Settings Consistent</h2>
+
+<p>Worth double-checking these values are consistent before going live:</p>
+<table>
+<tr><th>Setting</th><th>Current value for gold</th></tr>
+<tr><td>Risk per trade (every location in the file)</td><td>2%</td></tr>
+<tr><td>Maximum position size per trade</td><td>25%</td></tr>
+<tr><td>Maximum daily loss</td><td>6%</td></tr>
+<tr><td>Maximum trades open at once</td><td>1</td></tr>
+<tr><td>Maximum leverage</td><td>1x</td></tr>
+</table>
+<p>Overall risk limits always apply to every trading pair. Strategy-level risk state is kept separate
+per pair, but the trading capital itself is intentionally shared.</p>
+</div>
+
+<!-- ===================== PART 7 ===================== -->
+<div class="chapter" id="s7-1">
+<div class="chapter-kicker">Part 7 — Backtesting and Research</div>
+<h1>7.1 Where Backtest Data Comes From</h1>
+
+<p>Backtesting pulls price data from the global Binance exchange by default, since it has a much longer
+price history to test against. Live trading uses the actual configured OKX data. Both backtesting and
+live trading read their settings from the exact same place, so results from both stay consistent with
+each other.</p>
+
+<h2 id="s7-2">7.2 Backtest Commands</h2>
+
+<pre>python scripts/replay_backtest.py --symbol XAUUSDT --config bot_config.yaml
+python scripts/optimize_pair_configs.py</pre>
+
+<p>Trying out a new strategy is always a dry run by default — it never overwrites real settings
+immediately:</p>
+<pre>python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates a,b,c
+python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates a,b,c --apply</pre>
+<p>Only adding <span class="mono">--apply</span> will actually write a passing winner back into the real
+configuration.</p>
+
+<h2 id="s7-3">7.3 Regime-Aware Replay</h2>
+
+<p>This feature can be turned on per pair in the strategy settings — once enabled, the regime detector
+runs inside the backtest itself. Buy signals get suppressed whenever the market condition at that moment
+doesn't match the strategy's target conditions, which makes backtest results closer to what actually
+happens during live trading.</p>
+
+<h2 id="s7-4">7.4 Validating Correctness After a Restart</h2>
+
+<p>Always run this after a restart, after any incident, or after changing important settings:</p>
+<pre>python scripts/replay_validate.py &lt;run_id&gt; --symbol XAUUSDT</pre>
+<p>This checks whether the signals the bot recorded during live trading match what the same strategy
+would calculate in a backtest — a fast way to catch anything unusual.</p>
+</div>
+
+<!-- ===================== PART 8 ===================== -->
+<div class="chapter" id="s8-1">
+<div class="chapter-kicker">Part 8 — User Interfaces</div>
+<h1>8.1 The Terminal Dashboard (TUI)</h1>
+
+<p>xAuby ships with a terminal dashboard that reads the bot's status in real time —
+<strong>it never runs the trading loop itself, and it always opens the database in read-only mode.</strong>
+Closing this screen has no effect on the bot's operation at all.</p>
+
+<table>
+<tr><th>Screen</th><th>Shortcut key</th><th>Shows</th></tr>
+<tr><td>Dashboard</td><td><span class="mono">1</span>, <span class="mono">d</span></td><td>Chart, pair table, market condition, position, strategy/mode labels</td></tr>
+<tr><td>Trade log</td><td><span class="mono">2</span>, <span class="mono">t</span></td><td>Closed trades and full history</td></tr>
+<tr><td>Incident explorer</td><td><span class="mono">4</span>, <span class="mono">i</span></td><td>A timeline of events</td></tr>
+</table>
+
+<p>General shortcuts: <span class="mono">[</span> / <span class="mono">0</span> previous pair,
+<span class="mono">]</span> / <span class="mono">9</span> next pair, <span class="mono">q</span> to
+quit.</p>
+
+<p>Charts and their legends always follow the strategy actually running on the pair you're viewing. The
+screen adapts automatically to your terminal window's width.</p>
+
+<p>When a position is open and early partial profit-taking is enabled, the screen shows an extra row
+with the fraction to be banked, the trigger price, and whether it's still pending or already done.</p>
+
+<p>Recommended to run through tmux on a VPS (so the screen survives an SSH disconnect):</p>
+<pre>./scripts/start_dashboard_tmux.sh
+./scripts/attach_dashboard_tmux.sh</pre>
+
+<h2 id="s8-2">8.2 The Read-Only Mobile WebUI</h2>
+
+<p>The WebUI is a small, read-only browser dashboard for checking on the bot from a phone or computer —
+<strong>there is no way to open, close, cancel, or trigger any trade from this screen at all.</strong>
+It's 100% safe against an accidental tap.</p>
+
+<pre>./scripts/start_webui.sh</pre>
+
+<p>The home screen shows the bot's live status, a recent price chart, current strategy signal details,
+and the partial-profit status of any open position.</p>
+
+<h3>Accessing it from a computer (via SSH tunnel)</h3>
+<pre>ssh -L 8787:127.0.0.1:8787 user@your-vps-ip</pre>
+<p>Then open <span class="mono">http://localhost:8787</span> in your browser.</p>
+
+<h3>Accessing it from your phone</h3>
+<p>The easiest free option is the Tailscale app: install it on both the VPS and your phone, log into the
+same account, then reach the WebUI through the VPS's Tailscale address.</p>
+
+<div class="warn">
+Never expose the WebUI directly to the public internet without adding proper authentication first.
+</div>
+
+<h2 id="s8-3">8.3 Design Philosophy</h2>
+
+<p>The WebUI is designed to feel like a "private gold desk" for a single owner, checked quickly from a
+phone or computer — not something you sit down and work in. The one question it must answer within 10
+seconds: "Is the bot still running, what's my balance, what position am I holding, has anything
+happened?"</p>
+
+<h3>Design principles</h3>
+<ul>
+<li><strong>Glanceable first</strong> — balance → current position → signal → everything else, no
+scrolling needed to see what matters</li>
+<li><strong>Color only ever means one thing</strong> — green/red/amber always mean profit/loss/warning
+and nothing else; the brand's gold accent is used only for identity, never for status</li>
+<li><strong>Read-only means calm</strong> — nothing on screen implies you can control anything from here.
+Anything abnormal stands out clearly; normal operation stays quiet</li>
+<li><strong>Mobile-first design</strong> — tap targets sized for fingers; the desktop version gets the
+same layout centered on the page, not a different one</li>
+</ul>
+</div>
+
+<!-- ===================== PART 9 ===================== -->
+<div class="chapter" id="s9-1">
+<div class="chapter-kicker">Part 9 — Telegram</div>
+<h1>9.1 Setting Up the Telegram Bot</h1>
+
+<ol>
+<li>Create a bot through <a href="https://t.me/BotFather">@BotFather</a> on Telegram</li>
+<li>Find your own Chat ID, for example via <a href="https://t.me/userinfobot">@userinfobot</a></li>
+<li>Add the values to your <span class="mono">.env</span> file:</li>
+</ol>
+<pre>TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...</pre>
+
+<h2 id="s9-2">9.2 All Commands</h2>
+
+<p>Only the configured chat can use these — nobody else can command your bot:</p>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><span class="mono">/help</span></td><td>Lists every available command</td></tr>
+<tr><td><span class="mono">/status</span></td><td>Price, mode, position, and latest signal for every pair</td></tr>
+<tr><td><span class="mono">/pnl</span></td><td>Portfolio profit/loss over the last 7 and 30 days</td></tr>
+<tr><td><span class="mono">/regime</span></td><td>Latest market condition for each pair</td></tr>
+<tr><td><span class="mono">/last</span></td><td>Most recently closed trades</td></tr>
+<tr><td><span class="mono">/health</span></td><td>Checks whether the bot is running fine, and flags any connection issues</td></tr>
+<tr><td><span class="mono">/pause</span></td><td>Temporarily stops new trades, without closing any open position</td></tr>
+<tr><td><span class="mono">/resume</span></td><td>Cancels the pause and resumes trading normally</td></tr>
+</table>
+
+<h2 id="s9-3">9.3 Automatic Alerts</h2>
+<p>The bot sends these alerts on its own — you don't have to ask for them:</p>
+<ul>
+<li>The bot starting up or shutting down</li>
+<li>A buy or sell going through</li>
+<li>The system blocking a buy due to abnormal market conditions</li>
+<li>A market condition changing</li>
+<li>Protection levels moving</li>
+<li>Daily/weekly summaries (if enabled)</li>
+</ul>
+
+<h2 id="s9-4">9.4 Confirm-Before-Buy Mode and the Emergency Pause</h2>
+
+<p>Enable confirm-before-buy in the configuration file — once on, the bot sends a confirmation button
+before opening every trade. If you don't tap it in time, the bot skips that trade entirely.</p>
+
+<p><span class="mono">/pause</span> and <span class="mono">/resume</span> are two-step commands — typing
+the command only asks for confirmation; you have to tap the confirmation button for it to actually take
+effect. Pausing blocks new trades across every channel (automatic signals, manual, and
+confirm-before-buy) without closing anything already open. Critical alerts always come with a button to
+check status and acknowledge them.</p>
+</div>
+
+<!-- ===================== PART 10 ===================== -->
+<div class="chapter" id="s10-1">
+<div class="chapter-kicker">Part 10 — Multiple Accounts and Exchanges</div>
+<h1>10.1 Running Several Bots on One Machine</h1>
+
+<p>xAuby separates its configuration from the data it generates while running, which lets you run
+several bots (different accounts, exchanges, or sets of pairs) side by side on one machine without
+them colliding — just point each one at its own separate data folder.</p>
+
+<pre>XAUBY_CONFIG_DIR=instances/acct1 XAUBY_INSTANCE_ID=acct1 \
+  python run_xauby.py --live</pre>
+
+<p>Each instance reads its own <span class="mono">.env</span> file, so secrets never need to be shared
+across accounts.</p>
+
+<h2 id="s10-2">10.2 Switching to a Different Exchange</h2>
+
+<p>You can switch exchanges entirely through the launcher menu, no manual file editing needed — a wizard
+walks you through picking the exchange, entering your connection details, testing the connection, and
+offers to restart afterward:</p>
+
+<pre>exchange:
+  provider: ccxt
+  ccxt_id: kraken
+  api_key_env: KRAKEN_API_KEY
+  api_secret_env: KRAKEN_API_SECRET
+  quote_asset: USDT</pre>
+
+<p>The system supports adding brand-new exchanges without touching the core code — a developer just
+needs to add one new connector file, and the system discovers and uses it automatically.</p>
+
+<h2 id="s10-3">10.3 OKX Perpetuals and Short-Trading Safety</h2>
+
+<p>The certified derivatives path uses isolated-margin perpetual swap contracts. The system refuses to
+start immediately if the selected exchange doesn't support everything required for short trading
+(choosing safety whenever it isn't sure), and if the real-time price feed runs into trouble, it
+immediately blocks any new short trades.</p>
+</div>
+
+<!-- ===================== PART 11 ===================== -->
+<div class="chapter" id="s11-1">
+<div class="chapter-kicker">Part 11 — Operations</div>
+<h1>11.1 Deploying on a VPS</h1>
+
+<pre>mkdir -p core/logs
+env -u DEFAULT_SYMBOL XAUBY_DEFAULT_SYMBOL=XAUUSDT XAUBY_FOCUS_SYMBOL=XAUUSDT \
+  SIMULATE_ONLY=false BOT_READ_ONLY=false \
+  ./venv/bin/python run_xauby.py --live --pair XAUUSDT
+
+./scripts/start_dashboard_tmux.sh
+./scripts/attach_dashboard_tmux.sh</pre>
+
+<p>Only ever run one instance per data folder — the system already has a lock in place that prevents
+running two instances against the same folder.</p>
+
+<h2 id="s11-2">11.2 Update and Restart Commands</h2>
+
+<p>For routine operations on a VPS once the shortcut commands are installed, use:</p>
+<pre>xauby update   # Pull the latest code from GitHub, then do a checked restart
+xauby restart  # A checked restart, without pulling new code</pre>
+
+<h2 id="s11-3">11.3 Diagnosing a Slow VPS</h2>
+
+<p>Use this whenever the bot feels sluggish, the screen freezes, or exchange requests keep timing out:</p>
+<pre>./venv/bin/python scripts/vps_latency_check.py</pre>
+
+<table>
+<tr><th>What to check</th><th>What it means</th></tr>
+<tr><td>Total connection time</td><td>Overall time to reach the exchange's API</td></tr>
+<tr><td>Time to first byte</td><td>High values usually mean network or API delay</td></tr>
+<tr><td>System clock</td><td>Must be synced correctly, since signed requests to the exchange depend on accurate timestamps</td></tr>
+<tr><td>System load</td><td>Sustained high load beyond available CPU will slow down both the bot and the screen</td></tr>
+<tr><td>Disk space</td><td>Low free space or a slow disk affects how the bot writes its data</td></tr>
+</table>
+
+<p>The dashboard screen also shows timing numbers for each step of the process, which help pinpoint
+whether a slowdown is coming from the network/exchange side or from local processing.</p>
+
+<h2 id="s11-4">11.4 The Full Safety Checklist</h2>
+
+<ul>
+<li>☐ Reviewed a simulation run before going live</li>
+<li>☐ The API key has trading permission for the intended account, and <strong>does not</strong> have
+withdrawal permission</li>
+<li>☐ All connection details (key/secret/passphrase) are set before restarting into live mode</li>
+<li>☐ Funds are sitting in the account the bot actually reads for live trading — the screen may show
+0.00 if funds are in the wrong wallet</li>
+<li>☐ Reviewed the risk percentage and overall risk limits for your account size</li>
+<li>☐ Set the portfolio-wide stop-loss threshold to match your own risk tolerance</li>
+<li>☐ Only enabled automatic strategy selection after explicit per-pair approval</li>
+<li>☐ Turned on code-scanning when running a strategy from someone else / not fully trusted</li>
+<li>☐ Reviewed the results before overwriting any existing strategy configuration</li>
+<li>☐ Ran the post-restart correctness check successfully</li>
+<li>☐ Tested Telegram: <span class="mono">/status</span> shows every pair, <span class="mono">/health</span> shows nothing unexpected</li>
+<li>☐ Tested the <span class="mono">/pause</span> and <span class="mono">/resume</span> confirmation buttons in simulation mode</li>
+<li>☐ The bot runs under tmux/systemd, not an unattended SSH window (closing the window would stop it
+instantly)</li>
+</ul>
+</div>
+
+<!-- ===================== APPENDIX ===================== -->
+<div class="chapter" id="appA">
+<div class="chapter-kicker">Appendix</div>
+<h1>A. Glossary</h1>
+
+<table>
+<tr><th>Term</th><th>Plain-language meaning</th></tr>
+<tr><td>Equity</td><td>Total account value, including the profit or loss of any open position at the current price</td></tr>
+<tr><td>Leverage</td><td>Borrowed money used to increase trade size — the higher it is, the riskier. This system uses 1x, meaning no borrowing at all</td></tr>
+<tr><td>Long</td><td>Opening a position betting the price will rise</td></tr>
+<tr><td>Short</td><td>Opening a position betting the price will fall</td></tr>
+<tr><td>ATR</td><td>Average True Range — the average size of price movement per candle, used to set protection distances</td></tr>
+<tr><td>EMA</td><td>A moving average that weights recent data more heavily than older data</td></tr>
+<tr><td>Profit Factor (PF)</td><td>Total profit divided by total loss — above 1 means it's profitable overall</td></tr>
+<tr><td>Drawdown (DD)</td><td>How far the portfolio value has fallen from its highest point so far</td></tr>
+<tr><td>Regime</td><td>The label the system assigns describing what kind of market condition is currently happening</td></tr>
+<tr><td>Debounce</td><td>Waiting for a signal to repeat several times before confirming a real change, to avoid a false signal</td></tr>
+<tr><td>NO_TRADE (dangerous zone)</td><td>A period when the system decides not to open any new trade, while still managing any existing one</td></tr>
+<tr><td>Partial TP</td><td>Selling part of a position once it hits a set profit target</td></tr>
+<tr><td>Reduce-only</td><td>An order guaranteed only to shrink a position, never to accidentally open a new one</td></tr>
+<tr><td>GMM</td><td>A statistical method that lets a computer group data on its own, without any pre-set fixed rules</td></tr>
+<tr><td>eta² (separation score)</td><td>A score showing how much a label explains the difference in the data — higher means clearer separation</td></tr>
+<tr><td>p-value</td><td>A score showing how likely a result is purely due to chance — lower means more trustworthy, less likely to be a coincidence</td></tr>
+</table>
+
+<h1 id="appB">B. Project Layout</h1>
+<pre>xAuby/
+|-- run_xauby.py           # Entry point that starts the engine
+|-- launcher.py            # Interactive menu
+|-- bot_config.yaml        # Main configuration file
+|-- coin_whitelist.json    # List of active trading pairs
+|-- docs/                  # Documentation
+|-- scripts/               # Utility scripts
+|-- tests/                 # Test suite
+`-- xauby/                 # Core system code
+    |-- launcher/          # Interactive menu
+    |-- engine/            # The core trading engine
+    |-- strategies/        # Strategies and their chart displays
+    |-- runtime/           # Pair list and configuration handling
+    |-- regime/            # The market regime detector
+    |-- backtest/          # Backtesting tools
+    |-- observability/     # Event logging and validation
+    `-- ui/                # The various screens</pre>
+
+<h1 id="appC">C. Command Reference</h1>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><span class="mono">python -m unittest discover -s tests -q</span></td><td>Runs the full test suite</td></tr>
+<tr><td><span class="mono">python health_check.py</span></td><td>Runs a one-time health check</td></tr>
+<tr><td><span class="mono">python scripts/incident_explorer.py list</span></td><td>Lists logged incidents</td></tr>
+<tr><td><span class="mono">python scripts/replay_validate.py &lt;run_id&gt; --symbol XAUUSDT</span></td><td>Validates correctness after a restart</td></tr>
+<tr><td><span class="mono">python scripts/select_pair_strategy.py</span></td><td>Trials a strategy change (dry-run / apply)</td></tr>
+<tr><td><span class="mono">python scripts/optimize_pair_configs.py</span></td><td>Automatically tunes strategy settings, resource-light</td></tr>
+<tr><td><span class="mono">python scripts/capture_tui_screenshots.py</span></td><td>Regenerates screen previews</td></tr>
+<tr><td><span class="mono">python scripts/fetch_global_klines.py</span></td><td>Downloads years of price history for testing</td></tr>
+<tr><td><span class="mono">python scripts/regime_forward_validate.py</span></td><td>Measures how accurate the regime detector is on real data</td></tr>
+<tr><td><span class="mono">python scripts/vps_latency_check.py</span></td><td>Checks the VPS's network speed</td></tr>
+</table>
+
+<h1 id="appD">D. Risk Disclaimer</h1>
+<div class="warn">
+This software is provided for educational and research purposes only. Trading cryptocurrency and
+derivatives carries a high risk of losing money. Past performance is never a guarantee of future
+results. Users must always comply with the terms of the exchange they use and with any applicable laws
+and regulations in their own jurisdiction. The authors of this document accept no responsibility for
+any losses arising from using this software with real funds.
+</div>
+
+<p class="center small" style="margin-top:10mm;">— End of book —</p>
+</div>
+
+</body>
+</html>
