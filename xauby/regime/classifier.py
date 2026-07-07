@@ -42,6 +42,67 @@ DEFAULT_MACRO_BIAS_THRESHOLD: float = 0.3
 # (computed over full history upstream) this floor does not apply.
 EMA200_MIN_BARS: int = 200
 
+# ── Regime classification thresholds ──────────────────────────────────────────
+# Every hand-tuned cutoff used to categorise trend / volatility / liquidity and
+# to synthesise the detailed regime lives here, so the bands stay consistent
+# across _trend_strength, _trend_quality_score, _volatility_state and
+# _synthesise_detailed_regime — which previously repeated raw literals inline
+# (e.g. the trend-quality "strong" cutoff appeared three times). Values are
+# unchanged from those inline versions: this is a naming pass, not a retune.
+
+# EMA-spread / EMA200-distance / 20-bar-momentum bands qualifying a trend as
+# STRONG vs merely WEAK vs FLAT (all fractions of price).
+TREND_STRONG_EMA_SPREAD_PCT = 0.004
+TREND_STRONG_EMA200_DIST_PCT = 0.015
+TREND_STRONG_MOMENTUM_PCT = 0.02
+TREND_FLAT_EMA200_DIST_PCT = 0.006
+TREND_FLAT_MOMENTUM_PCT = 0.01
+
+# Trend-quality score: per-feature normalisers (a feature at its normaliser
+# scores ~1.0) and the blend weights (sum to 1.0).
+TQ_SPREAD_NORM = 0.006
+TQ_EMA200_DIST_NORM = 0.025
+TQ_MOMENTUM_NORM = 0.04
+TQ_W_SPREAD = 0.30
+TQ_W_DIST = 0.25
+TQ_W_MOMENTUM = 0.25
+TQ_W_CONSISTENCY = 0.20
+
+# |combined_macro| normaliser for the macro-conviction score.
+MACRO_CONVICTION_NORM = 1.2
+
+# Absolute ATR/price ratio vs its rolling average -> coarse HIGH/LOW volatility.
+VOL_HIGH_RATIO = 1.3
+VOL_LOW_RATIO = 0.7
+
+# Detailed volatility state: relative ATR (vs rolling avg) OR ATR percentile.
+VOL_EXTREME_REL = 1.8
+VOL_EXTREME_PCTL = 0.95
+VOL_EXPANDING_REL = 1.3
+VOL_EXPANDING_PCTL = 0.80
+VOL_COMPRESSION_REL = 0.55
+VOL_COMPRESSION_PCTL = 0.10
+VOL_QUIET_REL = 0.75
+VOL_QUIET_PCTL = 0.25
+
+# Volume-ratio bands for the discrete liquidity state.
+LIQ_SURGE_RATIO = 1.8
+LIQ_CONFIRMING_RATIO = 1.2
+LIQ_THIN_RATIO = 0.65
+
+# Volume-ratio bands for the continuous liquidity-confirmation score.
+LIQ_CONF_STRONG_RATIO = 1.5
+LIQ_CONF_OK_RATIO = 1.0
+LIQ_CONF_WEAK_RATIO = 0.65
+
+# Detailed-regime synthesis cutoffs — the ones _trend_strength and
+# _synthesise_detailed_regime effectively shared.
+TREND_QUALITY_STRONG = 0.55       # trend_quality above this = high-conviction trend
+PANIC_MOMENTUM_PCT = -0.025       # 20-bar momentum flushing into panic
+PANIC_VOL_PERCENTILE = 0.90       # ATR percentile flagging a panic vol spike
+NEAR_EMA200_DIST_PCT = 0.008      # |price-EMA200| this small = pinned to the mean
+WIDE_RANGE_PCT = 0.035            # 20-bar range this wide = volatility expansion
+
 
 def resolve_macro_weights(config: Optional[Dict[str, Any]]) -> Dict[str, float]:
     """Resolve macro combination weights from config, falling back to defaults."""
@@ -222,30 +283,30 @@ def _trend_quality_score(
     if trend == "NEUTRAL":
         return 0.0
     direction = 1.0 if trend == "BULLISH" else -1.0
-    spread_score = _clamp(abs(ema_spread_pct) / 0.006)
-    distance_score = _clamp(abs(ema200_distance_pct) / 0.025)
-    momentum_score = _clamp(abs(momentum_20) / 0.04)
+    spread_score = _clamp(abs(ema_spread_pct) / TQ_SPREAD_NORM)
+    distance_score = _clamp(abs(ema200_distance_pct) / TQ_EMA200_DIST_NORM)
+    momentum_score = _clamp(abs(momentum_20) / TQ_MOMENTUM_NORM)
     consistency_score = _clamp(direction * directional_consistency)
     return _clamp(
-        0.30 * spread_score
-        + 0.25 * distance_score
-        + 0.25 * momentum_score
-        + 0.20 * consistency_score
+        TQ_W_SPREAD * spread_score
+        + TQ_W_DIST * distance_score
+        + TQ_W_MOMENTUM * momentum_score
+        + TQ_W_CONSISTENCY * consistency_score
     )
 
 
 def _macro_conviction_score(combined_macro: float) -> float:
-    return _clamp(abs(combined_macro) / 1.2)
+    return _clamp(abs(combined_macro) / MACRO_CONVICTION_NORM)
 
 
 def _liquidity_confirmation_score(volume_ratio: float) -> float:
     if volume_ratio <= 0:
         return 0.35
-    if volume_ratio >= 1.5:
+    if volume_ratio >= LIQ_CONF_STRONG_RATIO:
         return 1.0
-    if volume_ratio >= 1.0:
+    if volume_ratio >= LIQ_CONF_OK_RATIO:
         return 0.75
-    if volume_ratio >= 0.65:
+    if volume_ratio >= LIQ_CONF_WEAK_RATIO:
         return 0.55
     return 0.25
 
@@ -258,16 +319,24 @@ def _trend_strength(
     momentum_20: float,
 ) -> str:
     if trend == "BULLISH":
-        if ema_spread_pct >= 0.004 and ema200_distance_pct >= 0.015 and momentum_20 > 0.02:
+        if (
+            ema_spread_pct >= TREND_STRONG_EMA_SPREAD_PCT
+            and ema200_distance_pct >= TREND_STRONG_EMA200_DIST_PCT
+            and momentum_20 > TREND_STRONG_MOMENTUM_PCT
+        ):
             return "STRONG_UP"
         if ema_spread_pct > 0 and ema200_distance_pct > 0:
             return "WEAK_UP"
     if trend == "BEARISH":
-        if ema_spread_pct <= -0.004 and ema200_distance_pct <= -0.015 and momentum_20 < -0.02:
+        if (
+            ema_spread_pct <= -TREND_STRONG_EMA_SPREAD_PCT
+            and ema200_distance_pct <= -TREND_STRONG_EMA200_DIST_PCT
+            and momentum_20 < -TREND_STRONG_MOMENTUM_PCT
+        ):
             return "STRONG_DOWN"
         if ema_spread_pct < 0 and ema200_distance_pct < 0:
             return "WEAK_DOWN"
-    if abs(ema200_distance_pct) <= 0.006 and abs(momentum_20) <= 0.01:
+    if abs(ema200_distance_pct) <= TREND_FLAT_EMA200_DIST_PCT and abs(momentum_20) <= TREND_FLAT_MOMENTUM_PCT:
         return "FLAT"
     return "CHOPPY"
 
@@ -281,23 +350,23 @@ def _volatility_state(
     if avg_vol_ratio <= 0:
         return volatility
     rel = vol_ratio / avg_vol_ratio
-    if rel >= 1.8 or vol_percentile >= 0.95:
+    if rel >= VOL_EXTREME_REL or vol_percentile >= VOL_EXTREME_PCTL:
         return "EXTREME_EXPANSION"
-    if rel >= 1.3 or vol_percentile >= 0.80:
+    if rel >= VOL_EXPANDING_REL or vol_percentile >= VOL_EXPANDING_PCTL:
         return "EXPANDING"
-    if rel <= 0.55 or vol_percentile <= 0.10:
+    if rel <= VOL_COMPRESSION_REL or vol_percentile <= VOL_COMPRESSION_PCTL:
         return "COMPRESSION"
-    if rel <= 0.75 or vol_percentile <= 0.25:
+    if rel <= VOL_QUIET_REL or vol_percentile <= VOL_QUIET_PCTL:
         return "QUIET"
     return "NORMAL"
 
 
 def _liquidity_state(volume_ratio: float) -> str:
-    if volume_ratio >= 1.8:
+    if volume_ratio >= LIQ_SURGE_RATIO:
         return "SURGE"
-    if volume_ratio >= 1.2:
+    if volume_ratio >= LIQ_CONFIRMING_RATIO:
         return "CONFIRMING"
-    if 0.0 < volume_ratio < 0.65:
+    if 0.0 < volume_ratio < LIQ_THIN_RATIO:
         return "THIN"
     return "NORMAL"
 
@@ -330,25 +399,25 @@ def _synthesise_detailed_regime(
     panic_like = (
         trend == "BEARISH"
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
-        and (macro_bias == "RISK-OFF" or momentum_20 <= -0.025)
-        and (trend_quality >= 0.55 or vol_percentile >= 0.90)
+        and (macro_bias == "RISK-OFF" or momentum_20 <= PANIC_MOMENTUM_PCT)
+        and (trend_quality >= TREND_QUALITY_STRONG or vol_percentile >= PANIC_VOL_PERCENTILE)
     )
     bull_breakout = (
         trend == "BULLISH"
         and trend_strength in {"WEAK_UP", "STRONG_UP"}
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
         and liquidity_state in {"CONFIRMING", "SURGE"}
-        and trend_quality >= 0.55
+        and trend_quality >= TREND_QUALITY_STRONG
     )
     bear_breakdown = (
         trend == "BEARISH"
         and trend_strength in {"WEAK_DOWN", "STRONG_DOWN"}
         and volatility_state in {"EXPANDING", "EXTREME_EXPANSION"}
-        and trend_quality >= 0.55
+        and trend_quality >= TREND_QUALITY_STRONG
     )
     low_vol = volatility_state in {"COMPRESSION", "QUIET"} or volatility == "LOW"
-    near_ema200 = abs(ema200_distance_pct) <= 0.008
-    wide_range = range_pct_20 >= 0.035
+    near_ema200 = abs(ema200_distance_pct) <= NEAR_EMA200_DIST_PCT
+    wide_range = range_pct_20 >= WIDE_RANGE_PCT
 
     if panic_like:
         regime = "PANIC_SELL"
@@ -535,9 +604,9 @@ def classify_market(
     historical_vols = _historical_atr_ratios(highs, lows, closes, period=14, lookback=120)
     avg_vol_ratio = sum(historical_vols) / len(historical_vols) if historical_vols else 0.005
     vol_percentile = _percentile_rank(vol_ratio, historical_vols) if historical_vols else 0.5
-    if vol_ratio > avg_vol_ratio * 1.3:
+    if vol_ratio > avg_vol_ratio * VOL_HIGH_RATIO:
         volatility = "HIGH"
-    elif vol_ratio < avg_vol_ratio * 0.7:
+    elif vol_ratio < avg_vol_ratio * VOL_LOW_RATIO:
         volatility = "LOW"
     else:
         volatility = "NORMAL"
