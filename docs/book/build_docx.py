@@ -349,6 +349,18 @@ def setup_styles(doc):
 
 
 def main():
+    global HTML_PATH, DOCX_PATH, THAI_FONT
+
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--html", default=HTML_PATH)
+    ap.add_argument("--docx", default=DOCX_PATH)
+    ap.add_argument("--font", default=THAI_FONT,
+                     help="Body font (rFonts ascii/eastAsia/cs); use a Thai-capable font for Thai content")
+    args = ap.parse_args()
+    HTML_PATH, DOCX_PATH, THAI_FONT = args.html, args.docx, args.font
+
     with open(HTML_PATH, encoding="utf-8") as f:
         soup = BeautifulSoup(f.read(), "lxml")
 
