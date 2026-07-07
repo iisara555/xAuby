@@ -300,7 +300,10 @@ GMM Cross-check ฯลฯ) ทุกตัวอยู่หลัง feature fl
 <span class="mono">position_mode: one_way</span>) ที่ <strong>Leverage 1 เท่า</strong>
 (<span class="mono">derivatives.max_leverage: 1</span>) พร้อม funding guard
 (<span class="mono">max_abs_funding_rate</span>) และ <span class="mono">min_liquidation_distance_pct</span>
-ทำงานอยู่ ช่องทองใช้สัญลักษณ์ <span class="mono">XAUUSDT</span> (Perpetual) ส่วนงาน Backtest
+ทำงานอยู่ — <span class="mono">1</span> คือค่าที่ตั้งใช้งานจริงตอนนี้สำหรับคู่ XAU (ไม่ใช่เพดานตายตัวของ
+ระบบ) ระบบรองรับเลเวอเรจสูงกว่านี้ได้ในทางเทคนิคสำหรับฝั่ง Short โดยเฉพาะ (เพดานสูงสุด 3 เท่า ดูหัวข้อ 6.5)
+แต่ต้องมีการปรับ <span class="mono">derivatives.max_leverage</span> และอนุมัติโดยผู้ดูแลระบบก่อนเสมอ
+ช่องทองใช้สัญลักษณ์ <span class="mono">XAUUSDT</span> (Perpetual) ส่วนงาน Backtest
 ใช้ <span class="mono">PAXGUSDT</span> เป็นตัวแทนราคาทอง (proxy) เพราะมีประวัติราคาย้อนหลังยาวกว่าบน
 Global Binance</p>
 
@@ -768,10 +771,16 @@ Simulation คงความสอดคล้องกับ Live เสมอ
 <tr><td><span class="mono">strategy</span></td><td>plugin id</td><td>จำเป็นเมื่อ <span class="mono">whitelist_strict: true</span></td></tr>
 <tr><td><span class="mono">strategy_params</span></td><td>object</td><td>ค่าปรับแต่งเฉพาะคู่เทรด รวมเข้ากับ Strategy Config</td></tr>
 <tr><td><span class="mono">mode</span></td><td><span class="mono">sim</span>, <span class="mono">live</span></td><td>ต้องเปิด <span class="mono">per_symbol_execution_mode: true</span></td></tr>
+<tr><td><span class="mono">allowed_sides</span></td><td>array เช่น <span class="mono">["long"]</span>, <span class="mono">["long","short"]</span></td><td>ฝั่งที่อนุญาตให้เปิดไม้ต่อคู่เทรด — ต้องมี <span class="mono">"short"</span> ก่อนกลยุทธ์ Short จะทำงานได้ (ดูหัวข้อ 6.5)</td></tr>
+<tr><td><span class="mono">leverage</span></td><td>number</td><td>เลเวอเรจของคู่เทรดนั้น ต้องไม่เกิน <span class="mono">derivatives.max_leverage</span> ระดับ Engine</td></tr>
+<tr><td><span class="mono">short_live_enabled</span></td><td>bool</td><td>ประตูเพิ่มเติมสำหรับ Short บนเงินจริง — ถ้าปิด Short จะเป็น Paper-only แม้ <span class="mono">allowed_sides</span> จะมี <span class="mono">"short"</span> ก็ตาม</td></tr>
 <tr><td><span class="mono">regime_router_enabled</span></td><td>bool</td><td>ประตู RegimeRouter ระดับคู่เทรด</td></tr>
 <tr><td><span class="mono">regime_router_live_confirmed</span></td><td>bool</td><td>ต้องเป็น true ก่อนคู่เทรด Live จะ Route กลยุทธ์ได้</td></tr>
 <tr><td><span class="mono">sim_fee_pct</span></td><td>number</td><td>หน่วยเปอร์เซ็นต์ เช่น <span class="mono">0.05</span> = 0.05%</td></tr>
 </table>
+
+<p class="small">หมายเหตุ: <span class="mono">strategy_params</span> ไม่ได้แสดงในตัวอย่าง JSON ข้างบนเพราะเป็น
+Field เสริม (Optional) — ดูตัวอย่างค่าจริงที่คู่ XAU ใช้ในหัวข้อ 5.2</p>
 
 <h2 id="s4-5">4.5 ตัวแปรแวดล้อม (Environment Variables)</h2>
 
@@ -787,7 +796,16 @@ Simulation คงความสอดคล้องกับ Live เสมอ
 <tr><td><span class="mono">DEFAULT_SYMBOL</span></td><td>-</td><td>Override คู่เทรดเดี่ยว (ถ้ามี)</td></tr>
 <tr><td><span class="mono">XAUBY_HOME</span></td><td><span class="mono">core</span></td><td>โฟลเดอร์ฐานของ Runtime data — ย้ายเพื่อรันหลาย instance คู่กันได้</td></tr>
 <tr><td><span class="mono">XAUBY_INSTANCE_ID</span></td><td>-</td><td>Sub-namespace ใต้ Runtime root (เช่น tenant/account id)</td></tr>
+<tr><td><span class="mono">XAUBY_DEFAULT_SYMBOL</span></td><td><span class="mono">XAUTUSDT</span></td><td>สัญลักษณ์ Dashboard สำรองสุดท้ายเมื่อ Whitelist ว่าง/อ่านไม่ได้ (Asset-neutral — ไม่ผูกกับทองคำตายตัว)</td></tr>
+<tr><td><span class="mono">XAUBY_FOCUS_SYMBOL</span></td><td>-</td><td>บังคับคู่เทรดที่ TUI/Dashboard โฟกัสตอนเริ่มทำงาน ใช้คู่กับ <span class="mono">DEFAULT_SYMBOL</span> ตอน Live Startup (ดูหัวข้อ 1.3/11.1)</td></tr>
+<tr><td><span class="mono">OKX_BASE_URL</span></td><td>auto</td><td>Override Endpoint REST ของ OKX (ชื่อตัวแปรมาจาก <span class="mono">exchange.base_url_env</span>)</td></tr>
+<tr><td><span class="mono">BINANCE_BACKTEST_URL</span></td><td><span class="mono">api.binance.com</span></td><td>Override แหล่งข้อมูล Backtest จาก Global Binance (ดูหัวข้อ 7.1)</td></tr>
 </table>
+
+<p class="small">คำสั่ง "Recommended live startup" ในหัวข้อ 1.3/11.1 สั่ง <span class="mono">env -u DEFAULT_SYMBOL</span>
+(unset ตัวแปร Generic เดิม) แล้วตั้ง <span class="mono">XAUBY_DEFAULT_SYMBOL</span> และ
+<span class="mono">XAUBY_FOCUS_SYMBOL</span> แทน เพื่อกันไม่ให้ <span class="mono">DEFAULT_SYMBOL</span>
+ที่อาจตั้งค้างไว้จาก Session อื่นมาแย่ง Override สัญลักษณ์ที่ตั้งใจใช้จริง</p>
 
 <h3>น้ำหนัก Macro ของ Regime Classifier</h3>
 <p>ตัวจำแนก Regime รวม DXY, อัตราดอกเบี้ย, และข่าวเป็น Macro Bias น้ำหนักปรับได้เพื่อไม่ให้ระบบผูกติดกับทองคำ
@@ -828,7 +846,7 @@ Toggle, Modal ตัวเลข/ช่วงค่า, และตัวเล
 <div class="chapter-kicker">ภาคที่ 5 — กลยุทธ์และ Market Regime Detector</div>
 <h1>5.1 กลยุทธ์ (Strategy Plugin) ทั้งหมดในระบบ</h1>
 
-<p>ระบบมีปลั๊กอินกลยุทธ์ทั้งหมด 15 ตัว บางตัวใช้งานจริง (Production) บางตัวเป็นงานวิจัย (Research/Sim เท่านั้น):</p>
+<p>ระบบมีปลั๊กอินกลยุทธ์ทั้งหมด 14 ตัว บางตัวใช้งานจริง (Production) บางตัวเป็นงานวิจัย (Research/Sim เท่านั้น):</p>
 
 <table>
 <tr><th>Strategy</th><th>Indicator plugin</th><th>โซนบนกราฟ</th><th>เส้นบนกราฟ</th></tr>
@@ -842,7 +860,7 @@ Toggle, Modal ตัวเลข/ช่วงค่า, และตัวเล
 <tr><td><span class="mono">sol_ema_pullback</span></td><td><span class="mono">sol_ema_pullback</span></td><td>เทรนด์/พูลแบ็ก/ยึดกลับ/กลาง</td><td>EMA20, EMA50</td></tr>
 <tr><td><span class="mono">vol_breakout</span> (research)</td><td><span class="mono">vol_breakout</span></td><td>ทะลุ/ATR ขยายตัว/กลาง</td><td>Range High, Exit EMA</td></tr>
 <tr><td><span class="mono">xauby_vwap_pullback</span></td><td><span class="mono">xauby_vwap_pullback</span></td><td>เข้า/พูลแบ็ก/เทรนด์/รอ/เสียเทรนด์</td><td>EMA20/50/200, VWAP</td></tr>
-<tr><td><span class="mono">donchian_trend</span></td><td>-</td><td>-</td><td>Turtle breakout เหนือ EMA200 + ADX filter</td></tr>
+<tr><td><span class="mono">donchian_trend</span> (candidate)</td><td>-</td><td>-</td><td>Turtle breakout เหนือ EMA200 + ADX filter — ผู้ท้าชิงที่ยังไม่ผ่านเกณฑ์คัดเลือก ไม่ได้อยู่ใน production mapping (ดู 5.7)</td></tr>
 <tr><td><span class="mono">donchian_short</span> / <span class="mono">supertrend_short</span> / <span class="mono">rsi2_short</span> (research)</td><td>-</td><td colspan="2">Short-side เฉพาะงานวิจัย ไม่ใช้ Production</td></tr>
 </table>
 
@@ -1017,6 +1035,21 @@ Protection ของโพซิชันเดิม, Recovery ต้องผ�
 
 <p>เมื่อเปิด Regime Filter สำหรับ Backtest ระบบจะเลียนแบบ Routing นี้ด้วย: บล็อกสัญญาณ BUY ทุกครั้งที่ Regime
 อยู่นอกกลุ่มเป้าหมายของกลยุทธ์นั้น เพื่อให้ผล Replay ใกล้เคียงกับประตูเข้าไม้ของ Live มากที่สุด</p>
+
+<div class="warn">
+<strong>ความขัดแย้งในเอกสารต้นฉบับที่ควรทราบ:</strong> mapping ข้างบนอ้างอิงจากตารางใน root
+<span class="mono">README.md</span> แต่ <span class="mono">docs/configuration.md</span> ระบุ mapping ต่างออกไป
+สำหรับบาง Key เช่น <span class="mono">BEAR_TREND_WEAK</span> → <span class="mono">donchian_trend</span>
+(แทนที่จะเป็น <span class="mono">cdc_action_zone</span>) และกลุ่ม Low-vol →
+<span class="mono">bbkc_squeeze</span> (แทนที่จะเป็น <span class="mono">bbrsi_mean_reversion</span>)
+นอกจากนี้ root README ยังมีข้อความว่า <span class="mono">donchian_trend</span> "ผ่านการ deploy บน BTCUSDT 1h
+แล้ว" ในขณะที่ <span class="mono">docs/regime_strategy_selection.md</span> (มีระเบียบวิธีและวันที่ล่าสุดกว่า
+คือ 2026-06-11) สรุปตรงข้ามว่า <strong>ไม่มี candidate ตัวไหนผ่านเกณฑ์ และ mapping เดิมยังคงอยู่ทั้งหมด</strong>
+— นี่คือ <span class="mono">doc drift</span> จริงระหว่างเอกสารสองไฟล์ในโปรเจกต์เดียวกัน หนังสือเล่มนี้เลือกใช้
+เวอร์ชันจาก <span class="mono">docs/regime_strategy_selection.md</span> เป็นหลักในหัวข้อ 5.7 เพราะมีข้อมูล/
+วิธีวัดผลละเอียดกว่าและวันที่ใหม่กว่า แต่ผู้ดูแลระบบควรตรวจสอบ <span class="mono">regime_router.mapping</span>
+จริงใน <span class="mono">bot_config.yaml</span> เสมอ แทนที่จะเชื่อเอกสารฉบับใดฉบับหนึ่งเพียงอย่างเดียว
+</div>
 
 <h2 id="s5-7">5.7 กระบวนการคัดเลือกกลยุทธ์ด้วยข้อมูลจริง (R&amp;D)</h2>
 
@@ -1508,6 +1541,7 @@ scripts/controlled_restart_engine.sh</pre>
 <tr><th>คำสั่ง</th><th>หน้าที่</th></tr>
 <tr><td><span class="mono">python -m unittest discover -s tests -q</span></td><td>รันชุดเทสต์ทั้งหมด</td></tr>
 <tr><td><span class="mono">python health_check.py</span></td><td>ตรวจสุขภาพระบบครั้งเดียว</td></tr>
+<tr><td><span class="mono">python scripts/replay_backtest.py --symbol XAUUSDT --config bot_config.yaml</span></td><td>รันทดสอบย้อนหลัง (Backtest)</td></tr>
 <tr><td><span class="mono">python scripts/incident_explorer.py list</span></td><td>ดูรายการ Incident</td></tr>
 <tr><td><span class="mono">python scripts/replay_validate.py &lt;run_id&gt; --symbol XAUUSDT</span></td><td>ตรวจสอบ Replay หลัง Restart</td></tr>
 <tr><td><span class="mono">python scripts/evaluate_okx_xau_migration.py</span></td><td>ประเมินการย้ายมาใช้ OKX XAU</td></tr>
