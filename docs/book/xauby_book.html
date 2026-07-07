@@ -33,6 +33,7 @@ th { background: #12202c; color: #f4ecd8; font-weight: 700; }
 tr:nth-child(even) td { background: #faf8f2; }
 .note { background: #fff7e6; border-left: 4px solid #b8860b; padding: 3mm 4mm; margin: 0 0 4mm 0; font-size: 10pt; }
 .warn { background: #fdeceb; border-left: 4px solid #c0392b; padding: 3mm 4mm; margin: 0 0 4mm 0; font-size: 10pt; }
+.tip { background: #eaf5ec; border-left: 4px solid #3d8f5b; padding: 3mm 4mm; margin: 0 0 4mm 0; font-size: 10pt; }
 .tag { display:inline-block; background:#12202c; color:#f4ecd8; font-size: 8.3pt; padding: 0.5mm 2.2mm; border-radius: 3px; margin-right:1.5mm;}
 
 .part { page-break-before: always; }
@@ -69,10 +70,10 @@ hr.sep { border: none; border-top: 1px solid #ddd; margin: 6mm 0; }
 <div class="cover">
   <div class="kicker">ระบบเทรดทองคำอัตโนมัติ</div>
   <h1>xAuby</h1>
-  <div class="sub">คู่มือฉบับสมบูรณ์ — สถาปัตยกรรม การตั้งค่า กลยุทธ์ Market Regime Detector การจัดการความเสี่ยง และการดูแลระบบ</div>
+  <div class="sub">คู่มือฉบับเข้าใจง่าย — สำหรับผู้เริ่มต้นใช้งานบอทเทรดทองคำ</div>
   <div class="meta">
     รวบรวมและเรียบเรียงจากเอกสารทั้งหมดของโปรเจกต์<br>
-    (README, README_DEV, CLAUDE.md, DESIGN.md, PRODUCT.md, docs/*)<br>
+    เขียนใหม่ให้อ่านง่าย ลดศัพท์เทคนิค เหมาะสำหรับผู้เริ่มต้น<br>
     อ้างอิงสถานะระบบล่าสุด ณ กรกฎาคม 2026<br>
     เอกสารนี้จัดทำเพื่อการศึกษาและใช้งานภายในเท่านั้น
   </div>
@@ -87,8 +88,8 @@ hr.sep { border: none; border-top: 1px solid #ddd; margin: 6mm 0; }
   <li><div class="part-title">ภาคที่ 1 — รู้จัก xAuby</div>
     <ol>
       <li><a href="#s1-1">1.1 xAuby คืออะไร</a></li>
-      <li><a href="#s1-2">1.2 ปรัชญาการออกแบบ</a></li>
-      <li><a href="#s1-3">1.3 สถานะการทำงานปัจจุบัน (Current Runtime Baseline)</a></li>
+      <li><a href="#s1-2">1.2 แนวคิดเบื้องหลังการออกแบบ</a></li>
+      <li><a href="#s1-3">1.3 ตอนนี้ระบบตั้งค่าไว้แบบไหน</a></li>
       <li><a href="#s1-4">1.4 สิ่งที่บอทนี้ทำ และไม่ทำ</a></li>
     </ol>
   </li>
@@ -103,100 +104,100 @@ hr.sep { border: none; border-top: 1px solid #ddd; margin: 6mm 0; }
     </ol>
   </li>
 
-  <li><div class="part-title">ภาคที่ 3 — สถาปัตยกรรมระบบ</div>
+  <li><div class="part-title">ภาคที่ 3 — เบื้องหลังการทำงานของระบบ</div>
     <ol>
-      <li><a href="#s3-1">3.1 ภาพรวมโครงสร้างเลเยอร์</a></li>
-      <li><a href="#s3-2">3.2 หนึ่ง Tick ของเอนจิ้นทำอะไรบ้าง</a></li>
-      <li><a href="#s3-3">3.3 PairRegistry และ SymbolContext</a></li>
-      <li><a href="#s3-4">3.4 กฎการพึ่งพาของระบบ (Dependency Rules)</a></li>
-      <li><a href="#s3-5">3.5 ปลั๊กอิน Strategy และ Indicator</a></li>
-      <li><a href="#s3-6">3.6 Feature Flags ทั้งหมด (architecture.*)</a></li>
+      <li><a href="#s3-1">3.1 ภาพรวมง่ายๆ ว่าระบบประกอบด้วยอะไรบ้าง</a></li>
+      <li><a href="#s3-2">3.2 ในแต่ละรอบทำงาน บอททำอะไรบ้าง</a></li>
+      <li><a href="#s3-3">3.3 ถ้ามีหลายคู่เทรด แต่ละคู่แยกกันอย่างไร</a></li>
+      <li><a href="#s3-4">3.4 กฎพื้นฐานที่ระบบยึดถือเสมอ</a></li>
+      <li><a href="#s3-5">3.5 กลยุทธ์และตัววาดกราฟต้องมาคู่กัน</a></li>
+      <li><a href="#s3-6">3.6 สวิตช์เปิด-ปิดฟีเจอร์ต่างๆ</a></li>
     </ol>
   </li>
 
-  <li><div class="part-title">ภาคที่ 4 — การตั้งค่าระบบ (Configuration)</div>
+  <li><div class="part-title">ภาคที่ 4 — การตั้งค่าระบบ</div>
     <ol>
       <li><a href="#s4-1">4.1 ไฟล์ตั้งค่า 3 ไฟล์หลัก</a></li>
-      <li><a href="#s4-2">4.2 หลักการ Source of Truth 3 ชั้น</a></li>
+      <li><a href="#s4-2">4.2 หลักการแบ่งไฟล์ตั้งค่าเป็น 3 กลุ่ม</a></li>
       <li><a href="#s4-3">4.3 การตั้งค่า Exchange (OKX ผ่าน CCXT)</a></li>
-      <li><a href="#s4-4">4.4 โครงสร้าง Whitelist และคู่เทรดปัจจุบัน</a></li>
-      <li><a href="#s4-5">4.5 ตัวแปรแวดล้อม (Environment Variables)</a></li>
-      <li><a href="#s4-6">4.6 เมนู Quick Config ในตัว</a></li>
+      <li><a href="#s4-4">4.4 รายชื่อคู่เทรดที่เปิดใช้งาน (Whitelist)</a></li>
+      <li><a href="#s4-5">4.5 ตัวแปรแวดล้อมที่ควรรู้</a></li>
+      <li><a href="#s4-6">4.6 เมนูตั้งค่าง่ายๆ ในตัว</a></li>
     </ol>
   </li>
 
-  <li><div class="part-title">ภาคที่ 5 — กลยุทธ์และ Market Regime Detector</div>
+  <li><div class="part-title">ภาคที่ 5 — กลยุทธ์และตัวจับสภาพตลาด</div>
     <ol>
-      <li><a href="#s5-1">5.1 กลยุทธ์ (Strategy Plugin) ทั้งหมดในระบบ</a></li>
-      <li><a href="#s5-2">5.2 CDC Action Zone — กลยุทธ์หลักที่ใช้งานจริง</a></li>
-      <li><a href="#s5-3">5.3 Market Regime Detector คืออะไร ทำงานอย่างไร</a></li>
-      <li><a href="#s5-4">5.4 ตัวจับ Regime เชิงสถิติ (GMM Cross-check)</a></li>
-      <li><a href="#s5-5">5.5 รายงานความแม่นยำของ Regime Detector</a></li>
-      <li><a href="#s5-6">5.6 RegimeRouter — เลือกกลยุทธ์ตาม Regime อัตโนมัติ</a></li>
-      <li><a href="#s5-7">5.7 กระบวนการคัดเลือกกลยุทธ์ด้วยข้อมูลจริง (R&amp;D)</a></li>
+      <li><a href="#s5-1">5.1 กลยุทธ์ทั้งหมดที่มีในระบบ</a></li>
+      <li><a href="#s5-2">5.2 CDC Action Zone — กลยุทธ์ที่ใช้เทรดจริง</a></li>
+      <li><a href="#s5-3">5.3 ตัวจับสภาพตลาด (Market Regime Detector) คืออะไร</a></li>
+      <li><a href="#s5-4">5.4 ระบบตรวจทานซ้ำด้วยสถิติ (ความเห็นที่สอง)</a></li>
+      <li><a href="#s5-5">5.5 ตัวจับสภาพตลาดนี้แม่นแค่ไหน</a></li>
+      <li><a href="#s5-6">5.6 ระบบเลือกกลยุทธ์อัตโนมัติตามสภาพตลาด</a></li>
+      <li><a href="#s5-7">5.7 วิธีตัดสินใจเปลี่ยนกลยุทธ์ด้วยข้อมูลจริง</a></li>
     </ol>
   </li>
 
   <li><div class="part-title">ภาคที่ 6 — การจัดการความเสี่ยง</div>
     <ol>
-      <li><a href="#s6-1">6.1 การคำนวณขนาดโพซิชัน (Position Sizing)</a></li>
-      <li><a href="#s6-2">6.2 Stop-Loss / Trailing / Breakeven</a></li>
-      <li><a href="#s6-3">6.3 Partial Take-Profit</a></li>
-      <li><a href="#s6-4">6.4 Drawdown Guard — สวิตช์ตัดขาดทุนระดับพอร์ต</a></li>
-      <li><a href="#s6-5">6.5 การเทรด Short และเงื่อนไขความปลอดภัย</a></li>
-      <li><a href="#s6-6">6.6 เช็กลิสต์ความสอดคล้องของค่าความเสี่ยง</a></li>
+      <li><a href="#s6-1">6.1 บอทคำนวณขนาดไม้อย่างไร</a></li>
+      <li><a href="#s6-2">6.2 จุดตัดขาดทุน / เลื่อนจุดป้องกัน / คุ้มทุน</a></li>
+      <li><a href="#s6-3">6.3 การทำกำไรบางส่วนก่อน (Partial Take-Profit)</a></li>
+      <li><a href="#s6-4">6.4 สวิตช์หยุดขาดทุนระดับพอร์ต</a></li>
+      <li><a href="#s6-5">6.5 การเทรดขาลง (Short) และความปลอดภัย</a></li>
+      <li><a href="#s6-6">6.6 เช็กความเสี่ยงให้ตรงกันทุกจุด</a></li>
     </ol>
   </li>
 
-  <li><div class="part-title">ภาคที่ 7 — Backtest และงานวิจัยกลยุทธ์</div>
+  <li><div class="part-title">ภาคที่ 7 — ทดสอบย้อนหลังและงานวิจัย</div>
     <ol>
-      <li><a href="#s7-1">7.1 แหล่งข้อมูลสำหรับ Backtest</a></li>
-      <li><a href="#s7-2">7.2 คำสั่ง Backtest และ Optimizer</a></li>
-      <li><a href="#s7-3">7.3 Regime-aware Replay</a></li>
-      <li><a href="#s7-4">7.4 Replay Validation หลัง Restart/Incident</a></li>
+      <li><a href="#s7-1">7.1 ข้อมูลราคาที่ใช้ทดสอบย้อนหลัง</a></li>
+      <li><a href="#s7-2">7.2 คำสั่งทดสอบย้อนหลัง</a></li>
+      <li><a href="#s7-3">7.3 ทดสอบย้อนหลังแบบรู้สภาพตลาด</a></li>
+      <li><a href="#s7-4">7.4 ตรวจสอบความถูกต้องหลัง Restart</a></li>
     </ol>
   </li>
 
-  <li><div class="part-title">ภาคที่ 8 — หน้าจอใช้งาน (TUI / WebUI)</div>
+  <li><div class="part-title">ภาคที่ 8 — หน้าจอใช้งาน</div>
     <ol>
-      <li><a href="#s8-1">8.1 Textual TUI (แดชบอร์ดในเทอร์มินัล)</a></li>
-      <li><a href="#s8-2">8.2 WebUI มือถือ (Read-only)</a></li>
-      <li><a href="#s8-3">8.3 ปรัชญาการออกแบบหน้าจอ</a></li>
+      <li><a href="#s8-1">8.1 หน้าจอในเทอร์มินัล (TUI)</a></li>
+      <li><a href="#s8-2">8.2 หน้าจอมือถือแบบดูอย่างเดียว (WebUI)</a></li>
+      <li><a href="#s8-3">8.3 แนวคิดการออกแบบหน้าจอ</a></li>
     </ol>
   </li>
 
   <li><div class="part-title">ภาคที่ 9 — Telegram</div>
     <ol>
-      <li><a href="#s9-1">9.1 การติดตั้ง Telegram Bot</a></li>
+      <li><a href="#s9-1">9.1 ตั้งค่า Telegram Bot</a></li>
       <li><a href="#s9-2">9.2 คำสั่งทั้งหมด</a></li>
       <li><a href="#s9-3">9.3 การแจ้งเตือนอัตโนมัติ</a></li>
-      <li><a href="#s9-4">9.4 โหมด Semi-auto และ Emergency Pause</a></li>
+      <li><a href="#s9-4">9.4 โหมดขอยืนยันก่อนซื้อ และปุ่มหยุดฉุกเฉิน</a></li>
     </ol>
   </li>
 
-  <li><div class="part-title">ภาคที่ 10 — หลายบัญชี และหลาย Exchange</div>
+  <li><div class="part-title">ภาคที่ 10 — รันหลายบัญชี หลาย Exchange</div>
     <ol>
-      <li><a href="#s10-1">10.1 รันหลายอินสแตนซ์บนเครื่องเดียว</a></li>
-      <li><a href="#s10-2">10.2 Multi-Exchange ผ่าน CCXT</a></li>
+      <li><a href="#s10-1">10.1 รันบอทหลายตัวบนเครื่องเดียว</a></li>
+      <li><a href="#s10-2">10.2 สลับไปใช้ Exchange อื่น</a></li>
       <li><a href="#s10-3">10.3 OKX Perpetual และความปลอดภัยของ Short</a></li>
     </ol>
   </li>
 
-  <li><div class="part-title">ภาคที่ 11 — การดูแลระบบ (Operations)</div>
+  <li><div class="part-title">ภาคที่ 11 — ดูแลระบบ</div>
     <ol>
-      <li><a href="#s11-1">11.1 การ Deploy บน VPS</a></li>
+      <li><a href="#s11-1">11.1 การติดตั้งบน VPS</a></li>
       <li><a href="#s11-2">11.2 คำสั่งอัปเดตและรีสตาร์ท</a></li>
-      <li><a href="#s11-3">11.3 การตรวจสอบ Latency ของ VPS</a></li>
+      <li><a href="#s11-3">11.3 เช็คว่า VPS ช้าเพราะอะไร</a></li>
       <li><a href="#s11-4">11.4 เช็กลิสต์ความปลอดภัยฉบับเต็ม</a></li>
     </ol>
   </li>
 
   <li><div class="part-title">ภาคผนวก</div>
     <ol>
-      <li><a href="#appA">ก. อภิธานศัพท์ (Glossary)</a></li>
+      <li><a href="#appA">ก. คำศัพท์ที่ควรรู้</a></li>
       <li><a href="#appB">ข. โครงสร้างโปรเจกต์</a></li>
-      <li><a href="#appC">ค. ตารางสคริปต์อ้างอิงทั้งหมด</a></li>
-      <li><a href="#appD">ง. คำเตือนความเสี่ยง (Disclaimer)</a></li>
+      <li><a href="#appC">ค. ตารางคำสั่งทั้งหมด</a></li>
+      <li><a href="#appD">ง. คำเตือนความเสี่ยง</a></li>
     </ol>
   </li>
 </ol>
@@ -207,45 +208,42 @@ hr.sep { border: none; border-top: 1px solid #ddd; margin: 6mm 0; }
 <div class="chapter-kicker">คำนำ</div>
 <h1>คำนำ และสถานะระบบล่าสุด</h1>
 
-<p>หนังสือเล่มนี้รวบรวมเอกสารทั้งหมดของโปรเจกต์ xAuby — <span class="mono">README.md</span>,
-<span class="mono">README_DEV.md</span>, <span class="mono">CLAUDE.md</span>,
-<span class="mono">DESIGN.md</span>, <span class="mono">PRODUCT.md</span> และเอกสารทั้งหมดใน
-<span class="mono">docs/</span> — มาจัดเรียงใหม่เป็นลำดับการอ่านเดียว แปลและเรียบเรียงเป็นภาษาไทยที่อ่านง่าย
-ตัดส่วนที่ซ้ำซ้อนออก และ<strong>แก้ไขจุดที่เอกสารต้นฉบับล้าสมัย (doc drift)</strong> ให้ตรงกับสถานะจริงของระบบ
-ที่อ่านได้จากไฟล์ config จริง (<span class="mono">bot_config.yaml</span>, <span class="mono">coin_whitelist.json</span>)</p>
+<p>หนังสือเล่มนี้รวบรวมเอกสารทั้งหมดของโปรเจกต์ xAuby มาจัดเรียงใหม่เป็นลำดับเดียว เขียนด้วยภาษาที่เป็นกันเอง
+ลดศัพท์เทคนิคลงให้มากที่สุดเท่าที่จะทำได้ โดยยังคงข้อมูลสำคัญไว้ครบถ้วน เหมาะสำหรับคนที่เพิ่งเริ่มใช้บอทตัวนี้
+และยังไม่คุ้นกับศัพท์สายเทรด/สายโปรแกรมมิ่ง</p>
 
-<div class="warn">
-<strong>หมายเหตุสำคัญเรื่องความคลาดเคลื่อนของเอกสารเดิม:</strong> เอกสารต้นฉบับหลายไฟล์ (โดยเฉพาะ
-<span class="mono">README_DEV.md</span>, <span class="mono">docs/architecture.md</span>,
-<span class="mono">docs/trading-flow.md</span>, <span class="mono">docs/configuration.md</span>,
-<span class="mono">docs/tui.md</span>, <span class="mono">docs/webui.md</span>,
-<span class="mono">docs/telegram.md</span>) ยังอธิบายสถานะเก่าของระบบ (Binance.th แบบ Spot, คู่เทรด
-<span class="mono">XAUTUSDT</span> + <span class="mono">BTCUSDT</span> สองคู่พร้อมกัน, <span class="mono">risk_pct 0.45</span>)
-ซึ่ง <span class="mono">CLAUDE.md</span> เองก็ระบุไว้ตรงๆ ว่าเป็น "doc drift warning" หนังสือเล่มนี้ยึด
-<strong><span class="mono">coin_whitelist.json</span> และ <span class="mono">bot_config.yaml</span> จริงเป็นความจริงหลัก (ground truth)</strong>
-ตามที่ CLAUDE.md กำหนดไว้ และจะระบุชัดเจนทุกจุดที่เนื้อหาอธิบาย "ความสามารถของระบบ" (เช่น รองรับหลายคู่เทรด,
-รองรับหลาย exchange) แยกจาก "สิ่งที่กำลังทำงานจริงตอนนี้" (คู่เทรดเดียวคือทองคำบน OKX)
+<div class="tip">
+<strong>จะเริ่มอ่านจากตรงไหนดี:</strong> ถ้าคุณแค่อยากใช้งานบอทให้เป็นโดยเร็ว แนะนำอ่านตามลำดับนี้ก่อน —
+<strong>ภาค 1 → ภาค 2 → ภาค 6 → ภาค 11</strong> (รู้จักระบบ, ติดตั้ง, เข้าใจความเสี่ยง, เช็กลิสต์ก่อนใช้เงินจริง)
+ส่วน<strong>ภาค 3, 5.3-5.7, และ 8.3</strong> เป็นเนื้อหาเชิงลึกกว่าปกติ (อธิบายว่าเบื้องหลังทำงานอย่างไร)
+ข้ามไปก่อนได้ แล้วค่อยกลับมาอ่านทีหลังเมื่ออยากรู้รายละเอียดเพิ่ม
 </div>
 
-<h3>สถานะการทำงานจริงของระบบ ณ ปัจจุบัน (สรุปสั้น)</h3>
+<div class="warn">
+<strong>ข้อควรทราบ:</strong> เอกสารเก่าบางไฟล์ของโปรเจกต์ยังพูดถึงระบบเวอร์ชันก่อนหน้า (ตอนที่ยังเทรดผ่าน
+ตลาดอื่นและมี 2 คู่เทรดพร้อมกัน) ซึ่งไม่ตรงกับตอนนี้แล้ว หนังสือเล่มนี้ยึดไฟล์ตั้งค่าจริงของระบบเป็นหลัก
+(<span class="mono">bot_config.yaml</span> และ <span class="mono">coin_whitelist.json</span>) เพื่อให้มั่นใจว่า
+ทุกอย่างที่เขียนตรงกับสิ่งที่ระบบทำงานจริงตอนนี้ ไม่ใช่ของเก่าที่เปลี่ยนไปแล้ว
+</div>
+
+<h3>สถานะการทำงานจริงของระบบตอนนี้ (สรุปสั้น)</h3>
 <table>
 <tr><th>รายการ</th><th>ค่าจริงในระบบ</th></tr>
-<tr><td>Exchange</td><td>OKX — USDT-settled Perpetual Swap ผ่าน CCXT adapter</td></tr>
-<tr><td>คู่เทรดที่ Live</td><td><span class="mono">XAUUSDT</span> (ทองคำ) เพียงคู่เดียว</td></tr>
-<tr><td>กลยุทธ์</td><td><span class="mono">cdc_action_zone</span> แบบ Long + Short (stop-and-reverse)</td></tr>
-<tr><td>Timeframe</td><td>หลัก 4 ชั่วโมง (4h) / ยืนยัน 1 วัน (1d)</td></tr>
-<tr><td>Leverage</td><td>1 เท่า (isolated margin, one-way position)</td></tr>
-<tr><td>ความเสี่ยงต่อไม้</td><td><span class="mono">risk_pct = 0.02</span> (2% ของ Equity)</td></tr>
-<tr><td>Max allocation ต่อไม้</td><td>25%</td></tr>
-<tr><td>Max daily loss</td><td>6%</td></tr>
-<tr><td>Max open positions</td><td>1</td></tr>
-<tr><td>Stop-Loss</td><td>ปิดใช้งาน (<span class="mono">disable_stop_loss: true</span>) — เป็นกลยุทธ์ CDC-pure ออกด้วยการกลับโซนเท่านั้น</td></tr>
-<tr><td>Partial Take-Profit</td><td>ปิด 50% ของโพซิชันเมื่อกำไร +12%</td></tr>
-<tr><td>RegimeRouter</td><td>ปิดอยู่สำหรับคู่ XAU (<span class="mono">regime_router_enabled: false</span>)</td></tr>
+<tr><td>ตลาดที่ใช้เทรด</td><td>OKX (ผ่านตัวกลางชื่อ CCXT ที่ทำให้บอทคุยกับหลายตลาดได้)</td></tr>
+<tr><td>คู่เทรดที่เทรดจริง</td><td><span class="mono">XAUUSDT</span> (ทองคำ) มีคู่เดียว</td></tr>
+<tr><td>กลยุทธ์ที่ใช้</td><td><span class="mono">cdc_action_zone</span> — เปิดได้ทั้งขาขึ้น (Long) และขาลง (Short)</td></tr>
+<tr><td>กรอบเวลาที่ดู</td><td>กราฟหลักทุก 4 ชั่วโมง เช็คทิศทางใหญ่จากกราฟรายวัน</td></tr>
+<tr><td>เลเวอเรจ</td><td>1 เท่า (ไม่ได้กู้เงินมาเพิ่มความเสี่ยง)</td></tr>
+<tr><td>ความเสี่ยงต่อไม้</td><td>เสี่ยง 2% ของพอร์ตต่อการเข้าไม้ 1 ครั้ง</td></tr>
+<tr><td>ขนาดไม้สูงสุด</td><td>ไม่เกิน 25% ของพอร์ตต่อไม้</td></tr>
+<tr><td>ขาดทุนสูงสุดต่อวัน</td><td>ถ้าขาดทุนรวมถึง 6% ในวันนั้น บอทจะหยุดเปิดไม้ใหม่</td></tr>
+<tr><td>จำนวนไม้ที่เปิดพร้อมกันได้</td><td>1 ไม้เท่านั้น</td></tr>
+<tr><td>จุดตัดขาดทุน (Stop-Loss)</td><td>ปิดใช้งาน — กลยุทธ์นี้ออกจากไม้ด้วยการเปลี่ยนสัญญาณเท่านั้น</td></tr>
+<tr><td>ทำกำไรบางส่วนก่อน</td><td>เมื่อกำไรถึง 12% จะขายออกไปครึ่งหนึ่งก่อน</td></tr>
+<tr><td>เลือกกลยุทธ์อัตโนมัติตามสภาพตลาด</td><td>ปิดอยู่ — บอทใช้กลยุทธ์เดียวตายตัว ไม่สลับเอง</td></tr>
 </table>
 
-<p class="small">ตัวเลขเหล่านี้เปลี่ยนแปลงได้ตามการตั้งค่าจริงของผู้ดูแลระบบ — ให้ตรวจสอบ
-<span class="mono">bot_config.yaml</span> และ <span class="mono">coin_whitelist.json</span> เสมอก่อนอ้างอิงในการตัดสินใจจริง</p>
+<p class="small">ตัวเลขเหล่านี้เปลี่ยนได้ตามที่ผู้ดูแลระบบตั้งค่าไว้ ควรเช็คไฟล์ตั้งค่าจริงเสมอก่อนตัดสินใจสำคัญ</p>
 </div>
 
 <!-- ===================== PART 1 ===================== -->
@@ -253,121 +251,98 @@ hr.sep { border: none; border-top: 1px solid #ddd; margin: 6mm 0; }
 <div class="chapter-kicker">ภาคที่ 1 — รู้จัก xAuby</div>
 <h1>1.1 xAuby คืออะไร</h1>
 
-<p><strong>xAuby</strong> คือระบบเทรดอัตโนมัติสำหรับสัญญา Perpetual Swap แบบ single-process
-รันได้หลายคู่เทรดพร้อมกัน (multi-symbol) บนตลาด <strong>OKX</strong> (<span class="mono">api.okx.com</span>)
-เชื่อมต่อผ่านชั้นกลาง (adapter) ที่เป็นกลางกับ exchange ชื่อ <strong>CCXT</strong> ระบบดึงราคาแท่งเทียนและราคาล่าสุด
-ผ่านทั้ง REST API และ WebSocket, รันแต่ละคู่เทรดผ่านปลั๊กอินกลยุทธ์ของตัวเอง, สามารถส่งผ่านตัวจำแนกสภาพตลาด
-(Market Regime Classifier) เพื่อเลือกกลยุทธ์อัตโนมัติได้, วางออเดอร์ Swap จริงหรือจำลอง พร้อมระบบ Stop-Loss
-แบบ ATR / Trailing / Breakeven แล้วบันทึกทุกอย่างลง SQLite และไฟล์ JSONL เพื่อใช้ Replay ตรวจสอบเหตุการณ์ (Incident)
-และแสดงผลบน Textual Dashboard ผู้ดูแลระบบควบคุมผ่าน CLI, Textual TUI, และ Telegram</p>
+<p><strong>xAuby</strong> คือโปรแกรมเทรดทองคำอัตโนมัติ ทำงานตลอด 24 ชั่วโมงบนตลาด <strong>OKX</strong>
+โดยไม่ต้องมีคนนั่งเฝ้าหน้าจอ บอทจะดึงราคาทองคำล่าสุดเข้ามาตลอดเวลา วิเคราะห์ตามกลยุทธ์ที่ตั้งไว้ แล้วตัดสินใจ
+ซื้อหรือขายให้เองอัตโนมัติ พร้อมระบบป้องกันความเสี่ยงและระบบแจ้งเตือนผ่าน Telegram ให้เจ้าของบอทติดตามได้
+ทุกที่ทุกเวลา</p>
 
-<p>ชื่อแพ็กเกจ Python คือ <span class="mono">xauby</span> รองรับ Python ตั้งแต่ 3.10 ขึ้นไป
-(README กำหนดเป้าหมายที่ 3.12+ ส่วน container พัฒนาปัจจุบันรันบน 3.11)</p>
+<p>ระบบรองรับการเปิดหลายคู่เทรดพร้อมกันได้ (ปัจจุบันเปิดใช้จริงแค่คู่เดียวคือทองคำ) และควบคุมได้ผ่านหลายช่องทาง:
+คำสั่งพิมพ์ในเทอร์มินัล หน้าจอแบบ Dashboard ในเทอร์มินัล และ Telegram</p>
 
-<h2 id="s1-2">1.2 ปรัชญาการออกแบบ</h2>
+<h2 id="s1-2">1.2 แนวคิดเบื้องหลังการออกแบบ</h2>
 
-<p>หลักการออกแบบที่ยึดถือมาตลอดทั้งระบบ:</p>
+<p>หลักการที่ระบบยึดถือมาตลอด อธิบายง่ายๆ ได้ดังนี้:</p>
 <ul>
-<li><strong>Config ขับเคลื่อนพฤติกรรม</strong> — เอนจิ้นไม่ hard-code รายชื่อคู่เทรด, กลยุทธ์, หรือเส้นกราฟใดๆ ทั้งสิ้น
-ทุกอย่างมาจากไฟล์ตั้งค่า</li>
-<li><strong>เอนจิ้นไม่รู้เรื่องกลยุทธ์ (Strategy-agnostic)</strong> — ตรรกะสัญญาณซื้อขายและจุดออกทั้งหมดอยู่ในปลั๊กอิน
-กลยุทธ์ ไม่ใช่ในเอนจิ้นหลัก การเพิ่มกลยุทธ์ใหม่ไม่ต้องแก้โค้ดเอนจิ้น</li>
-<li><strong>แยกความรับผิดชอบ Config เป็น 3 ชั้น</strong> — Engine / Strategy / Portfolio (อธิบายละเอียดในภาคที่ 4)
-เพื่อไม่ให้ Backtest กับ Live ให้ผลต่างกัน (parity)</li>
-<li><strong>ปลอดภัยไว้ก่อน (Fail-safe by default)</strong> — ค่าเริ่มต้นเป็นโหมดจำลองเสมอ, การเทรด Live ต้องผ่าน
-"ประตู" หลายชั้นพร้อมกัน (ดูหัวข้อ 2.5), Router ที่ยังไม่ผ่านการยืนยันจะถูกบังคับกลับเป็น Sim อัตโนมัติ</li>
-<li><strong>Isolation ต่อคู่เทรด</strong> — แต่ละคู่เทรดที่ Active มี Strategy instance, Runner, โหมด, และ
-สถานะ handoff ของตัวเอง แยกจากคู่อื่นโดยสมบูรณ์ ส่วนเงินทุนพอร์ตยังคงใช้ร่วมกันโดยเจตนา</li>
-<li><strong>Rollback คือการปิดสวิตช์ ไม่ใช่ revert โค้ด</strong> — ฟีเจอร์ใหญ่ๆ (RegimeRouter, Event Bus,
-GMM Cross-check ฯลฯ) ทุกตัวอยู่หลัง feature flag ใน <span class="mono">architecture:</span> block
-พลิกกลับเป็น <span class="mono">false</span> ได้ทันทีโดยไม่ต้องแก้โค้ด</li>
+<li><strong>ตั้งค่าทุกอย่างผ่านไฟล์ ไม่ต้องแก้โค้ด</strong> — อยากเปลี่ยนคู่เทรด กลยุทธ์ หรือค่าต่างๆ
+แก้ที่ไฟล์ตั้งค่าได้เลย ไม่ต้องเป็นโปรแกรมเมอร์</li>
+<li><strong>กลยุทธ์ถอดเปลี่ยนได้เหมือนปลั๊กอิน</strong> — ตัวเอนจิ้นหลักไม่ผูกติดกับกลยุทธ์ใดกลยุทธ์หนึ่ง
+เพิ่มกลยุทธ์ใหม่ได้โดยไม่กระทบส่วนอื่นของระบบ</li>
+<li><strong>แยกไฟล์ตั้งค่าเป็น 3 กลุ่มชัดเจน</strong> (อธิบายละเอียดในภาคที่ 4) เพื่อให้ผลจากการทดสอบย้อนหลัง
+ตรงกับผลตอนเทรดจริงเสมอ</li>
+<li><strong>ปลอดภัยไว้ก่อนเป็นค่าเริ่มต้น</strong> — ระบบเริ่มต้นที่โหมดจำลองเสมอ การจะเทรดด้วยเงินจริงต้อง
+ตั้งค่ายืนยันหลายจุดพร้อมกัน (ดูหัวข้อ 2.5) กันไม่ให้เผลอเทรดจริงโดยไม่ตั้งใจ</li>
+<li><strong>แต่ละคู่เทรดแยกจากกันสมบูรณ์</strong> — ถ้ามีหลายคู่เทรด ปัญหาของคู่หนึ่งจะไม่กระทบอีกคู่
+ส่วนเงินทุนในพอร์ตยังคงเป็นก้อนเดียวกันโดยตั้งใจ</li>
+<li><strong>ปิดฟีเจอร์ได้ทันทีด้วยสวิตช์เดียว</strong> — ฟีเจอร์ใหญ่ๆ ของระบบปิดกลับได้ทันทีด้วยการพลิกค่า
+ในไฟล์ตั้งค่า ไม่ต้องแก้โค้ดหรือถอนการติดตั้งอะไรเลย</li>
 </ul>
 
-<h2 id="s1-3">1.3 สถานะการทำงานปัจจุบัน (Current Runtime Baseline)</h2>
-
-<p>ตารางด้านล่างคือค่าจริงที่อ่านจาก <span class="mono">coin_whitelist.json</span> และ
-<span class="mono">bot_config.yaml</span> ของ repository ในปัจจุบัน:</p>
+<h2 id="s1-3">1.3 ตอนนี้ระบบตั้งค่าไว้แบบไหน</h2>
 
 <table>
-<tr><th>คู่เทรด</th><th>โหมด</th><th>กลยุทธ์</th><th>Primary TF</th><th>Confirm TF</th><th>ฝั่งที่เปิดได้</th></tr>
-<tr><td><span class="mono">XAUUSDT</span></td><td>live</td><td><span class="mono">cdc_action_zone</span></td>
-<td>4h</td><td>1d</td><td>Long + Short</td></tr>
+<tr><th>คู่เทรด</th><th>โหมด</th><th>กลยุทธ์</th><th>กราฟหลัก</th><th>กราฟยืนยัน</th><th>เปิดฝั่งไหนได้</th></tr>
+<tr><td><span class="mono">XAUUSDT</span></td><td>เทรดจริง</td><td><span class="mono">cdc_action_zone</span></td>
+<td>4 ชั่วโมง</td><td>รายวัน</td><td>ขาขึ้น + ขาลง</td></tr>
 </table>
 
-<p>เอนจิ้นรัน exchange เป็น <strong>OKX Perpetual Swap</strong>
-(<span class="mono">exchange.provider: ccxt</span>, <span class="mono">ccxt_id: okx</span>,
-<span class="mono">market_type: swap</span>, <span class="mono">margin_mode: isolated</span>,
-<span class="mono">position_mode: one_way</span>) ที่ <strong>Leverage 1 เท่า</strong>
-(<span class="mono">derivatives.max_leverage: 1</span>) พร้อม funding guard
-(<span class="mono">max_abs_funding_rate</span>) และ <span class="mono">min_liquidation_distance_pct</span>
-ทำงานอยู่ ช่องทองใช้สัญลักษณ์ <span class="mono">XAUUSDT</span> (Perpetual) ส่วนงาน Backtest
-ใช้ <span class="mono">PAXGUSDT</span> เป็นตัวแทนราคาทอง (proxy) เพราะมีประวัติราคาย้อนหลังยาวกว่าบน
-Global Binance</p>
+<p>บอทเทรดผ่าน <strong>OKX แบบ Perpetual Swap</strong> (สัญญาต่อเนื่องไม่มีวันหมดอายุ) ที่
+<strong>เลเวอเรจ 1 เท่า</strong> คือไม่ได้กู้เงินเพิ่มความเสี่ยงเลย พร้อมมีระบบเช็คอัตราดอกเบี้ยกู้ยืม
+(Funding Rate) ไม่ให้สูงผิดปกติ และเช็คระยะห่างจากจุดที่จะถูกบังคับปิดสถานะ (Liquidation) เสมอ
+ฝั่งทดสอบย้อนหลังใช้ราคาทองในรูปแบบโทเคน <span class="mono">PAXGUSDT</span> แทน เพราะมีประวัติราคา
+ย้อนหลังยาวกว่า ราคาเคลื่อนไหวใกล้เคียงทองจริงมาก</p>
 
-<p>คู่เทรดทองคำตัวเดียวที่ Live รันกลยุทธ์ CDC Action Zone แบบ <strong>Long และ Short พร้อมกัน</strong>
-ในลักษณะ stop-and-reverse (<span class="mono">allowed_sides: [long, short]</span>,
-<span class="mono">short_live_enabled: true</span>) เพราะ adapter ของ Swap ประกาศความสามารถ
-<span class="mono">swap</span> / <span class="mono">positions</span> / <span class="mono">reduce_only</span> ครบ
-(<span class="mono">xauby/api/ccxt_client.py</span>)</p>
+<p>กลยุทธ์ที่ใช้เทรดจริงเปิดได้ทั้ง <strong>ขาขึ้นและขาลงพร้อมกัน</strong> แบบ <strong>สลับฝั่งอัตโนมัติ</strong>
+— พูดง่ายๆ คือ ถ้ากำลังถือฝั่งขาขึ้นอยู่ แล้วสัญญาณเปลี่ยนเป็นขาลง บอทจะปิดฝั่งขาขึ้นแล้วเปิดฝั่งขาลงทันที
+ในจังหวะเดียวกันเลย ไม่ต้องรอ</p>
 
-<p><strong>รูปแบบการส่งออเดอร์:</strong> การเข้าไม้ใช้ออเดอร์ <strong>LIMIT</strong> ที่ราคาล่าสุด
-(<span class="mono">execution.order_type: limit</span>) และเมื่อ
-<span class="mono">execution.entry_market_fallback: true</span> ส่วนที่ยังไม่ Fill จะถูกเติมด้วยออเดอร์
-<strong>MARKET</strong> หลังหมดเวลารอ (แทนที่จะยกเลิก) เพื่อให้ Live ตรงกับผล Backtest ที่จำลองการ Fill แบบ Market
-ส่วนการออกไม้ใช้ MARKET เมื่อเป็นสถานการณ์เร่งด่วน (CDC แดง / NO_TRADE / บังคับปิด) และใช้ LIMIT ในกรณีอื่น</p>
+<p><strong>วิธีส่งคำสั่งซื้อขาย:</strong> ตอนเข้าไม้ บอทจะตั้งราคาแบบ "รอราคาที่กำหนดพอดี" ก่อน ถ้ารอนานเกินไป
+แล้วยังไม่มีคนขายให้ที่ราคานั้น บอทจะเปลี่ยนไปซื้อด้วยราคาตลาดทันทีแทน เพื่อไม่ให้พลาดจังหวะ ส่วนตอนออกจากไม้
+แบบฉุกเฉิน (เช่น สัญญาณเปลี่ยนกะทันหันหรือต้องปิดบังคับ) จะใช้ราคาตลาดเสมอเพื่อความเร็ว กรณีอื่นๆ ใช้ราคาที่
+กำหนดไว้</p>
 
-<p>คู่ทองปัจจุบันเป็นแบบ <strong>CDC-pure</strong> (<span class="mono">disable_stop_loss: true</span>)
-จึงไม่มี Stop-Loss ฝั่ง Exchange — การออกจากโพซิชันขับเคลื่อนด้วยการกลับโซนเท่านั้น (zone-flip) และการคำนวณขนาดไม้
-ใช้ <span class="mono">position_pct</span> คงที่ของ Equity แทนระยะห่างจาก SL นอกจากนี้ CDC ยังเปิด Partial
-Take-Profit แบบ one-shot: <span class="mono">partial_tp_pct: 12.0</span>,
-<span class="mono">partial_tp_fraction: 0.5</span> — เอนจิ้นจะปิด 50% ของโพซิชันเมื่อกำไรถึง +12%
-บันทึกสถานะ <span class="mono">trade_states.partial_tp_taken</span> แล้วปล่อยส่วนที่เหลือให้ออกตาม CDC ต่อไป</p>
+<p>กลยุทธ์ทองคำตอนนี้<strong>ไม่มีจุดตัดขาดทุนแบบดั้งเดิม</strong> — การออกจากไม้ทั้งหมดขึ้นอยู่กับการเปลี่ยน
+สัญญาณเท่านั้น และขนาดไม้คำนวณจากสัดส่วนคงที่ของเงินทุน ไม่ใช่จากระยะห่างของจุดตัดขาดทุน นอกจากนี้ยังมีการ
+ทำกำไรบางส่วนก่อน: เมื่อกำไรถึง 12% บอทจะขายออกไป 50% ของโพซิชันก่อน แล้วปล่อยส่วนที่เหลือให้ออกตามสัญญาณ
+ปกติต่อไป</p>
 
 <div class="note">
-<strong>ประตูความปลอดภัยของ Router:</strong> คู่เทรดที่ <span class="mono">mode: live</span> และเปิด
-<span class="mono">regime_router_enabled: true</span> จะถูกบังคับกลับเป็น <span class="mono">sim</span> โดยอัตโนมัติ
-เว้นแต่จะมี <span class="mono">regime_router_live_confirmed: true</span> ด้วย — <strong>ห้ามพลิกค่านี้โดยไม่ผ่าน
-การอนุมัติจากผู้ดูแลระบบต่อคู่เทรดนั้นๆ โดยตรง</strong> ส่วน Regime ที่เป็น NO_TRADE
-(<span class="mono">PANIC_SELL</span>, <span class="mono">BEAR_BREAKDOWN</span>,
-<span class="mono">BEAR_TREND_STRONG</span>) จะปิดกั้นการ BUY ใหม่ทั้งหมด, คงการป้องกันของ Stop ไว้,
-รัด Trailing ให้แคบลงเหลือ 1 เท่าของ ATR และสามารถบังคับปิดโพซิชันได้หลังครบจำนวนแท่งที่กำหนด
-(<span class="mono">force_close_candles</span>)
+<strong>ระบบป้องกันสำคัญ:</strong> ถ้าคู่เทรดไหนตั้งเทรดจริงและเปิดให้ระบบเลือกกลยุทธ์อัตโนมัติตามสภาพตลาด
+แต่ยังไม่ได้รับการอนุมัติจากผู้ดูแลระบบ บอทจะดึงคู่นั้นกลับไปเป็น<strong>โหมดจำลองอัตโนมัติทันที</strong>
+เพื่อกันไม่ให้ฟีเจอร์ที่ยังไม่ผ่านการตรวจสอบไปทำงานกับเงินจริง ส่วนช่วงที่ตลาดอยู่ในโซนอันตราย (เช่น ตลาด
+กำลังตื่นตระหนกเทขาย) บอทจะไม่เปิดไม้ใหม่ คงจุดป้องกันเดิมไว้ รัดระยะป้องกันให้แคบลง และสามารถบังคับปิด
+โพซิชันได้ถ้าสถานการณ์อันตรายอยู่นานเกินไป
 </div>
 
 <h2 id="s1-4">1.4 สิ่งที่บอทนี้ทำ และไม่ทำ</h2>
 
 <h3>สิ่งที่บอททำ</h3>
 <ul>
-<li>ประเมินสัญญาณกลยุทธ์บนแท่งเทียนที่ตั้งค่าไว้</li>
-<li>เปิด/ปิดโพซิชันจริงบน Exchange หรือโพซิชันจำลอง</li>
-<li>รักษาการป้องกันด้วย Stop-Loss และเกตความเสี่ยงระดับ Local</li>
-<li>บันทึก State/Event สำหรับ Dashboard, Replay, ตรวจสอบ Incident, และ Telegram</li>
+<li>วิเคราะห์สัญญาณซื้อขายจากกราฟราคาตามที่ตั้งค่าไว้</li>
+<li>เปิด/ปิดไม้จริงบนตลาด หรือไม้จำลองสำหรับทดสอบ</li>
+<li>รักษาการป้องกันความเสี่ยงระดับพื้นฐานอยู่เสมอ</li>
+<li>บันทึกทุกเหตุการณ์ไว้ให้ดูย้อนหลังผ่านหน้าจอ, ตรวจสอบปัญหา, และ Telegram</li>
 </ul>
 
 <h3>สิ่งที่บอทไม่ทำ</h3>
 <ul>
-<li>ไม่รับประกันกำไร</li>
-<li>ไม่จัดการเงินในกระเป๋า OKX อื่นที่ไม่เกี่ยวข้องกับบัญชี Swap ที่ตั้งค่าไว้</li>
-<li>ไม่ทำให้ปลั๊กอินกลยุทธ์จากภายนอกปลอดภัยอัตโนมัติ เว้นแต่เปิด Sandbox check</li>
-<li>ไม่ทดแทนการตรวจสอบความเสี่ยง, Leverage, ค่าธรรมเนียม, Funding Rate, และกฎของ Exchange ด้วยตัวเองของผู้ใช้</li>
+<li>ไม่รับประกันว่าจะได้กำไร</li>
+<li>ไม่จัดการเงินในกระเป๋า OKX อื่นที่ไม่เกี่ยวกับบัญชีที่ตั้งค่าไว้สำหรับเทรด</li>
+<li>ไม่ได้การันตีว่ากลยุทธ์ที่เขียนโดยคนอื่นจะปลอดภัย 100% เว้นแต่จะเปิดระบบตรวจสอบโค้ดก่อนใช้งาน (ดูภาค 3)</li>
+<li>ไม่ทดแทนการตรวจสอบความเสี่ยง เลเวอเรจ ค่าธรรมเนียม และกฎของตลาดด้วยตัวเองของผู้ใช้</li>
 </ul>
 
 <div class="warn">
 <strong>คำเตือนสำหรับผู้ใช้ใหม่:</strong>
 <ol>
-<li>Repository นี้ตั้งค่าไว้สำหรับตลาด Live เดียวคือ OKX <span class="mono">XAUUSDT</span> USDT-settled
-perpetual swap (CCXT map เป็น <span class="mono">XAU/USDT:USDT</span>)</li>
-<li>การรันโหมดจำลอง (<span class="mono">python run_xauby.py --simulate</span>) ต้องใช้งานได้ก่อนเสมอ
-ก่อนพิจารณาออเดอร์ Live ใดๆ</li>
-<li>การเทรด Live ต้องมี "ประตู" 3 อย่างพร้อมกัน: flag <span class="mono">--live</span>,
-<span class="mono">LIVE_TRADING=true</span>, และคู่เทรดที่ Active ตั้ง <span class="mono">mode: live</span>
-ใน <span class="mono">coin_whitelist.json</span></li>
-<li>บอทอ่านเฉพาะบัญชี Trading/Swap ของ OKX ไม่ใช่ทุกกระเป๋าใน OKX — ถ้า Dashboard แสดงพอร์ต
-<span class="mono">0.00 USDT</span> ให้ตรวจสอบว่าเงินอยู่ในบัญชีที่ใช้เทรด USDT Swap จริง และ API Key
-มีสิทธิ์อ่าน/เทรดบัญชีนั้น</li>
-<li><strong>ห้ามเปิดสิทธิ์ Withdraw บน API Key เด็ดขาด</strong> บอทต้องการแค่สิทธิ์อ่านและเทรดเท่านั้น</li>
-<li>รันเอนจิ้นเพียง 1 instance ต่อ 1 runtime root — ถ้าต้องการหลายบัญชี ให้ใช้ค่า
-<span class="mono">XAUBY_HOME</span> หรือ <span class="mono">XAUBY_INSTANCE_ID</span> แยกกัน</li>
+<li>ตอนนี้ระบบตั้งค่าไว้สำหรับเทรดจริงคู่เดียวคือทองคำ (<span class="mono">XAUUSDT</span>) บน OKX เท่านั้น</li>
+<li>ต้องรันโหมดจำลองให้สำเร็จก่อนเสมอ ก่อนจะพิจารณาใช้เงินจริง</li>
+<li>การเทรดเงินจริงต้องเปิดเงื่อนไข 3 อย่างพร้อมกัน: ธงคำสั่ง, ตัวแปรยืนยัน, และตั้งคู่เทรดนั้นเป็นโหมดจริง</li>
+<li>บอทอ่านเฉพาะบัญชีที่ใช้เทรดจริงของ OKX เท่านั้น ไม่ใช่ทุกกระเป๋าใน OKX — ถ้าหน้าจอแสดงยอดเงิน 0.00
+ให้ตรวจสอบว่าเงินอยู่ในบัญชีที่ใช้เทรดจริง และ API Key มีสิทธิ์อ่าน/เทรดบัญชีนั้น</li>
+<li><strong>ห้ามเปิดสิทธิ์ถอนเงิน (Withdraw) บน API Key เด็ดขาด</strong> บอทต้องการแค่สิทธิ์อ่านและ
+เทรดเท่านั้น ไม่จำเป็นต้องถอนเงินได้</li>
+<li>รันบอทได้แค่ 1 ชุดต่อ 1 พื้นที่เก็บข้อมูลเท่านั้น ถ้าต้องการหลายบัญชี ต้องแยกพื้นที่เก็บข้อมูลออกจากกัน
+(ดูภาค 10)</li>
 </ol>
 </div>
 </div>
@@ -377,7 +352,8 @@ perpetual swap (CCXT map เป็น <span class="mono">XAU/USDT:USDT</span>)</
 <div class="chapter-kicker">ภาคที่ 2 — เริ่มต้นใช้งาน</div>
 <h1>2.1 การติดตั้ง</h1>
 
-<p>สิ่งที่ต้องมี: Python 3.12 ขึ้นไป, API Key ของ Exchange ที่ตั้งค่าไว้แล้ว, Telegram Bot (ไม่บังคับ)</p>
+<p>สิ่งที่ต้องมีก่อน: เครื่องที่ลง Python 3.12 ขึ้นไป, API Key ของตลาดที่จะใช้เทรด, และ Telegram Bot
+(ถ้าอยากรับแจ้งเตือน — ไม่บังคับ)</p>
 
 <pre>git clone https://github.com/iisara555/xAuby.git
 cd xAuby
@@ -393,272 +369,231 @@ python health_check.py</pre>
 
 <h2 id="s2-2">2.2 การตั้งค่า API Key ของ OKX</h2>
 
-<p>ก่อนเทรด Live ให้แก้ไข <span class="mono">.env</span> และใส่ Credential ของ OKX:</p>
+<p>ก่อนเทรดจริง ให้เปิดไฟล์ <span class="mono">.env</span> แล้วใส่ข้อมูลเชื่อมต่อของ OKX:</p>
 
 <pre>OKX_API_KEY=...
 OKX_API_SECRET=...
 OKX_API_PASSPHRASE=...
 LIVE_TRADING=true</pre>
 
-<p>OKX ต้องการทั้ง API Key, Secret, และ Passphrase (ตัวแปรใดตัวแปรหนึ่งจาก
-<span class="mono">OKX_API_PASSPHRASE</span>, <span class="mono">OKX_PASSWORD</span>, หรือ
-<span class="mono">OKX_API_PASSWORD</span>) — <strong>อย่าคอมมิตไฟล์ <span class="mono">.env</span> เด็ดขาด</strong></p>
+<p>OKX ต้องการทั้ง 3 อย่าง: API Key, Secret, และ Passphrase (รหัสผ่านเพิ่มเติมสำหรับ API)
+— <strong>ห้ามอัปโหลดไฟล์ <span class="mono">.env</span> ขึ้น Git หรือที่สาธารณะเด็ดขาด</strong>
+เพราะเป็นกุญแจเข้าบัญชีเทรดของคุณ</p>
 
-<p>ตรวจสอบคู่เทรดและการตั้งค่า Exchange ก่อนใช้งานจริง:</p>
+<p>ก่อนใช้งานจริง ให้ตรวจสอบคู่เทรดและการเชื่อมต่อก่อน:</p>
 <pre>python scripts/evaluate_okx_xau_migration.py --config configs/okx_xau_paper.yaml --whitelist configs/okx_xau_whitelist.json
 DEFAULT_SYMBOL=XAUUSDT python health_check.py</pre>
 
 <h2 id="s2-3">2.3 รันโหมดจำลองก่อนเสมอ</h2>
 
-<p>โหมดเริ่มต้นของระบบคือ <strong>Simulation</strong> เสมอ ไม่ว่าจะตั้งค่าอะไรผิดพลาด ระบบจะเอนเอียงไปทางปลอดภัย
-การสลับไป Live ต้องตั้งค่าอย่างชัดเจนตามหัวข้อ 2.5</p>
+<p>ระบบเริ่มต้นที่ <strong>โหมดจำลอง</strong> เสมอ ไม่ว่าจะตั้งค่าอะไรผิดพลาด ระบบจะเอนเอียงไปทางปลอดภัย
+การจะสลับไปเทรดจริงต้องตั้งค่าอย่างชัดเจนตามหัวข้อ 2.5</p>
 
-<p>Entry point อื่นๆ ที่ใช้ได้:</p>
+<p>วิธีเปิดใช้งานอื่นๆ ที่มีให้เลือก:</p>
 <table>
 <tr><th>คำสั่ง</th><th>ทำอะไร</th></tr>
-<tr><td><span class="mono">python run_xauby.py --simulate</span> / <span class="mono">--live</span></td><td>เริ่มเอนจิ้นเทรดโดยตรง</td></tr>
-<tr><td><span class="mono">python launcher.py</span></td><td>เมนู Launcher แบบโต้ตอบ (เอนจิ้น + เมนู TUI)</td></tr>
-<tr><td><span class="mono">xauby</span> / <span class="mono">xauby --sim</span> / <span class="mono">xauby --live</span></td><td>Console script ที่ติดตั้งแล้ว (<span class="mono">xauby.cli:main</span>)</td></tr>
-<tr><td><span class="mono">xauby restart [--live]</span></td><td>รีสตาร์ทแบบควบคุม (สาย Live รัน preflight ผ่านสคริปต์เฉพาะ)</td></tr>
-<tr><td><span class="mono">xauby update</span></td><td>ดึงโค้ดจาก GitHub แล้วรีสตาร์ท</td></tr>
-<tr><td><span class="mono">python -m xauby.ui.textual_tui.app</span></td><td>เปิด TUI แบบเดี่ยว</td></tr>
+<tr><td><span class="mono">python run_xauby.py --simulate</span> / <span class="mono">--live</span></td><td>เริ่มเอนจิ้นเทรดโดยตรง (จำลอง / เทรดจริง)</td></tr>
+<tr><td><span class="mono">python launcher.py</span></td><td>เปิดเมนูแบบเลือกได้ (มีทั้งเอนจิ้นและหน้าจอ)</td></tr>
+<tr><td><span class="mono">xauby</span> / <span class="mono">xauby --sim</span> / <span class="mono">xauby --live</span></td><td>คำสั่งย่อหลังติดตั้งเสร็จแล้ว</td></tr>
+<tr><td><span class="mono">xauby restart [--live]</span></td><td>รีสตาร์ทแบบมีการตรวจสอบก่อน</td></tr>
+<tr><td><span class="mono">xauby update</span></td><td>ดึงโค้ดล่าสุดจาก GitHub แล้วรีสตาร์ท</td></tr>
+<tr><td><span class="mono">python -m xauby.ui.textual_tui.app</span></td><td>เปิดหน้าจอ Dashboard แบบเดี่ยว</td></tr>
 <tr><td><span class="mono">python health_check.py</span></td><td>ตรวจสุขภาพระบบครั้งเดียว</td></tr>
-<tr><td><span class="mono">bin/xauby</span></td><td>Bash wrapper ที่ cd เข้าโฟลเดอร์โปรเจกต์และเรียก <span class="mono">venv/bin/python</span></td></tr>
 </table>
 
 <h2 id="s2-4">2.4 คำสั่งใช้งานที่พบบ่อย</h2>
 
-<p>คำสั่งแนะนำสำหรับเริ่ม Live หลังผ่านการจำลองและ Health Check แล้ว:</p>
+<p>คำสั่งแนะนำสำหรับเริ่มเทรดจริง หลังผ่านการจำลองและตรวจสุขภาพระบบแล้ว:</p>
 <pre>env -u DEFAULT_SYMBOL XAUBY_DEFAULT_SYMBOL=XAUUSDT XAUBY_FOCUS_SYMBOL=XAUUSDT \
   SIMULATE_ONLY=false BOT_READ_ONLY=false \
   ./venv/bin/python run_xauby.py --live --pair XAUUSDT</pre>
 
-<p>WebUI แบบอ่านอย่างเดียวสำหรับดูจากมือถือ/เบราว์เซอร์:</p>
+<p>เปิดหน้าจอดูจากมือถือ/เบราว์เซอร์แบบดูอย่างเดียว:</p>
 <pre>./scripts/start_webui.sh</pre>
 
 <p>คำสั่งที่ใช้บ่อยระหว่างดูแลระบบ:</p>
-<pre>xauby restart        # รีสตาร์ทเอนจิ้น; โหมด Live รัน preflight แบบควบคุม
-xauby restart --live # บังคับ restart แบบควบคุมสำหรับ Live
-xauby update          # ดึง origin/main จาก GitHub แล้วรีสตาร์ท</pre>
+<pre>xauby restart        # รีสตาร์ทเอนจิ้น มีการตรวจสอบความปลอดภัยก่อน
+xauby restart --live # บังคับรีสตาร์ทแบบมีการตรวจสอบสำหรับเทรดจริง
+xauby update          # ดึงโค้ดล่าสุดจาก GitHub แล้วรีสตาร์ท</pre>
 
-<p><span class="mono">xauby update</span> เป็นทางลัดของคำสั่ง:</p>
-<pre>scripts/deploy_from_github.sh --restart --branch=main</pre>
-
-<p>เส้นทาง Controlled Restart จะยอมรับโพซิชันที่บอทติดตามอยู่แล้ว (รวมออเดอร์ Stop-Loss ที่ตรงกัน)
-แต่จะปิดกั้นเมื่อพบยอดคงเหลือที่ไม่รู้จักหรือออเดอร์เปิดที่ไม่ถูกติดตาม</p>
+<p>เส้นทางรีสตาร์ทแบบตรวจสอบจะยอมรับโพซิชันที่บอทติดตามอยู่แล้ว แต่จะปิดกั้นทันทีถ้าพบยอดเงินหรือคำสั่ง
+ที่ไม่รู้จัก — ป้องกันไม่ให้บอทไปยุ่งกับอะไรที่ตัวเองไม่ได้เปิดไว้</p>
 
 <h2 id="s2-5">2.5 เช็กลิสต์ก่อนเปิดใช้งานจริง (Live)</h2>
 
-<p>การเทรด Live ต้องผ่านทุกเงื่อนไขพร้อมกัน:</p>
+<p>การเทรดจริงต้องผ่านทุกเงื่อนไขพร้อมกัน ขาดข้อใดข้อหนึ่งบอทจะไม่ยอมส่งคำสั่งซื้อขายจริง:</p>
 <ol>
-<li>flag <span class="mono">--live</span> ตอนรันคำสั่ง</li>
-<li>ตัวแปรแวดล้อม <span class="mono">LIVE_TRADING=true</span></li>
-<li><span class="mono">simulate_only: false</span> ใน YAML</li>
-<li>คู่เทรดนั้นตั้ง <span class="mono">mode: live</span> ใน whitelist</li>
+<li>ใส่ธงคำสั่งบอกให้เทรดจริงตอนรันคำสั่ง</li>
+<li>ตั้งตัวแปรแวดล้อมยืนยันการเทรดจริง</li>
+<li>ค่าตั้งค่าในไฟล์ YAML ต้องไม่ใช่โหมดจำลอง</li>
+<li>คู่เทรดนั้นต้องตั้งเป็นโหมดเทรดจริงในไฟล์รายชื่อคู่เทรด</li>
 </ol>
 
 <table>
 <tr><th>โหมด</th><th>วิธีเปิด</th><th>พฤติกรรม</th></tr>
-<tr><td>Simulation</td><td><span class="mono">--simulate</span>, <span class="mono">simulate_only: true</span>, หรือ per-asset <span class="mono">mode: sim</span></td><td>ไม่มีออเดอร์จริง; ใช้บัญชี SimBroker เมื่อเปิดใช้งาน</td></tr>
-<tr><td>Live</td><td><span class="mono">--live</span> + <span class="mono">LIVE_TRADING=true</span> + <span class="mono">simulate_only: false</span> + per-asset <span class="mono">mode: live</span></td><td>ออเดอร์จริงบน Exchange</td></tr>
-<tr><td>Read-only</td><td><span class="mono">--read-only</span> หรือ <span class="mono">read_only: true</span></td><td>ประมวลสัญญาณอย่างเดียว ไม่ส่งออเดอร์</td></tr>
-<tr><td>Semi-auto</td><td><span class="mono">trading.mode: semi_auto</span></td><td>รอยืนยันผ่าน Telegram ก่อน BUY</td></tr>
-<tr><td>Telegram Pause</td><td><span class="mono">/pause</span> แล้วกด Confirm PAUSE</td><td>บล็อกการ BUY ใหม่ทั้งระบบ; <span class="mono">/resume</span> ปลดล็อก</td></tr>
+<tr><td>จำลอง</td><td>ค่าเริ่มต้น หรือระบุแยกต่อคู่เทรด</td><td>ไม่มีคำสั่งซื้อขายจริง เหมือนเล่นเกมจำลอง</td></tr>
+<tr><td>เทรดจริง</td><td>ต้องเปิดครบ 4 เงื่อนไขข้างบน</td><td>ส่งคำสั่งซื้อขายจริงบนตลาด</td></tr>
+<tr><td>ดูอย่างเดียว</td><td>ตั้งค่าเฉพาะ</td><td>ประมวลสัญญาณอย่างเดียว ไม่ส่งคำสั่งใดๆ</td></tr>
+<tr><td>ขอยืนยันก่อนซื้อ</td><td>ตั้งค่าโหมดกึ่งอัตโนมัติ</td><td>รอกดยืนยันผ่าน Telegram ก่อนซื้อทุกครั้ง</td></tr>
+<tr><td>หยุดชั่วคราวผ่าน Telegram</td><td>พิมพ์ <span class="mono">/pause</span> แล้วกดยืนยัน</td><td>บล็อกการซื้อใหม่ทั้งระบบ; <span class="mono">/resume</span> เพื่อกลับมาทำงานต่อ</td></tr>
 </table>
 
 <div class="note">
-รายการเช็กลิสต์ก่อน Live แบบละเอียดทั้งหมด (รวมทั้งเรื่อง Risk, Replay Validation, Regime Router
-Live-confirm) อยู่ที่หัวข้อ <strong>11.4</strong> ท้ายเล่ม — ควรอ่านให้ครบก่อนเปิดเงินจริง
+รายการเช็กลิสต์ก่อนเทรดจริงแบบละเอียดที่สุด อยู่ที่หัวข้อ <strong>11.4</strong> ท้ายเล่ม — ควรอ่านให้ครบ
+ก่อนเปิดเงินจริงเสมอ
 </div>
 </div>
 
 <!-- ===================== PART 3 ===================== -->
 <div class="chapter" id="s3-1">
-<div class="chapter-kicker">ภาคที่ 3 — สถาปัตยกรรมระบบ</div>
-<h1>3.1 ภาพรวมโครงสร้างเลเยอร์</h1>
+<div class="chapter-kicker">ภาคที่ 3 — เบื้องหลังการทำงานของระบบ</div>
+<h1>3.1 ภาพรวมง่ายๆ ว่าระบบประกอบด้วยอะไรบ้าง</h1>
 
-<p>xAuby แบ่งเป็น 5 เลเยอร์ที่ทำงานร่วมกัน:</p>
+<div class="tip">
+ภาคนี้อธิบายว่าเบื้องหลังบอททำงานอย่างไร เหมาะสำหรับคนที่อยากเข้าใจลึกขึ้น ถ้าคุณแค่อยากใช้งานบอทให้เป็น
+สามารถข้ามไปอ่านภาคที่ 4 (การตั้งค่า) ต่อได้เลย แล้วค่อยกลับมาอ่านทีหลัง
+</div>
+
+<p>xAuby แบ่งการทำงานออกเป็น 5 ส่วนที่คุยกัน:</p>
 
 <table>
-<tr><th>เลเยอร์</th><th>ส่วนประกอบหลัก</th><th>บทบาท</th></tr>
-<tr><td>Operator</td><td><span class="mono">launcher.py</span>, <span class="mono">run_xauby.py</span>, Textual TUI, Telegram</td><td>จุดเริ่มต้นและควบคุมจากมนุษย์</td></tr>
-<tr><td>Core Runtime</td><td><span class="mono">LiteTradingEngine</span>, <span class="mono">PairRegistry</span>, <span class="mono">SymbolContext</span>, <span class="mono">RegimeRouter</span>, <span class="mono">StrategyRunner</span>, Risk/PreTradeGate, Order Executor/SimBroker</td><td>แกนกลางของระบบเทรด</td></tr>
-<tr><td>Strategy Plane</td><td>Strategy plugins, Indicator plugins, Strategy/Portfolio Resolver</td><td>ตรรกะสัญญาณและการแสดงผลกราฟ</td></tr>
-<tr><td>Data Plane</td><td>CCXT REST client, WebSocket, LiteDB/SQLite</td><td>ดึงข้อมูลตลาดและเก็บ state</td></tr>
-<tr><td>Observability</td><td>EventEmitter, JSONL events, State JSON, HealthMonitor</td><td>บันทึกเหตุการณ์เพื่อ Replay/ตรวจสอบ/แสดงผล</td></tr>
+<tr><th>ส่วน</th><th>ทำหน้าที่อะไร</th></tr>
+<tr><td>ส่วนควบคุมจากมนุษย์</td><td>คำสั่งเทอร์มินัล หน้าจอ Dashboard และ Telegram — จุดที่คนสั่งงานบอท</td></tr>
+<tr><td>แกนกลางของระบบ</td><td>ตัดสินใจซื้อขายจริง จัดการความเสี่ยง และส่งคำสั่งซื้อขาย</td></tr>
+<tr><td>ส่วนกลยุทธ์</td><td>คำนวณสัญญาณซื้อขายและข้อมูลสำหรับวาดกราฟ</td></tr>
+<tr><td>ส่วนดึงข้อมูล</td><td>ดึงราคาจากตลาดและเก็บข้อมูลลงฐานข้อมูล</td></tr>
+<tr><td>ส่วนบันทึกเหตุการณ์</td><td>บันทึกทุกอย่างที่เกิดขึ้น ไว้ตรวจสอบย้อนหลังและแสดงผลบนหน้าจอ</td></tr>
 </table>
 
-<p>ลำดับการไหลของข้อมูล: Launcher/CLI เรียก Engine → Engine ดึง Pair จาก Registry → สร้าง SymbolContext
-ต่อคู่เทรด → ผ่าน RegimeRouter (ถ้าเปิดใช้) → StrategyRunner ประเมินสัญญาณ → ผ่าน Risk/PreTradeGate
-→ ส่งออเดอร์จริงหรือจำลอง → บันทึกลง DB และ Event → อัปเดต State JSON ให้ TUI/WebUI อ่าน</p>
+<p>ลำดับการทำงานคร่าวๆ: มนุษย์สั่งเปิดบอท → บอทดึงรายชื่อคู่เทรดที่ตั้งไว้ → ประมวลผลแต่ละคู่แยกกัน →
+(ถ้าเปิดใช้) เลือกกลยุทธ์อัตโนมัติตามสภาพตลาด → คำนวณสัญญาณซื้อขาย → เช็คเงื่อนไขความเสี่ยง → ส่งคำสั่ง
+ซื้อขายจริงหรือจำลอง → บันทึกทุกอย่างลงฐานข้อมูล → อัปเดตหน้าจอให้ผู้ใช้เห็นผลล่าสุด</p>
 
-<h2 id="s3-2">3.2 หนึ่ง Tick ของเอนจิ้นทำอะไรบ้าง</h2>
+<h2 id="s3-2">3.2 ในแต่ละรอบทำงาน บอททำอะไรบ้าง</h2>
 
-<p>เอกสารนี้อธิบายการทำงานหนึ่ง "Tick" ของ <span class="mono">LiteTradingEngine</span> สำหรับหนึ่งคู่เทรด
-โดย Tick ชั้นนอกจะวนลูปทุกคู่เทรดที่ Active จาก PairRegistry</p>
+<p>บอททำงานเป็นรอบๆ เรียกว่า "Tick" (เช่น ทุก 60 วินาทีเช็ครอบหนึ่ง) ในแต่ละรอบ บอทจะทำตามลำดับนี้กับ
+ทุกคู่เทรดที่เปิดใช้งานอยู่:</p>
 
 <h3>ลำดับขั้นตอนต่อคู่เทรด</h3>
 <ol>
-<li>Sync แท่งเทียนผ่าน REST</li>
-<li>ตรวจสอบว่าราคาจาก WebSocket เก่าเกินไปหรือไม่ — ถ้าใช่ ใช้ REST ticker แทน, ถ้าไม่ ใช้ค่าจาก WS</li>
-<li>อ่านสถานะการเทรดปัจจุบัน (Trade State)</li>
-<li>Resolve การตั้งค่ากลยุทธ์และพอร์ตของคู่เทรดนั้น</li>
-<li>ถ้า RegimeRouter Active สำหรับคู่นี้: จำแนก Regime + Debounce + เลือกเส้นทาง; ถ้าไม่: ใช้กลยุทธ์ที่ตั้งค่าไว้ตรงๆ</li>
-<li>ถ้า Regime เป็น NO_TRADE: บล็อกการ BUY ใหม่และรัด Protection ให้แน่นขึ้น; ถ้าไม่: ให้ StrategyRunner ประเมินสัญญาณ</li>
-<li>จัดการโพซิชันเดิม / recovery / บังคับปิด (ถ้าอยู่ในเงื่อนไข NO_TRADE)</li>
-<li>ตรวจ Macro Guard ก่อนอนุญาต BUY — ถ้าบล็อก จะ HOLD พร้อมแจ้งเตือน</li>
-<li>ตามสถานะ+Action: <span class="mono">idle+BUY</span> → เปิดไม้ / คิว semi-auto,
-<span class="mono">bought+SELL</span> → ปิดไม้,
-<span class="mono">bought+HOLD</span> → ประมวล Partial TP / Trailing SL / Breakeven</li>
-<li>บันทึก Trade State + Event ทั้งหมด</li>
-<li>อัปเดต State JSON ให้ TUI อ่านต่อ</li>
+<li>ดึงแท่งเทียนราคาล่าสุดจากตลาด</li>
+<li>เช็คว่าราคาจากช่องทางเร็ว (WebSocket) ยังสดอยู่ไหม ถ้าเก่าเกินไปจะขอราคาจากช่องทางสำรองแทน</li>
+<li>เช็คว่าตอนนี้ถือโพซิชันอยู่หรือเปล่า</li>
+<li>โหลดค่าตั้งค่ากลยุทธ์และเงินทุนของคู่เทรดนั้น</li>
+<li>(ถ้าเปิดใช้) วิเคราะห์สภาพตลาดแล้วเลือกกลยุทธ์ที่เหมาะสมให้อัตโนมัติ</li>
+<li>ถ้าสภาพตลาดอยู่ในโซนอันตราย จะไม่เปิดไม้ใหม่ และรัดการป้องกันให้แน่นขึ้น</li>
+<li>ถ้าไม่ใช่โซนอันตราย ให้กลยุทธ์คำนวณสัญญาณซื้อขายตามปกติ</li>
+<li>เช็คเงื่อนไขความเสี่ยงเรื่องข่าว/สภาวะตลาดผิดปกติก่อนอนุญาตให้ซื้อ</li>
+<li>ทำตามสัญญาณ: เปิดไม้ใหม่ / ปิดไม้ / หรือถือต่อพร้อมจัดการทำกำไรบางส่วนและเลื่อนจุดป้องกัน</li>
+<li>บันทึกทุกอย่างและอัปเดตหน้าจอ</li>
 </ol>
 
-<h3>เส้นทางเข้าไม้ (Entry Path)</h3>
+<h3>ตอนจะเปิดไม้ใหม่</h3>
 <ol>
-<li>Protection ตรวจจำนวนไม้ต่อวัน, % ขาดทุนต่อวัน, จำนวนแพ้ติดต่อกัน, และจำนวนโพซิชันเปิดสูงสุด</li>
-<li>PreTradeGate ตรวจ Min Notional และ Slippage เทียบราคาสัญญาณ</li>
-<li>คำนวณขนาดไม้จาก Config พอร์ตของคู่เทรดนั้น พร้อมเพดาน Deploy ระดับ Global</li>
-<li>เส้นทางออเดอร์ใช้ Live Executor หรือ SimBroker ตามโหมดของคู่เทรดนั้น</li>
-<li>วาง Stop-Loss บน Exchange (โหมด Live) หรือติดตาม/จำลองใน Local (โหมด Sim)</li>
-<li>ส่งรายงานผ่าน Telegram พร้อม Tag สัญลักษณ์และโหมด</li>
+<li>เช็คว่าวันนี้เปิดไม้เกินโควตาหรือขาดทุนเกินเกณฑ์ที่ตั้งไว้หรือยัง</li>
+<li>เช็คว่าคำสั่งซื้อมีขนาดเล็กเกินไป หรือราคาต่างจากที่ตั้งใจมากเกินไปหรือไม่</li>
+<li>คำนวณขนาดไม้จากเงินทุนและเปอร์เซ็นต์ความเสี่ยงที่ตั้งไว้</li>
+<li>ส่งคำสั่งซื้อขายจริงหรือจำลอง แล้วแต่โหมดของคู่เทรดนั้น</li>
+<li>ตั้งจุดป้องกันความเสี่ยง (ถ้ากลยุทธ์นั้นใช้)</li>
+<li>แจ้งเตือนผ่าน Telegram ว่าซื้อ/ขายสำเร็จแล้ว</li>
 </ol>
 
-<h3>เส้นทางออกไม้ (Exit Path)</h3>
-<p>ทริกเกอร์การออกจากโพซิชันมีได้จาก: สัญญาณ SELL จากกลยุทธ์, Partial Take-Profit แบบ one-shot,
-Stop-Loss ที่ Local ยืนยันครบจำนวน tick, การตรวจพบ SL Fill บน Exchange, RegimeRouter บังคับปิดเมื่อ NO_TRADE
-ครบจำนวนแท่ง, หรือ <span class="mono">max_hold_hours</span>/ตาราง Minimal ROI (ถ้าตั้งค่าไว้)
-หากการขายล้มเหลว ระบบจะพยายามกู้คืน Stop-Loss และส่ง Telegram แจ้งเตือนระดับวิกฤตถ้ากู้คืนไม่สำเร็จ</p>
+<h3>ตอนจะปิดไม้</h3>
+<p>สาเหตุที่ทำให้บอทปิดไม้มีได้หลายแบบ: สัญญาณขายจากกลยุทธ์, การทำกำไรบางส่วนก่อนตามเกณฑ์ที่ตั้งไว้,
+จุดตัดขาดทุนถูกกระตุ้นและยืนยันซ้ำแล้ว, ตรวจพบว่าคำสั่งตัดขาดทุนถูกทำงานแล้วบนตลาด, ระบบบังคับปิดเมื่อ
+ตลาดอยู่ในโซนอันตรายนานเกินไป หรือถือครองนานเกินเวลาที่กำหนด หากการขายล้มเหลว ระบบจะพยายามตั้งจุดป้องกัน
+ใหม่ และส่ง Telegram แจ้งเตือนระดับวิกฤตถ้าตั้งใหม่ไม่สำเร็จ</p>
 
-<h3>เส้นทาง Partial Take-Profit</h3>
-<p>Partial TP จะทำงาน<strong>หลัง</strong>ที่ pipeline การออกไม้เต็มมีโอกาสขายก่อนเสมอ — ถ้า Tick เดียวกัน
-เกิด Full Exit ด้วย Full Exit จะชนะ มิฉะนั้น สำหรับสถานะ <span class="mono">bought</span> ที่ยังไม่เคยเก็บ Partial TP
-เอนจิ้นจะเทียบราคา Mark กับเกณฑ์ที่ตั้งจากราคาเข้า:</p>
+<h3>การทำกำไรบางส่วนก่อน</h3>
+<p>ฟีเจอร์นี้จะทำงาน<strong>หลัง</strong>ที่ระบบเช็คแล้วว่าไม่ได้มีสัญญาณปิดไม้เต็มจำนวนในรอบเดียวกัน (ถ้ามี
+สัญญาณปิดเต็ม สัญญาณนั้นจะทำงานก่อนเสมอ) เมื่อราคาปัจจุบันดีกว่าราคาที่เข้าไม้ถึงเปอร์เซ็นต์ที่ตั้งไว้
+บอทจะขายบางส่วนออกไปทำกำไร ปรับขนาดจุดป้องกันให้ตรงกับจำนวนที่เหลือ แล้วปล่อยส่วนที่เหลือให้ออกตามสัญญาณ
+ปกติต่อไป</p>
+
+<h3>การส่งมอบกลยุทธ์อย่างปลอดภัย</h3>
+<p>เปรียบเหมือนเปลี่ยนคนขับรถกลางทาง — ถ้าระบบเปลี่ยนกลยุทธ์ขณะที่มีโพซิชันเปิดอยู่ กลยุทธ์เดิมจะยังดูแล
+โพซิชันนั้นต่อไปจนกว่าจะปิด กลยุทธ์ใหม่จะยังไม่เข้ามายุ่งจนกว่าจะไม่มีไม้เปิดค้างอยู่ ป้องกันความสับสนว่า
+ใครเป็นคนดูแลไม้ไหน</p>
+
+<h3>ช่วงที่ตลาดอยู่ในโซนอันตราย</h3>
+<p>เมื่อสภาพตลาดถูกจัดว่าอันตราย บอทจะ: บล็อกการเปิดไม้ใหม่ทั้งหมด, คงจุดป้องกันเดิมของไม้ที่ถืออยู่ไว้,
+รัดระยะป้องกันให้แคบลง, รอจนกว่าตลาดจะกลับมาเทรดได้ปกติสักพักก่อนจะเปิดไม้ใหม่อีกครั้ง, และสามารถบังคับ
+ปิดไม้ได้ถ้าสถานการณ์อันตรายอยู่นานเกินไป</p>
+
+<h3>การเทรดขาลง (Short)</h3>
+<p>กลยุทธ์ที่รองรับขาลงจะส่งสัญญาณ "เปิดขาลง" / "ปิดขาลง" แยกจากสัญญาณซื้อ/ขายปกติ จุดตัดขาดทุนของฝั่งขาลง
+จะอยู่เหนือราคาที่เข้าไม้ (ตรงข้ามกับฝั่งขาขึ้น) ระบบจะเช็คโพซิชันจริงบนตลาดเทียบกับที่บอทบันทึกไว้เสมอ
+และจะหยุดเทรดทันทีถ้าพบว่าไม่ตรงกัน — ป้องกันไม่ให้บอทงงว่าตัวเองถือโพซิชันอะไรอยู่</p>
+
+<h2 id="s3-3">3.3 ถ้ามีหลายคู่เทรด แต่ละคู่แยกกันอย่างไร</h2>
+
+<p>ระบบดึงรายชื่อคู่เทรดที่จะทำงานจากไฟล์ตั้งค่า ถ้าเปิดโหมด "รายชื่อคู่เทรดเป็นความจริงหนึ่งเดียว"
+ไฟล์นี้จะเป็นตัวกำหนดทุกอย่าง และถ้าเปิดโหมด "โหลดค่าใหม่อัตโนมัติ" ระบบจะเช็คไฟล์นี้เป็นระยะ พอมีการแก้ไข
+จะโหลดค่าคู่เทรดใหม่โดยไม่ต้องรีสตาร์ทบอทเอง</p>
+
+<p>แต่ละคู่เทรดที่เปิดใช้งานจะมีข้อมูลของตัวเองแยกกันโดยสมบูรณ์ ได้แก่:</p>
 <ul>
-<li>LONG: <span class="mono">mark ≥ entry × (1 + partial_tp_pct / 100)</span></li>
-<li>SHORT: <span class="mono">mark ≤ entry × (1 − partial_tp_pct / 100)</span></li>
+<li>ราคาล่าสุดของคู่นั้น</li>
+<li>กลยุทธ์ที่กำลังใช้อยู่ (และเป้าหมายถ้ากำลังจะเปลี่ยน)</li>
+<li>สภาพตลาดล่าสุดของคู่นั้น</li>
+<li>โหมดการทำงาน (จำลองหรือเทรดจริง) ของคู่นั้น</li>
+<li>สถานะรอยืนยัน (ถ้าเปิดโหมดขอยืนยันก่อนซื้อ)</li>
+<li>ข้อมูลสัญญาณล่าสุดสำหรับแสดงบนหน้าจอและ Telegram</li>
 </ul>
-<p>เมื่อถึงเกณฑ์ <span class="mono">execute_partial_tp()</span> จะปิดสัดส่วนที่ตั้งไว้ผ่าน Broker Abstraction,
-ปรับขนาด Stop-Loss ฝั่ง Exchange (ถ้ามี) ให้ตรงกับจำนวนที่เหลือ, ตั้ง <span class="mono">partial_tp_taken=true</span>,
-ส่ง Event <span class="mono">partial_tp_executed</span> แล้วปล่อยส่วนที่เหลือให้ออกตามกลยุทธ์/CDC ต่อไปตามปกติ</p>
+<p>คู่เทรดถูกแยกจากกันในระดับกลยุทธ์และการประมวลผล แต่เงินทุนในพอร์ตและเงื่อนไขความเสี่ยงระดับรวม
+(เช่น ขาดทุนสูงสุดต่อวัน) ยังใช้ร่วมกันโดยตั้งใจ</p>
 
-<h3>การส่งมอบกลยุทธ์ (Strategy Handoff)</h3>
-<p>เมื่อ RegimeRouter เปลี่ยนกลยุทธ์ขณะมีโพซิชันเปิดอยู่ ระบบออกแบบให้ปลอดภัยเสมอ:</p>
-<ul>
-<li>โพซิชันเดิมยังคงเป็นของกลยุทธ์เก่าจนกว่าจะปิด</li>
-<li>ไม้ใหม่จะถูกบล็อกหรือรอจนกว่า Handoff จะเสร็จสมบูรณ์</li>
-<li>Handoff จะเสร็จสมบูรณ์ก็ต่อเมื่อโพซิชันปิดแล้วเท่านั้น</li>
-<li>เอนจิ้นส่ง Event สำหรับ Handoff เพื่อการตรวจสอบย้อนหลัง</li>
-</ul>
-<p>สิ่งนี้ป้องกันไม่ให้กลยุทธ์ใหม่มาบริหารการออกของโพซิชันที่ตัวเองไม่ได้เป็นคนเปิด</p>
-
-<h3>การจัดการ NO_TRADE</h3>
-<p>สำหรับ Regime ที่แม็พไปเป็น <span class="mono">None</span>: บล็อกการ BUY ใหม่ทั้งหมด, คง Stop Protection
-เดิมไว้, รัด Trailing Stop ให้แคบลงเหลือ 1 เท่า ATR (ถ้ามี), ต้องผ่านแท่งที่เทรดได้ครบตาม
-<span class="mono">regime_router.recovery_candles</span> ก่อนจะกลับมาเทรดได้ปกติ, และสามารถบังคับปิดได้หลังครบ
-<span class="mono">regime_router.force_close_candles</span> แท่งที่เป็น NO_TRADE ติดต่อกัน
-ปัจจุบัน Regime ที่เป็น NO_TRADE คือ <span class="mono">PANIC_SELL</span>, <span class="mono">BEAR_BREAKDOWN</span>,
-และ <span class="mono">BEAR_TREND_STRONG</span></p>
-
-<h3>การเทรด Short</h3>
-<p>กลยุทธ์ที่รองรับ Short จะส่งสัญญาณ <span class="mono">OPEN SHORT</span> / <span class="mono">CLOSE SHORT</span>
-แทนที่จะยัดเข้าไปใน BUY/SELL บน USDT Perpetual การเปิด Short จะแม็พเป็น SELL และการปิดแม็พเป็น BUY แบบ
-Reduce-only Stop-Loss จะอยู่เหนือราคาเข้า และ Fixed Take-Profit จะอยู่ต่ำกว่าราคาเข้า การกระทบยอดโพซิชัน
-(Reconciliation) ใช้ Endpoint โพซิชันของ Exchange โดยตรง (ไม่ใช่ยอดคงเหลือแบบ Spot) และจะบล็อกการเทรดถ้าพบ
-โพซิชันกำพร้าหรือฝั่งไม่ตรงกัน</p>
-
-<h2 id="s3-3">3.3 PairRegistry และ SymbolContext</h2>
-
-<p><span class="mono">PairRegistry</span> รวมข้อมูลจาก 3 แหล่ง: (1) สินทรัพย์ใน
-<span class="mono">coin_whitelist.json</span> (กลยุทธ์, โหมด, Timeframe ต่อเหรียญ), (2)
-<span class="mono">data.pairs</span> ใน YAML เมื่อจำเป็นต้องใช้รายชื่อแบบเก่า/ชัดเจน, และ (3)
-<span class="mono">DEFAULT_SYMBOL</span> จาก environment (ถ้ามี) เมื่อ
-<span class="mono">architecture.whitelist_strict: true</span> Whitelist จะเป็นแหล่งความจริงเดียว
-และเมื่อ <span class="mono">hot_reload_enabled: true</span> ระบบจะ poll mtime ของไฟล์ทุก
-<span class="mono">reload_interval_seconds</span> วินาที เมื่อไฟล์เปลี่ยน เอนจิ้นจะ re-init
-SymbolContext และรีเฟรช WebSocket subscription ใหม่</p>
-
-<p>แต่ละคู่เทรดที่ Active จะได้ <span class="mono">SymbolContext</span> ของตัวเอง ประกอบด้วย:</p>
-<ul>
-<li>Snapshot ราคาจาก WebSocket พร้อม REST fallback</li>
-<li>กลยุทธ์ปัจจุบันและเป้าหมาย Handoff (ถ้ามี)</li>
-<li>Regime ปัจจุบันและ Snapshot ล่าสุด</li>
-<li>โหมดการทำงานต่อคู่เทรด (<span class="mono">sim</span> หรือ <span class="mono">live</span>)</li>
-<li>สถานะรอยืนยันของ Semi-auto</li>
-<li>Metadata สัญญาณล่าสุดสำหรับ TUI และ Telegram</li>
-</ul>
-<p>คู่เทรดถูกแยกจากกันในระดับ Strategy/Runner/Context แต่เงินทุนพอร์ตและ Guard ระดับ Global ยังใช้ร่วมกันโดยเจตนา</p>
-
-<h2 id="s3-4">3.4 กฎการพึ่งพาของระบบ (Dependency Rules)</h2>
+<h2 id="s3-4">3.4 กฎพื้นฐานที่ระบบยึดถือเสมอ</h2>
 
 <table>
 <tr><th>กฎ</th><th>เหตุผล</th></tr>
-<tr><td><span class="mono">observability</span> ห้าม import <span class="mono">engine</span></td><td>Replay และ Health ต้องไม่ผูกกับเอนจิ้น</td></tr>
-<tr><td>TUI อ่านอย่างเดียว (<span class="mono">LiteDB(readonly=True)</span>)</td><td>หน้าจอต้องไม่บล็อกหรือแก้ไขข้อมูลการเทรด</td></tr>
-<tr><td>Secret อยู่ใน <span class="mono">.env</span> เท่านั้น</td><td><span class="mono">bot_config.yaml</span> คอมมิตได้ปลอดภัยเพราะไม่มีคีย์ใดๆ</td></tr>
-<tr><td>เอนจิ้น 1 instance เท่านั้น</td><td><span class="mono">core/.engine.lock</span> ป้องกันการเทรดซ้ำซ้อน</td></tr>
-<tr><td>Strategy plugin กับ Indicator plugin ต้องไปด้วยกันเสมอ</td><td>กราฟ/Legend ต้องตรงกับพฤติกรรมกลยุทธ์จริง</td></tr>
-<tr><td>เอนจิ้นต้อง Strategy-agnostic</td><td>ตรรกะสัญญาณ/ทางออกอยู่ที่ Config/Plugin เท่านั้น</td></tr>
+<tr><td>ส่วนบันทึกเหตุการณ์จะไม่พึ่งพาแกนกลางของระบบ</td><td>ทำให้ตรวจสอบย้อนหลังได้แม้เอนจิ้นหลักมีปัญหา</td></tr>
+<tr><td>หน้าจอ Dashboard อ่านข้อมูลอย่างเดียว</td><td>หน้าจอต้องไม่บล็อกหรือแก้ไขข้อมูลการเทรดโดยไม่ได้ตั้งใจ</td></tr>
+<tr><td>ข้อมูลลับ (API Key) อยู่ในไฟล์ <span class="mono">.env</span> เท่านั้น</td><td>ไฟล์ตั้งค่าหลักจึงแชร์ให้คนอื่นดูได้อย่างปลอดภัย เพราะไม่มีกุญแจอยู่ในนั้น</td></tr>
+<tr><td>รันบอทได้แค่ 1 ชุดต่อพื้นที่เก็บข้อมูลเดียว</td><td>ป้องกันการเทรดซ้ำซ้อนโดยไม่ได้ตั้งใจ</td></tr>
+<tr><td>กลยุทธ์กับตัววาดกราฟต้องมาคู่กันเสมอ</td><td>กราฟที่เห็นต้องตรงกับสิ่งที่กลยุทธ์กำลังทำจริง</td></tr>
+<tr><td>แกนกลางของระบบไม่ผูกติดกับกลยุทธ์ใดกลยุทธ์หนึ่ง</td><td>ตรรกะซื้อขายทั้งหมดอยู่ที่ไฟล์ตั้งค่า/ปลั๊กอินเท่านั้น</td></tr>
 </table>
 
-<h2 id="s3-5">3.5 ปลั๊กอิน Strategy และ Indicator</h2>
+<h2 id="s3-5">3.5 กลยุทธ์และตัววาดกราฟต้องมาคู่กัน</h2>
 
-<p>นี่คือรูปแบบขยายระบบที่สำคัญที่สุด: <strong>Strategy และ Indicator ต้องมาคู่กันเสมอ</strong> PR
-ที่เพิ่ม Strategy โดยไม่มี Indicator plugin คู่กันและไม่มี mapping ใน
-<span class="mono">strategy_chart_indicators</span> ถือว่ายังไม่สมบูรณ์ เพราะ Dashboard จะแสดงผลไม่ตรง
-กับพฤติกรรมจริง</p>
+<p>นี่คือกฎสำคัญที่สุดของการขยายระบบ: <strong>กลยุทธ์ใหม่ทุกตัวต้องมีตัววาดกราฟคู่กันเสมอ</strong> ถ้าเพิ่ม
+กลยุทธ์ใหม่โดยไม่มีตัววาดกราฟที่เข้ากันได้ หน้าจอจะแสดงผลไม่ตรงกับสิ่งที่กลยุทธ์กำลังทำจริง ทำให้ผู้ใช้
+เข้าใจผิดว่าบอทกำลังทำอะไรอยู่</p>
 
-<h3>Strategy Plugin</h3>
-<p>อยู่ที่ <span class="mono">xauby/strategies/&lt;name&gt;/strategy.py</span> — สืบทอดจาก
-<span class="mono">xauby.strategies.base.Strategy</span>, ประดับด้วย <span class="mono">@register("&lt;name&gt;")</span>,
-Implement <span class="mono">analyze(ctx: MarketContext) -&gt; Signal</span> (และ
-<span class="mono">default_config()</span> / <span class="mono">validate_config()</span> แบบไม่บังคับ)
-Strategy ต้องเป็น "นักวิเคราะห์บริสุทธิ์" เท่านั้น — <strong>ห้าม</strong>วางออเดอร์, แตะ DB, เรียก Telegram,
-หรือเรียกเมธอดของเอนจิ้นโดยตรง เอนจิ้นจะโหลดปลั๊กอินอัตโนมัติผ่าน <span class="mono">load_strategy(name, config)</span></p>
+<p>กลยุทธ์ต้องเป็น "นักวิเคราะห์บริสุทธิ์" เท่านั้น — ห้ามส่งคำสั่งซื้อขายเอง ห้ามแตะฐานข้อมูล ห้ามเรียก
+Telegram โดยตรง หน้าที่ของมันคือวิเคราะห์แล้วบอกสัญญาณกลับมาเท่านั้น ส่วนแกนกลางของระบบจะเป็นคนตัดสินใจ
+ทำตามสัญญาณนั้นจริงๆ</p>
 
-<h3>Indicator Plugin</h3>
-<p>อยู่ที่ <span class="mono">xauby/strategies/indicators/indicator_&lt;name&gt;.py</span> — สืบทอดจาก
-<span class="mono">Indicator</span> base class, <span class="mono">compute(df, config)</span> เติมคอลัมน์ที่มีชื่อ
-(ห้ามมี ANSI code), <span class="mono">display_config</span> กำหนดโซน/เส้น/เมตริก/ป้ายชื่อ/สี ป้อนเข้ากราฟเทอร์มินัล
-และ Legend/Checklist ของ TUI</p>
-
-<h3>เช็กลิสต์การเพิ่ม Strategy ใหม่</h3>
+<h3>เช็กลิสต์การเพิ่มกลยุทธ์ใหม่ (สำหรับนักพัฒนา)</h3>
 <ol>
-<li>Strategy plugin + <span class="mono">@register</span></li>
-<li>Indicator plugin + <span class="mono">@register</span> (หรือใช้ตัวที่เข้ากันได้อยู่แล้ว)</li>
-<li>เพิ่ม <span class="mono">bot_config.yaml -&gt; architecture.strategy_chart_indicators.&lt;strategy&gt;</span></li>
-<li>เขียนเทสต์: strategy test, indicator test, และ chart legend coverage</li>
+<li>เขียนกลยุทธ์ใหม่และลงทะเบียนในระบบ</li>
+<li>เขียนตัววาดกราฟคู่กัน (หรือใช้ตัวที่เข้ากันได้อยู่แล้ว)</li>
+<li>เพิ่มการแม็พกลยุทธ์กับตัววาดกราฟในไฟล์ตั้งค่า</li>
+<li>เขียนชุดทดสอบให้ครบทั้งกลยุทธ์ ตัววาดกราฟ และการแสดงผลบนหน้าจอ</li>
 </ol>
 
 <div class="note">
-กลยุทธ์กลุ่ม <span class="mono">*_short</span> (<span class="mono">donchian_short</span>,
-<span class="mono">supertrend_short</span>, <span class="mono">rsi2_short</span>) และปลั๊กอินวิจัยอื่นๆ
-(<span class="mono">rsi2_meanrev</span>, <span class="mono">vol_breakout</span>) ถูก tag ว่า
-<span class="mono">research</span> — เอนจิ้นจะ<strong>บล็อกอัตโนมัติ</strong>ไม่ให้กลยุทธ์ที่ tag research
-รันบนคู่เทรดที่ Live เด็ดขาด (<span class="mono">_load_strategy_for_symbol</span>) จึงใช้ได้แค่ในโหมด
-Sim/Backtest เท่านั้น ห้าม map เข้า <span class="mono">regime_router.mapping</span> เพื่อ production
+กลยุทธ์บางตัวในระบบถูกทำเครื่องหมายว่า "สำหรับงานวิจัยเท่านั้น" — ระบบจะ<strong>บล็อกอัตโนมัติ</strong>
+ไม่ให้กลยุทธ์กลุ่มนี้รันบนคู่เทรดที่เทรดจริงเด็ดขาด ใช้ได้แค่ในโหมดจำลอง/ทดสอบย้อนหลังเท่านั้น
 </div>
 
-<h2 id="s3-6">3.6 Feature Flags ทั้งหมด (architecture.*)</h2>
+<h2 id="s3-6">3.6 สวิตช์เปิด-ปิดฟีเจอร์ต่างๆ</h2>
 
-<p>ฟีเจอร์ระดับสถาปัตยกรรมทุกตัวถูกควบคุมด้วย Flag ใต้ <span class="mono">bot_config.yaml -&gt; architecture:</span>
-การ Rollback คือการพลิก Flag กลับเป็น <span class="mono">false</span> — ไม่ต้อง revert โค้ด</p>
+<p>ฟีเจอร์ขนาดใหญ่ของระบบทุกตัวมีสวิตช์เปิด-ปิดในไฟล์ตั้งค่า การจะยกเลิกฟีเจอร์ใดฟีเจอร์หนึ่งชั่วคราวหรือ
+ถาวร แค่พลิกสวิตช์กลับเป็นปิด ไม่ต้องแก้โค้ดเลย</p>
 
 <table>
-<tr><th>Flag</th><th>หน้าที่</th></tr>
-<tr><td><span class="mono">whitelist_strict</span></td><td>Whitelist เป็นแหล่งความจริงเดียวของคู่เทรด/กลยุทธ์ พร้อม fail-fast validation</td></tr>
-<tr><td><span class="mono">indicator_registry_enabled</span></td><td>กราฟคำนวณ Indicator ผ่าน Registry แทนการ hard-code</td></tr>
-<tr><td><span class="mono">sync_yaml_pairs_from_whitelist</span></td><td>ซิงค์ <span class="mono">data.pairs</span> จาก whitelist อัตโนมัติ</td></tr>
-<tr><td><span class="mono">tui_indicator_registry</span></td><td>Checklist/Legend ของ TUI มาจาก Registry Adapter</td></tr>
-<tr><td><span class="mono">per_symbol_execution_mode</span></td><td>แต่ละคู่เทรดเลือก <span class="mono">sim</span>/<span class="mono">live</span> แยกกันได้</td></tr>
-<tr><td><span class="mono">sim_broker_enabled</span></td><td>ออเดอร์จำลองผ่าน SimBroker แบบมี Ledger จริง</td></tr>
-<tr><td><span class="mono">regime_router_enabled</span></td><td>สวิตช์หลักของ RegimeRouter (ยังต้องเปิดต่อคู่เทรดด้วย)</td></tr>
-<tr><td><span class="mono">regime_confidence_filter</span></td><td>ระงับการสลับ Regime เมื่อ Confidence ต่ำกว่าเกณฑ์</td></tr>
-<tr><td><span class="mono">regime_statistical_crosscheck</span></td><td>เปิดตัวจับ Regime เชิงสถิติแบบ GMM คู่ขนาน (advisory เท่านั้น ดูหัวข้อ 5.4)</td></tr>
-<tr><td><span class="mono">event_bus_enabled</span></td><td>ส่ง Event ของ EventEmitter ให้ Subscriber ภายในโปรเซส</td></tr>
-<tr><td><span class="mono">exchange_plugin_registry_enabled</span></td><td>Deprecated/ไม่มีผลจริงแล้ว — Gateway ใช้ Registry เสมอ; เก็บไว้เพื่อ backward-compat</td></tr>
-<tr><td><span class="mono">strategy_sandbox_strict</span></td><td>ปฏิเสธ (ไม่ใช่แค่เตือน) กลยุทธ์ที่ไม่ผ่าน Static Sandbox Scan</td></tr>
-<tr><td><span class="mono">strategy_validate_strict</span></td><td>ปฏิเสธกลยุทธ์ที่ <span class="mono">config_errors()</span> ไม่ว่างตอนโหลด</td></tr>
+<tr><th>ฟีเจอร์</th><th>ทำหน้าที่อะไร</th></tr>
+<tr><td>รายชื่อคู่เทรดเป็นความจริงหนึ่งเดียว</td><td>ไฟล์รายชื่อคู่เทรดเป็นแหล่งข้อมูลเดียวของกลยุทธ์/คู่เทรด พร้อมตรวจสอบความถูกต้องก่อนเริ่มทำงาน</td></tr>
+<tr><td>ระบบวาดกราฟแบบปลั๊กอิน</td><td>กราฟคำนวณเส้นต่างๆ ผ่านระบบปลั๊กอินแทนการเขียนตายตัว</td></tr>
+<tr><td>ซิงค์รายชื่อคู่เทรดอัตโนมัติ</td><td>อัปเดตรายชื่อคู่เทรดที่ใช้งานให้ตรงกับไฟล์ตั้งค่าเสมอ</td></tr>
+<tr><td>โหมดแยกต่อคู่เทรด</td><td>แต่ละคู่เทรดเลือกโหมดจำลอง/เทรดจริงแยกกันได้</td></tr>
+<tr><td>บัญชีจำลองแบบมีบันทึกจริง</td><td>คำสั่งซื้อขายจำลองมีสมุดบัญชีของตัวเองเหมือนของจริง</td></tr>
+<tr><td>เลือกกลยุทธ์อัตโนมัติตามสภาพตลาด</td><td>สวิตช์หลักของระบบนี้ (ยังต้องเปิดต่อคู่เทรดด้วย ดูภาค 5.6)</td></tr>
+<tr><td>กรองความมั่นใจของสภาพตลาด</td><td>ระงับการสลับสภาพตลาดเมื่อความมั่นใจต่ำกว่าเกณฑ์</td></tr>
+<tr><td>ตัวตรวจทานสภาพตลาดด้วยสถิติ</td><td>เปิดตัวตรวจทานคู่ขนานแบบสถิติ (ข้อมูลประกอบเท่านั้น ดูหัวข้อ 5.4)</td></tr>
+<tr><td>ระบบตรวจสอบโค้ดกลยุทธ์ก่อนใช้งาน</td><td>ปฏิเสธ (ไม่ใช่แค่เตือน) กลยุทธ์ที่โค้ดดูไม่น่าไว้ใจ เหมาะเมื่อใช้ปลั๊กอินจากคนอื่น</td></tr>
 </table>
 </div>
 
@@ -668,45 +603,43 @@ Sim/Backtest เท่านั้น ห้าม map เข้า <span class=
 <h1>4.1 ไฟล์ตั้งค่า 3 ไฟล์หลัก</h1>
 
 <table>
-<tr><th>ไฟล์</th><th>คอมมิตไหม</th><th>หน้าที่</th></tr>
-<tr><td><span class="mono">.env</span></td><td>ไม่</td><td>API key, <span class="mono">LIVE_TRADING</span>, Telegram</td></tr>
-<tr><td><span class="mono">.env.example</span></td><td>ใช่</td><td>เทมเพลตสำหรับติดตั้งใหม่</td></tr>
-<tr><td><span class="mono">bot_config.yaml</span></td><td>ใช่</td><td>Engine, Strategy, Portfolio, การแจ้งเตือน, retention, optimizer</td></tr>
-<tr><td><span class="mono">coin_whitelist.json</span></td><td>ใช่</td><td>คู่เทรด Active, Timeframe, กลยุทธ์ต่อคู่, โหมด, ประตู Router</td></tr>
+<tr><th>ไฟล์</th><th>อัปโหลดขึ้น Git ได้ไหม</th><th>เก็บอะไร</th></tr>
+<tr><td><span class="mono">.env</span></td><td>ไม่ได้ (มีข้อมูลลับ)</td><td>API Key, ตัวแปรเทรดจริง, การตั้งค่า Telegram</td></tr>
+<tr><td><span class="mono">.env.example</span></td><td>ได้</td><td>ตัวอย่างเปล่าสำหรับติดตั้งใหม่</td></tr>
+<tr><td><span class="mono">bot_config.yaml</span></td><td>ได้</td><td>การตั้งค่าเอนจิ้น กลยุทธ์ พอร์ต การแจ้งเตือน</td></tr>
+<tr><td><span class="mono">coin_whitelist.json</span></td><td>ได้</td><td>คู่เทรดที่เปิดใช้งาน กลยุทธ์ต่อคู่ โหมด</td></tr>
 </table>
 
-<p>ไฟล์ Runtime ใต้ <span class="mono">core/</span> (DB, log, lock, ยอด sim, cache backtest) เป็นไฟล์เฉพาะเครื่อง
-ห้ามคอมมิตและห้ามถือว่าเป็นค่าตั้งค่าที่ Portable ข้ามเครื่อง เว้นแต่ตั้งใจจะคัดลอกทั้ง runtime root</p>
+<p>ไฟล์ที่บอทสร้างขึ้นระหว่างทำงาน (ฐานข้อมูล, ล็อก, ยอดเงินจำลอง) เป็นไฟล์เฉพาะเครื่องนั้นๆ
+ห้ามอัปโหลดขึ้น Git และไม่ควรก็อปปี้ไปเครื่องอื่นตรงๆ เว้นแต่ตั้งใจจะย้ายทั้งระบบจริงๆ</p>
 
-<h2 id="s4-2">4.2 หลักการ Source of Truth 3 ชั้น</h2>
+<h2 id="s4-2">4.2 หลักการแบ่งไฟล์ตั้งค่าเป็น 3 กลุ่ม</h2>
 
-<p>Config ถูกแบ่งความรับผิดชอบเป็น 3 ชั้น การใส่ค่าผิดชั้นคือสาเหตุบั๊กที่เกิดซ้ำบ่อยที่สุด เพราะ Backtest,
-Live, Replay, และ Optimizer ทั้งหมด resolve ผ่าน resolver ตัวเดียวกัน — ถ้าค่าไม่ตรงชั้น จะทำให้ผลไม่ตรงกัน (parity พัง)</p>
+<p>ค่าตั้งค่าทั้งหมดถูกแบ่งความรับผิดชอบเป็น 3 กลุ่มชัดเจน การใส่ค่าผิดกลุ่มเป็นสาเหตุปัญหาที่พบบ่อยที่สุด
+เพราะการทดสอบย้อนหลังและการเทรดจริงต้องอ่านค่าจากที่เดียวกันเสมอ ถ้าใส่ผิดที่ ผลการทดสอบย้อนหลังกับ
+ผลตอนเทรดจริงจะไม่ตรงกัน</p>
 
 <table>
-<tr><th>ชั้น</th><th>เป็นเจ้าของ</th><th>ห้ามเป็นเจ้าของ</th></tr>
-<tr><td><strong>Engine Config</strong> (<span class="mono">bot_config.yaml</span> ระดับบนสุด)</td>
-<td>Exchange, Logging, Monitoring, การแจ้งเตือน, Global risk guard, Feature flag</td>
-<td>พารามิเตอร์สัญญาณ/ทางออกของกลยุทธ์</td></tr>
-<tr><td><strong>Strategy Config</strong> (<span class="mono">strategy.config.&lt;id&gt;</span>,
-<span class="mono">strategy.symbols.&lt;SYMBOL&gt;</span>, whitelist <span class="mono">strategy_params</span>)</td>
-<td>RSI/ATR/Volume, SL, Trailing, Breakeven, Timeframe กลยุทธ์, ตรรกะสัญญาณ/ทางออก</td>
-<td>Credential หรือขนาดไม้</td></tr>
-<tr><td><strong>Portfolio Config</strong> (<span class="mono">portfolio.position_sizing</span>,
-<span class="mono">portfolio.symbols.&lt;SYMBOL&gt;.position_sizing</span>)</td>
-<td>ขนาดไม้, การจัดสรร, เงินทุน</td>
-<td>กฎ Indicator/สัญญาณ</td></tr>
+<tr><th>กลุ่ม</th><th>เก็บอะไร</th><th>ห้ามเก็บอะไร</th></tr>
+<tr><td><strong>ค่าตั้งค่าเอนจิ้น</strong></td>
+<td>การเชื่อมต่อตลาด, การบันทึกล็อก, การแจ้งเตือน, เงื่อนไขความเสี่ยงรวม, สวิตช์เปิด-ปิดฟีเจอร์</td>
+<td>ค่าพารามิเตอร์สัญญาณ/ทางออกของกลยุทธ์</td></tr>
+<tr><td><strong>ค่าตั้งค่ากลยุทธ์</strong></td>
+<td>ค่าตัวชี้วัดต่างๆ, จุดตัดขาดทุน, จุดเลื่อนป้องกัน, กรอบเวลา, ตรรกะสัญญาณซื้อขาย</td>
+<td>ข้อมูลลับหรือขนาดไม้</td></tr>
+<tr><td><strong>ค่าตั้งค่าพอร์ต</strong></td>
+<td>ขนาดไม้, การจัดสรรเงินทุน</td>
+<td>กฎตัวชี้วัด/สัญญาณ</td></tr>
 </table>
 
-<p><strong>กฎทองคำ:</strong> ค่าใดก็ตามที่เปลี่ยนผลลัพธ์ Backtest ได้ ต้องอยู่ใต้ Strategy หรือ Portfolio Config
-เท่านั้น ห้ามอยู่ใน Engine-only block เอนจิ้นต้อง Strategy-agnostic เสมอ</p>
+<p><strong>กฎง่ายๆ ที่ต้องจำ:</strong> ค่าใดก็ตามที่เปลี่ยนผลการทดสอบย้อนหลังได้ ต้องอยู่ในกลุ่มกลยุทธ์
+หรือกลุ่มพอร์ตเท่านั้น ห้ามใส่ในกลุ่มเอนจิ้น</p>
 
 <h2 id="s4-3">4.3 การตั้งค่า Exchange (OKX ผ่าน CCXT)</h2>
 
-<p><span class="mono">bot_config.yaml -&gt; exchange:</span> คือแหล่งความจริงเดียวของการเลือก Exchange
-และตัวเลขเศรษฐศาสตร์ระดับ Exchange เอนจิ้น, Backtest, Replay, Health Probe, และสคริปต์ปฏิบัติการทั้งหมด
-resolve ผ่าน Helper ชุดเดียวกัน (<span class="mono">xauby/runtime/exchange_config.py</span>) ทำให้
-Simulation คงความสอดคล้องกับ Live เสมอ</p>
+<p>ส่วน <span class="mono">exchange:</span> ในไฟล์ตั้งค่าหลักคือแหล่งข้อมูลเดียวของการเลือกตลาดที่จะเทรด
+ทุกส่วนของระบบ (เอนจิ้น, ทดสอบย้อนหลัง, ตรวจสุขภาพ) จะอ่านค่านี้จากที่เดียวกันเสมอ ทำให้โหมดจำลองกับ
+เทรดจริงใช้ค่าตรงกันตลอด</p>
 
 <pre>exchange:
   provider: ccxt
@@ -720,23 +653,17 @@ Simulation คงความสอดคล้องกับ Live เสมอ
   position_mode: one_way
   api_key_env: OKX_API_KEY
   api_secret_env: OKX_API_SECRET
-  base_url_env: OKX_BASE_URL
-  params:
-    options:
-      defaultType: swap</pre>
+  base_url_env: OKX_BASE_URL</pre>
 
 <ul>
-<li><strong>Credential</strong> อ่านจากตัวแปรแวดล้อมที่ผูกกับ Exchange OKX ต้องมี
-<span class="mono">OKX_API_KEY</span>, <span class="mono">OKX_API_SECRET</span>, และหนึ่งใน
-<span class="mono">OKX_API_PASSPHRASE</span>/<span class="mono">OKX_PASSWORD</span>/<span class="mono">OKX_API_PASSWORD</span></li>
-<li><strong>ลำดับความสำคัญของค่าธรรมเนียม (Fee):</strong>
-<span class="mono">exchange.fee_pct</span> → <span class="mono">backtest.fee_pct</span> →
-<span class="mono">trading.fee_pct</span> → <span class="mono">0.001</span> ค่า
-<span class="mono">sim_fee_pct</span> ต่อคู่เทรด (ใน whitelist) จะชนะสำหรับคู่นั้นโดยเฉพาะ</li>
-<li>CCXT คือ Adapter หลักที่ใช้จริงสำหรับ OKX</li>
+<li><strong>ข้อมูลเชื่อมต่อ:</strong> อ่านจากตัวแปรแวดล้อมที่ตั้งชื่อไว้ในค่านี้ OKX ต้องการ API Key, Secret,
+และ Passphrase ครบทั้ง 3 อย่าง</li>
+<li><strong>ค่าธรรมเนียม:</strong> ระบบจะหาค่าธรรมเนียมจากหลายจุดเรียงลำดับกัน ถ้าตั้งค่าเฉพาะคู่เทรดไว้
+ค่านั้นจะชนะสำหรับคู่นั้นโดยเฉพาะ</li>
+<li>CCXT คือตัวกลางหลักที่ใช้เชื่อมต่อ OKX จริงตอนนี้</li>
 </ul>
 
-<h2 id="s4-4">4.4 โครงสร้าง Whitelist และคู่เทรดปัจจุบัน</h2>
+<h2 id="s4-4">4.4 รายชื่อคู่เทรดที่เปิดใช้งาน (Whitelist)</h2>
 
 <pre>{
   "version": 1,
@@ -761,601 +688,497 @@ Simulation คงความสอดคล้องกับ Live เสมอ
 
 <table>
 <tr><th>ฟิลด์</th><th>ค่าที่เป็นไปได้</th><th>หมายเหตุ</th></tr>
-<tr><td><span class="mono">symbol</span></td><td>สินทรัพย์ฐาน เช่น <span class="mono">XAU</span></td><td>ระบบจะต่อท้ายด้วย <span class="mono">quote_asset</span> อัตโนมัติ</td></tr>
-<tr><td><span class="mono">enabled</span></td><td>bool</td><td>สินทรัพย์ที่ปิดจะถูกข้ามไป</td></tr>
-<tr><td><span class="mono">primary_timeframe</span></td><td>เช่น <span class="mono">1h</span>, <span class="mono">4h</span></td><td>ใช้ทั้ง Live, Backtest, และกราฟ</td></tr>
-<tr><td><span class="mono">confirm_timeframe</span></td><td>เช่น <span class="mono">1d</span> หรือว่าง</td><td>ขึ้นกับกลยุทธ์</td></tr>
-<tr><td><span class="mono">strategy</span></td><td>plugin id</td><td>จำเป็นเมื่อ <span class="mono">whitelist_strict: true</span></td></tr>
-<tr><td><span class="mono">strategy_params</span></td><td>object</td><td>ค่าปรับแต่งเฉพาะคู่เทรด รวมเข้ากับ Strategy Config</td></tr>
-<tr><td><span class="mono">mode</span></td><td><span class="mono">sim</span>, <span class="mono">live</span></td><td>ต้องเปิด <span class="mono">per_symbol_execution_mode: true</span></td></tr>
-<tr><td><span class="mono">regime_router_enabled</span></td><td>bool</td><td>ประตู RegimeRouter ระดับคู่เทรด</td></tr>
-<tr><td><span class="mono">regime_router_live_confirmed</span></td><td>bool</td><td>ต้องเป็น true ก่อนคู่เทรด Live จะ Route กลยุทธ์ได้</td></tr>
-<tr><td><span class="mono">sim_fee_pct</span></td><td>number</td><td>หน่วยเปอร์เซ็นต์ เช่น <span class="mono">0.05</span> = 0.05%</td></tr>
+<tr><td><span class="mono">symbol</span></td><td>ชื่อสินทรัพย์ เช่น <span class="mono">XAU</span></td><td>ระบบจะต่อท้ายด้วยสกุลเงินอ้างอิงให้อัตโนมัติ</td></tr>
+<tr><td><span class="mono">enabled</span></td><td>เปิด/ปิด</td><td>คู่เทรดที่ปิดจะถูกข้ามไป ไม่ทำงาน</td></tr>
+<tr><td><span class="mono">primary_timeframe</span></td><td>เช่น 1 ชั่วโมง, 4 ชั่วโมง</td><td>ใช้ทั้งเทรดจริง ทดสอบย้อนหลัง และกราฟ</td></tr>
+<tr><td><span class="mono">strategy</span></td><td>ชื่อกลยุทธ์</td><td>ต้องระบุเมื่อเปิดโหมด "รายชื่อคู่เทรดเป็นความจริงหนึ่งเดียว"</td></tr>
+<tr><td><span class="mono">mode</span></td><td>จำลอง / เทรดจริง</td><td>ต้องเปิดโหมดแยกต่อคู่เทรดก่อน</td></tr>
+<tr><td><span class="mono">regime_router_enabled</span></td><td>เปิด/ปิด</td><td>สวิตช์เลือกกลยุทธ์อัตโนมัติระดับคู่เทรด</td></tr>
+<tr><td><span class="mono">regime_router_live_confirmed</span></td><td>เปิด/ปิด</td><td>ต้องเปิดก่อนคู่เทรดที่เทรดจริงจะเลือกกลยุทธ์อัตโนมัติได้</td></tr>
+<tr><td><span class="mono">sim_fee_pct</span></td><td>ตัวเลข</td><td>ค่าธรรมเนียมจำลอง หน่วยเปอร์เซ็นต์</td></tr>
 </table>
 
-<h2 id="s4-5">4.5 ตัวแปรแวดล้อม (Environment Variables)</h2>
+<h2 id="s4-5">4.5 ตัวแปรแวดล้อมที่ควรรู้</h2>
 
 <table>
 <tr><th>ตัวแปร</th><th>ค่าเริ่มต้น</th><th>คำอธิบาย</th></tr>
-<tr><td><span class="mono">OKX_API_KEY</span> / <span class="mono">OKX_API_SECRET</span> / <span class="mono">OKX_API_PASSPHRASE</span></td><td>-</td><td>Credential สำหรับ OKX REST/WS</td></tr>
-<tr><td><span class="mono">LIVE_TRADING</span></td><td><span class="mono">false</span></td><td>ประตูเพิ่มเติมสำหรับออเดอร์จริง</td></tr>
-<tr><td><span class="mono">SIMULATE_ONLY</span></td><td>จาก YAML</td><td>CLI <span class="mono">--live</span>/<span class="mono">--simulate</span> override</td></tr>
-<tr><td><span class="mono">BOT_READ_ONLY</span></td><td><span class="mono">false</span></td><td>ข้ามการวางออเดอร์</td></tr>
-<tr><td><span class="mono">TELEGRAM_ENABLED</span></td><td><span class="mono">false</span></td><td>สวิตช์หลักของการแจ้งเตือน</td></tr>
-<tr><td><span class="mono">TELEGRAM_BOT_TOKEN</span></td><td>-</td><td>Token จาก @BotFather</td></tr>
-<tr><td><span class="mono">TELEGRAM_CHAT_ID</span></td><td>-</td><td>Chat ที่ได้รับอนุญาตให้สั่งงาน</td></tr>
-<tr><td><span class="mono">DEFAULT_SYMBOL</span></td><td>-</td><td>Override คู่เทรดเดี่ยว (ถ้ามี)</td></tr>
-<tr><td><span class="mono">XAUBY_HOME</span></td><td><span class="mono">core</span></td><td>โฟลเดอร์ฐานของ Runtime data — ย้ายเพื่อรันหลาย instance คู่กันได้</td></tr>
-<tr><td><span class="mono">XAUBY_INSTANCE_ID</span></td><td>-</td><td>Sub-namespace ใต้ Runtime root (เช่น tenant/account id)</td></tr>
+<tr><td><span class="mono">OKX_API_KEY / OKX_API_SECRET / OKX_API_PASSPHRASE</span></td><td>-</td><td>ข้อมูลเชื่อมต่อ OKX</td></tr>
+<tr><td><span class="mono">LIVE_TRADING</span></td><td>ปิด</td><td>ประตูเพิ่มเติมสำหรับอนุญาตคำสั่งซื้อขายจริง</td></tr>
+<tr><td><span class="mono">BOT_READ_ONLY</span></td><td>ปิด</td><td>ข้ามการส่งคำสั่งซื้อขายทั้งหมด</td></tr>
+<tr><td><span class="mono">TELEGRAM_ENABLED</span></td><td>ปิด</td><td>สวิตช์หลักของการแจ้งเตือน Telegram</td></tr>
+<tr><td><span class="mono">TELEGRAM_BOT_TOKEN</span></td><td>-</td><td>รหัสบอทจาก @BotFather</td></tr>
+<tr><td><span class="mono">TELEGRAM_CHAT_ID</span></td><td>-</td><td>ห้องแชทที่ได้รับอนุญาตให้สั่งงานบอท</td></tr>
+<tr><td><span class="mono">XAUBY_HOME</span></td><td><span class="mono">core</span></td><td>โฟลเดอร์เก็บข้อมูลของบอท — ย้ายเพื่อรันหลายชุดพร้อมกันได้ (ดูภาค 10)</td></tr>
 </table>
 
-<h3>น้ำหนัก Macro ของ Regime Classifier</h3>
-<p>ตัวจำแนก Regime รวม DXY, อัตราดอกเบี้ย, และข่าวเป็น Macro Bias น้ำหนักปรับได้เพื่อไม่ให้ระบบผูกติดกับทองคำ
-เพียงอย่างเดียว:</p>
-<pre>macro_sentiment_guard:
-  macro_weights:   # ค่าเริ่มต้น (สมมติฐานสำหรับทองคำ)
-    news: 1.0
-    dxy: 1.0       # ค่าถูก orient ไว้แล้วที่ producer (บวก=bullish) ห้าม invert ซ้ำ
-    fred: 1.0
-  regime_bias_threshold: 0.3   # |combined_macro| เกินค่านี้จึงพลิกเป็น RISK-ON/RISK-OFF</pre>
+<h2 id="s4-6">4.6 เมนูตั้งค่าง่ายๆ ในตัว</h2>
 
-<h2 id="s4-6">4.6 เมนู Quick Config ในตัว</h2>
-
-<p>Launcher menu → <strong>Quick Configuration</strong> (หรือ <span class="mono">xauby --config</span>)
-เปิด Editor แบบ Textual: เมนู <span class="mono">OptionList</span> แบบจัดกลุ่มที่ผลักเข้าสู่ Submenu ของ
-Toggle, Modal ตัวเลข/ช่วงค่า, และตัวเลือกแบบเลือก (นำทางด้วยลูกศร/Enter/เมาส์ ค่า secret จะถูกซ่อน)
-การเขียนค่ายังผ่าน <span class="mono">ruamel.yaml</span> round-trip เสมอ ทำให้
-<strong>คอมเมนต์และโครงสร้างใน <span class="mono">bot_config.yaml</span> ไม่หายไประหว่างแก้ไข</strong></p>
+<p>เปิดเมนู Launcher แล้วเลือก <strong>Quick Configuration</strong> จะได้หน้าจอตั้งค่าแบบเลือกได้
+ไม่ต้องแก้ไฟล์ YAML ด้วยมือเอง — นำทางด้วยลูกศร/Enter/เมาส์ ข้อมูลลับจะถูกซ่อนไว้เสมอ การแก้ไขผ่านเมนูนี้
+จะไม่ทำลายคอมเมนต์หรือโครงสร้างเดิมในไฟล์ตั้งค่า</p>
 
 <table>
-<tr><th>กลุ่ม</th><th>แก้ไขอะไรได้</th></tr>
-<tr><td>Trading &amp; Risk</td><td>โหมด (sim/live), % ความเสี่ยงต่อคู่, SL ATR, Breakeven, ตัวกรอง D1, กลยุทธ์</td></tr>
-<tr><td>Global Trading</td><td><span class="mono">max_open_positions</span>, <span class="mono">interval_seconds</span>, timeframe, min order amount, max position per trade</td></tr>
-<tr><td>Risk Guards</td><td>Drawdown guard, max daily loss %, max consecutive losses</td></tr>
-<tr><td>Portfolio</td><td>Initial balance, allocation % ต่อคู่เทรด</td></tr>
-<tr><td>Strategy Params</td><td>RSI min/max, vol min ratio, trailing ATR mult, cool down ต่อคู่เทรด</td></tr>
-<tr><td>Regime Router</td><td>เปิด/ปิด, confidence threshold, debounce/recovery/force-close, mapping (เลือกจากกลยุทธ์ที่ลงทะเบียนแล้ว)</td></tr>
-<tr><td>Multi-Pair &amp; Dashboard</td><td>Timeframe, รายชื่อคู่เทรด, focus ของ Dashboard</td></tr>
-<tr><td>Telegram Alerts &amp; Schedule</td><td>Credential/test, กำหนดการ weekly/daily digest</td></tr>
-<tr><td>Macro Guard</td><td>Sentiment guard, FRED, AI news</td></tr>
-<tr><td>Exchange</td><td>Wizard สลับ Exchange แบบมีไกด์, credential ต่อ Exchange, ทดสอบการเชื่อมต่อ</td></tr>
-<tr><td>System Features</td><td>Architecture flags ของ per-symbol execution และ event bus</td></tr>
+<tr><th>กลุ่มเมนู</th><th>แก้ไขอะไรได้</th></tr>
+<tr><td>การเทรดและความเสี่ยง</td><td>โหมด, % ความเสี่ยงต่อคู่, จุดตัดขาดทุน, กลยุทธ์</td></tr>
+<tr><td>การเทรดโดยรวม</td><td>จำนวนไม้สูงสุด, กรอบเวลา, ขนาดไม้ขั้นต่ำ</td></tr>
+<tr><td>เงื่อนไขความเสี่ยง</td><td>สวิตช์หยุดขาดทุนระดับพอร์ต, ขาดทุนสูงสุดต่อวัน</td></tr>
+<tr><td>พอร์ตการลงทุน</td><td>เงินทุนเริ่มต้น, สัดส่วนต่อคู่เทรด</td></tr>
+<tr><td>เลือกกลยุทธ์อัตโนมัติ</td><td>เปิด/ปิด, เงื่อนไขต่างๆ, การแม็พสภาพตลาดกับกลยุทธ์</td></tr>
+<tr><td>แจ้งเตือน Telegram</td><td>ข้อมูลเชื่อมต่อ/ทดสอบ, ตารางรายงานประจำวัน/สัปดาห์</td></tr>
+<tr><td>Exchange</td><td>ตัวช่วยสลับ Exchange แบบมีไกด์ทีละขั้นตอน, ทดสอบการเชื่อมต่อ</td></tr>
 </table>
 </div>
 
 <!-- ===================== PART 5 ===================== -->
 <div class="chapter" id="s5-1">
-<div class="chapter-kicker">ภาคที่ 5 — กลยุทธ์และ Market Regime Detector</div>
-<h1>5.1 กลยุทธ์ (Strategy Plugin) ทั้งหมดในระบบ</h1>
+<div class="chapter-kicker">ภาคที่ 5 — กลยุทธ์และตัวจับสภาพตลาด</div>
+<h1>5.1 กลยุทธ์ทั้งหมดที่มีในระบบ</h1>
 
-<p>ระบบมีปลั๊กอินกลยุทธ์ทั้งหมด 15 ตัว บางตัวใช้งานจริง (Production) บางตัวเป็นงานวิจัย (Research/Sim เท่านั้น):</p>
-
-<table>
-<tr><th>Strategy</th><th>Indicator plugin</th><th>โซนบนกราฟ</th><th>เส้นบนกราฟ</th></tr>
-<tr><td><span class="mono">cdc_action_zone</span> ⭐Live</td><td><span class="mono">cdc_action_zone</span></td><td>น้ำเงิน/เขียว/แดง/กลาง</td><td>EMA12, EMA26</td></tr>
-<tr><td><span class="mono">supertrend_ema200</span></td><td><span class="mono">supertrend</span>, <span class="mono">ema200</span></td><td>ST Bull/Bear/กลาง</td><td>SuperTrend, EMA200</td></tr>
-<tr><td><span class="mono">bbkc_squeeze</span></td><td><span class="mono">bbkc_squeeze</span></td><td>บีบตัว/ทะลุ/กลาง</td><td>Bollinger Bands, Keltner Channels</td></tr>
-<tr><td><span class="mono">bbrsi_mean_reversion</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>Oversold/กลาง/Overbought</td><td>Bollinger Bands</td></tr>
-<tr><td><span class="mono">btc_ema_pullback</span></td><td><span class="mono">btc_ema_pullback</span></td><td>เทรนด์/พูลแบ็ก/ยึดกลับ/กลาง</td><td>EMA Fast/Slow/Trend</td></tr>
-<tr><td><span class="mono">ict_lite_strategy</span></td><td><span class="mono">ict_lite</span></td><td>Sweep Low/Reclaim/MSS/กลาง</td><td>EMA Fast/Slow, High/Low ล่าสุด</td></tr>
-<tr><td><span class="mono">rsi2_meanrev</span> (research)</td><td><span class="mono">rsi2_meanrev</span></td><td>Buy Setup/Oversold/Exit/กลาง</td><td>EMA200, SMA5</td></tr>
-<tr><td><span class="mono">sol_ema_pullback</span></td><td><span class="mono">sol_ema_pullback</span></td><td>เทรนด์/พูลแบ็ก/ยึดกลับ/กลาง</td><td>EMA20, EMA50</td></tr>
-<tr><td><span class="mono">vol_breakout</span> (research)</td><td><span class="mono">vol_breakout</span></td><td>ทะลุ/ATR ขยายตัว/กลาง</td><td>Range High, Exit EMA</td></tr>
-<tr><td><span class="mono">xauby_vwap_pullback</span></td><td><span class="mono">xauby_vwap_pullback</span></td><td>เข้า/พูลแบ็ก/เทรนด์/รอ/เสียเทรนด์</td><td>EMA20/50/200, VWAP</td></tr>
-<tr><td><span class="mono">donchian_trend</span></td><td>-</td><td>-</td><td>Turtle breakout เหนือ EMA200 + ADX filter</td></tr>
-<tr><td><span class="mono">donchian_short</span> / <span class="mono">supertrend_short</span> / <span class="mono">rsi2_short</span> (research)</td><td>-</td><td colspan="2">Short-side เฉพาะงานวิจัย ไม่ใช้ Production</td></tr>
-</table>
-
-<p class="small">⭐ = กลยุทธ์ที่รันอยู่บนคู่เทรด Live ปัจจุบัน (XAUUSDT)</p>
-
-<h2 id="s5-2">5.2 CDC Action Zone — กลยุทธ์หลักที่ใช้งานจริง</h2>
-
-<p><span class="mono">cdc_action_zone</span> เป็นกลยุทธ์เดียวที่รันบนคู่เทรด Live ปัจจุบัน ทำงานแบบ
-<strong>Stop-and-reverse</strong> คือเปิด Long หรือ Short สลับกันตามการกลับสีของโซน (Zone Flip) ไม่มี
-Stop-Loss ฝั่ง Exchange (<span class="mono">disable_stop_loss: true</span>) — การออกจากไม้ทั้งหมดขับเคลื่อน
-ด้วยการเปลี่ยนโซนเท่านั้น ขนาดไม้คำนวณจาก <span class="mono">position_pct</span> คงที่ของ Equity
-(ไม่ใช่ระยะ SL) และมี Partial Take-Profit แบบ one-shot ที่ +12% เก็บ 50% ของโพซิชัน</p>
+<p>ระบบมีกลยุทธ์ให้เลือกใช้ทั้งหมด 15 แบบ บางแบบใช้เทรดจริงได้ บางแบบเป็นงานวิจัยสำหรับทดสอบเท่านั้น
+ยังนำมาเทรดจริงไม่ได้:</p>
 
 <table>
-<tr><th>พารามิเตอร์ (จาก whitelist จริง)</th><th>ค่า</th></tr>
-<tr><td><span class="mono">sl_atr_mult</span></td><td>2.0</td></tr>
-<tr><td><span class="mono">trailing_atr_mult</span></td><td>1.8</td></tr>
-<tr><td><span class="mono">breakeven_sl_enabled</span></td><td>false</td></tr>
-<tr><td><span class="mono">require_fresh_zone</span></td><td>true (fresh_zone_window: 1)</td></tr>
-<tr><td><span class="mono">require_slow_slope</span></td><td>true (slow_slope_bars: 3)</td></tr>
-<tr><td><span class="mono">position_pct</span></td><td>0.95</td></tr>
-<tr><td><span class="mono">partial_tp_pct</span> / <span class="mono">partial_tp_fraction</span></td><td>12.0 / 0.5</td></tr>
-<tr><td><span class="mono">backtest_data_proxy</span></td><td><span class="mono">PAXGUSDT</span> (ใช้แทนทองในการ Backtest)</td></tr>
+<tr><th>กลยุทธ์</th><th>ลักษณะ</th></tr>
+<tr><td><span class="mono">cdc_action_zone</span> ⭐ ใช้เทรดจริง</td><td>ตามเทรนด์ด้วยเส้นค่าเฉลี่ย 2 เส้น สลับฝั่งอัตโนมัติ</td></tr>
+<tr><td><span class="mono">supertrend_ema200</span></td><td>ตามเทรนด์ด้วยเส้น SuperTrend และเส้นค่าเฉลี่ย 200 วัน</td></tr>
+<tr><td><span class="mono">bbkc_squeeze</span></td><td>รอจังหวะราคาบีบตัวแล้วทะลุออก</td></tr>
+<tr><td><span class="mono">bbrsi_mean_reversion</span></td><td>ซื้อตอนราคาลงมาก ขายตอนราคาขึ้นมาก (เก็งกำไรระยะสั้น)</td></tr>
+<tr><td><span class="mono">btc_ema_pullback</span></td><td>ตามเทรนด์แล้วรอราคาย่อกลับมาเข้า</td></tr>
+<tr><td><span class="mono">ict_lite_strategy</span></td><td>ตามแนวคิดล่าสภาพคล่องแล้วรอกลับตัว</td></tr>
+<tr><td><span class="mono">rsi2_meanrev</span> (งานวิจัย)</td><td>ซื้อตอนราคาลงสั้นๆ ในเทรนด์ขึ้น</td></tr>
+<tr><td><span class="mono">sol_ema_pullback</span></td><td>ตามเทรนด์แล้วรอราคาย่อกลับมาเข้า</td></tr>
+<tr><td><span class="mono">vol_breakout</span> (งานวิจัย)</td><td>ซื้อตอนความผันผวนเริ่มขยายตัวออกจากกรอบ</td></tr>
+<tr><td><span class="mono">xauby_vwap_pullback</span></td><td>ตามเทรนด์โดยอ้างอิงราคาเฉลี่ยถ่วงน้ำหนักปริมาณ</td></tr>
+<tr><td><span class="mono">donchian_trend</span></td><td>ซื้อตอนราคาทะลุกรอบสูงสุด/ต่ำสุดที่ผ่านมา</td></tr>
+<tr><td>กลุ่ม Short สำหรับงานวิจัย</td><td>เวอร์ชันขาลงของกลยุทธ์ข้างบน ใช้ทดสอบเท่านั้น</td></tr>
 </table>
 
-<h2 id="s5-3">5.3 Market Regime Detector คืออะไร ทำงานอย่างไร</h2>
+<p class="small">⭐ = กลยุทธ์ที่ใช้เทรดจริงอยู่ตอนนี้ (คู่ทองคำ)</p>
 
-<p>Market Regime Detector (<span class="mono">xauby/regime/classifier.py</span>, ฟังก์ชัน
-<span class="mono">classify_market()</span>) คือตัวจำแนกสภาพตลาดแบบ Rule-based ที่วิเคราะห์ตลาดผ่าน 4 แกนหลัก
-แล้วสังเคราะห์เป็น "Regime" 11 ประเภท ตามแนวคิด Wyckoff (สะสม → ขาขึ้น → กระจาย → ขาลง):</p>
+<h2 id="s5-2">5.2 CDC Action Zone — กลยุทธ์ที่ใช้เทรดจริง</h2>
 
-<h3>4 แกนที่ใช้วิเคราะห์</h3>
+<p><span class="mono">cdc_action_zone</span> เป็นกลยุทธ์เดียวที่เทรดจริงอยู่ตอนนี้ ทำงานแบบ
+<strong>สลับฝั่งอัตโนมัติ</strong> — เปิดขาขึ้นหรือขาลงสลับกันไปตามการเปลี่ยนสีของสัญญาณ ไม่มีจุดตัดขาดทุน
+แบบดั้งเดิม การออกจากไม้ทั้งหมดขึ้นอยู่กับการเปลี่ยนสัญญาณเท่านั้น ขนาดไม้คำนวณจากสัดส่วนคงที่ของเงินทุน
+และมีการทำกำไรบางส่วนก่อนแบบครั้งเดียว: เมื่อกำไรถึง 12% จะขายออก 50% ของโพซิชันก่อน</p>
+
+<table>
+<tr><th>ค่าที่ตั้งไว้จริง</th><th>ความหมายง่ายๆ</th></tr>
+<tr><td>ระยะจุดป้องกันเริ่มต้น</td><td>2 เท่าของความผันผวนเฉลี่ย</td></tr>
+<tr><td>ระยะเลื่อนจุดป้องกันตามราคา</td><td>1.8 เท่าของความผันผวนเฉลี่ย</td></tr>
+<tr><td>เลื่อนจุดป้องกันมาที่จุดคุ้มทุน</td><td>ปิดใช้งาน</td></tr>
+<tr><td>สัดส่วนเงินทุนต่อไม้</td><td>95% ของเงินทุนที่จัดสรรไว้</td></tr>
+<tr><td>ทำกำไรบางส่วนก่อน</td><td>ที่กำไร 12% ขายออก 50%</td></tr>
+<tr><td>ราคาที่ใช้ทดสอบย้อนหลัง</td><td>ใช้โทเคนทองคำอีกตัวแทน เพราะมีประวัติราคายาวกว่า</td></tr>
+</table>
+
+<h2 id="s5-3">5.3 ตัวจับสภาพตลาด (Market Regime Detector) คืออะไร</h2>
+
+<p>ตัวจับสภาพตลาดคือส่วนที่คอยดูว่าตอนนี้ตลาดกำลังอยู่ในช่วงไหน เช่น ขาขึ้นแรง ขาลงแรง แกว่งไซด์เวย์
+หรือช่วงตื่นตระหนกเทขาย แล้วติดป้ายชื่อสภาพตลาดนั้นไว้ ป้ายนี้ใช้ช่วยตัดสินใจว่าควรเสี่ยงมากหรือน้อย
+และ (ถ้าเปิดใช้) เลือกกลยุทธ์ที่เหมาะกับสภาพตลาดนั้นให้อัตโนมัติ ระบบวิเคราะห์ตลาดผ่าน 4 มุมมองแล้วสรุป
+ออกมาเป็นป้ายทั้งหมด 11 แบบ:</p>
+
+<h3>4 มุมมองที่ใช้วิเคราะห์</h3>
 <ul>
-<li><strong>Trend</strong> — จาก EMA12/EMA26/EMA200 stack + ระยะห่างราคาจาก EMA200 + Momentum 5/20 แท่ง</li>
-<li><strong>Volatility</strong> — ATR เทียบราคา แล้วจัดอันดับเทียบ<strong>ค่าเฉลี่ยย้อนหลัง 120 แท่ง</strong>
-(Relative ไม่ใช่ Absolute — จุดสำคัญที่ทำให้ใช้ข้ามสินทรัพย์/ยุคสมัยได้)</li>
-<li><strong>Liquidity</strong> — Volume Ratio เทียบ SMA 20 แท่ง</li>
-<li><strong>Macro</strong> — รวม DXY + อัตราดอกเบี้ย (FRED) + Sentiment ข่าว โดย Clamp แต่ละค่าให้อยู่ในช่วง
-[-1, 1] ก่อนรวม (ป้องกันค่าใดค่าหนึ่ง เช่น News Score จาก AI ที่ไม่ถูก Clamp ต้นทาง มา Dominate ผลลัพธ์)</li>
+<li><strong>ทิศทางตลาด</strong> — ดูว่าราคาเฉลี่ยระยะสั้นและระยะยาวเรียงตัวไปทางไหน และราคาปัจจุบันห่างจาก
+ค่าเฉลี่ยระยะยาวแค่ไหน</li>
+<li><strong>ความผันผวน</strong> — ดูว่าตอนนี้ราคาแกว่งแรงกว่าปกติหรือเบากว่าปกติ โดยเทียบกับตัวเองในช่วง
+120 แท่งที่ผ่านมา (ไม่ใช่ค่าตายตัว จึงใช้ได้กับทุกสินทรัพย์และทุกยุคสมัย)</li>
+<li><strong>สภาพคล่อง</strong> — ดูปริมาณการซื้อขายเทียบกับค่าเฉลี่ย 20 แท่งที่ผ่านมา</li>
+<li><strong>ปัจจัยเศรษฐกิจมหภาค</strong> — รวมค่าดัชนีดอลลาร์ อัตราดอกเบี้ย และความรู้สึกจากข่าว มาเป็น
+คะแนนเดียว โดยจำกัดไม่ให้ค่าใดค่าหนึ่งมีน้ำหนักเกินจริง (เช่น กันไม่ให้คะแนนข่าวที่ผิดปกติมาทำให้ผลลัพธ์
+เพี้ยนไปทั้งหมด)</li>
 </ul>
 
-<h3>รายชื่อ Regime ทั้ง 11 ประเภท</h3>
+<h3>ป้ายสภาพตลาดทั้ง 11 แบบ</h3>
 <table>
-<tr><th>Regime</th><th>ความหมาย</th><th>Phase</th></tr>
-<tr><td><span class="mono">BULL_BREAKOUT</span></td><td>ขาขึ้นทะลุพร้อม Volume ยืนยันและ Volatility ขยายตัว</td><td>MARKUP</td></tr>
-<tr><td><span class="mono">BULL_TREND_STRONG</span></td><td>ขาขึ้นแข็งแรง Momentum/EMA spread สูง</td><td>MARKUP</td></tr>
-<tr><td><span class="mono">BULL_TREND_WEAK</span></td><td>ขาขึ้นอ่อนแรงหรือ Macro ขัดแย้ง</td><td>MARKUP/RECOVERY_RALLY</td></tr>
-<tr><td><span class="mono">BEAR_BREAKDOWN</span></td><td>ขาลงทะลุพร้อม Volatility ขยายตัว</td><td>MARKDOWN</td></tr>
-<tr><td><span class="mono">BEAR_TREND_STRONG</span></td><td>ขาลงแข็งแรง</td><td>MARKDOWN</td></tr>
-<tr><td><span class="mono">BEAR_TREND_WEAK</span></td><td>ขาลงอ่อนแรง</td><td>DISTRIBUTION</td></tr>
-<tr><td><span class="mono">PANIC_SELL</span></td><td>เทขายตื่นตระหนก — ขาลง+Volatility พุ่ง+Macro หรือ Momentum ลบรุนแรง</td><td>CAPITULATION</td></tr>
-<tr><td><span class="mono">LOW_VOL_ACCUMULATION</span></td><td>Volatility ต่ำ ราคาแนบ EMA200 — ช่วงสะสม</td><td>ACCUMULATION</td></tr>
-<tr><td><span class="mono">LOW_VOL_RANGE</span></td><td>Volatility ต่ำ แต่ไม่แนบ EMA200 พอ</td><td>ACCUMULATION</td></tr>
-<tr><td><span class="mono">VOLATILITY_EXPANSION</span></td><td>Volatility ขยายตัวโดยไม่มีเทรนด์ชัดเจน + Range กว้าง</td><td>TRANSITION</td></tr>
-<tr><td><span class="mono">SIDEWAYS_CHOP</span></td><td>ไม่เข้าเงื่อนไขไหนเลย — แกว่งไร้ทิศทาง</td><td>RANGE</td></tr>
+<tr><th>ป้าย</th><th>ความหมาย</th></tr>
+<tr><td><span class="mono">BULL_BREAKOUT</span></td><td>ขาขึ้นทะลุพร้อมปริมาณซื้อขายยืนยันและความผันผวนขยายตัว</td></tr>
+<tr><td><span class="mono">BULL_TREND_STRONG</span></td><td>ขาขึ้นแข็งแรง โมเมนตัมชัดเจน</td></tr>
+<tr><td><span class="mono">BULL_TREND_WEAK</span></td><td>ขาขึ้นอ่อนแรง หรือปัจจัยเศรษฐกิจขัดแย้งกับเทรนด์</td></tr>
+<tr><td><span class="mono">BEAR_BREAKDOWN</span></td><td>ขาลงทะลุพร้อมความผันผวนขยายตัว</td></tr>
+<tr><td><span class="mono">BEAR_TREND_STRONG</span></td><td>ขาลงแข็งแรง</td></tr>
+<tr><td><span class="mono">BEAR_TREND_WEAK</span></td><td>ขาลงอ่อนแรง</td></tr>
+<tr><td><span class="mono">PANIC_SELL</span></td><td>เทขายตื่นตระหนก — ขาลงรุนแรงพร้อมความผันผวนพุ่งสูง</td></tr>
+<tr><td><span class="mono">LOW_VOL_ACCUMULATION</span></td><td>ความผันผวนต่ำ ราคาแนบเส้นค่าเฉลี่ยระยะยาว — ช่วงสะสม</td></tr>
+<tr><td><span class="mono">LOW_VOL_RANGE</span></td><td>ความผันผวนต่ำ แต่ราคายังไม่แนบเส้นค่าเฉลี่ยพอ</td></tr>
+<tr><td><span class="mono">VOLATILITY_EXPANSION</span></td><td>ความผันผวนขยายตัวโดยไม่มีทิศทางชัดเจน</td></tr>
+<tr><td><span class="mono">SIDEWAYS_CHOP</span></td><td>ไม่เข้าเงื่อนไขไหนเลย — แกว่งไร้ทิศทาง</td></tr>
 </table>
 
-<h3>Confidence Score</h3>
-<p>ทุก Regime มาพร้อม Confidence (0.05–0.98) ที่คำนวณแบบ Composite จากหลายปัจจัย: Trend Quality (34%),
-Macro Alignment (20%), Macro Conviction (14%), Vol Clarity (14%), Liquidity Confirmation (10%), Regime Stability (8%)
-พร้อมหักคะแนนเมื่อ Macro ขัดแย้งกับ Trend หรือ Transition Risk สูง — ไม่ใช่แค่ค่า 0/1 อย่างระบบพื้นฐานทั่วไป</p>
+<h3>คะแนนความมั่นใจ</h3>
+<p>ทุกครั้งที่ติดป้ายสภาพตลาด ระบบจะให้คะแนนความมั่นใจมาด้วย (ตั้งแต่ 5% ถึง 98%) ยิ่งคะแนนสูง ยิ่งมั่นใจว่า
+ป้ายนั้นถูกต้อง คะแนนนี้คำนวณจากหลายปัจจัยรวมกัน (ความชัดเจนของเทรนด์ ความสอดคล้องของปัจจัยเศรษฐกิจ
+ความชัดเจนของความผันผวน ฯลฯ) ไม่ใช่แค่ใช่/ไม่ใช่แบบระบบพื้นฐานทั่วไป</p>
 
-<h3>การป้องกันความผิดพลาดจากข้อมูลไม่พอ</h3>
-<p>เอนจิ้นป้อนข้อมูล 250 แท่งให้ตัวจำแนกเสมอ (มากกว่า 200 แท่งที่ EMA200 ต้องการ) แต่ตัวจำแนกเองมีการ์ดป้องกัน
-ไว้ด้วย: หาก EMA200 ที่คำนวณ Fallback มาจากข้อมูลน้อยกว่า 200 แท่งจริง (เช่น กรณีถูกเรียกด้วยข้อมูลสั้นจากที่อื่น)
-ระบบจะไม่กล้าฟันธง Trend เป็น Bullish/Bearish และบังคับเป็น NEUTRAL พร้อมลด Confidence ลง — ป้องกัน "EMA200
-ปลอม" จากข้อมูลไม่พอสร้างสัญญาณเทรนด์ผิดๆ</p>
+<h3>ป้องกันการฟันธงผิดจากข้อมูลไม่พอ</h3>
+<p>ตัวจับสภาพตลาดต้องการข้อมูลราคาย้อนหลังอย่างน้อย 200 แท่งเพื่อคำนวณเส้นค่าเฉลี่ยระยะยาวให้แม่นยำ
+ถ้าข้อมูลที่ได้รับมีไม่พอ ระบบจะไม่กล้าฟันธงว่าตลาดเป็นขาขึ้นหรือขาลง จะติดป้ายเป็น "ยังไม่ชัดเจน" แทน
+พร้อมลดคะแนนความมั่นใจลง — ป้องกันการฟันธงผิดจากข้อมูลที่ไม่พอ</p>
 
-<h2 id="s5-4">5.4 ตัวจับ Regime เชิงสถิติ (GMM Cross-check)</h2>
+<h2 id="s5-4">5.4 ระบบตรวจทานซ้ำด้วยสถิติ (ความเห็นที่สอง)</h2>
 
-<p>เพื่อยกระดับตัวจำแนกแบบ Rule-based (ที่ threshold ตั้งด้วยมือ) ระบบมีตัวจับ Regime แบบ
-<strong>สถิติล้วน</strong> (<span class="mono">xauby/regime/statistical.py</span>) ทำงานคู่ขนานเป็น
-"ความเห็นที่สอง" ที่ไม่มีอคติจาก Threshold ที่คนตั้ง:</p>
+<p>นอกจากตัวจับสภาพตลาดหลักที่ใช้กฎตายตัวซึ่งคนเป็นคนตั้งเกณฑ์ไว้ ระบบยังมีตัวตรวจทานอีกตัวที่ทำงานคู่ขนาน
+ใช้วิธีทางสถิติแทนกฎตายตัว เพื่อเป็น <strong>"ความเห็นที่สอง"</strong> ที่ไม่มีอคติจากเกณฑ์ที่คนตั้งไว้ล่วงหน้า</p>
 
 <ul>
-<li>Fit <strong>Gaussian Mixture Model (GMM) แบบ diagonal covariance ด้วย EM</strong> บนพื้นที่ Feature 2 มิติ:
-Trend (ผลรวม Log-return แบบ Rolling) และ Log Realized Volatility</li>
-<li>เลือก 2 แกนนี้เพราะข้อมูลจริงพิสูจน์แล้วว่า Regime แยกด้วย Volatility ได้ชัดเจนกว่าทิศทาง</li>
-<li>คืนค่า Cluster ของแท่งล่าสุด พร้อม <strong>Posterior Probability</strong> และ
-<strong>Persistence เชิงประจักษ์ (Stay Probability)</strong></li>
-<li>ใช้ <strong>numpy pure</strong> ไม่มี scipy/sklearn เพื่อให้ <span class="mono">classifier.py</span>
-หลักยังคง pure-stdlib</li>
+<li>ให้คอมพิวเตอร์ลองแบ่งกลุ่มข้อมูลราคาด้วยตัวเอง โดยดูจากทิศทางราคาและความผันผวนของแท่งเทียนที่ผ่านมา
+ไม่ใช้เกณฑ์ตายตัวใดๆ เลย (วิธีนี้เรียกว่า Gaussian Mixture Model หรือ GMM)</li>
+<li>เลือกวิเคราะห์แค่ 2 อย่างนี้ (ทิศทางกับความผันผวน) เพราะข้อมูลจริงพิสูจน์แล้วว่าระบบแยกความผันผวนได้
+ชัดเจนกว่าทิศทางมาก</li>
+<li>ผลลัพธ์ที่ได้คือกลุ่มที่แท่งล่าสุดใกล้เคียงที่สุด พร้อมระดับความมั่นใจ และวัดว่ากลุ่มนั้นอยู่นานแค่ไหน
+โดยเฉลี่ยในอดีต</li>
 </ul>
 
-<p>ผลลัพธ์แนบเป็น Feature <span class="mono">stat_*</span> เข้ากับ Regime ปกติ เป็น <strong>Advisory เท่านั้น
-— ไม่เคย Override Regime หรือ Routing ใดๆ</strong> ปิดอยู่โดย Default หลัง Flag
-<span class="mono">architecture.regime_statistical_crosscheck</span> ปรับค่าได้ผ่าน Block
-<span class="mono">regime_statistical:</span> (<span class="mono">components</span>,
-<span class="mono">min_bars</span>)</p>
+<p>ผลลัพธ์นี้เป็นแค่<strong>ข้อมูลประกอบเท่านั้น ไม่เคยไปเปลี่ยนป้ายสภาพตลาดหลักหรือการเลือกกลยุทธ์</strong>
+ปิดอยู่โดยค่าเริ่มต้น ต้องเปิดเองถ้าอยากดูข้อมูลนี้เพิ่มเติม</p>
 
-<h2 id="s5-5">5.5 รายงานความแม่นยำของ Regime Detector</h2>
+<h2 id="s5-5">5.5 ตัวจับสภาพตลาดนี้แม่นแค่ไหน</h2>
 
-<p>"ความแม่นยำ" ของ Regime Detector <strong>ไม่ใช่</strong> "ทายถูกกี่เปอร์เซ็นต์" เพราะไม่มี Ground Truth
-ว่าตลาด ณ ขณะนั้นอยู่ Regime ไหนจริงๆ ให้เทียบ การวัดที่ถูกต้องมี 3 อย่าง:</p>
+<p>หลายคนสงสัยว่า "ตัวจับสภาพตลาดนี้แม่นแค่ไหน" คำตอบไม่ใช่ตัวเลขเปอร์เซ็นต์ทายถูกแบบข้อสอบ เพราะไม่มีใคร
+รู้คำตอบที่ถูกต้องจริงๆ ของตลาด ณ ขณะนั้น การวัดผลที่เหมาะสมกว่าคือดู 3 อย่างนี้แทน:</p>
 <ol>
-<li><strong>Volatility Separation</strong> — Regime แยกสภาพ Volatility จริงได้หรือไม่ (งานหลักที่ขับเคลื่อน
-Position Sizing และความกว้าง Stop)</li>
-<li><strong>Persistence</strong> — Regime อยู่นานพอให้ลงมือทำอะไรได้ หรือสลับไปมาทุกแท่ง (Churn)</li>
-<li><strong>Directional Tilt</strong> — Regime กลุ่ม Bull ให้ Drift สูงกว่ากลุ่ม Bear จริงหรือไม่
-(คาดหวังว่าจะ<em>เล็ก</em>เสมอ เป็นโบนัส ไม่ใช่ตัวชี้วัดหลัก)</li>
+<li><strong>แยกความผันผวนได้จริงไหม</strong> — เมื่อระบบบอกว่าตลาดอยู่ในสภาพหนึ่ง ราคาช่วงนั้นผันผวนต่าง
+จากสภาพอื่นจริงหรือเปล่า (นี่คือหน้าที่หลัก เพราะใช้กำหนดว่าควรเสี่ยงมากหรือน้อย)</li>
+<li><strong>ป้ายอยู่นานพอไหม</strong> — ถ้าป้ายเปลี่ยนทุกแท่งเทียน จะเอาไปใช้ตัดสินใจอะไรไม่ได้เลย</li>
+<li><strong>ทายทิศทางได้แม่นแค่ไหน</strong> — เป็นโบนัส ไม่ใช่ตัวชี้วัดหลัก คาดหวังว่าจะแม่นน้อยเป็นเรื่องปกติ
+ของทุกระบบวิเคราะห์ตลาด</li>
 </ol>
 
-<p>วัดด้วย <strong>eta² (สัดส่วนความแปรปรวนของ Return ที่อธิบายได้ด้วย Regime Label)</strong> พร้อม
-Permutation p-value (ความน่าจะเป็นที่การสุ่มจัดกลุ่มใหม่จะแยกข้อมูลได้ดีเท่ากัน) วัดจากข้อมูลจริง 4 ชั่วโมง
-(PAXGUSDT ตัวแทนทองคำ ~12,800 แท่ง / BTCUSDT ~17,500 แท่ง)</p>
+<p>เราทดสอบด้วยข้อมูลราคาทองคำและ Bitcoin ย้อนหลังหลายปี แล้ววัดว่าป้ายที่ติดไว้แยกความผันผวนได้จริง
+แค่ไหน และผลที่ได้มีโอกาสเกิดจากความบังเอิญมากน้อยแค่ไหน</p>
 
 <table>
-<tr><th>ตัวชี้วัด</th><th>PAXGUSDT (ตัวแทนทองคำ)</th><th>BTCUSDT (cross-check)</th></tr>
-<tr><td>Volatility separation eta² (p)</td><td><strong>0.041</strong> (p = 0.0005)</td><td><strong>0.034</strong> (p = 0.0005)</td></tr>
-<tr><td>Directional separation eta² (p)</td><td>0.0004 (p = 0.85 — เท่า Noise)</td><td>0.0019 (p = 0.0015)</td></tr>
-<tr><td>Persistence (Mean run / Flip rate)</td><td>6.6 แท่ง / 15.1%</td><td>5.2 แท่ง / 19.2%</td></tr>
-<tr><td>ลำดับ Drift (Bull เทียบ Bear)</td><td>+1.3 เทียบ −0.0 bps ✓</td><td>+5.8 เทียบ +0.5 bps ✓</td></tr>
-<tr><td>GMM Cross-check Agreement</td><td>50.0%</td><td>45.2%</td></tr>
+<tr><th>สิ่งที่วัด</th><th>ทองคำ</th><th>Bitcoin (ทดสอบเทียบ)</th></tr>
+<tr><td>แยกความผันผวนได้ชัดแค่ไหน</td><td><strong>มั่นใจสูงมาก</strong> ว่าไม่ใช่เรื่องบังเอิญ</td><td><strong>มั่นใจสูงมาก</strong> ว่าไม่ใช่เรื่องบังเอิญ</td></tr>
+<tr><td>ทายทิศทางถัดไปได้แม่นแค่ไหน</td><td>น้อยมาก (เกือบเท่าสุ่ม)</td><td>น้อย แต่พอเชื่อถือได้บ้าง</td></tr>
+<tr><td>ป้ายอยู่นานเฉลี่ยกี่แท่งก่อนเปลี่ยน</td><td>ประมาณ 6-7 แท่ง</td><td>ประมาณ 5 แท่ง</td></tr>
+<tr><td>ป้ายเปลี่ยนบ่อยแค่ไหน</td><td>15% ของเวลา</td><td>19% ของเวลา</td></tr>
+<tr><td>ขาขึ้นให้ผลตอบแทนดีกว่าขาลงจริงไหม</td><td>ใช่ ✓</td><td>ใช่ ✓</td></tr>
+<tr><td>ตัวตรวจทานที่สอง (สถิติ) เห็นตรงกับตัวหลักกี่%</td><td>50%</td><td>45%</td></tr>
 </table>
 
-<p><strong>บทสรุป:</strong> ตัวจำแนกทำหน้าที่หลักได้ดี — แยก Volatility ได้ชัดเจนและมีนัยสำคัญทางสถิติจริง
-(p ≤ 0.001 ทั้งสองสินทรัพย์), Regime นิ่งพอจะเทรด (Mean run > 3 แท่ง แปลว่า Debounce 3 แท่งของระบบตั้งไว้เหมาะสม),
-และลำดับ Bull/Bear ถูกทิศทาง ส่วน Directional Edge อ่อนตามคาด (ปกติของ Classifier ทุกตัวในตลาดจริง)
-<strong>ข้อสรุปเชิงปฏิบัติ: ใช้ Regime เพื่อปรับขนาดไม้ตาม Volatility ไม่ใช่ทำนายทิศทางแท่งถัดไป</strong></p>
+<p><strong>สรุปคือ:</strong> ตัวจับสภาพตลาดทำหน้าที่หลักได้ดี — แยกความผันผวนได้จริงและแม่นยำ (ไม่ใช่
+เรื่องบังเอิญ), ป้ายอยู่นานพอจะใช้งานได้จริง (เฉลี่ย 5-7 แท่งถึงจะเปลี่ยน) และเทรนด์ขาขึ้นให้ผลตอบแทนดีกว่า
+ขาลงจริงตามที่ควรจะเป็น ส่วนการทายทิศทางแท่งถัดไปนั้นแม่นน้อย ซึ่งเป็นเรื่องปกติของทุกระบบวิเคราะห์ตลาด
+<strong>ข้อสรุปที่ใช้ได้จริง: ใช้ป้ายสภาพตลาดเพื่อตัดสินใจว่าควรเสี่ยงมากหรือน้อย ไม่ใช่ใช้ทายว่าราคาจะ
+ขึ้นหรือลงในแท่งถัดไป</strong></p>
 
 <div class="note">
-GMM Cross-check เห็นตรงกับ Rule-based เพียง ~45-50% ของเวลา ซึ่ง<strong>ตั้งใจให้เป็นแบบนั้น</strong> —
-ถ้า Cross-check ให้ผลตรงกันเกือบ 100% แปลว่ามันไม่ใช่ความเห็นที่สองจริงๆ การไม่ตรงกันคือสัญญาณว่าการอ่านตลาด
-ขณะนั้นกำกวม เป็นข้อมูลที่มีค่าสำหรับผู้ดูแลระบบหรือ Confidence Gate ในอนาคต ไม่ใช่ข้อบ่งชี้ว่าตัวใดตัวหนึ่งผิด
+ตัวตรวจทานที่สอง (ใช้สถิติ) เห็นตรงกับตัวจับหลักแค่ประมาณครึ่งหนึ่งของเวลา ซึ่งเป็นเรื่องที่ตั้งใจให้เป็น
+แบบนั้น ถ้าทั้งสองตัวเห็นตรงกันแทบทุกครั้ง จะไม่ต่างอะไรกับมีตัวเดียว การที่บางครั้งไม่ตรงกันคือสัญญาณว่า
+ตอนนั้นตลาดอ่านยาก ซึ่งเป็นข้อมูลที่มีประโยชน์ ไม่ใช่ข้อผิดพลาดของระบบตัวใดตัวหนึ่ง
 </div>
 
 <h3>ข้อจำกัดที่ควรรู้</h3>
 <ul>
-<li>ค่า eta² เล็กในเชิงสัมบูรณ์ (~0.04) — ตลาดส่วนใหญ่คือ Noise ไม่มี Regime Model ใดอธิบายความแปรปรวนได้
-มาก การที่ 0.04 มี p ≤ 0.001 แปลว่าการแยกนั้น "จริงและมั่นคง" ไม่ใช่ "ใหญ่"</li>
-<li>ประวัติราคาทองใช้ PAXGUSDT เป็นตัวแทน (Proxy) เพราะ XAUUSDT เองมีประวัติสั้นกว่า</li>
-<li>Threshold ยังตั้งด้วยมืออยู่ ยังไม่ได้ Fit ต่อสินทรัพย์ — GMM Cross-check คือก้าวแรกสู่โมเดลที่ขับเคลื่อน
-ด้วยข้อมูลมากขึ้น</li>
-<li>Forward Return เป็นสถิติเชิงพรรณนาแบบ In-sample ไม่ใช่ผล Backtest ที่พิสูจน์ว่ากลยุทธ์ทำกำไรได้</li>
+<li>ผลการแยกความผันผวนมีขนาด<em>เล็ก</em>ในเชิงตัวเลขสัมบูรณ์ — เพราะตลาดส่วนใหญ่คือความสุ่ม ไม่มีระบบ
+วิเคราะห์ตัวไหนอธิบายความเคลื่อนไหวของราคาได้มากขนาดนั้น การที่ผลลัพธ์ "มั่นใจสูงมาก" ไม่ได้แปลว่า
+"ทำนายได้แม่นมาก" แค่แปลว่าการแยกกลุ่มนั้น "จริงและเชื่อถือได้" เท่านั้น</li>
+<li>ประวัติราคาทองที่ใช้ทดสอบเป็นโทเคนทองคำอีกตัวแทน เพราะสัญญาทองจริงมีประวัติสั้นกว่า</li>
+<li>เกณฑ์การตัดสินยังตั้งด้วยมืออยู่ ยังไม่ได้ปรับอัตโนมัติต่อสินทรัพย์แต่ละตัว ตัวตรวจทานด้วยสถิติคือ
+ก้าวแรกสู่ระบบที่ขับเคลื่อนด้วยข้อมูลมากขึ้นในอนาคต</li>
+<li>ผลตอบแทนที่วัดได้เป็นสถิติเชิงพรรณนา ไม่ใช่ผลทดสอบย้อนหลังที่พิสูจน์ว่ากลยุทธ์ใดกลยุทธ์หนึ่งทำกำไรได้จริง</li>
 </ul>
 
-<p class="small">คำสั่งสร้างรายงานซ้ำ: <span class="mono">python3 scripts/regime_forward_validate.py --csv &lt;candles.csv&gt; --timeframe 4h --horizon 6</span></p>
+<h2 id="s5-6">5.6 ระบบเลือกกลยุทธ์อัตโนมัติตามสภาพตลาด</h2>
 
-<h2 id="s5-6">5.6 RegimeRouter — เลือกกลยุทธ์ตาม Regime อัตโนมัติ</h2>
-
-<p>RegimeRouter คือระบบที่แม็พ Regime แต่ละแบบไปยังกลยุทธ์ที่เหมาะสม เป็น Opt-in ต่อคู่เทรด:</p>
+<p>ระบบนี้จะแม็พสภาพตลาดแต่ละแบบไปยังกลยุทธ์ที่เหมาะสม เป็นฟีเจอร์ที่ต้องเปิดเองต่อคู่เทรด ไม่ได้เปิดอัตโนมัติ:</p>
 <ol>
-<li>Flag Global <span class="mono">architecture.regime_router_enabled</span> ต้องเป็น true</li>
-<li>Flag ต่อสินทรัพย์ <span class="mono">regime_router_enabled</span> ต้องเป็น true</li>
-<li>ถ้าเป็นคู่ Live ต้องมี <span class="mono">regime_router_live_confirmed: true</span> เพิ่มด้วย</li>
+<li>ต้องเปิดสวิตช์หลักของระบบทั้งหมดก่อน</li>
+<li>ต้องเปิดสวิตช์เฉพาะคู่เทรดนั้นด้วย</li>
+<li>ถ้าเป็นคู่เทรดจริง ต้องได้รับการอนุมัติเพิ่มเติมจากผู้ดูแลระบบด้วย</li>
 </ol>
-<p>ถ้าสินทรัพย์ Live เปิด Router โดยไม่มี Live Confirmation เอนจิ้นจะบังคับกลับเป็น Sim อัตโนมัติ
-พฤติกรรมอื่นๆ ของ Router: Debounce 3 แท่งก่อนยืนยันการสลับ Regime, NO_TRADE บล็อกการ BUY ใหม่แต่คง Stop
-Protection ของโพซิชันเดิม, Recovery ต้องผ่าน 3 แท่งที่เทรดได้ก่อนกลับสู่ปกติ, บังคับปิดหลัง 6 แท่ง NO_TRADE
-ติดต่อกัน, และ Handoff กลยุทธ์ยึดหลักความปลอดภัยตามหัวข้อ 3.2</p>
+<p>ถ้าคู่เทรดจริงเปิดใช้ระบบนี้โดยไม่มีการอนุมัติ บอทจะดึงกลับไปเป็นโหมดจำลองอัตโนมัติทันที พฤติกรรมอื่นๆ
+ของระบบนี้: รอให้สัญญาณสภาพตลาดซ้ำกัน 3 แท่งก่อนจะยืนยันการเปลี่ยนจริง (กันสัญญาณหลอก), ช่วงอันตราย
+จะบล็อกการเปิดไม้ใหม่แต่คงจุดป้องกันของไม้เดิมไว้, ต้องผ่านแท่งที่เทรดได้ปกติสักพักก่อนจะกลับมาเทรดได้
+เต็มรูปแบบ, และมีการส่งมอบกลยุทธ์อย่างปลอดภัยตามที่อธิบายไว้ในภาค 3.2</p>
 
 <div class="note">
-<strong>สถานะจริงตอนนี้:</strong> คู่เทรด XAU ปิด RegimeRouter อยู่ (<span class="mono">regime_router_enabled: false</span>)
-— หมายความว่าตอนนี้ระบบรัน <span class="mono">cdc_action_zone</span> ตรงๆ ไม่ผ่านการเลือกกลยุทธ์อัตโนมัติ
-ตารางด้านล่างคือ Mapping ที่ Config ไว้ในระบบ (พร้อมใช้เมื่อเปิด Flag ในอนาคต):
+<strong>สถานะจริงตอนนี้:</strong> คู่เทรดทองคำปิดระบบนี้อยู่ — หมายความว่าตอนนี้บอทใช้กลยุทธ์ CDC Action
+Zone ตรงๆ ไม่ผ่านการเลือกกลยุทธ์อัตโนมัติ ตารางด้านล่างคือการแม็พที่ตั้งไว้ในระบบ พร้อมใช้เมื่อเปิดสวิตช์
+ในอนาคต:
 </div>
 
 <table>
-<tr><th>Regime</th><th>กลยุทธ์ที่ Map ไว้</th><th>Action</th></tr>
-<tr><td><span class="mono">BULL_BREAKOUT</span></td><td><span class="mono">cdc_action_zone</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">BULL_TREND_STRONG</span></td><td><span class="mono">cdc_action_zone</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">BULL_TREND_WEAK</span></td><td><span class="mono">cdc_action_zone</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">LOW_VOL_ACCUMULATION</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">LOW_VOL_RANGE</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">VOLATILITY_EXPANSION</span></td><td><span class="mono">supertrend_ema200</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">SIDEWAYS_CHOP</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">BEAR_TREND_WEAK</span></td><td><span class="mono">cdc_action_zone</span></td><td>BUY ได้</td></tr>
-<tr><td><span class="mono">PANIC_SELL</span></td><td><span class="mono">None</span></td><td>NO_TRADE</td></tr>
-<tr><td><span class="mono">BEAR_BREAKDOWN</span></td><td><span class="mono">None</span></td><td>NO_TRADE</td></tr>
-<tr><td><span class="mono">BEAR_TREND_STRONG</span></td><td><span class="mono">None</span></td><td>NO_TRADE</td></tr>
+<tr><th>สภาพตลาด</th><th>กลยุทธ์ที่จะเลือกใช้</th><th>อนุญาตซื้อไหม</th></tr>
+<tr><td><span class="mono">BULL_BREAKOUT</span></td><td><span class="mono">cdc_action_zone</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">BULL_TREND_STRONG</span></td><td><span class="mono">cdc_action_zone</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">BULL_TREND_WEAK</span></td><td><span class="mono">cdc_action_zone</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">LOW_VOL_ACCUMULATION</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">LOW_VOL_RANGE</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">VOLATILITY_EXPANSION</span></td><td><span class="mono">supertrend_ema200</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">SIDEWAYS_CHOP</span></td><td><span class="mono">bbrsi_mean_reversion</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">BEAR_TREND_WEAK</span></td><td><span class="mono">cdc_action_zone</span></td><td>ได้</td></tr>
+<tr><td><span class="mono">PANIC_SELL</span></td><td>ไม่มี</td><td>ไม่ได้ (โซนอันตราย)</td></tr>
+<tr><td><span class="mono">BEAR_BREAKDOWN</span></td><td>ไม่มี</td><td>ไม่ได้ (โซนอันตราย)</td></tr>
+<tr><td><span class="mono">BEAR_TREND_STRONG</span></td><td>ไม่มี</td><td>ไม่ได้ (โซนอันตราย)</td></tr>
 </table>
 
-<p>เมื่อเปิด Regime Filter สำหรับ Backtest ระบบจะเลียนแบบ Routing นี้ด้วย: บล็อกสัญญาณ BUY ทุกครั้งที่ Regime
-อยู่นอกกลุ่มเป้าหมายของกลยุทธ์นั้น เพื่อให้ผล Replay ใกล้เคียงกับประตูเข้าไม้ของ Live มากที่สุด</p>
+<h2 id="s5-7">5.7 วิธีตัดสินใจเปลี่ยนกลยุทธ์ด้วยข้อมูลจริง</h2>
 
-<h2 id="s5-7">5.7 กระบวนการคัดเลือกกลยุทธ์ด้วยข้อมูลจริง (R&amp;D)</h2>
-
-<p>ระบบมี Gatekeeper แบบขับเคลื่อนด้วยข้อมูลสำหรับตัดสินใจเปลี่ยนกลยุทธ์ใน
-<span class="mono">regime_router.mapping</span>: กลยุทธ์ผู้ท้าชิงจะแทนที่กลยุทธ์เดิมได้ <strong>ก็ต่อเมื่อ</strong>
-ชนะ Profit Factor ของกลยุทธ์เดิมทั้งชุด Train (70% เก่าสุด) และ Test (30% ใหม่สุด) ของข้อมูลตลาดจริงหลายปี
-พร้อมมีจำนวนไม้พอและ Drawdown อยู่ในขอบเขต — <strong>ข้อมูลเป็นคนตัดสิน ไม่ใช่ความเชื่อ</strong></p>
-
-<h3>เกณฑ์ตัดสิน (ต้องผ่านครบทุกข้อ)</h3>
-<ol>
-<li>PF ผู้ท้าชิง > PF เดิม ทั้ง Train และ Test</li>
-<li>จำนวนไม้ ≥ 20 (Train) และ ≥ 8 (Test)</li>
-<li>PF_test ≥ 1.0 และ maxDD_test ≤ 1.5 เท่าของเดิม (และ ≤ 15% แบบสัมบูรณ์)</li>
-<li>Window ล่าสุด ~6 เดือน: PF ≥ 0.8 (Sanity check ว่าไม่พลิกหัวกลับในตลาดปัจจุบัน)</li>
-</ol>
-<p>ไม่ผ่านข้อใดข้อหนึ่ง = กลยุทธ์เดิมอยู่ต่อสำหรับ Mapping Key นั้น</p>
+<p>ระบบมีขั้นตอนตรวจสอบก่อนจะเปลี่ยนกลยุทธ์ที่ใช้กับสภาพตลาดใดสภาพตลาดหนึ่ง — กลยุทธ์ใหม่จะเข้ามาแทนที่
+กลยุทธ์เดิมได้<strong>ก็ต่อเมื่อ</strong>ทำกำไรได้ดีกว่ากลยุทธ์เดิมจริง ทั้งช่วงข้อมูลที่ใช้ปรับแต่งและช่วง
+ข้อมูลใหม่ที่ไม่เคยเห็นมาก่อน พร้อมมีจำนวนไม้มากพอและขาดทุนสูงสุดอยู่ในขอบเขตที่ยอมรับได้ —
+<strong>ข้อมูลเป็นคนตัดสิน ไม่ใช่ความรู้สึกหรือความเชื่อ</strong></p>
 
 <div class="note">
-<strong>ผลการตัดสินล่าสุด (มิ.ย. 2026, BTCUSDT 1h):</strong> จากข้อมูลจริง 26,297 แท่ง ไม่มี Candidate
-ตัวไหนผ่านเกณฑ์ครบ — <span class="mono">donchian_trend</span> ชนะ Train ชัดเจน (PF 1.16 เทียบ 0.77) แต่พังบน
-Test (PF 0.32 ต่ำกว่าทั้งเกณฑ์ 1.0 และ PF เดิม) จึง<strong>คงกลยุทธ์เดิมทั้งหมด</strong>ไว้ในทุกกลุ่ม Regime
-กระบวนการนี้เป็นงานวิจัยบน BTCUSDT ซึ่งปัจจุบันไม่ใช่คู่เทรด Live ของระบบ — ใช้เป็นตัวอย่างระเบียบวิธีสำหรับ
-การตัดสินใจเปลี่ยนกลยุทธ์ในอนาคต
+<strong>ผลการทดสอบล่าสุด:</strong> จากการทดสอบกับ Bitcoin ย้อนหลังกว่า 26,000 แท่ง ไม่มีกลยุทธ์ผู้ท้าชิง
+ตัวไหนผ่านเกณฑ์ครบ จึงยังคงใช้กลยุทธ์เดิมต่อไปในทุกสภาพตลาด — การทดสอบนี้ทำบน Bitcoin ซึ่งปัจจุบัน
+ไม่ใช่คู่เทรดจริงของระบบ ใช้เป็นตัวอย่างขั้นตอนสำหรับการตัดสินใจเปลี่ยนกลยุทธ์ในอนาคต
 </div>
-
-<p class="small">คำสั่งที่เกี่ยวข้อง: <span class="mono">scripts/fetch_global_klines.py</span>,
-<span class="mono">scripts/regime_strategy_eval.py --grid</span>,
-<span class="mono">scripts/regime_churn_analysis.py</span> (วัดความถี่การสลับ Regime และผลกระทบต่อการรัน
-กลยุทธ์จริง)</p>
 </div>
 
 <!-- ===================== PART 6 ===================== -->
 <div class="chapter" id="s6-1">
 <div class="chapter-kicker">ภาคที่ 6 — การจัดการความเสี่ยง</div>
-<h1>6.1 การคำนวณขนาดโพซิชัน (Position Sizing)</h1>
+<h1>6.1 บอทคำนวณขนาดไม้อย่างไร</h1>
 
-<p>ขนาดไม้คำนวณแบบอิงความเสี่ยงและทบต้นอัตโนมัติ:</p>
-<pre>qty = (equity × risk_pct) / sl_distance</pre>
-<p>ถูกจำกัดเพดานด้วย <span class="mono">max_position_per_trade_pct</span> และ Allocation ต่อสินทรัพย์
-(<span class="mono">allocation_pct</span>) Equity รวมโพซิชันที่เปิดอยู่ ณ ราคา Mark ด้วย ทำให้กำไรที่ทำได้
-ไปขยายขนาดไม้ถัดไปโดยอัตโนมัติ (Auto-compounding)</p>
+<p>ขนาดไม้แต่ละครั้งคำนวณจาก 2 อย่าง: มูลค่าพอร์ตทั้งหมดตอนนี้ และเปอร์เซ็นต์ความเสี่ยงที่ตั้งไว้
+พูดง่ายๆ คือ ยิ่งพอร์ตโตขึ้นจากกำไรที่ทำได้ ขนาดไม้ถัดไปก็จะโตตามไปด้วยอัตโนมัติ (ทบต้น) โดยมีเพดานสูงสุด
+กำกับไว้เสมอไม่ให้ไม้ใดไม้หนึ่งใหญ่เกินไป</p>
 
 <div class="warn">
-<strong>ข้อสำคัญ:</strong> <span class="mono">risk_pct</span> ต้องตรงกันระหว่าง
-<span class="mono">trading.risk_pct</span> (Live อ่านจาก <span class="mono">portfolio.position_sizing.risk_pct</span>)
-และ <span class="mono">portfolio.position_sizing.risk_pct</span> (Backtest อ่านจาก
-<span class="mono">trading.risk_pct</span>) — ค่าไม่ตรงกันจะทำให้ Live กับ Backtest มีผลไม่ตรงกัน (parity พัง)
-ค่าปัจจุบันของระบบคือ <span class="mono">0.02</span> (2%) ทั้งสองจุด ระบบมี Startup guard
-(<span class="mono">MAX_SANE_RISK_PCT = 0.10</span>) ที่ปฏิเสธค่า <span class="mono">risk_pct</span>
-เกิน 10% ทันที
+<strong>ข้อสำคัญ:</strong> เปอร์เซ็นต์ความเสี่ยงต้องตั้งค่าให้ตรงกันทุกจุดในไฟล์ตั้งค่า เพราะเทรดจริงกับ
+ทดสอบย้อนหลังอ่านค่าคนละจุดกัน ถ้าตั้งไม่ตรงกัน ผลการทดสอบย้อนหลังจะไม่ตรงกับผลตอนเทรดจริง ค่าปัจจุบัน
+ของระบบคือ 2% ทุกจุด ระบบมีการเช็คตอนเริ่มทำงานที่จะปฏิเสธทันทีถ้าตั้งค่าความเสี่ยงเกิน 10% เพราะสูง
+ผิดปกติเกินไป
 </div>
 
-<h2 id="s6-2">6.2 Stop-Loss / Trailing / Breakeven</h2>
+<h2 id="s6-2">6.2 จุดตัดขาดทุน / เลื่อนจุดป้องกัน / คุ้มทุน</h2>
 
-<p>กลไก Exit ที่ระบบรองรับ (ไม่ใช่ทุกตัวเปิดใช้ในทุกกลยุทธ์ — ดูค่าจริงของ CDC ในหัวข้อ 5.2):</p>
+<p>กลไกป้องกันความเสี่ยงที่ระบบรองรับ (ไม่ใช่ทุกกลยุทธ์เปิดใช้ทุกตัว — ดูค่าจริงของ CDC ในหัวข้อ 5.2):</p>
 <ul>
-<li><strong>Initial ATR Stop-Loss</strong> — ระยะเริ่มต้นจาก Entry คูณด้วย <span class="mono">sl_atr_mult</span></li>
-<li><strong>Trailing Stop</strong> — ขยับตาม ATR คูณ <span class="mono">trailing_atr_mult</span> เมื่อราคาไปในทางที่ดี</li>
-<li><strong>Breakeven</strong> — เลื่อน SL มาที่จุดเข้าเมื่อกำไรถึงเกณฑ์ที่ตั้ง (ถ้าเปิดใช้งาน)</li>
-<li><strong>Multi-tick Local SL Confirmation</strong> — สำหรับสายที่ไม่มี SL ฝั่ง Exchange ต้องยืนยันครบ
-<span class="mono">sl_confirm_ticks</span> ก่อนตัดสินใจปิดไม้จริง เพื่อกันสัญญาณหลอกจาก Spike ราคาสั้นๆ</li>
+<li><strong>จุดตัดขาดทุนเริ่มต้น</strong> — กำหนดระยะห่างจากราคาที่เข้าไม้ตามความผันผวนของตลาด</li>
+<li><strong>เลื่อนจุดป้องกันตามราคา (Trailing Stop)</strong> — เมื่อราคาไปในทางที่ดี จุดป้องกันจะขยับตาม
+เพื่อล็อกกำไรบางส่วนไว้</li>
+<li><strong>เลื่อนมาที่จุดคุ้มทุน (Breakeven)</strong> — เมื่อกำไรถึงเกณฑ์ที่ตั้งไว้ จุดป้องกันจะขยับมาที่
+ราคาที่เข้าไม้พอดี ทำให้ไม้นั้นขาดทุนไม่ได้อีกต่อไป (ถ้าเปิดใช้งาน)</li>
+<li><strong>ยืนยันซ้ำก่อนปิดไม้จริง</strong> — สำหรับกลยุทธ์ที่ไม่มีจุดตัดขาดทุนบนตลาดโดยตรง ต้องเห็น
+สัญญาณซ้ำกันหลายรอบก่อนตัดสินใจปิดไม้จริง เพื่อกันสัญญาณหลอกจากราคากระตุกสั้นๆ</li>
 </ul>
 
-<h2 id="s6-3">6.3 Partial Take-Profit</h2>
+<h2 id="s6-3">6.3 การทำกำไรบางส่วนก่อน (Partial Take-Profit)</h2>
 
-<p>Strategy Config เปิด Partial Take-Profit แบบ One-shot ได้:</p>
+<p>ตั้งค่าได้ในไฟล์กลยุทธ์:</p>
 <pre>strategy:
   params:
     cdc_action_zone:
       partial_tp_pct: 12.0
       partial_tp_fraction: 0.5</pre>
 
-<p>เมื่อโพซิชันที่เปิดอยู่ถึงผลตอบแทน <span class="mono">partial_tp_pct</span> จากราคาเข้า เอนจิ้นจะปิด
-<span class="mono">partial_tp_fraction</span> ของส่วนที่เหลือด้วย Reduce-only Close บน Swap จริง
-(หรือผ่าน SimBroker ในโหมด Sim) บันทึกเป็น Partial Closed Trade, ตั้ง
-<span class="mono">trade_states.partial_tp_taken=1</span>, และปล่อยส่วนที่เหลือให้ออกตามกลยุทธ์ปกติ
-ทริกเกอร์นี้เป็นแบบ One-shot ต่อโพซิชัน และคงอยู่แม้ผ่านการ Restart สำหรับ Baseline ทองคำ Live ปัจจุบัน
-นี่หมายถึงการเก็บ 50% ที่ +12% แล้วปล่อยส่วนที่เหลือขี่ไปจนกว่า CDC จะออก หน้าจอ UI แสดงเป็น
-<span class="mono">PTP</span>, <span class="mono">Partial TP</span>, หรือ <span class="mono">PTP banked</span>
-เมื่อดำเนินการแล้ว</p>
+<p>เมื่อโพซิชันที่เปิดอยู่มีกำไรถึงเปอร์เซ็นต์ที่ตั้งไว้จากราคาเข้า บอทจะขายบางส่วนออกไปทำกำไรทันที
+บันทึกไว้เป็นการปิดไม้บางส่วน แล้วปล่อยส่วนที่เหลือให้ออกตามสัญญาณกลยุทธ์ปกติต่อไป ฟีเจอร์นี้ทำงาน
+ครั้งเดียวต่อไม้ และจะยังจำสถานะนี้ไว้แม้บอทถูกรีสตาร์ท สำหรับคู่ทองคำตอนนี้ หมายถึงการเก็บกำไร 50%
+ที่ +12% แล้วปล่อยส่วนที่เหลือขี่ต่อไปจนกว่าสัญญาณจะเปลี่ยน หน้าจอจะแสดงสถานะนี้ให้เห็นว่า "รอทำกำไร"
+หรือ "ทำกำไรบางส่วนแล้ว"</p>
 
-<h2 id="s6-4">6.4 Drawdown Guard — สวิตช์ตัดขาดทุนระดับพอร์ต</h2>
+<h2 id="s6-4">6.4 สวิตช์หยุดขาดทุนระดับพอร์ต</h2>
 
-<p><span class="mono">risk.drawdown_guard</span> คือ Kill-switch ระดับพอร์ตโดยรวม: บล็อกการ BUY ใหม่
-(และบังคับปิดโพซิชันถ้าตั้ง <span class="mono">close_positions: true</span>) เมื่อ Equity ร่วงลงต่ำกว่า
-<span class="mono">max_drawdown_pct</span> จากจุดสูงสุดที่เคยบันทึกไว้ (High-water Mark ที่เก็บใน
-<span class="mono">core/equity_peak.json</span>)</p>
+<p>ระบบมีสวิตช์หยุดฉุกเฉินระดับพอร์ตทั้งหมด: ถ้ามูลค่าพอร์ตร่วงลงจากจุดสูงสุดที่เคยทำได้เกินเปอร์เซ็นต์
+ที่ตั้งไว้ บอทจะบล็อกการเปิดไม้ใหม่ทันที (และสามารถตั้งให้บังคับปิดไม้ที่เปิดอยู่ด้วยก็ได้) เป็นเหมือน
+เบรกฉุกเฉินป้องกันไม่ให้ขาดทุนหนักเกินไปในช่วงที่ตลาดแย่ต่อเนื่อง</p>
 
-<h2 id="s6-5">6.5 การเทรด Short และเงื่อนไขความปลอดภัย</h2>
+<h2 id="s6-5">6.5 การเทรดขาลง (Short) และความปลอดภัย</h2>
 
-<p>คู่เทรดปัจจุบันเปิด Short ได้จริงบน Live (<span class="mono">allowed_sides: [long, short]</span>,
-<span class="mono">short_live_enabled: true</span>) เพราะ Adapter ของ OKX Swap ประกาศความสามารถ
-<span class="mono">swap</span>/<span class="mono">positions</span>/<span class="mono">reduce_only</span> ครบ
-เงื่อนไขความปลอดภัยของ Short:</p>
+<p>คู่เทรดตอนนี้เปิดขาลงได้จริงบนเงินจริง เพราะตลาดที่ใช้เชื่อมต่อรองรับความสามารถที่จำเป็นครบ เงื่อนไข
+ความปลอดภัยของการเทรดขาลง:</p>
 <ul>
-<li>ต้องอนุญาตต่อคู่เทรดอย่างชัดเจนผ่าน <span class="mono">allowed_sides</span></li>
-<li>Live ต้องเปิด <span class="mono">short_live_enabled</span> เพิ่มเติม — ไม่งั้นเป็น Paper-only</li>
-<li>Startup ล้มเหลวทันที (Fail closed) ถ้า Adapter ที่เลือกไม่มีความสามารถ Swap/Positions/Reduce-only</li>
-<li>Leverage Default 1 เท่า และเพดานสูงสุด 3 เท่า</li>
-<li>ช่องทาง Streaming (CCXT Pro) ถ้าเสื่อมสภาพจะบล็อก Short ใหม่ทันที; REST Fallback จะไม่เปลี่ยน
-Exchange/Market Type</li>
+<li>ต้องอนุญาตอย่างชัดเจนต่อคู่เทรดนั้นในไฟล์ตั้งค่า</li>
+<li>การเทรดจริงต้องเปิดสวิตช์เพิ่มเติมอีกชั้นหนึ่ง — ไม่งั้นจะเป็นแค่โหมดทดสอบเท่านั้น</li>
+<li>ถ้าตลาดที่เชื่อมต่อไม่รองรับความสามารถที่จำเป็น ระบบจะปฏิเสธเริ่มทำงานทันที (เลือกความปลอดภัยไว้ก่อน
+เมื่อไม่มั่นใจ)</li>
+<li>เลเวอเรจเริ่มต้น 1 เท่า และเพดานสูงสุดจำกัดไว้ที่ 3 เท่า</li>
+<li>ถ้าช่องทางรับข้อมูลราคาแบบเรียลไทม์มีปัญหา ระบบจะบล็อกการเปิดขาลงใหม่ทันที เพื่อความปลอดภัย</li>
 </ul>
 
-<h2 id="s6-6">6.6 เช็กลิสต์ความสอดคล้องของค่าความเสี่ยง</h2>
+<h2 id="s6-6">6.6 เช็กความเสี่ยงให้ตรงกันทุกจุด</h2>
 
-<p>ควรตรวจสอบให้ตรงกันก่อนเทรด Live:</p>
+<p>ควรตรวจสอบค่าเหล่านี้ให้สอดคล้องกันก่อนเทรดจริง:</p>
 <table>
-<tr><th>Key</th><th>ค่าปัจจุบันของ XAU</th></tr>
-<tr><td><span class="mono">trading.risk_pct</span></td><td>0.02</td></tr>
-<tr><td><span class="mono">portfolio.position_sizing.risk_pct</span></td><td>0.02</td></tr>
-<tr><td><span class="mono">trading.max_position_per_trade_pct</span></td><td>25.0</td></tr>
-<tr><td><span class="mono">trading.max_daily_loss_pct</span></td><td>6.0</td></tr>
-<tr><td><span class="mono">trading.max_open_positions</span></td><td>1</td></tr>
-<tr><td><span class="mono">derivatives.max_leverage</span></td><td>1</td></tr>
+<tr><th>รายการ</th><th>ค่าปัจจุบันของคู่ทองคำ</th></tr>
+<tr><td>ความเสี่ยงต่อไม้ (ทุกจุดในไฟล์)</td><td>2%</td></tr>
+<tr><td>ขนาดไม้สูงสุดต่อครั้ง</td><td>25%</td></tr>
+<tr><td>ขาดทุนสูงสุดต่อวัน</td><td>6%</td></tr>
+<tr><td>จำนวนไม้เปิดพร้อมกันสูงสุด</td><td>1</td></tr>
+<tr><td>เลเวอเรจสูงสุด</td><td>1 เท่า</td></tr>
 </table>
-<p>Guard ระดับ Global ใช้กับทุกสินทรัพย์เสมอ ส่วนสถานะความเสี่ยงระดับ Strategy ต่อคู่เทรดถูกแยกจากกัน
-แต่เงินทุนพอร์ตยังใช้ร่วมกันโดยเจตนา</p>
+<p>เงื่อนไขความเสี่ยงระดับรวมใช้กับทุกคู่เทรดเสมอ ส่วนสถานะความเสี่ยงระดับกลยุทธ์ต่อคู่เทรดถูกแยกจากกัน
+แต่เงินทุนในพอร์ตยังใช้ร่วมกันโดยตั้งใจ</p>
 </div>
 
 <!-- ===================== PART 7 ===================== -->
 <div class="chapter" id="s7-1">
-<div class="chapter-kicker">ภาคที่ 7 — Backtest และงานวิจัยกลยุทธ์</div>
-<h1>7.1 แหล่งข้อมูลสำหรับ Backtest</h1>
+<div class="chapter-kicker">ภาคที่ 7 — ทดสอบย้อนหลังและงานวิจัย</div>
+<h1>7.1 ข้อมูลราคาที่ใช้ทดสอบย้อนหลัง</h1>
 
-<p>Backtest ดึงข้อมูลจาก <strong>Global Binance</strong> (<span class="mono">api.binance.com</span>) เป็น
-Default เพื่อประวัติราคาที่ยาวกว่า (<span class="mono">backtest.data_base_url</span>, override ผ่าน env
-<span class="mono">BINANCE_BACKTEST_URL</span>) ส่วนการเทรด Live ใช้ Endpoint OKX ที่ตั้งค่าไว้จริง
-Backtest และ Live resolve Config ผ่าน Resolver ตัวเดียวกันเสมอ เพื่อให้ Backtest, Replay, และ Live
-สอดคล้องกับแหล่งความจริงเดียวกัน</p>
+<p>การทดสอบย้อนหลังดึงข้อมูลราคาจากตลาด Binance สาขาโลก เป็นค่าเริ่มต้น เพราะมีประวัติราคาให้ทดสอบยาวกว่า
+ส่วนการเทรดจริงใช้ข้อมูลจาก OKX ที่ตั้งค่าไว้จริง ทั้งการทดสอบย้อนหลังและเทรดจริงอ่านค่าตั้งค่าจากที่
+เดียวกันเสมอ เพื่อให้ผลทั้งสองทางสอดคล้องกัน</p>
 
-<h2 id="s7-2">7.2 คำสั่ง Backtest และ Optimizer</h2>
+<h2 id="s7-2">7.2 คำสั่งทดสอบย้อนหลัง</h2>
 
 <pre>python scripts/replay_backtest.py --symbol XAUUSDT --config bot_config.yaml
 python scripts/optimize_pair_configs.py</pre>
 
-<p>การเลือกกลยุทธ์เป็น Dry-run โดย Default:</p>
+<p>การเลือกกลยุทธ์ใหม่เป็นแบบทดลองดูก่อนเสมอ ไม่เขียนทับค่าจริงทันที:</p>
 <pre>python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates a,b,c
 python scripts/select_pair_strategy.py --symbol BTCUSDT --candidates a,b,c --apply</pre>
-<p><span class="mono">--apply</span> เท่านั้นที่จะเขียนผู้ชนะที่ผ่านเกณฑ์กลับเข้า YAML</p>
+<p>ต้องใส่ <span class="mono">--apply</span> เท่านั้นถึงจะเขียนผู้ชนะที่ผ่านเกณฑ์กลับเข้าไฟล์ตั้งค่าจริง</p>
 
-<h2 id="s7-3">7.3 Regime-aware Replay</h2>
+<h2 id="s7-3">7.3 ทดสอบย้อนหลังแบบรู้สภาพตลาด</h2>
 
-<p>การตั้ง <span class="mono">use_regime_filter: true</span> บน Strategy Config ของสินทรัพย์จะเปิด Regime
-Classifier ภายใน Replay Engine — สัญญาณ BUY จะถูกระงับนอกกลุ่ม
-<span class="mono">TARGET_REGIMES</span> ของกลยุทธ์นั้น และประเมินใหม่ทุก
-<span class="mono">regime_update_bars</span> แท่ง (Default 24 แท่ง)</p>
+<p>เปิดฟีเจอร์นี้ได้ในไฟล์ตั้งค่ากลยุทธ์ของแต่ละคู่เทรด — เมื่อเปิดใช้ ตัวจับสภาพตลาดจะทำงานอยู่ภายในการ
+ทดสอบย้อนหลังด้วย สัญญาณซื้อจะถูกระงับเมื่อสภาพตลาดตอนนั้นไม่ตรงกับกลุ่มเป้าหมายของกลยุทธ์นั้น ทำให้ผล
+การทดสอบใกล้เคียงกับเงื่อนไขจริงตอนเทรดสดมากขึ้น</p>
 
-<h2 id="s7-4">7.4 Replay Validation หลัง Restart/Incident</h2>
+<h2 id="s7-4">7.4 ตรวจสอบความถูกต้องหลัง Restart</h2>
 
-<p>ใช้หลังการ Restart, Incident, หรือเปลี่ยน Config เสมอ:</p>
+<p>ใช้คำสั่งนี้เสมอหลังรีสตาร์ทระบบ หรือหลังเกิดเหตุการณ์ผิดปกติ หรือหลังเปลี่ยนค่าตั้งค่าสำคัญ:</p>
 <pre>python scripts/replay_validate.py &lt;run_id&gt; --symbol XAUUSDT</pre>
-<p>Replay Validation ตรวจว่า Event <span class="mono">signal_evaluated</span> ที่บันทึกไว้จาก Live
-ตรงกับผล Replay ของกลยุทธ์เดียวกันหรือไม่ — ตรวจสอบเฉพาะผลลัพธ์ของกลยุทธ์ ก่อนจะถูก Override โดย Macro
-Guard, Cooldown, และ Execution</p>
+<p>คำสั่งนี้จะตรวจว่าสัญญาณที่บอทบันทึกไว้ตอนเทรดจริง ตรงกับผลที่คำนวณได้จากการทดสอบย้อนหลังของกลยุทธ์
+เดียวกันหรือไม่ — ช่วยจับความผิดปกติที่อาจเกิดขึ้นได้เร็ว</p>
 </div>
 
 <!-- ===================== PART 8 ===================== -->
 <div class="chapter" id="s8-1">
 <div class="chapter-kicker">ภาคที่ 8 — หน้าจอใช้งาน</div>
-<h1>8.1 Textual TUI (แดชบอร์ดในเทอร์มินัล)</h1>
+<h1>8.1 หน้าจอในเทอร์มินัล (TUI)</h1>
 
-<p>xAuby มี UI แบบ Textual ในเทอร์มินัลที่อ่าน State ของเอนจิ้นแบบ Real-time — <strong>ไม่ได้รันลูปเทรดเอง
-และเปิด Database แบบ Read-only เสมอ</strong></p>
+<p>xAuby มีหน้าจอ Dashboard ในเทอร์มินัลที่อ่านสถานะของบอทแบบเรียลไทม์ —
+<strong>หน้าจอนี้ไม่ได้รันการเทรดเอง และเปิดฐานข้อมูลแบบอ่านอย่างเดียวเสมอ</strong> ปิดหน้าจอนี้ก็ไม่กระทบ
+การทำงานของบอทเลย</p>
 
 <table>
-<tr><th>หน้าจอ</th><th>คีย์</th><th>หน้าที่</th></tr>
-<tr><td>Dashboard</td><td><span class="mono">1</span>, <span class="mono">d</span></td><td>กราฟ, ตารางคู่เทรด, Regime, โพซิชัน, ป้ายกลยุทธ์/โหมด</td></tr>
-<tr><td>Trade log</td><td><span class="mono">2</span>, <span class="mono">t</span></td><td>ไม้ที่ปิดแล้วและประวัติ</td></tr>
-<tr><td>Incident explorer</td><td><span class="mono">4</span>, <span class="mono">i</span></td><td>Timeline การรันจาก Event store</td></tr>
-<tr><td>Menu</td><td>Launcher/env</td><td>Action ด่วนสำหรับเอนจิ้น, Dashboard, เทสต์, ตัวช่วย Config</td></tr>
+<tr><th>หน้าจอ</th><th>ปุ่มลัด</th><th>แสดงอะไร</th></tr>
+<tr><td>Dashboard</td><td><span class="mono">1</span>, <span class="mono">d</span></td><td>กราฟ, ตารางคู่เทรด, สภาพตลาด, โพซิชัน, ป้ายกลยุทธ์/โหมด</td></tr>
+<tr><td>ประวัติการเทรด</td><td><span class="mono">2</span>, <span class="mono">t</span></td><td>ไม้ที่ปิดแล้วและประวัติทั้งหมด</td></tr>
+<tr><td>ตรวจสอบเหตุการณ์</td><td><span class="mono">4</span>, <span class="mono">i</span></td><td>ไทม์ไลน์เหตุการณ์ที่เกิดขึ้น</td></tr>
 </table>
 
-<p>คีย์ Global: <span class="mono">[</span>/<span class="mono">0</span> คู่เทรดก่อนหน้า,
-<span class="mono">]</span>/<span class="mono">9</span> คู่เทรดถัดไป, <span class="mono">q</span> ออก</p>
+<p>ปุ่มลัดทั่วไป: <span class="mono">[</span> / <span class="mono">0</span> ไปคู่เทรดก่อนหน้า,
+<span class="mono">]</span> / <span class="mono">9</span> ไปคู่เทรดถัดไป, <span class="mono">q</span> ออกจากโปรแกรม</p>
 
-<p>กราฟและ Legend เดินตามกลยุทธ์ที่ Active ของคู่เทรดที่เลือกเสมอ (Source of Truth ตามหัวข้อ 3.5)
-UI ปรับตามความกว้างเทอร์มินัล: ≥110 คอลัมน์ = สองคอลัมน์ (กราฟซ้าย สถิติขวา), 75-109 = คอลัมน์เดียวเต็มความกว้าง,
-&lt;75 = แถวแบบมือถือ กราฟสั้นลง</p>
+<p>กราฟและป้ายอธิบายบนหน้าจอจะเปลี่ยนตามกลยุทธ์ที่ใช้งานจริงของคู่เทรดที่เลือกดูอยู่เสมอ หน้าจอปรับขนาด
+ตามความกว้างของหน้าต่างเทอร์มินัลอัตโนมัติ</p>
 
-<p>เมื่อมีโพซิชันเปิดและ Config มี <span class="mono">partial_tp_pct</span> Panel โพซิชันจะแสดงแถว PTP
-พร้อมสัดส่วนที่จะเก็บ, ราคาทริกเกอร์, และสถานะ (<span class="mono">pending</span> จนกว่าจะปิดสำเร็จ แล้วเปลี่ยน
-เป็น <span class="mono">banked</span>)</p>
+<p>เมื่อมีโพซิชันเปิดอยู่และเปิดฟีเจอร์ทำกำไรบางส่วนก่อน หน้าจอจะแสดงแถวพิเศษบอกสัดส่วนที่จะเก็บ ราคา
+ที่จะทำงาน และสถานะว่ายังรอหรือทำสำเร็จแล้ว</p>
 
-<p>รันผ่าน tmux (แนะนำบน VPS):</p>
+<p>แนะนำให้รันผ่าน tmux บน VPS (จะได้ไม่ต้องปิดหน้าจอเมื่อตัดการเชื่อมต่อ SSH):</p>
 <pre>./scripts/start_dashboard_tmux.sh
 ./scripts/attach_dashboard_tmux.sh</pre>
 
-<h2 id="s8-2">8.2 WebUI มือถือ (Read-only)</h2>
+<h2 id="s8-2">8.2 หน้าจอมือถือแบบดูอย่างเดียว (WebUI)</h2>
 
-<p>WebUI คือแดชบอร์ดเบราว์เซอร์ขนาดเล็กแบบอ่านอย่างเดียว สำหรับเช็คบอทจากเดสก์ท็อปหรือมือถือ —
-<strong>ไม่วาง ไม่ยกเลิก ไม่หยุด และไม่กลับมาเทรดใดๆ ทั้งสิ้น</strong></p>
+<p>WebUI คือแดชบอร์ดในเบราว์เซอร์ขนาดเล็กแบบดูอย่างเดียว สำหรับเช็คบอทจากมือถือหรือคอมพิวเตอร์ —
+<strong>ไม่สามารถเปิด ปิด ยกเลิก หรือสั่งเทรดใดๆ ผ่านหน้านี้ได้เลย</strong> ปลอดภัย 100% ต่อการเผลอกดผิด</p>
 
 <pre>./scripts/start_webui.sh</pre>
-<p>Bind ค่าเริ่มต้น: <span class="mono">127.0.0.1:8787</span></p>
 
-<p>หน้า Home แสดงสถานะ Runtime ของ OKX สด, แท่งเทียน OHLC 24 แท่งล่าสุด, เส้น EMA12/EMA26 ซ้อนทับ, รายละเอียด
-CDC Action Zone, และสถานะ Partial TP ของโพซิชันที่เปิดอยู่ หน้า Activity มีสโครลของตัวเองสำหรับ Event และไม้ที่ปิดแล้ว</p>
+<p>หน้าแรกแสดงสถานะของบอทสด, กราฟราคาล่าสุด, รายละเอียดสัญญาณกลยุทธ์, และสถานะการทำกำไรบางส่วนของ
+โพซิชันที่เปิดอยู่</p>
 
-<h3>เข้าถึงจาก Windows</h3>
+<h3>เข้าใช้งานจากคอมพิวเตอร์ (ผ่าน SSH Tunnel)</h3>
 <pre>ssh -L 8787:127.0.0.1:8787 user@your-vps-ip</pre>
-<p>แล้วเปิด <span class="mono">http://localhost:8787</span></p>
+<p>แล้วเปิดเบราว์เซอร์ไปที่ <span class="mono">http://localhost:8787</span></p>
 
-<h3>เข้าถึงจากมือถือ</h3>
-<p>ตัวเลือกฟรีที่ง่ายที่สุดคือ Tailscale: ติดตั้งบน VPS และมือถือ, Login Tailnet เดียวกัน, ใช้ Tailscale Serve
-หรือ Bind WebUI ไปที่ IP Tailscale ของ VPS:</p>
-<pre>WEBUI_HOST=&lt;vps-tailscale-ip&gt; WEBUI_PORT=8787 ./scripts/start_webui.sh</pre>
+<h3>เข้าใช้งานจากมือถือ</h3>
+<p>ตัวเลือกที่ง่ายและฟรีที่สุดคือแอป Tailscale: ติดตั้งทั้งบน VPS และมือถือ, ล็อกอินบัญชีเดียวกัน แล้วเข้า
+WebUI ผ่านที่อยู่ของ VPS ในเครือข่าย Tailscale ได้เลย</p>
 
 <div class="warn">
-ห้าม Bind WebUI ไปที่ <span class="mono">0.0.0.0</span> บน VPS สาธารณะ เว้นแต่จะเพิ่มระบบยืนยันตัวตนที่เหมาะสม
+ห้ามเปิด WebUI ให้เข้าถึงได้จากอินเทอร์เน็ตสาธารณะโดยตรงเด็ดขาด เว้นแต่จะเพิ่มระบบยืนยันตัวตนที่เหมาะสมก่อน
 </div>
 
-<p>Endpoint ทั้งหมดเป็น Read-only: <span class="mono">/api/state</span>, <span class="mono">/api/health</span>,
-<span class="mono">/api/recent-events</span>, <span class="mono">/api/trades</span>,
-<span class="mono">/api/candles</span></p>
+<h2 id="s8-3">8.3 แนวคิดการออกแบบหน้าจอ</h2>
 
-<h2 id="s8-3">8.3 ปรัชญาการออกแบบหน้าจอ</h2>
-
-<p>WebUI ออกแบบให้เหมือน "โต๊ะทองส่วนตัว" — ผู้ใช้คือเจ้าของบอทเพียงคนเดียว เช็คจาก iPhone (Safari, มักผ่าน
-Tailscale) หรือเดสก์ท็อป บริบทคือการ "เหลือบดู" ไม่ใช่นั่งทำงาน — คำถามเดียวที่ต้องตอบใน 10 วินาที: "บอทยังทำงาน
-อยู่ไหม, Equity เท่าไหร่, ตอนนี้ถือโพซิชันอะไร, มีอะไรเกิดขึ้นไหม"</p>
+<p>WebUI ออกแบบให้เหมือน "โต๊ะทองส่วนตัว" ของเจ้าของบอทคนเดียว เช็คจากมือถือหรือคอมพิวเตอร์แบบเหลือบดูเร็วๆ
+ไม่ใช่นั่งทำงานจริงจัง — คำถามเดียวที่ต้องตอบได้ใน 10 วินาที คือ "บอทยังทำงานอยู่ไหม เงินเท่าไหร่แล้ว
+ตอนนี้ถือโพซิชันอะไร มีอะไรผิดปกติไหม"</p>
 
 <h3>หลักการออกแบบ</h3>
 <ul>
-<li><strong>Glanceable ก่อนเสมอ</strong> — ลำดับชั้น: Equity → โพซิชัน → สัญญาณ → อื่นๆ ไม่ต้องเลื่อนจอ</li>
-<li><strong>สีมีความหมายเท่านั้น</strong> — เขียว/แดง/ส้ม = กำไร/ขาดทุน/เตือน เท่านั้น; สีทอง (Brand)
-ใช้บอกตัวตน/การเลือกเท่านั้น ไม่เคยบอกสถานะ</li>
-<li><strong>Read-only แปลว่าสงบ</strong> — ไม่มีองค์ประกอบใดที่บ่งบอกว่า "ควบคุมได้" ผิดปกติจะดังชัด
-ปกติจะเงียบ</li>
-<li><strong>มือถือมาก่อน, Safari มาก่อน</strong> — ออกแบบตามจริงของ iOS Safari (Toolbar แบบ Dynamic,
-Safe Area, ปุ่มสัมผัส ≥44px) เดสก์ท็อปได้ Layout มือถือแบบวางกลาง ไม่ใช่ Layout กว้างแยกต่างหาก</li>
-<li><strong>ตัวเลขคือ Interface</strong> — ใช้ Tabular figures, ความละเอียดสม่ำเสมอ, คอลัมน์จัดตรงกัน
-Typography ทำหน้าที่แทนการตกแต่ง</li>
+<li><strong>เห็นสิ่งสำคัญก่อนเสมอ</strong> — มูลค่าพอร์ต → โพซิชันปัจจุบัน → สัญญาณ → รายละเอียดอื่นๆ
+ไม่ต้องเลื่อนจอเพื่อดูข้อมูลสำคัญ</li>
+<li><strong>สีมีความหมายเท่านั้น</strong> — เขียว/แดง/ส้ม หมายถึงกำไร/ขาดทุน/คำเตือนเท่านั้น สีทองของ
+แบรนด์ใช้บอกความเป็นแบรนด์เท่านั้น ไม่เคยใช้บอกสถานะ</li>
+<li><strong>ดูอย่างเดียวแปลว่าใจเย็น</strong> — ไม่มีปุ่มหรือองค์ประกอบใดที่ทำให้เข้าใจผิดว่าควบคุมอะไร
+ได้ ความผิดปกติจะเด่นชัดมาก ส่วนภาวะปกติจะดูสงบเรียบง่าย</li>
+<li><strong>ออกแบบสำหรับมือถือก่อน</strong> — ปุ่มกดขนาดใหญ่พอสำหรับนิ้ว คอมพิวเตอร์จะได้หน้าตาเดียวกัน
+วางอยู่กึ่งกลางจอ ไม่ใช่ Layout ที่ต่างกันไปเลย</li>
 </ul>
-
-<h3>โทนสี (OKLCH)</h3>
-<table>
-<tr><th>Token</th><th>บทบาท</th></tr>
-<tr><td><span class="mono">--bg-0</span> / <span class="mono">--surface</span></td><td>พื้นหลังหน้า / การ์ด-แผง (Dark only — <span class="mono">color-scheme: dark</span>)</td></tr>
-<tr><td><span class="mono">--gold</span></td><td>Accent เดียวของแบรนด์ — ใช้บอกตัวตน/การเลือกเท่านั้น</td></tr>
-<tr><td><span class="mono">--pos</span> / <span class="mono">--neg</span> / <span class="mono">--warn</span></td><td>กำไร/Long — ขาดทุน/Short — ระวัง/เสื่อมสภาพ</td></tr>
-<tr><td><span class="mono">--info</span></td><td>ข้อมูลประกอบ เช่น EMA26, Regime info</td></tr>
-</table>
-<p>Typography ใช้ Font Stack ระบบของ iOS เดียว (ไม่มี Webfont), ตัวเลขทั้งหมดใช้
-<span class="mono">font-variant-numeric: tabular-nums</span> Layout แบบ Phone-first ความกว้าง
-<span class="mono">min(430px, 100%)</span>, สามมุมมอง (Home/Signal/Activity) สลับด้วย
-<span class="mono">body[data-view]</span></p>
 </div>
 
 <!-- ===================== PART 9 ===================== -->
 <div class="chapter" id="s9-1">
 <div class="chapter-kicker">ภาคที่ 9 — Telegram</div>
-<h1>9.1 การติดตั้ง Telegram Bot</h1>
+<h1>9.1 ตั้งค่า Telegram Bot</h1>
 
 <ol>
-<li>สร้างบอทผ่าน <a href="https://t.me/BotFather">@BotFather</a></li>
+<li>สร้างบอทผ่าน <a href="https://t.me/BotFather">@BotFather</a> บน Telegram</li>
 <li>หา Chat ID ของตัวเอง เช่น ผ่าน <a href="https://t.me/userinfobot">@userinfobot</a></li>
-<li>ตั้งค่า <span class="mono">.env</span>:</li>
+<li>ใส่ค่าลงไฟล์ <span class="mono">.env</span>:</li>
 </ol>
 <pre>TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...</pre>
-<p>เปิด Polling ใน <span class="mono">bot_config.yaml</span>:</p>
-<pre>notifications:
-  alert_channel: telegram
-  telegram_command_polling_enabled: true</pre>
 
 <h2 id="s9-2">9.2 คำสั่งทั้งหมด</h2>
 
-<p>อนุญาตเฉพาะ <span class="mono">TELEGRAM_CHAT_ID</span> ที่ตั้งค่าไว้เท่านั้น:</p>
+<p>ใช้ได้เฉพาะห้องแชทที่ตั้งค่าไว้เท่านั้น คนอื่นสั่งบอทของคุณไม่ได้:</p>
 <table>
-<tr><th>คำสั่ง</th><th>คำอธิบาย</th></tr>
-<tr><td><span class="mono">/help</span>, <span class="mono">/start</span></td><td>รายการคำสั่ง</td></tr>
-<tr><td><span class="mono">/status</span></td><td>ทุกคู่เทรด: ราคา, โหมด, โพซิชัน, สัญญาณล่าสุด</td></tr>
-<tr><td><span class="mono">/pnl</span></td><td>กำไรขาดทุนพอร์ต 7 วัน และ 30 วัน พร้อมแยกต่อคู่เทรด</td></tr>
-<tr><td><span class="mono">/regime</span></td><td>Regime snapshot ต่อคู่เทรด</td></tr>
-<tr><td><span class="mono">/last</span></td><td>ไม้ที่ปิดล่าสุดต่อคู่เทรด</td></tr>
-<tr><td><span class="mono">/health</span></td><td>Snapshot สุขภาพเอนจิ้น: โหมด, สถานะ Pause, คู่เทรด, โพซิชันเปิด, ปัญหา Feed/WS</td></tr>
-<tr><td><span class="mono">/pause</span></td><td>ยืนยัน Pause ฉุกเฉิน — บล็อกการ BUY ใหม่โดยไม่ปิดโพซิชัน</td></tr>
-<tr><td><span class="mono">/resume</span></td><td>ยืนยัน Resume — อนุญาต BUY ใหม่อีกครั้ง</td></tr>
+<tr><th>คำสั่ง</th><th>ทำอะไร</th></tr>
+<tr><td><span class="mono">/help</span></td><td>แสดงรายการคำสั่งทั้งหมด</td></tr>
+<tr><td><span class="mono">/status</span></td><td>ราคา โหมด โพซิชัน และสัญญาณล่าสุดของทุกคู่เทรด</td></tr>
+<tr><td><span class="mono">/pnl</span></td><td>กำไรขาดทุนของพอร์ต 7 วันและ 30 วันล่าสุด</td></tr>
+<tr><td><span class="mono">/regime</span></td><td>สภาพตลาดล่าสุดของแต่ละคู่เทรด</td></tr>
+<tr><td><span class="mono">/last</span></td><td>ไม้ที่ปิดล่าสุด</td></tr>
+<tr><td><span class="mono">/health</span></td><td>เช็คว่าบอทยังทำงานปกติไหม มีปัญหาการเชื่อมต่ออะไรหรือเปล่า</td></tr>
+<tr><td><span class="mono">/pause</span></td><td>หยุดการเปิดไม้ใหม่ชั่วคราว โดยไม่ปิดไม้ที่ถืออยู่</td></tr>
+<tr><td><span class="mono">/resume</span></td><td>ยกเลิกการหยุดชั่วคราว กลับมาเปิดไม้ได้ตามปกติ</td></tr>
 </table>
 
 <h2 id="s9-3">9.3 การแจ้งเตือนอัตโนมัติ</h2>
-<table>
-<tr><th>เหตุการณ์</th><th>ระดับ</th></tr>
-<tr><td>เริ่ม/หยุดเอนจิ้น</td><td>trade / info</td></tr>
-<tr><td>BUY/SELL Fill</td><td>trade</td></tr>
-<tr><td>Macro Guard บล็อก BUY</td><td>info</td></tr>
-<tr><td>Regime Score/Label เปลี่ยน</td><td>info</td></tr>
-<tr><td>RegimeRouter Handoff / NO_TRADE</td><td>info / position</td></tr>
-<tr><td>Trailing Stop อัปเดต</td><td>position</td></tr>
-<tr><td>กู้คืน SL ล้มเหลว</td><td>position / critical</td></tr>
-<tr><td>Daily digest / Weekly review</td><td>info</td></tr>
-</table>
+<p>บอทจะส่งข้อความแจ้งเตือนเองเมื่อเกิดเหตุการณ์เหล่านี้ ไม่ต้องพิมพ์คำสั่งขอ:</p>
+<ul>
+<li>บอทเริ่มทำงานหรือหยุดทำงาน</li>
+<li>ซื้อหรือขายสำเร็จ</li>
+<li>ระบบบล็อกการซื้อเพราะสภาวะตลาดผิดปกติ</li>
+<li>สภาพตลาดเปลี่ยนแปลง</li>
+<li>เลื่อนจุดป้องกันความเสี่ยง</li>
+<li>สรุปรายวัน/รายสัปดาห์ (ถ้าเปิดใช้งาน)</li>
+</ul>
 
-<h2 id="s9-4">9.4 โหมด Semi-auto และ Emergency Pause</h2>
+<h2 id="s9-4">9.4 โหมดขอยืนยันก่อนซื้อ และปุ่มหยุดฉุกเฉิน</h2>
 
-<pre>trading:
-  mode: semi_auto
-notifications:
-  semi_auto_confirm_timeout_seconds: 60</pre>
-<p>บอทจะส่ง Inline Keyboard (<span class="mono">Confirm BUY</span> / <span class="mono">Skip</span>) ก่อนเปิดไม้ทุกครั้ง</p>
+<p>เปิดโหมดขอยืนยันก่อนซื้อได้ในไฟล์ตั้งค่า — เมื่อเปิดใช้ บอทจะส่งปุ่มกดยืนยันมาให้ก่อนเปิดไม้ทุกครั้ง
+ไม่กดยืนยันภายในเวลาที่กำหนด บอทจะข้ามไม้นั้นไปเลย</p>
 
-<p><span class="mono">/pause</span> และ <span class="mono">/resume</span> เป็นคำสั่งแบบ 2 ขั้นตอน: พิมพ์คำสั่งจะแค่
-ถามยืนยัน ปุ่ม Inline ต่างหากที่จะใช้ Control จริง Pause จะบล็อกการ BUY ใหม่ทุกเส้นทาง (สัญญาณ, Manual,
-Semi-auto) โดยไม่ปิดโพซิชันที่เปิดอยู่ Critical Alert มีปุ่ม <span class="mono">Status</span> และ
-<span class="mono">Ack</span> มาด้วยเสมอ</p>
+<p><span class="mono">/pause</span> และ <span class="mono">/resume</span> เป็นคำสั่ง 2 ขั้นตอน — พิมพ์คำสั่ง
+จะแค่ถามยืนยันก่อน ต้องกดปุ่มยืนยันจริงถึงจะมีผล การหยุดชั่วคราวจะบล็อกการเปิดไม้ใหม่ทุกช่องทาง (สัญญาณ
+อัตโนมัติ, สั่งมือ, ขอยืนยัน) โดยไม่ปิดโพซิชันที่เปิดอยู่ ข้อความแจ้งเตือนระดับวิกฤตจะมีปุ่มให้กดตรวจสอบ
+สถานะและรับทราบมาด้วยเสมอ</p>
 </div>
 
 <!-- ===================== PART 10 ===================== -->
 <div class="chapter" id="s10-1">
-<div class="chapter-kicker">ภาคที่ 10 — หลายบัญชี และหลาย Exchange</div>
-<h1>10.1 รันหลายอินสแตนซ์บนเครื่องเดียว</h1>
+<div class="chapter-kicker">ภาคที่ 10 — รันหลายบัญชี หลาย Exchange</div>
+<h1>10.1 รันบอทหลายตัวบนเครื่องเดียว</h1>
 
-<p>xAuby แยก Config ออกจาก Mutable Data ทำให้รันหลายเอนจิ้น (ต่างบัญชี/Exchange/ชุดคู่เทรด) พร้อมกันบนโค้ด
-Checkout เดียวกันได้โดยไม่ชนกัน:</p>
-
-<table>
-<tr><th>ส่วน</th><th>ตัวแปร Env</th><th>ค่าเริ่มต้น</th></tr>
-<tr><td>Config (<span class="mono">bot_config.yaml</span>, whitelist, <span class="mono">.env</span>)</td><td><span class="mono">XAUBY_CONFIG_DIR</span></td><td>โฟลเดอร์ทำงานปัจจุบัน</td></tr>
-<tr><td>Mutable data (DB, lock, state, log, ยอด sim)</td><td><span class="mono">XAUBY_HOME</span> + <span class="mono">XAUBY_INSTANCE_ID</span></td><td><span class="mono">core/</span> (+ <span class="mono">/&lt;id&gt;</span>)</td></tr>
-</table>
+<p>xAuby แยกไฟล์ตั้งค่าออกจากข้อมูลที่บอทสร้างขึ้นระหว่างทำงาน ทำให้รันบอทหลายชุด (ต่างบัญชี ต่างตลาด
+หรือต่างชุดคู่เทรด) พร้อมกันบนเครื่องเดียวได้โดยไม่ชนกัน แค่แยกโฟลเดอร์เก็บข้อมูลของแต่ละชุดออกจากกัน</p>
 
 <pre>XAUBY_CONFIG_DIR=instances/acct1 XAUBY_INSTANCE_ID=acct1 \
   python run_xauby.py --live</pre>
 
-<p>ตัวอย่าง systemd template สำหรับหลาย instance:</p>
-<pre>[Service]
-Environment=XAUBY_CONFIG_DIR=/root/xAuby/instances/%i
-Environment=XAUBY_INSTANCE_ID=%i
-WorkingDirectory=/root/xAuby
-ExecStart=/root/xAuby/venv/bin/python run_xauby.py --live</pre>
-<p>เปิดใช้ด้วย <span class="mono">systemctl enable --now xauby@acct1</span> — แต่ละ instance อ่าน
-<span class="mono">.env</span> ของตัวเอง ทำให้ Secret ไม่ต้องแชร์ข้ามบัญชี</p>
+<p>แต่ละชุดจะอ่านไฟล์ <span class="mono">.env</span> ของตัวเอง ทำให้ข้อมูลลับไม่ต้องแชร์ข้ามบัญชีกัน</p>
 
-<h2 id="s10-2">10.2 Multi-Exchange ผ่าน CCXT</h2>
+<h2 id="s10-2">10.2 สลับไปใช้ Exchange อื่น</h2>
 
-<p>สลับ Exchange ได้ทั้งหมดผ่านเมนู Launcher โดยไม่ต้องแก้ไฟล์: option 4 → Exchange &amp; Flags → Wizard
-จะเลือก Provider → <span class="mono">ccxt_id</span> → <span class="mono">quote_asset</span> → ใส่
-Credential (Wizard เขียนตัวแปร .env ที่ถูกต้องให้เอง) → รัน Connection Test → เสนอ Restart</p>
+<p>สลับ Exchange ได้ทั้งหมดผ่านเมนู Launcher โดยไม่ต้องแก้ไฟล์เอง — ตัวช่วยจะพาเลือกตลาด ใส่ข้อมูลเชื่อมต่อ
+ทดสอบการเชื่อมต่อ แล้วเสนอให้รีสตาร์ท:</p>
 
 <pre>exchange:
   provider: ccxt
@@ -1364,38 +1187,20 @@ Credential (Wizard เขียนตัวแปร .env ที่ถูกต�
   api_secret_env: KRAKEN_API_SECRET
   quote_asset: USDT</pre>
 
-<h3>Exchange Plugin Registry + WebSocket Streaming</h3>
-<p>เปิดใช้ด้วย Flag:</p>
-<pre>architecture:
-  exchange_plugin_registry_enabled: true</pre>
-<p>เมื่อเปิด: <span class="mono">provider: binance</span> → Client แบบ Native + BinanceWebSocket,
-<span class="mono">provider: ccxt</span> (หรือ ccxt_id ใดก็ได้) → CCXTExchangeClient + CCXTProWebSocket
-(Streaming จริงสำหรับทุก Exchange ที่ ccxt.pro รองรับ)</p>
-
-<h3>เพิ่ม Exchange ใหม่ (Drop-in ไม่ต้องแก้ Factory)</h3>
-<p>สร้างไฟล์เดียว <span class="mono">xauby/api/exchanges/exchange_&lt;name&gt;.py</span> ที่ลงทะเบียนทั้ง
-REST Gateway และ WebSocket Adapter ผ่าน Decorator <span class="mono">@register_exchange</span> และ
-<span class="mono">@register_ws</span> — ระบบค้นพบไฟล์อัตโนมัติผ่าน <span class="mono">pkgutil</span>
-(Filename prefix <span class="mono">exchange_</span>)</p>
+<p>ระบบรองรับการเพิ่มตลาดใหม่แบบไม่ต้องแก้โค้ดส่วนกลาง — นักพัฒนาแค่เพิ่มไฟล์เชื่อมต่อตลาดใหม่ 1 ไฟล์
+ระบบจะค้นพบและใช้งานได้อัตโนมัติ</p>
 
 <h2 id="s10-3">10.3 OKX Perpetual และความปลอดภัยของ Short</h2>
 
-<p>เส้นทาง Derivatives ที่รับรองแล้วใช้ <span class="mono">market_type: swap</span>,
-<span class="mono">margin_mode: isolated</span>, <span class="mono">position_mode: one_way</span>, และ
-Settle Asset เป็น USDT สัญลักษณ์ในเอนจิ้นยังคงกระชับ (<span class="mono">BTCUSDT</span>) ขณะที่ Adapter
-resolve เป็นสัญญา Native (<span class="mono">BTC/USDT:USDT</span>) และแปลงจำนวนฐานเป็น Contract ด้วย
-<span class="mono">contractSize</span></p>
-
-<p>Startup จะล้มเหลวทันที (Fail closed) เมื่อ Adapter ที่เลือกไม่มีความสามารถ Swap, Positions, และ
-Reduce-only ครบ CCXT Pro รับ Subscribe Ticker, OHLCV, Public Trades, และ Order Book ทุก Market Event
-มี Identity ของ Exchange/Market กำกับ ช่องทางที่เสื่อมสภาพจะบล็อก Short ใหม่ทันที ส่วน REST Fallback
-จะไม่เปลี่ยน Exchange หรือ Market Type เด็ดขาด</p>
+<p>เส้นทางเชื่อมต่อ Derivatives ที่รับรองแล้วใช้สัญญา Perpetual แบบ Isolated Margin และ One-way Position
+ระบบจะปฏิเสธเริ่มทำงานทันทีถ้าตลาดที่เลือกไม่มีความสามารถที่จำเป็นครบสำหรับการเทรดขาลง (เลือกความปลอดภัย
+ไว้ก่อนเสมอเมื่อไม่มั่นใจ) และถ้าช่องทางรับข้อมูลราคาแบบเรียลไทม์มีปัญหา ระบบจะบล็อกการเปิดขาลงใหม่ทันที</p>
 </div>
 
 <!-- ===================== PART 11 ===================== -->
 <div class="chapter" id="s11-1">
-<div class="chapter-kicker">ภาคที่ 11 — การดูแลระบบ</div>
-<h1>11.1 การ Deploy บน VPS</h1>
+<div class="chapter-kicker">ภาคที่ 11 — ดูแลระบบ</div>
+<h1>11.1 การติดตั้งบน VPS</h1>
 
 <pre>mkdir -p core/logs
 env -u DEFAULT_SYMBOL XAUBY_DEFAULT_SYMBOL=XAUUSDT XAUBY_FOCUS_SYMBOL=XAUUSDT \
@@ -1405,128 +1210,117 @@ env -u DEFAULT_SYMBOL XAUBY_DEFAULT_SYMBOL=XAUUSDT XAUBY_FOCUS_SYMBOL=XAUUSDT \
 ./scripts/start_dashboard_tmux.sh
 ./scripts/attach_dashboard_tmux.sh</pre>
 
-<p>ใช้เอนจิ้นเพียง 1 Instance <strong>ต่อ 1 Runtime Root</strong> เท่านั้น
-<span class="mono">&lt;root&gt;/.engine.lock</span> ป้องกันการซ้ำซ้อนภายใน Root เดียวกัน</p>
+<p>รันบอทได้แค่ 1 ชุดต่อ 1 พื้นที่เก็บข้อมูลเท่านั้น ระบบมีตัวล็อกป้องกันการรันซ้ำซ้อนภายในพื้นที่เดียวกัน
+อยู่แล้ว</p>
 
 <h2 id="s11-2">11.2 คำสั่งอัปเดตและรีสตาร์ท</h2>
 
-<p>สำหรับปฏิบัติการปกติบน VPS หลังติดตั้ง CLI แล้ว ให้ใช้:</p>
-<pre>xauby update   # deploy origin/main + controlled restart
-xauby restart  # controlled restart โดยไม่ดึงโค้ดใหม่</pre>
+<p>สำหรับงานดูแลระบบทั่วไปบน VPS หลังติดตั้งคำสั่งย่อแล้ว ให้ใช้:</p>
+<pre>xauby update   # ดึงโค้ดล่าสุดจาก GitHub แล้วรีสตาร์ทแบบมีการตรวจสอบ
+xauby restart  # รีสตาร์ทแบบมีการตรวจสอบ โดยไม่ดึงโค้ดใหม่</pre>
 
-<p>Fallback แบบ Manual:</p>
-<pre>scripts/deploy_from_github.sh --restart --branch=main
-scripts/controlled_restart_engine.sh</pre>
+<h2 id="s11-3">11.3 เช็คว่า VPS ช้าเพราะอะไร</h2>
 
-<h2 id="s11-3">11.3 การตรวจสอบ Latency ของ VPS</h2>
-
-<p>ใช้เมื่อบอทรู้สึกช้า, TUI ค้าง, หรือ Request Exchange หมดเวลา:</p>
-<pre>./venv/bin/python scripts/vps_latency_check.py
-./venv/bin/python scripts/vps_latency_check.py --json</pre>
+<p>ใช้เมื่อบอทรู้สึกช้า หน้าจอค้าง หรือคำสั่งไปตลาดหมดเวลาบ่อยๆ:</p>
+<pre>./venv/bin/python scripts/vps_latency_check.py</pre>
 
 <table>
 <tr><th>ค่าที่ดู</th><th>ความหมาย</th></tr>
-<tr><td>curl total</td><td>เวลารวมของ Request HTTPS ไปยัง Exchange API</td></tr>
-<tr><td>curl ttfb</td><td>เวลาถึง Byte แรก — สูงมักแปลว่า Routing/API หน่วง</td></tr>
-<tr><td>tcp443</td><td>เวลา Connect TCP ดิบ — สูงชี้ไปที่ระยะทาง Network/Routing</td></tr>
-<tr><td>clock</td><td><span class="mono">NTPSynchronized=yes</span> สำคัญเพราะ Request ที่เซ็นลายเซ็นใช้ Timestamp</td></tr>
-<tr><td>loadavg</td><td>Load สูงต่อเนื่องเกิน CPU ที่มีทำให้บอท/TUI หน่วง</td></tr>
-<tr><td>disk_used/free</td><td>พื้นที่ต่ำหรือ Disk ช้ากระทบการเขียน SQLite/Event/State</td></tr>
+<tr><td>เวลาเชื่อมต่อรวม</td><td>เวลารวมของการติดต่อไปยัง API ของตลาด</td></tr>
+<tr><td>เวลาถึง Byte แรก</td><td>สูงมักแปลว่าเส้นทางเครือข่ายหรือ API หน่วง</td></tr>
+<tr><td>นาฬิกาเครื่อง</td><td>ต้องซิงค์เวลาถูกต้อง เพราะคำสั่งที่ส่งไปตลาดต้องมีเวลาที่แม่นยำ</td></tr>
+<tr><td>โหลดเครื่อง</td><td>โหลดสูงต่อเนื่องเกินกำลัง CPU ทำให้บอท/หน้าจอหน่วง</td></tr>
+<tr><td>พื้นที่ดิสก์</td><td>พื้นที่ต่ำหรือดิสก์ช้ากระทบการเขียนข้อมูลของบอท</td></tr>
 </table>
 
-<p>TUI Header แสดง Metric: <span class="mono">REST</span> (Latency Request ล่าสุด),
-<span class="mono">WS</span> (อายุ Tick WebSocket ล่าสุด), <span class="mono">Tick</span> (ระยะเวลา Tick
-ทั้งหมด), <span class="mono">Sync</span> (ระยะเวลา Sync แท่งเทียน), <span class="mono">State</span>
-(ระยะเวลา Export State JSON) — ถ้า REST สูงแต่ Tick ต่ำ ปัญหาน่าจะอยู่ที่เส้นทาง VPS/Exchange
-ถ้า Tick/Sync/State สูง ให้ปรับงาน Local หรือลดความถี่ Poll/Log</p>
+<p>หน้าจอ Dashboard จะแสดงตัวเลขความเร็วของแต่ละขั้นตอนไว้ให้ดูด้วย ถ้าความเร็วการเชื่อมต่อตลาดช้าแต่รอบ
+การทำงานโดยรวมเร็ว ปัญหาน่าจะอยู่ที่เส้นทางเครือข่ายหรือฝั่งตลาด ถ้ารอบการทำงานโดยรวมช้าเอง ให้ลองลด
+ความถี่การทำงานหรือลดการบันทึกล็อกลง</p>
 
 <h2 id="s11-4">11.4 เช็กลิสต์ความปลอดภัยฉบับเต็ม</h2>
 
 <ul>
-<li>☐ รีวิว Simulation Run แล้วก่อน Live</li>
-<li>☐ API Key OKX มีสิทธิ์เทรดสำหรับบัญชีที่ตั้งใจ และ<strong>ไม่มี</strong>สิทธิ์ Withdraw</li>
-<li>☐ ตัวแปร OKX API Key/Secret/Passphrase ครบก่อน Restart แบบ Live</li>
-<li>☐ เงินอยู่ในบัญชี OKX ที่บอทอ่านสำหรับเทรด USDT Swap; Dashboard อาจแสดง 0.00 ถ้าเงินอยู่ผิดกระเป๋า</li>
-<li>☐ ทบทวน <span class="mono">risk_pct</span>, <span class="mono">max_position_per_trade_pct</span>,
-และ Guard ระดับ Global ให้เหมาะกับขนาดบัญชี</li>
-<li>☐ ตั้งเกณฑ์ <span class="mono">risk.drawdown_guard</span> ให้ตรงกับความเสี่ยงที่รับได้ (Kill-switch)</li>
-<li>☐ ทบทวนผลประเมินการย้าย Long/Short ของ OKX XAU หลังดาวน์โหลดแท่งเทียน 4H และ Funding History ใหม่</li>
-<li>☐ <span class="mono">regime_router_live_confirmed: true</span> ตั้งเฉพาะหลังอนุมัติต่อคู่เทรดโดยตรง</li>
-<li>☐ <span class="mono">architecture.strategy_sandbox_strict: true</span> เมื่อรันปลั๊กอินจากภายนอก/ไม่ไว้ใจ</li>
-<li>☐ รีวิวผล <span class="mono">scripts/select_pair_strategy.py</span> ก่อนใช้ <span class="mono">--apply</span></li>
-<li>☐ <span class="mono">scripts/replay_validate.py &lt;run_id&gt; --symbol &lt;PAIR&gt;</span> ผ่านหลัง Restart</li>
+<li>☐ รีวิวผลรันโหมดจำลองแล้วก่อนใช้เงินจริง</li>
+<li>☐ API Key มีสิทธิ์เทรดสำหรับบัญชีที่ตั้งใจ และ<strong>ไม่มี</strong>สิทธิ์ถอนเงิน</li>
+<li>☐ ข้อมูลเชื่อมต่อ (Key/Secret/Passphrase) ครบก่อนรีสตาร์ทแบบเทรดจริง</li>
+<li>☐ เงินอยู่ในบัญชีที่บอทอ่านสำหรับเทรดจริง หน้าจออาจแสดงยอด 0.00 ถ้าเงินอยู่ผิดกระเป๋า</li>
+<li>☐ ทบทวนเปอร์เซ็นต์ความเสี่ยงและเงื่อนไขระดับรวมให้เหมาะกับขนาดบัญชีของตัวเอง</li>
+<li>☐ ตั้งเกณฑ์สวิตช์หยุดขาดทุนระดับพอร์ตให้ตรงกับความเสี่ยงที่รับได้</li>
+<li>☐ เปิดใช้ระบบเลือกกลยุทธ์อัตโนมัติเฉพาะหลังได้รับการอนุมัติต่อคู่เทรดโดยตรงเท่านั้น</li>
+<li>☐ เปิดระบบตรวจสอบโค้ดก่อนใช้งานเมื่อรันกลยุทธ์จากคนอื่น/ไม่ไว้ใจ</li>
+<li>☐ รีวิวผลก่อนใช้คำสั่งเขียนค่ากลยุทธ์ใหม่ทับของเดิม</li>
+<li>☐ ตรวจสอบความถูกต้องผ่านแล้วหลังรีสตาร์ททุกครั้ง</li>
 <li>☐ ทดสอบ Telegram แล้ว: <span class="mono">/status</span> แสดงครบทุกคู่เทรด, <span class="mono">/health</span> ไม่มีปัญหาที่ไม่คาดคิด</li>
-<li>☐ ทดสอบปุ่มยืนยัน Emergency <span class="mono">/pause</span> และ <span class="mono">/resume</span> ในโหมด Simulation แล้ว</li>
-<li>☐ เอนจิ้นถูกดูแลผ่าน tmux/systemd ไม่ใช่ SSH shell ที่ไม่มีคนดูแล</li>
+<li>☐ ทดสอบปุ่มยืนยัน <span class="mono">/pause</span> และ <span class="mono">/resume</span> ในโหมดจำลองแล้ว</li>
+<li>☐ บอทถูกดูแลผ่าน tmux/systemd ไม่ใช่หน้าต่าง SSH ที่ไม่มีคนดูแล (ปิดหน้าต่างแล้วบอทจะหยุดทำงานทันที)</li>
 </ul>
 </div>
 
 <!-- ===================== APPENDIX ===================== -->
 <div class="chapter" id="appA">
 <div class="chapter-kicker">ภาคผนวก</div>
-<h1>ก. อภิธานศัพท์ (Glossary)</h1>
+<h1>ก. คำศัพท์ที่ควรรู้</h1>
 
 <table>
-<tr><th>คำศัพท์</th><th>ความหมาย</th></tr>
-<tr><td>ATR</td><td>Average True Range — ค่าเฉลี่ยความผันผวนของราคาต่อแท่ง ใช้กำหนดระยะ SL/Trailing</td></tr>
-<tr><td>EMA</td><td>Exponential Moving Average — ค่าเฉลี่ยเคลื่อนที่แบบถ่วงน้ำหนักเอนเอียงไปทางข้อมูลล่าสุด</td></tr>
-<tr><td>PF (Profit Factor)</td><td>อัตราส่วนกำไรรวมต่อขาดทุนรวม — มากกว่า 1 แปลว่าโดยรวมเป็นกำไร</td></tr>
-<tr><td>DD (Drawdown)</td><td>ระยะที่ Equity ร่วงลงจากจุดสูงสุดที่เคยทำได้</td></tr>
-<tr><td>Regime</td><td>สภาพตลาดที่ถูกจัดหมวดโดยตัวจำแนก เช่น BULL_TREND_STRONG, PANIC_SELL</td></tr>
-<tr><td>Debounce</td><td>การรอให้สัญญาณซ้ำกันครบจำนวนแท่งก่อนยืนยันการเปลี่ยนแปลงจริง (กัน Noise)</td></tr>
-<tr><td>NO_TRADE</td><td>Regime ที่ระบบตัดสินใจไม่เปิดไม้ใหม่ แต่ยังบริหารไม้เดิมต่อ</td></tr>
-<tr><td>Handoff</td><td>การส่งมอบการบริหารโพซิชันจากกลยุทธ์เดิมไปกลยุทธ์ใหม่อย่างปลอดภัย</td></tr>
-<tr><td>Partial TP</td><td>การปิดโพซิชันบางส่วนที่กำไรถึงเกณฑ์ที่ตั้งไว้ (One-shot)</td></tr>
-<tr><td>Reduce-only</td><td>ออเดอร์ที่รับประกันว่าจะลดขนาดโพซิชันเท่านั้น ไม่เปิดโพซิชันใหม่</td></tr>
-<tr><td>Sandbox Strategy</td><td>การสแกน AST แบบ Static เพื่อปฏิเสธปลั๊กอินที่แตะ Engine/DB/Network หรือใช้ eval/exec</td></tr>
-<tr><td>GMM (Gaussian Mixture Model)</td><td>โมเดลสถิติที่จัดกลุ่มข้อมูลด้วยการผสมของ Normal Distribution หลายตัว</td></tr>
-<tr><td>eta² (Eta-squared)</td><td>สัดส่วนความแปรปรวนของข้อมูลที่อธิบายได้ด้วยตัวแปรจัดกลุ่ม (ในที่นี้คือ Regime Label)</td></tr>
-<tr><td>Permutation p-value</td><td>ความน่าจะเป็นที่การสุ่มจัดกลุ่มข้อมูลใหม่จะให้ผลแยกได้ดีเท่ากับของจริง — ต่ำ = นัยสำคัญสูง</td></tr>
+<tr><th>คำศัพท์</th><th>ความหมายง่ายๆ</th></tr>
+<tr><td>Equity (มูลค่าพอร์ต)</td><td>มูลค่ารวมของเงินในบัญชี รวมกับกำไร/ขาดทุนของโพซิชันที่เปิดอยู่ ณ ราคาปัจจุบัน</td></tr>
+<tr><td>Leverage (เลเวอเรจ)</td><td>การกู้ยืมเงินมาเพิ่มขนาดการเทรด ยิ่งสูงยิ่งเสี่ยงมาก ระบบนี้ใช้ 1 เท่า คือไม่กู้เพิ่มเลย</td></tr>
+<tr><td>Long (ขาขึ้น)</td><td>การเปิดสถานะโดยหวังว่าราคาจะขึ้น</td></tr>
+<tr><td>Short (ขาลง)</td><td>การเปิดสถานะโดยหวังว่าราคาจะลง</td></tr>
+<tr><td>ATR</td><td>ค่าเฉลี่ยความผันผวนของราคาต่อแท่ง ใช้กำหนดระยะจุดป้องกันความเสี่ยง</td></tr>
+<tr><td>EMA</td><td>ค่าเฉลี่ยเคลื่อนที่ที่ให้น้ำหนักข้อมูลล่าสุดมากกว่าข้อมูลเก่า</td></tr>
+<tr><td>Profit Factor (PF)</td><td>อัตราส่วนกำไรรวมต่อขาดทุนรวม มากกว่า 1 แปลว่าโดยรวมทำกำไรได้</td></tr>
+<tr><td>Drawdown (DD)</td><td>ระยะที่มูลค่าพอร์ตร่วงลงจากจุดสูงสุดที่เคยทำได้</td></tr>
+<tr><td>Regime (สภาพตลาด)</td><td>ป้ายที่ระบบติดไว้บอกว่าตลาดตอนนี้อยู่ในช่วงไหน เช่น ขาขึ้นแรง ขาลงแรง แกว่งไซด์เวย์</td></tr>
+<tr><td>Debounce</td><td>การรอให้สัญญาณซ้ำกันหลายรอบก่อนยืนยันการเปลี่ยนแปลงจริง เพื่อกันสัญญาณหลอก</td></tr>
+<tr><td>NO_TRADE (โซนอันตราย)</td><td>ช่วงที่ระบบตัดสินใจไม่เปิดไม้ใหม่ แต่ยังดูแลไม้เดิมต่อไป</td></tr>
+<tr><td>Partial TP (ทำกำไรบางส่วนก่อน)</td><td>การขายบางส่วนของโพซิชันออกไปเมื่อกำไรถึงเกณฑ์ที่ตั้งไว้</td></tr>
+<tr><td>Reduce-only</td><td>คำสั่งที่รับประกันว่าจะลดขนาดโพซิชันเท่านั้น จะไม่เผลอไปเปิดโพซิชันใหม่โดยไม่ตั้งใจ</td></tr>
+<tr><td>GMM</td><td>วิธีทางสถิติที่ให้คอมพิวเตอร์ลองแบ่งกลุ่มข้อมูลด้วยตัวเอง โดยไม่ใช้กฎตายตัวที่คนตั้งไว้ก่อน</td></tr>
+<tr><td>eta² (สัมประสิทธิ์การแยกกลุ่ม)</td><td>ค่าที่บอกว่าการติดป้ายช่วยอธิบายความแตกต่างของข้อมูลได้มากแค่ไหน ยิ่งสูงยิ่งแยกกลุ่มได้ชัด</td></tr>
+<tr><td>p-value</td><td>ค่าที่บอกว่าผลลัพธ์ที่เห็นมีโอกาสเกิดจากความบังเอิญแค่ไหน ยิ่งต่ำยิ่งน่าเชื่อถือว่าไม่ใช่เรื่องบังเอิญ</td></tr>
 </table>
 
 <h1 id="appB">ข. โครงสร้างโปรเจกต์</h1>
 <pre>xAuby/
-|-- run_xauby.py
-|-- launcher.py            # thin shim re-exporting the xauby.launcher package
-|-- bot_config.yaml
-|-- coin_whitelist.json
-|-- docs/
-|-- scripts/
-|-- tests/
-`-- xauby/
-    |-- launcher/          # interactive launcher: config_io, process, maintenance, quick_config
-    |-- engine/            # LiteTradingEngine (mixins), risk, orders, regime routing
-    |-- strategies/        # strategy plugins + indicators/
-    |-- runtime/            # pair registry, whitelist validation, config resolvers
-    |-- regime/            # regime classifier + GMM cross-check
-    |-- backtest/          # replay engine, optimizer, metrics
-    |-- observability/     # EventEmitter, JSONL store, replay validation
-    `-- ui/                # terminal chart + Textual TUI, dashboard, tradelog</pre>
+|-- run_xauby.py           # จุดเริ่มต้นรันเอนจิ้น
+|-- launcher.py            # เมนูเลือกใช้งานแบบโต้ตอบ
+|-- bot_config.yaml        # ไฟล์ตั้งค่าหลัก
+|-- coin_whitelist.json    # รายชื่อคู่เทรดที่เปิดใช้งาน
+|-- docs/                  # เอกสารประกอบ
+|-- scripts/               # สคริปต์เครื่องมือต่างๆ
+|-- tests/                 # ชุดทดสอบ
+`-- xauby/                 # โค้ดหลักของระบบ
+    |-- launcher/          # เมนูเลือกใช้งาน
+    |-- engine/             # แกนกลางของระบบเทรด
+    |-- strategies/        # กลยุทธ์และตัววาดกราฟ
+    |-- runtime/           # จัดการรายชื่อคู่เทรดและค่าตั้งค่า
+    |-- regime/            # ตัวจับสภาพตลาด
+    |-- backtest/          # เครื่องมือทดสอบย้อนหลัง
+    |-- observability/     # บันทึกเหตุการณ์และตรวจสอบ
+    `-- ui/                # หน้าจอต่างๆ</pre>
 
-<h1 id="appC">ค. ตารางสคริปต์อ้างอิงทั้งหมด</h1>
+<h1 id="appC">ค. ตารางคำสั่งทั้งหมด</h1>
 <table>
-<tr><th>คำสั่ง</th><th>หน้าที่</th></tr>
-<tr><td><span class="mono">python -m unittest discover -s tests -q</span></td><td>รันชุดเทสต์ทั้งหมด</td></tr>
+<tr><th>คำสั่ง</th><th>ทำอะไร</th></tr>
+<tr><td><span class="mono">python -m unittest discover -s tests -q</span></td><td>รันชุดทดสอบทั้งหมด</td></tr>
 <tr><td><span class="mono">python health_check.py</span></td><td>ตรวจสุขภาพระบบครั้งเดียว</td></tr>
-<tr><td><span class="mono">python scripts/incident_explorer.py list</span></td><td>ดูรายการ Incident</td></tr>
-<tr><td><span class="mono">python scripts/replay_validate.py &lt;run_id&gt; --symbol XAUUSDT</span></td><td>ตรวจสอบ Replay หลัง Restart</td></tr>
-<tr><td><span class="mono">python scripts/evaluate_okx_xau_migration.py</span></td><td>ประเมินการย้ายมาใช้ OKX XAU</td></tr>
-<tr><td><span class="mono">python scripts/select_pair_strategy.py</span></td><td>คัดเลือกกลยุทธ์ (Dry-run/--apply)</td></tr>
-<tr><td><span class="mono">python scripts/optimize_pair_configs.py</span></td><td>Optimizer แบบ Low-CPU</td></tr>
-<tr><td><span class="mono">python scripts/capture_tui_screenshots.py</span></td><td>สร้างภาพหน้าจอ TUI ใหม่</td></tr>
-<tr><td><span class="mono">python scripts/fetch_global_klines.py</span></td><td>ดึงแท่งเทียนหลายปีจาก Global Binance</td></tr>
-<tr><td><span class="mono">python scripts/regime_strategy_eval.py --grid</span></td><td>ประเมินกลยุทธ์ต่อ Regime แบบ Gatekeeper</td></tr>
-<tr><td><span class="mono">python scripts/regime_forward_validate.py</span></td><td>วัดความแม่นยำ Regime Detector บนข้อมูลจริง</td></tr>
-<tr><td><span class="mono">python scripts/regime_churn_analysis.py</span></td><td>วัดความถี่การสลับ Regime</td></tr>
-<tr><td><span class="mono">python scripts/vps_latency_check.py</span></td><td>ตรวจ Latency ของ VPS</td></tr>
+<tr><td><span class="mono">python scripts/incident_explorer.py list</span></td><td>ดูรายการเหตุการณ์ที่บันทึกไว้</td></tr>
+<tr><td><span class="mono">python scripts/replay_validate.py &lt;run_id&gt; --symbol XAUUSDT</span></td><td>ตรวจสอบความถูกต้องหลัง Restart</td></tr>
+<tr><td><span class="mono">python scripts/select_pair_strategy.py</span></td><td>ทดลองเปลี่ยนกลยุทธ์ (ดูก่อน/เขียนทับจริง)</td></tr>
+<tr><td><span class="mono">python scripts/optimize_pair_configs.py</span></td><td>ปรับค่ากลยุทธ์อัตโนมัติแบบประหยัดทรัพยากร</td></tr>
+<tr><td><span class="mono">python scripts/capture_tui_screenshots.py</span></td><td>สร้างภาพตัวอย่างหน้าจอใหม่</td></tr>
+<tr><td><span class="mono">python scripts/fetch_global_klines.py</span></td><td>ดึงข้อมูลราคาหลายปีมาเก็บไว้ทดสอบ</td></tr>
+<tr><td><span class="mono">python scripts/regime_forward_validate.py</span></td><td>วัดความแม่นยำของตัวจับสภาพตลาดบนข้อมูลจริง</td></tr>
+<tr><td><span class="mono">python scripts/vps_latency_check.py</span></td><td>ตรวจสอบความเร็วเครือข่ายของ VPS</td></tr>
 </table>
 
-<h1 id="appD">ง. คำเตือนความเสี่ยง (Disclaimer)</h1>
+<h1 id="appD">ง. คำเตือนความเสี่ยง</h1>
 <div class="warn">
-ซอฟต์แวร์นี้จัดทำขึ้นเพื่อการศึกษาและวิจัยเท่านั้น การเทรด Cryptocurrency และอนุพันธ์มีความเสี่ยงสูงต่อการสูญเสียเงินทุน
-ผลการดำเนินงานในอดีตไม่ได้เป็นเครื่องยืนยันผลลัพธ์ในอนาคต ผู้ใช้ต้องปฏิบัติตามข้อกำหนดการใช้งาน API ของ Exchange
-ที่เลือกใช้และกฎหมาย/ระเบียบข้อบังคับที่เกี่ยวข้องในเขตอำนาจของตนเองเสมอ ผู้จัดทำเอกสารนี้ไม่รับผิดชอบต่อความเสียหาย
-ใดๆ ที่เกิดจากการใช้งานซอฟต์แวร์นี้กับเงินทุนจริง
+ซอฟต์แวร์นี้จัดทำขึ้นเพื่อการศึกษาและวิจัยเท่านั้น การเทรดคริปโทเคอร์เรนซีและอนุพันธ์มีความเสี่ยงสูงต่อการ
+สูญเสียเงินทุน ผลการดำเนินงานในอดีตไม่ได้เป็นเครื่องยืนยันผลลัพธ์ในอนาคต ผู้ใช้ต้องปฏิบัติตามข้อกำหนดการ
+ใช้งานของตลาดที่เลือกใช้และกฎหมาย/ระเบียบข้อบังคับที่เกี่ยวข้องในเขตอำนาจของตนเองเสมอ ผู้จัดทำเอกสารนี้
+ไม่รับผิดชอบต่อความเสียหายใดๆ ที่เกิดจากการใช้งานซอฟต์แวร์นี้กับเงินทุนจริง
 </div>
 
 <p class="center small" style="margin-top:10mm;">— จบเล่ม —</p>
