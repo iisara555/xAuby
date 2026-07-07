@@ -18,6 +18,7 @@ DEFAULT_ARCHITECTURE: Dict[str, Any] = {
     "sim_fill_on_close": True,
     "regime_router_enabled": False,
     "regime_confidence_filter": False,
+    "regime_statistical_crosscheck": False,
     "event_bus_enabled": False,
     "exchange_plugin_registry_enabled": False,
     "strategy_chart_indicators": dict(DEFAULT_STRATEGY_CHART_MAP),
@@ -44,7 +45,7 @@ DEFAULT_REGIME_ROUTER_MAPPING: Dict[str, str | None] = {
 
 
 def architecture_block(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    raw = cfg.get("architecture") or {}
+    raw = (cfg or {}).get("architecture") or {}
     if not isinstance(raw, dict):
         raw = {}
     merged = dict(DEFAULT_ARCHITECTURE)
@@ -87,6 +88,35 @@ def regime_router_enabled(cfg: Dict[str, Any]) -> bool:
 
 def regime_confidence_filter(cfg: Dict[str, Any]) -> bool:
     return bool(architecture_block(cfg).get("regime_confidence_filter"))
+
+
+def regime_statistical_crosscheck(cfg: Dict[str, Any]) -> bool:
+    """If True, fit an independent GMM regime model each tick and attach its
+    agreement/posterior to the rule-based regime as ``stat_*`` features. Advisory
+    only — it never overrides the rule-based regime or routing."""
+    return bool(architecture_block(cfg).get("regime_statistical_crosscheck"))
+
+
+def regime_statistical_config(cfg: Dict[str, Any]) -> Dict[str, int]:
+    """Resolve GMM cross-check params from the optional ``regime_statistical``
+    block, falling back to module defaults."""
+    from xauby.regime.statistical import DEFAULT_COMPONENTS, DEFAULT_MIN_BARS
+
+    block = cfg.get("regime_statistical") or {}
+    if not isinstance(block, dict):
+        block = {}
+
+    def _int(key: str, default: int, lo: int, hi: int) -> int:
+        try:
+            val = int(block.get(key, default))
+        except (TypeError, ValueError):
+            return default
+        return max(lo, min(hi, val))
+
+    return {
+        "components": _int("components", DEFAULT_COMPONENTS, 2, 8),
+        "min_bars": _int("min_bars", DEFAULT_MIN_BARS, 50, 5000),
+    }
 
 
 def event_bus_enabled(cfg: Dict[str, Any]) -> bool:

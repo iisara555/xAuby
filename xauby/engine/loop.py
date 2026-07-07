@@ -1588,7 +1588,34 @@ class LoopMixin:
             self._latency_metrics["regime_ms"] = int(
                 (time.monotonic() - regime_started) * 1000
             )
-            
+
+            # Optional independent GMM cross-check (advisory only — attached as
+            # stat_* features, never overrides the rule-based regime or routing).
+            try:
+                from xauby.runtime.architecture_config import (
+                    regime_statistical_config,
+                    regime_statistical_crosscheck,
+                )
+
+                if regime_statistical_crosscheck(self.config) and candles_list:
+                    from xauby.regime.statistical import (
+                        classify_statistical,
+                        crosscheck_features,
+                    )
+
+                    _stat_cfg = regime_statistical_config(self.config)
+                    _stat = classify_statistical(
+                        candles_list,
+                        components=_stat_cfg["components"],
+                        min_bars=_stat_cfg["min_bars"],
+                    )
+                    gold_regime.features.update(
+                        crosscheck_features(gold_regime.regime, _stat)
+                    )
+            except Exception:
+                # Cross-check must never break the trading tick.
+                pass
+
             self.db.save_gold_regime(
                 symbol=sym,
                 timestamp=int(time.time()),

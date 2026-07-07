@@ -764,6 +764,13 @@ architecture:
   # regime_router.confidence_threshold (guarded by a 30-sample warmup). Keeps the
   # router from swapping strategies during low-confidence / transition reads.
   regime_confidence_filter: true
+  # Fit an independent Gaussian-mixture regime model each tick and attach its
+  # agreement / posterior to the rule-based regime as stat_* features. Advisory
+  # only: it never overrides the rule-based regime or routing, so it is safe to
+  # arm for observation. Off by default (adds a small per-tick compute cost).
+  # Tune via the optional top-level `regime_statistical:` block (components,
+  # min_bars).
+  regime_statistical_crosscheck: false
   event_bus_enabled: true
   # Wrap outbound exchange REST calls in a token-bucket rate limiter + circuit
   # breaker (xauby/api/resilience.py). Off by default — flip to true to arm;
