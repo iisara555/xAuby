@@ -324,7 +324,17 @@ function normalizeCandles(values) {
     const body = Math.max(Math.abs(open - close), Math.abs(close) * 0.00035);
     if (high == null) high = bodyTop + body * 0.7;
     if (low == null) low = bodyBottom - body * 0.7;
-    candles.push({ open, high, low, close });
+    const candle = { open, high, low, close };
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      const ema12 = asNumber(item.ema12);
+      const ema26 = asNumber(item.ema26);
+      const ap = asNumber(item.ap);
+      if (ema12 != null) candle.ema12 = ema12;
+      if (ema26 != null) candle.ema26 = ema26;
+      if (ap != null) candle.ap = ap;
+      if (item.zone != null) candle.zone = item.zone;
+    }
+    candles.push(candle);
   });
   return candles.slice(-28);
 }
