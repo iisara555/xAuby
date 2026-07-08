@@ -2323,13 +2323,25 @@ class LoopMixin:
             self.config.get("candle_retention", {}).get("wal_checkpoint_interval_hours", 6)
         ) * 3600
         self.last_wal_checkpoint_time = time.time()
-        
+
+        # A stop-and-reverse (close LONG, open SHORT) can leave local state
+        # ahead of the exchange if a swap order silently doesn't fill; startup
+        # reconciliation alone misses that until the next restart, so also
+        # reconcile periodically while running (trading.runtime_order_reconcile).
+        runtime_reconcile_enabled = bool(
+            self.config.get("trading", {}).get("runtime_order_reconcile", True)
+        )
+        reconcile_interval = int(
+            self.config.get("trading", {}).get("runtime_reconcile_interval_minutes", 5)
+        ) * 60
+        self.last_reconcile_time = time.time()
+
         while True:
             try:
                 self.tick()
 
                 self._maybe_start_balance_refresh()
-                
+
                 now = time.time()
                 if now - self.last_cleanup_time >= cleanup_interval:
                     self.run_retention_pass(startup=False)
@@ -2339,6 +2351,11 @@ class LoopMixin:
                     if now - self.last_wal_checkpoint_time >= wal_checkpoint_interval:
                         self.db.wal_checkpoint()
                         self.last_wal_checkpoint_time = now
+
+                if runtime_reconcile_enabled and reconcile_interval > 0:
+                    if now - self.last_reconcile_time >= reconcile_interval:
+                        self.reconcile_startup_state()
+                        self.last_reconcile_time = now
                 
                 if heartbeat_interval > 0:
                     if now - self.last_heartbeat_time >= heartbeat_interval:

@@ -212,6 +212,7 @@ class BaseEngine:
             fee_resolver=self._symbol_fee_pct,
             funding_rate_8h=float((self.config.get("derivatives") or {}).get("sim_funding_rate_8h", 0.0001)),
         )
+        exec_cfg = self.config.get("execution", {}) or {}
         self._live_broker = LiveBroker(
             client=self.client,
             place_sl_fn=lambda qty, stop, symbol="": (
@@ -220,6 +221,9 @@ class BaseEngine:
                 else None
             ),
             quote_asset=self._quote_asset(),
+            order_timeout_seconds=float(exec_cfg.get("order_timeout_seconds", 10.0) or 10.0),
+            order_poll_initial_seconds=float(exec_cfg.get("order_poll_initial_seconds", 0.5) or 0.5),
+            order_poll_max_seconds=float(exec_cfg.get("order_poll_max_seconds", 2.0) or 2.0),
         )
         self._regime_router: Optional[RegimeRouter] = None
         try:

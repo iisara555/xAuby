@@ -1,9 +1,12 @@
 """Live exchange broker — thin wrapper delegating to engine client methods."""
 from __future__ import annotations
 
+import time
 from typing import Any, Callable, Optional, Tuple
 
 from xauby.engine.brokers.base import FillResult, SimPositionLedger
+
+_ORDER_DONE_STATUSES = ("FILLED", "CANCELED", "REJECTED", "EXPIRED")
 
 
 class LiveBroker:
@@ -14,10 +17,18 @@ class LiveBroker:
         client: Any,
         place_sl_fn: Callable[..., Optional[Tuple[str, float]]],
         quote_asset: str = "USDT",
+        order_timeout_seconds: float = 10.0,
+        order_poll_initial_seconds: float = 0.5,
+        order_poll_max_seconds: float = 2.0,
     ):
         self.client = client
         self._place_sl = place_sl_fn
         self.quote_asset = str(quote_asset or "USDT").upper()
+        self._order_timeout_seconds = max(0.0, float(order_timeout_seconds or 0.0))
+        self._order_poll_initial_seconds = max(0.01, float(order_poll_initial_seconds or 0.5))
+        self._order_poll_max_seconds = max(
+            self._order_poll_initial_seconds, float(order_poll_max_seconds or 2.0)
+        )
 
     def get_quote_balance(self) -> float:
         """Available cash balance in the exchange quote asset."""
@@ -64,13 +75,60 @@ class LiveBroker:
     ) -> Optional[Tuple[str, float]]:
         return self._place_sl(qty, stop_price, symbol=symbol)
 
+    def _confirm_fill(self, symbol: str, order: Any) -> Tuple[str, float]:
+        """Poll the exchange until a swap MARKET order reaches a terminal status.
+
+        MARKET orders are expected to fill immediately, but the create-order
+        response can lag the matching engine. Treating that response as a
+        confirmed fill let a stop-and-reverse flip local state before the
+        exchange had actually closed/opened the position, causing a
+        local/exchange position-side mismatch. Poll ``get_order`` instead of
+        trusting the initial response.
+        """
+        status = str(getattr(order, "status", "") or "").upper()
+        raw = getattr(order, "raw_payload", None) or {}
+        filled = float(raw.get("executedQty", 0.0) or raw.get("filled", 0.0) or 0.0)
+        if status == "FILLED" and filled <= 0:
+            # Adapters without granular fill data (or the test gateway) only
+            # populate Order.amount on a terminal status — treat that as fully
+            # filled rather than misreading "no raw payload" as "not filled".
+            filled = float(getattr(order, "amount", 0.0) or 0.0)
+        elif status != "FILLED":
+            filled = 0.0
+        order_id = getattr(order, "order_id", "")
+        if status in _ORDER_DONE_STATUSES or not order_id:
+            return status, filled
+
+        elapsed = 0.0
+        poll_interval = self._order_poll_initial_seconds
+        while elapsed < self._order_timeout_seconds:
+            time.sleep(min(poll_interval, self._order_timeout_seconds - elapsed))
+            elapsed += poll_interval
+            poll_interval = min(self._order_poll_max_seconds, poll_interval * 1.5)
+            try:
+                details = self.client.get_order(symbol, order_id)
+                status = str(details.get("status", "") or "").upper()
+                filled = float(details.get("executedQty", 0.0) or details.get("filled", 0.0) or 0.0)
+                if status in _ORDER_DONE_STATUSES:
+                    break
+            except Exception:
+                continue
+        return status, filled
+
     def execute_open(self, symbol, position_side, qty, price, notional, leverage=1.0):
         side = "SELL" if str(position_side).upper() == "SHORT" else "BUY"
         order = self.client.place_order(
             symbol, side, "MARKET", qty, position_side=position_side,
             reduce_only=False, amount_in_base=True,
         )
-        return FillResult(True, qty=float(qty), price=float(order.price or price),
+        status, filled_qty = self._confirm_fill(symbol, order)
+        if status != "FILLED" or filled_qty <= 0:
+            return FillResult(
+                success=False,
+                order_id=order.order_id,
+                error=f"open order not confirmed filled (status={status or 'unknown'})",
+            )
+        return FillResult(True, qty=filled_qty, price=float(order.price or price),
                           order_type=order.order_type, order_id=order.order_id)
 
     def execute_close(self, symbol, position_side, qty, price, entry_price, entry_cost, funding_paid=0.0):
@@ -79,5 +137,12 @@ class LiveBroker:
             symbol, side, "MARKET", qty, position_side=position_side,
             reduce_only=True, amount_in_base=True,
         )
-        return FillResult(True, qty=float(qty), price=float(order.price or price),
+        status, filled_qty = self._confirm_fill(symbol, order)
+        if status != "FILLED" or filled_qty <= 0:
+            return FillResult(
+                success=False,
+                order_id=order.order_id,
+                error=f"close order not confirmed filled (status={status or 'unknown'})",
+            )
+        return FillResult(True, qty=filled_qty, price=float(order.price or price),
                           order_type=order.order_type, order_id=order.order_id)
