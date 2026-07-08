@@ -81,6 +81,9 @@ class _Engine(OrderMixin):
     def _place_sl_with_retry(self, qty, stop, symbol=None):
         return None
 
+    def _report_slippage(self, side, ref_price, fill_price, symbol=None, kind="order"):
+        return 0.0
+
     def _emit_event(self, event_type, **payload):
         self.events.append((str(event_type), payload))
 
@@ -231,6 +234,30 @@ class TestLoopGating(unittest.TestCase):
         state = _bought_state(self.db)
         self.loop._maybe_take_partial_tp(state, "HOLD", 2500.0, {}, symbol="XAUUSDT")
         self.assertEqual(self.loop.calls, [])
+
+
+class TestSwapLongClose(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = LiteDB(os.path.join(self.tmp.name, "t.db"))
+        self.broker = _FakeBroker(fill_price=2240.0, fees=2.24)
+        self.eng = _Engine(self.db, self.broker)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_live_swap_long_sell_uses_reduce_only_broker_close(self):
+        state = _bought_state(self.db, side="LONG", qty=1.0, entry=2000.0, funding=0.0)
+
+        ok = self.eng.execute_sell(state, 2240.0, "4H zone turned RED", symbol="XAUUSDT")
+
+        self.assertTrue(ok)
+        self.assertEqual(self.broker.calls[0]["side"], "LONG")
+        trade = self.db.get_closed_trades("XAUUSDT", limit=1)[0]
+        self.assertEqual(trade["side"], "BUY")
+        self.assertEqual(trade["trigger"], "4H zone turned RED")
+        self.assertAlmostEqual(trade["exit_price"], 2240.0)
+        self.assertEqual(self.db.get_trade_state("XAUUSDT").state, "idle")
 
 
 class TestSimBrokerPartialShort(unittest.TestCase):

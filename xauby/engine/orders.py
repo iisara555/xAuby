@@ -306,6 +306,68 @@ class OrderMixin:
             )
         return ok
 
+    def _should_close_long_with_broker(self, state: Dict[str, Any], symbol: str) -> bool:
+        """Live swap LONG exits must be reduce-only closes, not spot balance sells."""
+        if str(state.get("position_side") or "LONG").upper() != "LONG":
+            return False
+        exchange_cfg = self.config.get("exchange", {}) if isinstance(self.config, dict) else {}
+        market_type = str(exchange_cfg.get("market_type") or "").lower()
+        margin_mode = str(state.get("margin_mode") or "").lower()
+        caps = getattr(self.client, "capabilities", {}) or {}
+        return bool(caps.get("swap") or market_type == "swap" or margin_mode in {"isolated", "cross"})
+
+    def execute_close_long(self, state: Dict[str, Any], ticker_price: float,
+                           trigger_reason: str, symbol: Optional[str] = None) -> bool:
+        sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        qty = float(state.get("quantity") or 0.0)
+        entry = float(state.get("entry_price") or 0.0)
+        funding = float(state.get("funding_paid") or 0.0)
+        if qty <= 0 or entry <= 0:
+            return False
+        broker = self._broker_for_symbol(sym)
+        try:
+            result = broker.execute_close(sym, "LONG", qty, ticker_price, entry, entry * qty, funding)
+        except Exception as exc:
+            logger.error("LONG close failed for %s: %s", sym, exc, exc_info=True)
+            return False
+        if not result.success:
+            logger.error(result.error or "LONG close failed")
+            return False
+
+        filled_qty = float(result.qty or qty)
+        if filled_qty <= 0:
+            logger.error("LONG close returned no filled quantity for %s", sym)
+            return False
+        exit_price = float(result.price or ticker_price)
+        entry_notional = entry * filled_qty
+        exit_notional = exit_price * filled_qty
+        fee_pct = self._symbol_fee_pct(sym)
+        entry_fee = entry_notional * fee_pct
+        exit_fee = float(result.fees or exit_notional * fee_pct)
+        funding_share = funding * min(1.0, filled_qty / qty) if funding else 0.0
+        net_pnl = (exit_price - entry) * filled_qty - entry_fee - exit_fee - funding_share
+        net_pct = net_pnl / entry_notional * 100.0 if entry_notional else 0.0
+        ok = self.db.close_position_atomic(
+            sym, side="BUY", amount=filled_qty, entry_price=entry, exit_price=exit_price,
+            entry_cost=entry_notional, gross_exit=exit_notional,
+            entry_fee=entry_fee, exit_fee=exit_fee, total_fees=entry_fee + exit_fee,
+            net_pnl=net_pnl, net_pnl_pct=net_pct, trigger=trigger_reason,
+            opened_at=state.get("opened_at"), strategy_name=self._strategy_name_for_symbol(sym),
+            execution_mode=self._execution_mode(sym),
+        )
+        if ok:
+            slip_bps = self._report_slippage(
+                side="SELL", ref_price=ticker_price, fill_price=exit_price,
+                symbol=sym, kind="long exit",
+            ) if not self._use_sim_broker(sym) else 0.0
+            self._emit_event(EventType.POSITION_CLOSED, symbol=sym, position_side="LONG",
+                             exit=exit_price, pnl=net_pnl, pnl_pct=net_pct,
+                             trigger=trigger_reason, slippage_bps=slip_bps)
+            self.send_telegram_alert(
+                f"LONG CLOSE {sym} @ {exit_price:.4f} | PnL {net_pnl:+.2f} ({net_pct:+.2f}%)"
+            )
+        return ok
+
     def execute_partial_tp(
         self,
         state: Dict[str, Any],
@@ -1865,6 +1927,9 @@ class OrderMixin:
             if self.read_only:
                 logger.info("[READ ONLY] Skipping live SELL order execution.")
                 return False
+
+            if self._should_close_long_with_broker(state, sym):
+                return self.execute_close_long(state, ticker_price, trigger_reason, symbol=sym)
 
             sl_order_id = state.get("stop_loss_order_id")
             sell_succeeded = False

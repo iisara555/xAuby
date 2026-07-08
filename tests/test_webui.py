@@ -173,6 +173,45 @@ class WebUIServerTest(unittest.TestCase):
         self.assertEqual([row["timestamp"] for row in payload["candles"]], [1002, 1003, 1004])
         self.assertEqual(payload["candles"][-1]["close"], 4009)
 
+    def test_candles_payload_includes_warmed_cdc_series(self):
+        self.create_db()
+        with open(os.path.join(self.project_root, "bot_config.yaml"), "w", encoding="utf-8") as handle:
+            handle.write("strategies:\n  cdc_action_zone:\n    ap_smoothing: 2\n")
+        conn = sqlite3.connect(os.path.join(self.project_root, "core", "xauby.db"))
+        try:
+            for idx in range(40):
+                price = 100.0 + idx
+                conn.execute(
+                    "INSERT INTO prices VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "CDCUSDT",
+                        10_000 + idx,
+                        "4h",
+                        price - 0.5,
+                        price + 1.0,
+                        price - 1.0,
+                        price,
+                        100 + idx,
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = candles_payload(self.project_root, symbol="cdcusdt", timeframe="4h", limit=5)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(payload["candles"]), 5)
+        self.assertEqual(payload["warmup"], 40)
+        latest = payload["candles"][-1]
+        self.assertIn("ap", latest)
+        self.assertIn("ema12", latest)
+        self.assertIn("ema26", latest)
+        self.assertIn("zone", latest)
+        self.assertIsNotNone(latest["ema12"])
+        self.assertIsNotNone(latest["ema26"])
+        self.assertNotEqual(latest["zone"], "UNKNOWN")
+
     def test_candles_endpoint_clamps_limit(self):
         self.create_db()
         base = self.serve()

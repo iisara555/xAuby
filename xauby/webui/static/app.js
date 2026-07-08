@@ -340,6 +340,14 @@ function emaSeries(candles, period) {
   });
 }
 
+function indicatorSeries(candles, key, fallbackPeriod) {
+  const series = candles.map((c) => asNumber(c[key]));
+  if (series.some((value) => value != null)) {
+    return series.map((value) => (value == null ? null : value));
+  }
+  return emaSeries(candles, fallbackPeriod);
+}
+
 async function getJson(url) {
   const res = await fetch(url, { cache: "no-store" });
   return res.json();
@@ -419,8 +427,8 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     return;
   }
   text("chartMeta", String(currentTimeframe || "4h").toUpperCase());
-  const emaFast = emaSeries(candles, 12);
-  const emaSlow = emaSeries(candles, 26);
+  const emaFast = indicatorSeries(candles, "ema12", 12);
+  const emaSlow = indicatorSeries(candles, "ema26", 26);
   const livePrice = referencePrice == null ? null : asNumber(referencePrice);
   const scaleValues = [
     ...candles.flatMap((c) => [c.low, c.high]),

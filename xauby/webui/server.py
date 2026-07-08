@@ -21,9 +21,86 @@ from urllib.parse import parse_qs, urlparse
 from xauby.meta import load_bot_display_name, load_webui_avatar
 from xauby.observability.health import HealthMonitor
 from xauby.runtime.paths import bot_state_path, db_path as runtime_db_path, usd_thb_rate_path
+from xauby.strategies.cdc_action_zone.indicators import classify_zone
 
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
+
+
+def _ema_sma_seeded(values: list[float], length: int) -> list[Optional[float]]:
+    """pandas_ta-compatible EMA: SMA seed, then recursive EMA."""
+    if length <= 0:
+        return [None for _ in values]
+    out: list[Optional[float]] = [None for _ in values]
+    if len(values) < length:
+        return out
+    seed = sum(values[:length]) / length
+    out[length - 1] = seed
+    alpha = 2.0 / (length + 1.0)
+    prev = seed
+    for idx in range(length, len(values)):
+        prev = values[idx] * alpha + prev * (1.0 - alpha)
+        out[idx] = prev
+    return out
+
+
+def _cdc_ap_smoothing(project_root: str) -> int:
+    config_path = _project_path(project_root, "bot_config.yaml")
+    try:
+        import yaml
+
+        with open(config_path, "r", encoding="utf-8") as handle:
+            cfg = yaml.safe_load(handle) or {}
+        raw = ((cfg.get("strategies") or {}).get("cdc_action_zone") or {}).get("ap_smoothing", 1)
+        return max(1, int(raw or 1))
+    except Exception:
+        return 1
+
+
+def _with_cdc_indicators(
+    rows: list[Dict[str, Any]],
+    project_root: str,
+) -> list[Dict[str, Any]]:
+    if not rows:
+        return rows
+    closes: list[float] = []
+    for row in rows:
+        try:
+            closes.append(float(row.get("close") or 0.0))
+        except (TypeError, ValueError):
+            closes.append(0.0)
+
+    ap_smoothing = _cdc_ap_smoothing(project_root)
+    ap_values: list[Optional[float]]
+    if ap_smoothing >= 2:
+        ap_values = _ema_sma_seeded(closes, ap_smoothing)
+        ap_source = [
+            float(ap) if ap is not None else close
+            for ap, close in zip(ap_values, closes)
+        ]
+    else:
+        ap_values = list(closes)
+        ap_source = list(closes)
+
+    ema12 = _ema_sma_seeded(ap_source, 12)
+    ema26 = _ema_sma_seeded(ap_source, 26)
+    out: list[Dict[str, Any]] = []
+    for idx, row in enumerate(rows):
+        enriched = dict(row)
+        ap = ap_values[idx]
+        fast = ema12[idx]
+        slow = ema26[idx]
+        close = closes[idx]
+        enriched["ap"] = ap if ap is not None else close
+        enriched["ema12"] = fast
+        enriched["ema26"] = slow
+        enriched["zone"] = (
+            classify_zone(float(enriched["ap"]), float(fast), float(slow))
+            if fast is not None and slow is not None
+            else "UNKNOWN"
+        )
+        out.append(enriched)
+    return out
 
 
 def _project_path(project_root: str, path: str) -> str:
@@ -210,6 +287,7 @@ def candles_payload(
 ) -> Dict[str, Any]:
     db_path = _project_path(project_root, runtime_db_path())
     limit = max(1, min(int(limit or 24), 80))
+    warmup_limit = min(max(limit + 200, 240), 600)
     symbol = str(symbol or "").upper().replace("_", "")
     timeframe = str(timeframe or "4h").lower()
     if not os.path.exists(db_path):
@@ -230,16 +308,19 @@ def candles_payload(
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
-                (symbol, timeframe, limit),
+                (symbol, timeframe, warmup_limit),
             )
             rows = [dict(row) for row in cur.fetchall()]
             rows.reverse()
+            enriched = _with_cdc_indicators(rows, project_root)
+            candles = enriched[-limit:]
             return {
                 "ok": True,
                 "symbol": symbol,
                 "timeframe": timeframe,
                 "limit": limit,
-                "candles": rows,
+                "warmup": len(rows),
+                "candles": candles,
             }
         finally:
             conn.close()
