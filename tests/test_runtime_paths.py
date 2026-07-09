@@ -32,6 +32,11 @@ class TestRuntimePaths(unittest.TestCase):
             os.environ.pop("XAUBY_HOME", None)
             self.assertEqual(runtime_root(), os.path.join("core", "acct42"))
 
+    def test_instance_id_rejects_path_traversal(self):
+        with mock.patch.dict(os.environ, {"XAUBY_HOME": "/data", "XAUBY_INSTANCE_ID": "../acct"}, clear=False):
+            with self.assertRaises(ValueError):
+                runtime_root()
+
 
 class TestNamedArtifactsAreInstanceScoped(unittest.TestCase):
     def test_all_named_paths_under_instance_root(self):

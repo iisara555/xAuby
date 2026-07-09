@@ -7,9 +7,13 @@ overlay network such as Tailscale.
 from __future__ import annotations
 
 import argparse
+import base64
+import hmac
+import ipaddress
 import json
 import mimetypes
 import os
+import re
 import sqlite3
 import time
 from http import HTTPStatus
@@ -25,6 +29,57 @@ from xauby.strategies.cdc_action_zone.indicators import classify_zone
 
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
+_SENSITIVE_JSON_KEY_RE = re.compile(
+    r"(api[_-]?key|api[_-]?secret|secret|token|password|passphrase|private[_-]?key|"
+    r"access[_-]?key|client[_-]?secret|webhook)",
+    re.IGNORECASE,
+)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = str(host or "").strip().lower()
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _redact_sensitive(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            key_text = str(key)
+            redacted[key_text] = (
+                "[REDACTED]" if _SENSITIVE_JSON_KEY_RE.search(key_text) else _redact_sensitive(item)
+            )
+        return redacted
+    if isinstance(value, (list, tuple)):
+        return [_redact_sensitive(item) for item in value]
+    return value
+
+
+def _webui_auth_from_env() -> tuple[str, str, str]:
+    username = os.environ.get("XAUBY_WEBUI_USERNAME", "xauby")
+    password = os.environ.get("XAUBY_WEBUI_PASSWORD", "")
+    bearer_token = os.environ.get("XAUBY_WEBUI_TOKEN", "")
+    return username, password, bearer_token
+
+
+def _validate_bind_security(host: str, username: str, password: str, bearer_token: str) -> None:
+    if _is_loopback_host(host):
+        return
+    if password or bearer_token or _truthy_env("XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE"):
+        return
+    raise ValueError(
+        "Refusing to bind xAuby WebUI to a non-loopback host without auth. "
+        "Set XAUBY_WEBUI_PASSWORD or XAUBY_WEBUI_TOKEN, or bind to 127.0.0.1."
+    )
 
 
 def _ema_sma_seeded(values: list[float], length: int) -> list[Optional[float]]:
@@ -337,10 +392,61 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
             super().log_message(fmt, *args)
 
     def _send_json(self, payload: Dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
-        body = json.dumps(_json_safe(payload), ensure_ascii=False).encode("utf-8")
+        body = json.dumps(_json_safe(_redact_sensitive(payload)), ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self._send_security_headers()
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_security_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "base-uri 'none'; "
+            "frame-ancestors 'none'",
+        )
+
+    def _is_authorized(self) -> bool:
+        password = getattr(self, "basic_password", "")
+        bearer_token = getattr(self, "bearer_token", "")
+        if not password and not bearer_token:
+            return True
+
+        header = self.headers.get("Authorization", "")
+        if bearer_token and header.startswith("Bearer "):
+            supplied = header[len("Bearer "):].strip()
+            return hmac.compare_digest(supplied, bearer_token)
+
+        if password and header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(header[len("Basic "):].strip(), validate=True).decode("utf-8")
+                supplied_user, supplied_password = decoded.split(":", 1)
+            except Exception:
+                return False
+            expected_user = getattr(self, "basic_username", "xauby")
+            return hmac.compare_digest(supplied_user, expected_user) and hmac.compare_digest(
+                supplied_password,
+                password,
+            )
+        return False
+
+    def _send_auth_required(self) -> None:
+        body = b"authentication required\n"
+        self.send_response(HTTPStatus.UNAUTHORIZED)
+        self.send_header("WWW-Authenticate", 'Basic realm="xAuby WebUI"')
+        self._send_security_headers()
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -364,12 +470,16 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
+        self._send_security_headers()
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self) -> None:
+        if not self._is_authorized():
+            self._send_auth_required()
+            return
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
@@ -416,12 +526,17 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
 
 def create_server(host: str, port: int, project_root: str = ".") -> ThreadingHTTPServer:
     root = os.path.abspath(project_root)
+    username, password, bearer_token = _webui_auth_from_env()
+    _validate_bind_security(host, username, password, bearer_token)
 
     class Handler(XAubyWebUIHandler):
         pass
 
     Handler.project_root = root
     Handler.static_root = STATIC_ROOT
+    Handler.basic_username = username
+    Handler.basic_password = password
+    Handler.bearer_token = bearer_token
 
     return ThreadingHTTPServer((host, int(port)), Handler)
 

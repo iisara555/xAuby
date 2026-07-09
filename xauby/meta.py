@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from xauby.utils.common import visible_len
 
@@ -60,11 +62,24 @@ def load_bot_display_name(project_root: str = ".") -> str:
 DEFAULT_WEBUI_AVATAR = "/xau-logo.svg"
 
 
+def _safe_webui_avatar(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw or raw.startswith("//"):
+        return DEFAULT_WEBUI_AVATAR
+    parsed = urlparse(raw)
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/"):
+        return DEFAULT_WEBUI_AVATAR
+    parts = Path(unquote(parsed.path).lstrip("/")).parts
+    if any(part in {"..", ""} for part in parts):
+        return DEFAULT_WEBUI_AVATAR
+    return raw
+
+
 def load_webui_avatar(project_root: str = ".") -> str:
     """Read cli_ui.webui_avatar from bot_config.yaml, else a bundled default icon."""
     avatar = _load_cli_ui_config(project_root).get("webui_avatar")
     if isinstance(avatar, str) and avatar.strip():
-        return avatar.strip()
+        return _safe_webui_avatar(avatar)
     return DEFAULT_WEBUI_AVATAR
 
 

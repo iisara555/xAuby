@@ -61,16 +61,25 @@ For phones, SSH tunneling is awkward. The simple free option is Tailscale:
 1. Install Tailscale on the VPS and on your phone.
 2. Log in to the same tailnet.
 3. Keep the WebUI read-only.
-4. Either use Tailscale Serve, or bind the WebUI to the VPS Tailscale IP:
+4. Set a WebUI password before binding to any non-loopback address:
+
+```bash
+export XAUBY_WEBUI_PASSWORD='<long-random-password>'
+```
+
+5. Either use Tailscale Serve, or bind the WebUI to the VPS Tailscale IP:
 
 ```bash
 WEBUI_HOST=<vps-tailscale-ip> WEBUI_PORT=8787 ./scripts/start_webui.sh
 ```
 
 Then open `http://<vps-tailscale-ip>:8787` from the phone while Tailscale is on.
+The browser will prompt for Basic Auth. The default username is `xauby`; override
+it with `XAUBY_WEBUI_USERNAME`.
 
-Do not bind the WebUI to `0.0.0.0` on a public VPS firewall unless you add
-proper authentication in a later version.
+The WebUI refuses non-loopback binds without `XAUBY_WEBUI_PASSWORD` or
+`XAUBY_WEBUI_TOKEN`, unless `XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE=1` is explicitly
+set. Do not use that override on a public VPS.
 
 ## Endpoints
 

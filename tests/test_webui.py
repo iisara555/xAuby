@@ -4,14 +4,16 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from base64 import b64encode
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from unittest import mock
 
 from xauby.webui.server import (
     candles_payload,
     create_server,
     health_payload,
+    meta_payload,
     recent_events_payload,
     trades_payload,
 )
@@ -23,6 +25,9 @@ class WebUIServerTest(unittest.TestCase):
         self.env.start()
         os.environ.pop("XAUBY_INSTANCE_ID", None)
         os.environ.pop("SQLITE_DB_PATH", None)
+        os.environ.pop("XAUBY_WEBUI_PASSWORD", None)
+        os.environ.pop("XAUBY_WEBUI_TOKEN", None)
+        os.environ.pop("XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE", None)
         self.tmp = tempfile.TemporaryDirectory()
         self.project_root = self.tmp.name
 
@@ -115,6 +120,12 @@ class WebUIServerTest(unittest.TestCase):
         with urlopen(url, timeout=3) as response:
             return json.loads(response.read().decode("utf-8"))
 
+    def get_json_with_basic_auth(self, url, username="xauby", password="pw"):
+        token = b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+        req = Request(url, headers={"Authorization": f"Basic {token}"})
+        with urlopen(req, timeout=3) as response:
+            return json.loads(response.read().decode("utf-8"))
+
     def test_state_endpoint_reads_runtime_state(self):
         self.write_state(
             {
@@ -134,6 +145,50 @@ class WebUIServerTest(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["state"]["focus_symbol"], "XAUTUSDT")
         self.assertIsInstance(payload["age_sec"], (int, float))
+
+    def test_state_endpoint_redacts_secret_like_keys(self):
+        self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "api_secret": "SHOULD_NOT_LEAK",
+                "nested": {"telegram_token": "ALSO_SECRET"},
+            }
+        )
+
+        base = self.serve()
+        payload = self.get_json(f"{base}/api/state")
+
+        self.assertEqual(payload["state"]["api_secret"], "[REDACTED]")
+        self.assertEqual(payload["state"]["nested"]["telegram_token"], "[REDACTED]")
+        self.assertNotIn("SHOULD_NOT_LEAK", json.dumps(payload))
+
+    def test_webui_requires_auth_when_password_is_configured(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+
+            with self.assertRaises(HTTPError) as raised:
+                urlopen(f"{base}/api/state", timeout=3)
+            self.assertEqual(raised.exception.code, 401)
+
+            payload = self.get_json_with_basic_auth(f"{base}/api/state", password="pw")
+            self.assertFalse(payload["ok"])
+
+    def test_webui_refuses_remote_bind_without_auth(self):
+        with self.assertRaises(ValueError):
+            create_server("0.0.0.0", 0, project_root=self.project_root)
+
+    def test_webui_allows_remote_bind_with_auth(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            server = create_server("0.0.0.0", 0, project_root=self.project_root)
+            server.server_close()
+
+    def test_meta_payload_rejects_unsafe_avatar_url(self):
+        with open(os.path.join(self.project_root, "bot_config.yaml"), "w", encoding="utf-8") as handle:
+            handle.write("cli_ui:\n  webui_avatar: javascript:alert(1)\n")
+
+        payload = meta_payload(self.project_root)
+
+        self.assertEqual(payload["avatar_url"], "/xau-logo.svg")
 
     def test_recent_events_prefers_focused_symbol_snapshot(self):
         self.write_state(

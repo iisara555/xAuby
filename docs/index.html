@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>xAuby Security & Operations</title>
+  <meta name="description" content="xAuby security readiness notes, WebUI hardening, and operator documentation.">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111214;
+      --panel: #191b1f;
+      --line: #30343b;
+      --text: #f4f1ec;
+      --muted: #b7b0a6;
+      --accent: #ff5a2e;
+      --accent-2: #78d8c5;
+      --warn: #ffd166;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #15171a;
+    }
+    .wrap {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 68px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+    .brand img {
+      width: 34px;
+      height: 34px;
+    }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    main { padding: 34px 0 48px; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+      gap: 28px;
+      align-items: center;
+      padding: 16px 0 28px;
+    }
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(34px, 5vw, 64px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    p { margin: 0 0 16px; color: var(--muted); }
+    .hero strong { color: var(--text); }
+    .hero-img {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      display: block;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #202329;
+      color: var(--text);
+      font-weight: 700;
+    }
+    .button.primary {
+      background: var(--accent);
+      color: #170906;
+      border-color: var(--accent);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 26px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 18px;
+    }
+    .card p { font-size: 14px; }
+    .badge {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--warn);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .checks {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 18px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+    }
+    .checks li::before {
+      content: "";
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      vertical-align: 1px;
+    }
+    footer {
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      padding: 22px 0 30px;
+    }
+    @media (max-width: 820px) {
+      .topbar { align-items: flex-start; flex-direction: column; padding: 18px 0; }
+      .hero { grid-template-columns: 1fr; }
+      .grid, .checks { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div class="brand">
+        <img src="screenshots/webui-mobile.png" alt="">
+        <span>xAuby Security & Operations</span>
+      </div>
+      <nav aria-label="Primary">
+        <a href="security-saas-audit.html">Security Audit</a>
+        <a href="webui.md">WebUI</a>
+        <a href="architecture.md">Architecture</a>
+        <a href="trading-flow.md">Trading Flow</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <div class="badge">SaaS readiness</div>
+        <h1>xAuby operator security baseline</h1>
+        <p>
+          A compact security landing page for the current xAuby hardening work:
+          WebUI access control, runtime path isolation, secret scanning, and
+          the remaining production SaaS gaps.
+        </p>
+        <p>
+          Current posture: <strong>safe for localhost, SSH tunnel, or authenticated
+          Tailscale access</strong>. Public SaaS exposure still requires a reverse
+          proxy, tenant identity, RBAC, and secret-manager backed credentials.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="security-saas-audit.html">Open Audit</a>
+          <a class="button" href="webui.md">WebUI Setup</a>
+        </div>
+      </div>
+      <img class="hero-img" src="screenshots/webui-mobile.png" alt="xAuby mobile WebUI screenshot">
+    </section>
+
+    <section class="grid" aria-label="Security areas">
+      <article class="card">
+        <h2>WebUI Boundary</h2>
+        <p>
+          Non-loopback binds now require Basic Auth or a bearer token. Responses
+          include security headers and redact secret-like JSON keys.
+        </p>
+      </article>
+      <article class="card">
+        <h2>Tenant Paths</h2>
+        <p>
+          Runtime instance IDs are validated as slugs to prevent path traversal
+          when running multiple engines on one host.
+        </p>
+      </article>
+      <article class="card">
+        <h2>Secret Hygiene</h2>
+        <p>
+          A dependency-free repository scanner checks tracked files and git
+          history for credential-shaped values before release.
+        </p>
+      </article>
+    </section>
+
+    <section class="card" style="margin-top: 14px;">
+      <h2>Release Gate</h2>
+      <p>Before publishing a VPS or SaaS build, run the same local checks used in CI.</p>
+      <ul class="checks">
+        <li><code>python scripts/scan_secrets.py --tracked --history</code></li>
+        <li><code>python -m pytest tests/test_webui.py tests/test_runtime_paths.py</code></li>
+        <li>Set <code>XAUBY_WEBUI_PASSWORD</code> for Tailscale IP binds</li>
+        <li>Keep <code>XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE</code> unset in production</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      xAuby is still a single-operator trading runtime. Treat this page as an
+      operational security baseline, not a complete SaaS security boundary.
+    </div>
+  </footer>
+</body>
+</html>

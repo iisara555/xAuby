@@ -15,15 +15,26 @@ so this is behaviour-preserving for single-instance deployments.
 from __future__ import annotations
 
 import os
+import re
 from typing import Optional
 
 DEFAULT_RUNTIME_ROOT = "core"
+_INSTANCE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _validated_instance_id() -> Optional[str]:
+    instance = os.environ.get("XAUBY_INSTANCE_ID")
+    if not instance:
+        return None
+    if not _INSTANCE_ID_RE.fullmatch(instance):
+        raise ValueError("XAUBY_INSTANCE_ID must be a 1-64 character slug using A-Z, a-z, 0-9, '_' or '-'")
+    return instance
 
 
 def runtime_root() -> str:
     """Return the runtime data root, honoring XAUBY_HOME / XAUBY_INSTANCE_ID."""
     base = os.environ.get("XAUBY_HOME") or DEFAULT_RUNTIME_ROOT
-    instance = os.environ.get("XAUBY_INSTANCE_ID")
+    instance = _validated_instance_id()
     return os.path.join(base, instance) if instance else base
 
 
