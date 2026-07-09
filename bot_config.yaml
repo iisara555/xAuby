@@ -402,7 +402,7 @@ strategies:
     require_fresh_zone: true
     fresh_zone_window: 1
     disable_stop_loss: true
-    position_pct: 1.0
+    position_pct: 0.95
     ap_smoothing: 2
     timeframe: 4h
     rsi_min: 0.0

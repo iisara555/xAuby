@@ -30,7 +30,9 @@ RegimeRouter support, exchange stop-losses, Textual TUI, and Telegram operations
 ## Screens
 
 ### Mobile WebUI
-![xAuby mobile WebUI](docs/screenshots/webui-mobile.png)
+<p align="center">
+  <img src="docs/screenshots/webui-mobile.png" alt="xAuby mobile WebUI" width="320">
+</p>
 
 <details>
 <summary>Dashboard · Trade log · Incident explorer (click to expand)</summary>

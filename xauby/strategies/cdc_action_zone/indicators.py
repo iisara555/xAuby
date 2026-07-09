@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
+import numpy as np
 import pandas as pd
 
 try:
@@ -41,6 +42,38 @@ def classify_zone(price: float, fast: float, slow: float) -> str:
     if bull:
         return "GREEN" if price >= fast else "ORANGE"
     return "RED" if price <= fast else "BLUE"
+
+
+def classify_zone_vectorized(
+    price: "np.ndarray", fast: "np.ndarray", slow: "np.ndarray"
+) -> "np.ndarray":
+    """Array form of :func:`classify_zone` for whole-history chart rendering.
+
+    Priority order mirrors the if/elif chain above exactly (first matching
+    condition wins); the tie cases (price == fast/slow, or fast == slow) fall
+    through to the same fallback formula as the scalar version.
+    """
+    price = np.asarray(price, dtype="float64")
+    fast = np.asarray(fast, dtype="float64")
+    slow = np.asarray(slow, dtype="float64")
+    bull = fast > slow
+    bear = fast < slow
+
+    conditions = [
+        bull & (price > fast),
+        bear & (price > fast) & (price > slow),
+        bear & (price > fast) & (price < slow),
+        bear & (price < fast),
+        bull & (price < fast) & (price < slow),
+        bull & (price < fast) & (price > slow),
+    ]
+    choices = ["GREEN", "BLUE", "LBLUE", "RED", "ORANGE", "YELLOW"]
+    fallback = np.where(
+        bull,
+        np.where(price >= fast, "GREEN", "ORANGE"),
+        np.where(price <= fast, "RED", "BLUE"),
+    )
+    return np.select(conditions, choices, default=fallback)
 
 
 def _action_price(close: pd.Series, ap_smoothing: int) -> pd.Series:
@@ -129,17 +162,22 @@ def compute_indicators(
                 ap_d1 = _action_price(close_d1, ap_smoothing)
                 ema_fast_d1 = ta.ema(ap_d1, length=12)
                 ema_slow_d1 = ta.ema(ap_d1, length=26)
+                # D1 shares the same forming-bar contract as the primary
+                # timeframe (engine trims both under strategy.use_closed_candles);
+                # index off the same closed-bar rule instead of assuming -1.
+                closed_idx_d1 = -2 if last_bar_is_forming and len(close_d1) >= 2 else -1
                 if ema_fast_d1 is not None and ema_slow_d1 is not None and len(ema_fast_d1) > 0:
-                    p = float(ap_d1.iloc[-1])
-                    f = float(ema_fast_d1.iloc[-1])
-                    s = float(ema_slow_d1.iloc[-1])
+                    p = float(ap_d1.iloc[closed_idx_d1])
+                    f = float(ema_fast_d1.iloc[closed_idx_d1])
+                    s = float(ema_slow_d1.iloc[closed_idx_d1])
                     res["cdc_zone_d1"] = classify_zone(p, f, s)
-                    res["close_d1"] = float(close_d1.iloc[-1])
+                    res["close_d1"] = float(close_d1.iloc[closed_idx_d1])
                     res["ema_fast_d1"] = f
                     res["ema_slow_d1"] = s
-                    if len(ap_d1) >= 2:
-                        res["ema_fast_d1_prev"] = float(ema_fast_d1.iloc[-2])
-                        res["ema_slow_d1_prev"] = float(ema_slow_d1.iloc[-2])
+                    if len(ap_d1) + closed_idx_d1 >= 1:
+                        prev_idx_d1 = closed_idx_d1 - 1
+                        res["ema_fast_d1_prev"] = float(ema_fast_d1.iloc[prev_idx_d1])
+                        res["ema_slow_d1_prev"] = float(ema_slow_d1.iloc[prev_idx_d1])
                 else:
                     res["cdc_zone_d1"] = "N/A"
             except Exception as e:
@@ -155,43 +193,53 @@ def compute_indicators(
             low_4h = df_primary["low"].astype(float)
             volume_4h = df_primary["volume"].astype(float)
 
+            # Closed-bar index: every field below reads this bar, never the
+            # still-forming one, so zone/EMA/RSI/ATR stay in lockstep with
+            # bar_close_pos/volume/recent_closes instead of silently mixing
+            # a forming-bar price into a closed-bar signal.
+            closed_idx = -2 if last_bar_is_forming and len(close_4h) >= 2 else -1
+
             ap_4h = _action_price(close_4h, ap_smoothing)
             ema_fast_4h = ta.ema(ap_4h, length=12)
             ema_slow_4h = ta.ema(ap_4h, length=26)
             if ema_fast_4h is not None and ema_slow_4h is not None and len(ema_fast_4h) > 0:
-                p = float(ap_4h.iloc[-1])
-                f = float(ema_fast_4h.iloc[-1])
-                s = float(ema_slow_4h.iloc[-1])
+                p = float(ap_4h.iloc[closed_idx])
+                f = float(ema_fast_4h.iloc[closed_idx])
+                s = float(ema_slow_4h.iloc[closed_idx])
                 res["cdc_zone_4h"] = classify_zone(p, f, s)
-                res["close_4h"] = float(close_4h.iloc[-1])
+                res["close_4h"] = float(close_4h.iloc[closed_idx])
                 res["ema_fast_4h"] = f
                 res["ema_slow_4h"] = s
-                if len(ap_4h) >= 2:
-                    p_prev = float(ap_4h.iloc[-2])
-                    f_prev = float(ema_fast_4h.iloc[-2])
-                    s_prev = float(ema_slow_4h.iloc[-2])
+                if len(ap_4h) + closed_idx >= 1:
+                    prev_idx = closed_idx - 1
+                    p_prev = float(ap_4h.iloc[prev_idx])
+                    f_prev = float(ema_fast_4h.iloc[prev_idx])
+                    s_prev = float(ema_slow_4h.iloc[prev_idx])
                     res["cdc_zone_4h_prev"] = classify_zone(p_prev, f_prev, s_prev)
                     res["ema_fast_4h_prev"] = f_prev
                     res["ema_slow_4h_prev"] = s_prev
 
                 n = max(1, int(slope_bars))
-                if len(ema_slow_4h) > n and not pd.isna(ema_slow_4h.iloc[-1 - n]):
+                slope_idx = closed_idx - n
+                if len(ema_slow_4h) + slope_idx >= 0 and not pd.isna(ema_slow_4h.iloc[slope_idx]):
                     res["ema_slow_4h_slope"] = float(
-                        ema_slow_4h.iloc[-1] - ema_slow_4h.iloc[-1 - n]
+                        ema_slow_4h.iloc[closed_idx] - ema_slow_4h.iloc[slope_idx]
                     )
 
-                # Count consecutive GREEN bars ending at the latest bar so the
+                # Count consecutive GREEN bars ending at the closed bar so the
                 # strategy can treat a transition as "fresh" within a window of
                 # bars (volume often confirms a bar or two after the crossover).
                 if res["cdc_zone_4h"] in ("GREEN", "RED"):
                     target_zone = res["cdc_zone_4h"]
                     streak = 0
-                    lookback = min(len(ema_fast_4h), 50)
+                    usable_len = len(ema_fast_4h) + closed_idx + 1
+                    lookback = min(usable_len, 50)
                     for i in range(1, lookback + 1):
+                        idx = closed_idx - (i - 1)
                         zone_i = classify_zone(
-                            float(ap_4h.iloc[-i]),
-                            float(ema_fast_4h.iloc[-i]),
-                            float(ema_slow_4h.iloc[-i]),
+                            float(ap_4h.iloc[idx]),
+                            float(ema_fast_4h.iloc[idx]),
+                            float(ema_slow_4h.iloc[idx]),
                         )
                         if zone_i == target_zone:
                             streak += 1
@@ -204,7 +252,6 @@ def compute_indicators(
                     else:
                         res["cdc_zone_4h_red_streak"] = streak
 
-            closed_idx = -2 if last_bar_is_forming and len(close_4h) >= 2 else -1
             bar_high = float(high_4h.iloc[closed_idx])
             bar_low = float(low_4h.iloc[closed_idx])
             bar_range = bar_high - bar_low
@@ -215,7 +262,7 @@ def compute_indicators(
 
             rsi_series = ta.rsi(close_4h, length=14)
             if rsi_series is not None and len(rsi_series) > 0:
-                res["rsi_4h"] = float(rsi_series.iloc[-1])
+                res["rsi_4h"] = float(rsi_series.iloc[closed_idx])
 
             res["volume_ratio_4h"] = compute_volume_ratio_4h(
                 volume_4h, last_bar_is_forming=last_bar_is_forming
@@ -223,7 +270,7 @@ def compute_indicators(
 
             atr_series = ta.atr(high_4h, low_4h, close_4h, length=14)
             if atr_series is not None and len(atr_series) > 0:
-                res["atr_4h"] = float(atr_series.iloc[-1])
+                res["atr_4h"] = float(atr_series.iloc[closed_idx])
 
             # Last 8 completed 4H closes for TUI sparkline (exclude forming bar).
             if len(close_4h) >= 3:

@@ -10,7 +10,10 @@ try:
 except ImportError:  # pragma: no cover - exercised in envs without pandas_ta
     from xauby.utils import ta_fallback as ta
 
-from xauby.strategies.cdc_action_zone.indicators import _action_price, classify_zone
+from xauby.strategies.cdc_action_zone.indicators import (
+    _action_price,
+    classify_zone_vectorized,
+)
 from xauby.strategies.indicators.base import Indicator
 from xauby.strategies.indicators.registry import register
 
@@ -57,9 +60,10 @@ class CDCActionZoneIndicator(Indicator):
         out["ap"] = ap_series
         out["ema12"] = ta.ema(ap_series, length=12).fillna(out["close"])
         out["ema26"] = ta.ema(ap_series, length=26).fillna(out["close"])
-        zones = []
-        for _, row in out.iterrows():
-            ap_val = float(row["ap"]) if not pd.isna(row["ap"]) else float(row["close"])
-            zones.append(classify_zone(ap_val, float(row["ema12"]), float(row["ema26"])))
-        out["zone"] = zones
+        ap_filled = ap_series.where(~ap_series.isna(), out["close"])
+        out["zone"] = classify_zone_vectorized(
+            ap_filled.to_numpy(dtype="float64"),
+            out["ema12"].to_numpy(dtype="float64"),
+            out["ema26"].to_numpy(dtype="float64"),
+        )
         return out
