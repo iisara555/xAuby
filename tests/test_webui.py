@@ -352,6 +352,18 @@ class WebUIServerTest(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertIn("xAuby WebUI", html)
+        self.assertIn('type="module"', html)
+
+    def test_static_dashboard_modules_are_served(self):
+        base = self.serve()
+
+        with urlopen(f"{base}/dashboard-client.js", timeout=3) as response:
+            client_source = response.read().decode("utf-8")
+        with urlopen(f"{base}/refresh-scheduler.js", timeout=3) as response:
+            scheduler_source = response.read().decode("utf-8")
+
+        self.assertIn("createDashboardClient", client_source)
+        self.assertIn("createRefreshScheduler", scheduler_source)
 
     def test_static_server_blocks_path_traversal(self):
         base = self.serve()
@@ -468,6 +480,7 @@ class WebUILoginTest(unittest.TestCase):
 
         self.assertEqual(status, 200)
         self.assertIn(b'action="/login"', body)
+        self.assertIn(b"One system.", body)
         self.assertIn("Content-Security-Policy", headers)
         self.assertNotIn("WWW-Authenticate", headers)
 
@@ -534,7 +547,7 @@ class WebUILoginTest(unittest.TestCase):
     def test_preauth_allowlist_is_exact(self):
         with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
             base = self.serve()
-            for path in ("/style.css", "/xau-logo.svg", "/login.js"):
+            for path in ("/style.css", "/login.css", "/xau-logo.svg", "/login.js"):
                 status, _, _ = self.request(base, "GET", path)
                 self.assertEqual(status, 200, path)
             for path in ("/app.js", "/avatar-default.svg", "/index.html"):

@@ -78,7 +78,14 @@ _SESSION_TTL_SEC = 7 * 24 * 3600
 # Static paths a browser needs before signing in. Everything else — including
 # /app.js and the operator avatar — stays behind auth so nothing personal or
 # behavioral leaks pre-login.
-_PREAUTH_STATIC = {"/login", "/login.js", "/logout", "/style.css", "/xau-logo.svg"}
+_PREAUTH_STATIC = {
+    "/login",
+    "/login.css",
+    "/login.js",
+    "/logout",
+    "/style.css",
+    "/xau-logo.svg",
+}
 
 
 def _session_secret_from_env() -> bytes:

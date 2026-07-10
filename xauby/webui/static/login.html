@@ -12,31 +12,51 @@
     <title>Sign in · xAuby</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/style.css?v=20260710-ui12" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/style.css?v=20260710-ui23" />
+    <link rel="stylesheet" href="/login.css?v=20260710-ui23" />
   </head>
   <body class="login-body">
-    <main class="login-shell">
-      <div class="login-brand">
-        <img src="/xau-logo.svg" alt="" width="56" height="56" />
-        <h1>xAuby</h1>
-        <p>Alternative Store of Value Trading System</p>
-      </div>
-      <form class="login-card" method="post" action="/login">
-        <label for="password">Password</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autocomplete="current-password"
-          required
-          autofocus
-        />
-        <p class="login-error" id="loginError" hidden>Wrong password. Try again.</p>
-        <button type="submit">Sign in</button>
-      </form>
-      <p class="login-foot">Read-only dashboard · xAuby</p>
+    <main class="login-shell" aria-labelledby="loginTitle">
+      <section class="login-hero">
+        <span class="login-liquid-line login-liquid-line-one" aria-hidden="true"></span>
+        <span class="login-liquid-line login-liquid-line-two" aria-hidden="true"></span>
+        <div class="login-hero-copy">
+          <div class="login-brand-line">
+            <span>xAuby.</span>
+          </div>
+          <div>
+            <h1 id="loginTitle">One system.<br />Every signal.<br />Zero friction.</h1>
+            <p>Private oversight for signals, positions, and risk.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="login-access" aria-labelledby="signInTitle">
+        <form class="login-card" method="post" action="/login">
+          <div class="login-card-heading">
+            <h2 id="signInTitle">Enter access password</h2>
+            <p>Sign in to your private xAuby dashboard.</p>
+          </div>
+          <div class="login-field">
+            <label for="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Enter password"
+              required
+              autofocus
+              aria-describedby="passwordHint loginError"
+            />
+            <span class="login-field-hint" id="passwordHint">Read-only access · protected session</span>
+          </div>
+          <p class="login-error" id="loginError" hidden>Wrong password. Try again.</p>
+          <button type="submit">Continue</button>
+        </form>
+      </section>
     </main>
-    <script src="/login.js?v=20260710-ui12"></script>
+    <script src="/login.js?v=20260710-ui23"></script>
   </body>
 </html>

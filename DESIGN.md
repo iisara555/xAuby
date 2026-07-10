@@ -109,14 +109,15 @@ deliberate inversion against the dark shell.
 - **Chips** (`.chip-*` / `.ev-chip`): tinted bg + matching text. Inside the
   Activity log these use true green/red; everywhere else they use the
   orange/blue/warn accents above.
-- **Sign-in page** (`login.html`, served at `/login` when a password is
-  set): the brand block (gold-coin mark, Space Grotesk `xAuby` wordmark with
-  the orange first letter, tagline) over a **cream paper card** — the same
-  trust surface as the balance card — holding a single password field and a
-  gold-gradient pill button. It shares `/style.css` (the `Login` section at
-  the end) so it can never drift from the dashboard tokens. Pre-auth it
-  shows only generic branding: the bundled coin mark, never the operator's
-  photo or name.
+- **Sign-in page** (`login.html`, served at `/login` when a password is set):
+  a frameless single-column flow on the dark xAuby canvas. The orange
+  liquid-glow hero with diagonal light streaks sits above the password form
+  and blue pill action, preserving the reference layout without a white page
+  or simulated phone bezel. Hero headline text uses Noto Sans Regular; the
+  hero summary uses Noto Sans Light. Login-specific overrides live in
+  `login.css` so dashboard layout rules cannot leak into the pre-auth screen.
+  Pre-auth shows only generic branding and never exposes runtime state, the
+  operator photo, or the operator name.
 
 ## Motion
 

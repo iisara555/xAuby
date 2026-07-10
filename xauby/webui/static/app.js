@@ -1,3 +1,8 @@
+import { createDashboardClient } from "./dashboard-client.js";
+import { createRefreshScheduler } from "./refresh-scheduler.js";
+
+const api = createDashboardClient();
+
 const fmtMoney = (value, digits = 2) => {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return "--";
@@ -367,18 +372,9 @@ function indicatorSeries(candles, key, fallbackPeriod) {
   return emaSeries(candles, fallbackPeriod);
 }
 
-async function getJson(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (res.status === 401) {
-    window.location.href = "/login";
-    throw new Error("unauthorized");
-  }
-  return res.json();
-}
-
 async function loadMeta() {
   try {
-    const meta = await getJson("/api/meta");
+    const meta = await api.fetchMeta();
     if (!meta.ok) return;
     if (meta.avatar_url) {
       const avatar = document.getElementById("userAvatar");
@@ -1279,14 +1275,8 @@ function initNavigation() {
   }
 }
 
-async function refresh() {
-  const [stateResult, healthResult, eventsResult, tradesResult, detailResult] = await Promise.allSettled([
-    getJson("/api/state"),
-    getJson("/api/health"),
-    getJson("/api/recent-events"),
-    getJson("/api/trades?limit=30"),
-    getJson("/api/dashboard-detail"),
-  ]);
+async function refreshDashboard() {
+  const [stateResult, healthResult, eventsResult, tradesResult, detailResult] = await api.fetchDashboard();
 
   if (stateResult.status === "fulfilled") {
     const state = stateResult.value;
@@ -1297,9 +1287,7 @@ async function refresh() {
     currentTimeframe = snap.primary_timeframe || currentTimeframe;
     if (symbol) {
       try {
-        const candles = await getJson(
-          `/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(currentTimeframe)}&limit=24`
-        );
+        const candles = await api.fetchCandles(symbol, currentTimeframe);
         if (candles.ok && Array.isArray(candles.candles) && candles.candles.length) {
           lastCandles = candles.candles;
           drawChart(lastCandles, latestMarketPrice);
@@ -1328,8 +1316,9 @@ async function refresh() {
 
 initNavigation();
 loadMeta();
-refresh();
-setInterval(refresh, 5000);
+const scheduler = createRefreshScheduler(refreshDashboard);
+scheduler.start();
+window.addEventListener("pagehide", () => scheduler.stop(), { once: true });
 window.addEventListener("resize", () => {
   drawChart(lastCandles, latestMarketPrice);
   drawPortfolio(lastPortfolioSegments);
