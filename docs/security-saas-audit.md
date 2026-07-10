@@ -1,6 +1,6 @@
 # xAuby Security Audit For SaaS Readiness
 
-Date: 2026-07-09
+Date: 2026-07-09 (updated 2026-07-10: branded sign-in / session cookies)
 
 ## Scope
 
@@ -35,6 +35,31 @@ No third-party systems, exchanges, or public targets were attacked.
 - `.gitignore` now excludes env variants, local backups, and additional runtime
   cache/state artifacts.
 
+## Added 2026-07-10: Branded Sign-In / Session Cookies
+
+- Browsers now get a branded `/login` page instead of the native Basic Auth
+  dialog. Sessions are HMAC-SHA256-signed cookies (`xauby_session`,
+  `HttpOnly; SameSite=Lax`, 7-day expiry) verified with
+  `hmac.compare_digest`; password comparison on `POST /login` is also
+  constant-time, with a 0.3s delay on failure as a brute-force damper.
+- The signing secret is random per process (sessions die on restart) unless
+  `XAUBY_WEBUI_SESSION_SECRET` is set. It is deliberately NOT derived from the
+  password, so a leaked cookie cannot be brute-forced offline into the
+  password.
+- The pre-auth surface is an exact allowlist: `/login`, `/logout`,
+  `/login.js`, `/style.css`, `/xau-logo.svg`. Everything else — including
+  `/app.js`, the operator avatar photo, and all `/api/*` — stays behind auth,
+  so no personal or behavioral data leaks before sign-in. Allowlisted files
+  are still served through the traversal-protected static handler.
+- `/api/*` keeps the previous `401` + `WWW-Authenticate: Basic` contract;
+  Basic Auth and Bearer tokens keep working unchanged for programmatic and
+  tunnel clients. Only browser-facing paths redirect (302) to `/login`.
+- Cookies omit `Secure` by default (the supported deployments are plain-HTTP
+  loopback/Tailscale); `XAUBY_WEBUI_COOKIE_SECURE=1` opts in behind TLS.
+- CSP was extended with `font-src 'self' https://fonts.gstatic.com` and
+  `style-src ... https://fonts.googleapis.com` so the UI webfont loads; no
+  other origins were opened, `script-src` remains `'self'`.
+
 ## Attack Tests Added
 
 - Unauthenticated WebUI request returns `401` when auth is configured.
@@ -47,6 +72,19 @@ No third-party systems, exchanges, or public targets were attacked.
 - `XAUBY_INSTANCE_ID=../...` is rejected.
 - Tracked-file secret scan fails on realistic credential patterns and passes on
   env-var names/placeholders.
+- Login: correct password sets a signed HttpOnly/Lax cookie that authorizes
+  both pages and `/api/*`; wrong password redirects with no cookie.
+- Tampered/expired/garbage session cookies are rejected (unit tests on
+  `_sign_session`/`_verify_session` plus HTTP-level test).
+- Unauthenticated HTML requests 302 to `/login` while `/api/*` still returns
+  `401 WWW-Authenticate` — asserted in the same test.
+- The pre-auth allowlist is exact: `/style.css`, `/xau-logo.svg`, `/login.js`
+  serve unauthenticated; `/app.js`, `/avatar-default.svg`, `/index.html`
+  redirect.
+- `POST` to any path other than `/login` returns 404.
+- No-password loopback mode keeps zero friction (`/` serves, `/login` bounces
+  to `/`).
+- `XAUBY_WEBUI_COOKIE_SECURE=1` adds the `Secure` cookie attribute.
 
 ## SaaS Residual Risks
 

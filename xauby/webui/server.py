@@ -14,9 +14,11 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import sqlite3
 import time
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -69,6 +71,42 @@ def _webui_auth_from_env() -> tuple[str, str, str]:
     password = os.environ.get("XAUBY_WEBUI_PASSWORD", "")
     bearer_token = os.environ.get("XAUBY_WEBUI_TOKEN", "")
     return username, password, bearer_token
+
+
+_SESSION_COOKIE = "xauby_session"
+_SESSION_TTL_SEC = 7 * 24 * 3600
+# Static paths a browser needs before signing in. Everything else — including
+# /app.js and the operator avatar — stays behind auth so nothing personal or
+# behavioral leaks pre-login.
+_PREAUTH_STATIC = {"/login", "/login.js", "/logout", "/style.css", "/xau-logo.svg"}
+
+
+def _session_secret_from_env() -> bytes:
+    """Random per-process secret; XAUBY_WEBUI_SESSION_SECRET keeps sessions
+    across restarts. Never derived from the password — a stolen cookie must
+    not become an offline brute-force oracle for it."""
+    configured = os.environ.get("XAUBY_WEBUI_SESSION_SECRET", "")
+    if configured:
+        return configured.encode("utf-8")
+    return secrets.token_bytes(32)
+
+
+def _sign_session(secret: bytes, expires_at: int) -> str:
+    msg = str(int(expires_at)).encode("ascii")
+    sig = hmac.new(secret, msg, "sha256").hexdigest()
+    return f"{int(expires_at)}.{sig}"
+
+
+def _verify_session(secret: bytes, cookie_value: str) -> bool:
+    raw_exp, _, sig = str(cookie_value or "").partition(".")
+    try:
+        expires_at = int(raw_exp)
+    except (TypeError, ValueError):
+        return False
+    if expires_at < time.time():
+        return False
+    expected = hmac.new(secret, str(expires_at).encode("ascii"), "sha256").hexdigest()
+    return hmac.compare_digest(sig, expected)
 
 
 def _validate_bind_security(host: str, username: str, password: str, bearer_token: str) -> None:
@@ -664,17 +702,32 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; "
             "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
             "connect-src 'self'; "
             "base-uri 'none'; "
             "frame-ancestors 'none'",
         )
 
+    def _session_cookie_value(self) -> str:
+        cookie = SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+        except Exception:
+            return ""
+        morsel = cookie.get(_SESSION_COOKIE)
+        return morsel.value if morsel else ""
+
     def _is_authorized(self) -> bool:
         password = getattr(self, "basic_password", "")
         bearer_token = getattr(self, "bearer_token", "")
         if not password and not bearer_token:
+            return True
+
+        if password and _verify_session(
+            getattr(self, "session_secret", b""), self._session_cookie_value()
+        ):
             return True
 
         header = self.headers.get("Authorization", "")
@@ -706,6 +759,27 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_redirect(self, location: str, extra_headers: Optional[list] = None) -> None:
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", location)
+        self._send_security_headers()
+        self.send_header("Cache-Control", "no-store")
+        for name, value in extra_headers or []:
+            self.send_header(name, value)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _session_cookie_header(self, value: str, max_age: int) -> tuple[str, str]:
+        secure = "; Secure" if _truthy_env("XAUBY_WEBUI_COOKIE_SECURE") else ""
+        return (
+            "Set-Cookie",
+            f"{_SESSION_COOKIE}={value}; Path=/; Max-Age={max_age}; "
+            f"HttpOnly; SameSite=Lax{secure}",
+        )
+
+    def _password_auth_enabled(self) -> bool:
+        return bool(getattr(self, "basic_password", ""))
+
     def _send_static(self, path: str) -> None:
         rel = "index.html" if path in {"", "/"} else path.lstrip("/")
         rel_path = Path(rel)
@@ -732,12 +806,35 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
-        if not self._is_authorized():
-            self._send_auth_required()
-            return
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
+
+        # Sign-in surface: reachable without auth so the login page can render.
+        if path in _PREAUTH_STATIC:
+            if path == "/login":
+                if not self._password_auth_enabled():
+                    self._send_redirect("/")
+                    return
+                self._send_static("login.html")
+                return
+            if path == "/logout":
+                self._send_redirect(
+                    "/login" if self._password_auth_enabled() else "/",
+                    extra_headers=[self._session_cookie_header("", 0)],
+                )
+                return
+            self._send_static(path)
+            return
+
+        if not self._is_authorized():
+            # Programmatic clients keep the 401 + WWW-Authenticate contract;
+            # browsers get the branded sign-in page.
+            if path.startswith("/api/"):
+                self._send_auth_required()
+            else:
+                self._send_redirect("/login")
+            return
         if path == "/api/state":
             self._send_json(load_state(self.project_root))
             return
@@ -781,6 +878,33 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
             return
         self._send_static(path)
 
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path
+        if path != "/login":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if not self._password_auth_enabled():
+            self._send_redirect("/")
+            return
+        try:
+            length = min(int(self.headers.get("Content-Length") or 0), 4096)
+        except (TypeError, ValueError):
+            length = 0
+        form = parse_qs(self.rfile.read(length).decode("utf-8", "replace")) if length else {}
+        supplied = (form.get("password") or [""])[0]
+        password = getattr(self, "basic_password", "")
+        if supplied and hmac.compare_digest(supplied, password):
+            expires_at = int(time.time()) + _SESSION_TTL_SEC
+            token = _sign_session(getattr(self, "session_secret", b""), expires_at)
+            self._send_redirect(
+                "/", extra_headers=[self._session_cookie_header(token, _SESSION_TTL_SEC)]
+            )
+            return
+        # Cheap brute-force damper; real rate limiting is out of scope for a
+        # private-network dashboard (documented in docs/webui.md).
+        time.sleep(0.3)
+        self._send_redirect("/login?error=1")
+
 
 def create_server(host: str, port: int, project_root: str = ".") -> ThreadingHTTPServer:
     root = os.path.abspath(project_root)
@@ -795,6 +919,7 @@ def create_server(host: str, port: int, project_root: str = ".") -> ThreadingHTT
     Handler.basic_username = username
     Handler.basic_password = password
     Handler.bearer_token = bearer_token
+    Handler.session_secret = _session_secret_from_env()
 
     return ThreadingHTTPServer((host, int(port)), Handler)
 

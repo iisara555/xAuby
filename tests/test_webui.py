@@ -1,15 +1,20 @@
+import http.client
 import json
 import os
 import sqlite3
 import tempfile
 import threading
+import time
 import unittest
 from base64 import b64encode
 from urllib.error import HTTPError
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from unittest import mock
 
 from xauby.webui.server import (
+    _sign_session,
+    _verify_session,
     candles_payload,
     create_server,
     dashboard_detail_payload,
@@ -389,6 +394,184 @@ class WebUIServerTest(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["state"], {})
         self.assertIn("state file not found", payload["error"])
+
+
+class WebUISessionSigningTest(unittest.TestCase):
+    def test_round_trip(self):
+        secret = b"secret-a"
+        token = _sign_session(secret, int(time.time()) + 60)
+        self.assertTrue(_verify_session(secret, token))
+
+    def test_rejects_wrong_secret(self):
+        token = _sign_session(b"secret-a", int(time.time()) + 60)
+        self.assertFalse(_verify_session(b"secret-b", token))
+
+    def test_rejects_expired(self):
+        secret = b"secret-a"
+        token = _sign_session(secret, int(time.time()) - 1)
+        self.assertFalse(_verify_session(secret, token))
+
+    def test_rejects_garbage(self):
+        self.assertFalse(_verify_session(b"secret-a", ""))
+        self.assertFalse(_verify_session(b"secret-a", "not-a-token"))
+        self.assertFalse(_verify_session(b"secret-a", "123."))
+
+
+class WebUILoginTest(unittest.TestCase):
+    """Branded /login flow: cookie sessions for browsers, 401 kept for /api."""
+
+    def setUp(self):
+        self.env = mock.patch.dict(os.environ, {"XAUBY_HOME": "core"}, clear=False)
+        self.env.start()
+        os.environ.pop("XAUBY_WEBUI_PASSWORD", None)
+        os.environ.pop("XAUBY_WEBUI_TOKEN", None)
+        os.environ.pop("XAUBY_WEBUI_COOKIE_SECURE", None)
+        os.environ.pop("XAUBY_WEBUI_SESSION_SECRET", None)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project_root = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+        self.env.stop()
+
+    serve = WebUIServerTest.serve
+    get_json_with_basic_auth = WebUIServerTest.get_json_with_basic_auth
+
+    def request(self, base, method, path, body=None, headers=None):
+        parsed = urlparse(base)
+        conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+        try:
+            conn.request(method, path, body=body, headers=headers or {})
+            response = conn.getresponse()
+            payload = response.read()
+            return response.status, dict(response.getheaders()), payload
+        finally:
+            conn.close()
+
+    def login(self, base, password):
+        return self.request(
+            base,
+            "POST",
+            "/login",
+            body=urlencode({"password": password}),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    def session_cookie(self, headers):
+        raw = headers.get("Set-Cookie", "")
+        return raw.split(";", 1)[0] if raw else ""
+
+    def test_login_page_served_without_auth(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            status, headers, body = self.request(base, "GET", "/login")
+
+        self.assertEqual(status, 200)
+        self.assertIn(b'action="/login"', body)
+        self.assertIn("Content-Security-Policy", headers)
+        self.assertNotIn("WWW-Authenticate", headers)
+
+    def test_html_redirects_to_login_but_api_keeps_401(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            page_status, page_headers, _ = self.request(base, "GET", "/")
+            api_status, api_headers, _ = self.request(base, "GET", "/api/state")
+
+        self.assertEqual(page_status, 302)
+        self.assertEqual(page_headers.get("Location"), "/login")
+        self.assertNotIn("WWW-Authenticate", page_headers)
+        self.assertEqual(api_status, 401)
+        self.assertIn("WWW-Authenticate", api_headers)
+
+    def test_wrong_password_redirects_with_error_and_no_cookie(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            status, headers, _ = self.login(base, "wrong")
+
+        self.assertEqual(status, 302)
+        self.assertEqual(headers.get("Location"), "/login?error=1")
+        self.assertNotIn("Set-Cookie", headers)
+
+    def test_correct_password_sets_session_cookie_that_authorizes(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            status, headers, _ = self.login(base, "pw")
+            self.assertEqual(status, 302)
+            self.assertEqual(headers.get("Location"), "/")
+            raw_cookie = headers.get("Set-Cookie", "")
+            self.assertIn("HttpOnly", raw_cookie)
+            self.assertIn("SameSite=Lax", raw_cookie)
+            self.assertNotIn("Secure", raw_cookie)
+
+            cookie = self.session_cookie(headers)
+            page_status, _, _ = self.request(base, "GET", "/", headers={"Cookie": cookie})
+            api_status, _, _ = self.request(
+                base, "GET", "/api/state", headers={"Cookie": cookie}
+            )
+
+        self.assertEqual(page_status, 200)
+        self.assertEqual(api_status, 200)
+
+    def test_tampered_cookie_still_redirects(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            status, headers, _ = self.request(
+                base, "GET", "/", headers={"Cookie": "xauby_session=999999.deadbeef"}
+            )
+
+        self.assertEqual(status, 302)
+        self.assertEqual(headers.get("Location"), "/login")
+
+    def test_logout_expires_cookie(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            status, headers, _ = self.request(base, "GET", "/logout")
+
+        self.assertEqual(status, 302)
+        self.assertEqual(headers.get("Location"), "/login")
+        self.assertIn("Max-Age=0", headers.get("Set-Cookie", ""))
+
+    def test_preauth_allowlist_is_exact(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            for path in ("/style.css", "/xau-logo.svg", "/login.js"):
+                status, _, _ = self.request(base, "GET", path)
+                self.assertEqual(status, 200, path)
+            for path in ("/app.js", "/avatar-default.svg", "/index.html"):
+                status, headers, _ = self.request(base, "GET", path)
+                self.assertEqual(status, 302, path)
+                self.assertEqual(headers.get("Location"), "/login", path)
+
+    def test_post_to_other_paths_is_404(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            status, _, _ = self.request(base, "POST", "/api/state")
+
+        self.assertEqual(status, 404)
+
+    def test_no_password_mode_keeps_zero_friction(self):
+        base = self.serve()
+        page_status, _, _ = self.request(base, "GET", "/")
+        login_status, login_headers, _ = self.request(base, "GET", "/login")
+
+        self.assertEqual(page_status, 200)
+        self.assertEqual(login_status, 302)
+        self.assertEqual(login_headers.get("Location"), "/")
+
+    def test_cookie_secure_flag_opt_in(self):
+        env = {"XAUBY_WEBUI_PASSWORD": "pw", "XAUBY_WEBUI_COOKIE_SECURE": "1"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            base = self.serve()
+            _, headers, _ = self.login(base, "pw")
+
+        self.assertIn("Secure", headers.get("Set-Cookie", ""))
+
+    def test_basic_auth_still_accepted_for_api(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            base = self.serve()
+            payload = self.get_json_with_basic_auth(f"{base}/api/state", password="pw")
+
+        self.assertFalse(payload["ok"])
 
 
 if __name__ == "__main__":
