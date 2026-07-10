@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
+
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 HOST="${WEBUI_HOST:-127.0.0.1}"
 PORT="${WEBUI_PORT:-8787}"
-
-cd "$(dirname "$0")/.."
 
 PY="${PYTHON:-./venv/bin/python}"
 if [[ ! -x "$PY" ]]; then
