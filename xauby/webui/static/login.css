@@ -115,9 +115,9 @@ body.login-body::after {
   display: block;
   margin: 0;
   color: #fff;
-  font-family: "Noto Sans", sans-serif;
+  font-family: "Space Grotesk", sans-serif;
   font-size: clamp(40px, 10.5vw, 50px);
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0;
   line-height: 0.9;
   -webkit-line-clamp: none;
