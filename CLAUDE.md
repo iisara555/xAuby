@@ -19,6 +19,14 @@ through a CLI, a Textual TUI, and Telegram.
 Package name: `xauby`. Python `>=3.10` (pyproject), README targets 3.12+; the dev
 container currently runs 3.11.
 
+Product identity ("xAuby : Alternative Store of Value Trading System",
+`xauby/meta.py`) and the WebUI's visual system (`xauby/webui/static/`) are
+documented in [PRODUCT.md](PRODUCT.md) / [DESIGN.md](DESIGN.md). Both are
+personalized to the single operator (name/photo/tagline are configurable via
+`bot_config.yaml -> cli_ui`, not hardcoded strings to templatize) — verify
+those two files still match `index.html`/`style.css` before trusting them,
+same doc-drift caveat as below.
+
 ## Entry points
 
 | Command | What it does |
@@ -51,6 +59,7 @@ docs/               Operator/contributor docs (architecture, trading-flow, confi
 weekly_reviews/     Generated weekly review markdown
 xauby/
   cli.py            CLI argument handling + restart/update logic
+  meta.py           Product identity (PRODUCT_NAME/TAGLINE, bot_config.yaml cli_ui.bot_name / webui_avatar resolution) — read by CLI, TUI, Telegram, engine alerts, and the WebUI
   launcher/         Interactive launcher package: config_io, process, maintenance, quick_config (menus)
   engine/           LiteTradingEngine (composed of mixins), brokers, risk, orders, regime routing
   strategies/       Strategy plugins + indicators/ indicator plugins + registries

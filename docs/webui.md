@@ -74,19 +74,45 @@ WEBUI_HOST=<vps-tailscale-ip> WEBUI_PORT=8787 ./scripts/start_webui.sh
 ```
 
 Then open `http://<vps-tailscale-ip>:8787` from the phone while Tailscale is on.
-The browser will prompt for Basic Auth. The default username is `xauby`; override
-it with `XAUBY_WEBUI_USERNAME`.
+The browser shows the branded xAuby sign-in page; enter the password from
+`XAUBY_WEBUI_PASSWORD`.
 
 The WebUI refuses non-loopback binds without `XAUBY_WEBUI_PASSWORD` or
 `XAUBY_WEBUI_TOKEN`, unless `XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE=1` is explicitly
 set. Do not use that override on a public VPS.
 
+## Sign-In And Sessions
+
+When `XAUBY_WEBUI_PASSWORD` is set, browsers are redirected to a branded
+`/login` page (no password set = loopback default, no sign-in at all):
+
+- A correct password sets a signed `HttpOnly; SameSite=Lax` session cookie
+  valid for 7 days. `GET /logout` ends the session.
+- Sessions are signed with a random per-process secret, so a WebUI restart
+  signs everyone out. Set `XAUBY_WEBUI_SESSION_SECRET` to a long random value
+  to keep sessions across restarts.
+- The cookie omits `Secure` because the supported deployments are plain HTTP
+  over loopback or Tailscale. If you terminate TLS in front of the WebUI
+  (e.g. Tailscale Serve), set `XAUBY_WEBUI_COOKIE_SECURE=1`.
+- Failed logins are delayed 0.3s as a brute-force damper; there is no full
+  rate limiter because the WebUI is designed for private networks only.
+- Before sign-in, only the login page and its assets are served (`/login`,
+  `/login.js`, `/style.css`, `/xau-logo.svg`). The dashboard, the operator
+  avatar, and every `/api/*` endpoint stay behind auth.
+
+API and tunnel clients are unaffected: `/api/*` still answers `401` with
+`WWW-Authenticate: Basic`, and both HTTP Basic Auth (default username `xauby`,
+override with `XAUBY_WEBUI_USERNAME`) and `Authorization: Bearer` tokens
+(`XAUBY_WEBUI_TOKEN`) keep working on every endpoint.
+
 ## Endpoints
 
+- `GET /login` / `POST /login` (sign-in page + form)
+- `GET /logout`
 - `GET /api/state`
 - `GET /api/health`
 - `GET /api/recent-events`
 - `GET /api/trades?limit=10`
 - `GET /api/candles?symbol=XAUUSDT&timeframe=4h&limit=24`
 
-All endpoints are read-only.
+All API endpoints are read-only.
