@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#07080d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="xAuby" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Sign in · xAuby</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/style.css?v=20260710-ui12" />
+  </head>
+  <body class="login-body">
+    <main class="login-shell">
+      <div class="login-brand">
+        <img src="/xau-logo.svg" alt="" width="56" height="56" />
+        <h1>xAuby</h1>
+        <p>Alternative Store of Value Trading System</p>
+      </div>
+      <form class="login-card" method="post" action="/login">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          autofocus
+        />
+        <p class="login-error" id="loginError" hidden>Wrong password. Try again.</p>
+        <button type="submit">Sign in</button>
+      </form>
+      <p class="login-foot">Read-only dashboard · xAuby</p>
+    </main>
+    <script src="/login.js?v=20260710-ui12"></script>
+  </body>
+</html>
