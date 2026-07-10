@@ -112,6 +112,15 @@ let currentSymbol = "";
 let currentTimeframe = "4h";
 let latestMarketPrice = null;
 
+// Canvas can't read CSS custom properties, so chart colors are literal here.
+// Keep in sync with style.css :root —
+//   #ff431a = --orange (brand / up-candles / price line)
+//   #ff7040 = --orange-mid (EMA fast, price pill)
+//   #97aef0 = --blue / --info (down-candles, EMA slow)
+//   #f8f4ee = --cream / --ink-1 (captions; rgba(248,244,238,x) = muted ink)
+//   #161618 = dark ink on accent fills
+// #70e0c2 / #c6b7ff extend the categorical data-viz palette for 5th/6th
+// portfolio assets only (see DESIGN.md) — they are not UI state colors.
 const PORTFOLIO_COLORS = ["#ff431a", "#97aef0", "#ff7040", "#f8f4ee", "#70e0c2", "#c6b7ff"];
 
 function timeframeToMinutes(timeframe) {
@@ -360,6 +369,10 @@ function indicatorSeries(candles, key, fallbackPeriod) {
 
 async function getJson(url) {
   const res = await fetch(url, { cache: "no-store" });
+  if (res.status === 401) {
+    window.location.href = "/login";
+    throw new Error("unauthorized");
+  }
   return res.json();
 }
 
@@ -510,7 +523,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   drawEma(emaSlow, "rgba(151, 174, 240, 0.76)");
   drawEma(emaFast, "#ff7040");
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.52)";
+  ctx.fillStyle = "rgba(248, 244, 238, 0.62)";
   ctx.font = "11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -548,7 +561,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.5)";
+  ctx.fillStyle = "rgba(248, 244, 238, 0.62)";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   chartAxisLabels(currentTimeframe, candles.length).forEach((labelText, index) => {

@@ -19,21 +19,12 @@
   --blue-deep: #526fe6;
   --blue-soft: rgba(151, 174, 240, 0.2);
   --blue-faint: rgba(151, 174, 240, 0.1);
-  --mint: #70e0c2;
-  --violet: #c6b7ff;
-  --lime: var(--orange);
-  --lime-soft: var(--orange-soft);
-  --lime-faint: var(--orange-faint);
-  --olive: #202027;
-  --olive-2: #161618;
   --gold: var(--orange);
-  --gold-mid: var(--orange-mid);
-  --gold-deep: var(--blue-deep);
   --gold-gradient: linear-gradient(135deg, #ff431a 0%, #ff7040 100%);
   --gold-gradient-soft: linear-gradient(135deg, rgba(255, 67, 26, 0.2), rgba(151, 174, 240, 0.1));
-  --gold-tint: var(--lime-soft);
-  --pos: var(--lime);
-  --pos-tint: var(--lime-soft);
+  --gold-tint: var(--orange-soft);
+  --pos: var(--orange);
+  --pos-tint: var(--orange-soft);
   --neg: #ff431a;
   --neg-tint: rgba(255, 67, 26, 0.13);
   --warn: #ffb15c;
@@ -60,7 +51,7 @@
   --weight-title: 620;
   --weight-value: 640;
   --weight-label: 560;
-  --nav-height: 48px;
+  --nav-height: 54px;
   /* Extra clearance so Safari's bottom toolbar / home indicator never covers the nav */
   --nav-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   --z-nav: 20;
@@ -95,6 +86,13 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--orange-mid);
+  outline-offset: 2px;
 }
 
 h1,
@@ -368,6 +366,11 @@ body[data-view="activity"] [data-section="activity"] {
   .value-updated {
     animation: none !important;
   }
+
+  .mini-card,
+  .panel {
+    transition: none;
+  }
 }
 
 /* ---------- Cards ---------- */
@@ -400,11 +403,13 @@ body[data-view="activity"] [data-section="activity"] {
     background-color 180ms ease-out;
 }
 
-.mini-card:hover,
-.panel:hover {
-  border-color: var(--line-strong);
-  transform: translateY(-1px);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+@media (hover: hover) {
+  .mini-card:hover,
+  .panel:hover {
+    border-color: var(--line-strong);
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  }
 }
 
 .value-updated {
@@ -421,7 +426,7 @@ body[data-view="activity"] [data-section="activity"] {
   font-size: var(--type-label);
   font-weight: var(--weight-label);
   letter-spacing: 0.02em;
-  color: rgba(22, 22, 24, 0.52);
+  color: rgba(22, 22, 24, 0.62);
 }
 
 .balance-card h2 {
@@ -454,7 +459,7 @@ body[data-view="activity"] [data-section="activity"] {
   overflow: hidden;
   font-size: var(--type-caption);
   font-weight: var(--weight-label);
-  color: rgba(22, 22, 24, 0.54);
+  color: rgba(22, 22, 24, 0.62);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -465,7 +470,7 @@ body[data-view="activity"] [data-section="activity"] {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0;
-  color: rgba(22, 22, 24, 0.44);
+  color: rgba(22, 22, 24, 0.62);
 }
 
 .balance-card strong .equity-number {
@@ -590,18 +595,6 @@ body[data-view="activity"] [data-section="activity"] {
   text-transform: uppercase;
 }
 
-#pnlValue.positive {
-  color: var(--pos);
-}
-
-#pnlValue.negative {
-  color: var(--neg);
-}
-
-#pnlValue.neutral {
-  color: var(--ink-3);
-}
-
 #priceValue {
   white-space: nowrap;
 }
@@ -611,18 +604,21 @@ body[data-view="activity"] [data-section="activity"] {
 }
 
 .change-value.positive,
+#pnlValue.positive,
 .state-pos,
 .green {
   color: var(--pos);
 }
 
 .change-value.negative,
+#pnlValue.negative,
 .state-neg,
 .red {
   color: var(--neg);
 }
 
 .change-value.neutral,
+#pnlValue.neutral,
 .state-muted {
   color: var(--ink-3);
 }
@@ -932,7 +928,7 @@ body[data-view="signal"] .panel:hover {
 .eyebrow {
   display: block;
   margin-bottom: 5px;
-  color: rgba(22, 22, 24, 0.52);
+  color: rgba(22, 22, 24, 0.62);
   font-size: var(--type-label);
   font-weight: var(--weight-label);
   letter-spacing: 0.02em;
@@ -1427,7 +1423,7 @@ body[data-view="regime"] [data-section="regime"] > .regime-card .panel-head > sp
 .detail-hero .protection-item span,
 .detail-hero .metric-item span,
 .detail-hero .reason-item span {
-  color: rgba(22, 22, 24, 0.54);
+  color: rgba(22, 22, 24, 0.62);
 }
 
 .detail-hero .detail-item.featured span,
@@ -1573,7 +1569,7 @@ body[data-view="regime"] [data-section="regime"] > .regime-card .panel-head > sp
 .detail-accent-blue .metric-item span,
 .detail-accent-blue .reason-item span,
 .detail-accent-blue .check-item span:last-child {
-  color: rgba(22, 22, 24, 0.58);
+  color: rgba(22, 22, 24, 0.72);
 }
 
 .detail-accent-orange .detail-item.featured span,
@@ -1582,7 +1578,7 @@ body[data-view="regime"] [data-section="regime"] > .regime-card .panel-head > sp
 .detail-accent-blue .detail-item.featured span,
 .detail-accent-blue .protection-item.featured span,
 .detail-accent-blue .metric-item.featured span {
-  color: rgba(22, 22, 24, 0.66);
+  color: rgba(22, 22, 24, 0.72);
 }
 
 .detail-accent-orange .detail-item strong,
@@ -1600,15 +1596,16 @@ body[data-view="regime"] [data-section="regime"] > .regime-card .panel-head > sp
 
 .detail-accent-orange .reason-item span:last-child,
 .detail-accent-blue .reason-item span:last-child {
-  color: rgba(22, 22, 24, 0.68);
+  color: rgba(22, 22, 24, 0.72);
 }
 
 .detail-accent-orange .empty-state,
 .detail-accent-blue .empty-state,
-.detail-hero .empty-state {
+.detail-hero .empty-state,
+.activity-panel .empty-state {
   border: 1px solid rgba(22, 22, 24, 0.08);
   background: rgba(22, 22, 24, 0.08);
-  color: rgba(22, 22, 24, 0.58);
+  color: rgba(22, 22, 24, 0.72);
 }
 
 .detail-accent-orange .detail-item.featured strong,
@@ -1833,7 +1830,7 @@ body[data-view="activity"] .activity-panel:nth-child(2) {
 
 .activity-panel .panel-head p {
   margin: 0;
-  color: rgba(22, 22, 24, 0.56);
+  color: rgba(22, 22, 24, 0.62);
   font-size: var(--type-caption);
   font-weight: var(--weight-label);
   line-height: 1.25;
@@ -2010,7 +2007,7 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  color: rgba(22, 22, 24, 0.48);
+  color: rgba(22, 22, 24, 0.62);
   font-size: var(--type-label);
   font-weight: var(--weight-label);
   line-height: 1.1;
@@ -2072,7 +2069,7 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   display: grid;
   place-items: center;
   width: 44px;
-  height: 38px;
+  height: 44px;
   min-width: 0;
   min-height: 0;
   border: 0;
@@ -2142,7 +2139,7 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
     min-height: 620px;
     margin: 0;
     padding: 24px 24px 0;
-    border: 1px solid var(--line-strong);
+    border: 1px solid rgba(248, 244, 238, 0.16);
     border-radius: 44px;
     background:
       linear-gradient(180deg, rgba(151, 174, 240, 0.08), transparent 32%),
@@ -2325,8 +2322,128 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  /* Zone tile spans 2 tracks in the 5-column base grid; at 4 columns that
+     orphans Streak onto its own row. */
+  .cdc-strip div:first-child {
+    grid-column: span 1;
+  }
+
   canvas {
     height: 158px;
+  }
+}
+
+/* ---------- Login ---------- */
+
+.login-body {
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  overflow: auto;
+  padding:
+    max(24px, env(safe-area-inset-top))
+    var(--space-6)
+    max(24px, env(safe-area-inset-bottom));
+}
+
+.login-shell {
+  display: grid;
+  gap: var(--space-6);
+  width: min(360px, 100%);
+}
+
+.login-brand {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.login-brand img {
+  width: 56px;
+  height: 56px;
+}
+
+.login-brand h1 {
+  overflow: visible;
+  display: block;
+  -webkit-line-clamp: none;
+}
+
+.login-brand p {
+  color: var(--ink-3);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-label);
+  letter-spacing: 0.02em;
+}
+
+.login-card {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid rgba(248, 244, 238, 0.9);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  background:
+    linear-gradient(145deg, rgba(248, 244, 238, 0.99), rgba(255, 255, 255, 0.95));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.26);
+}
+
+.login-card label {
+  color: rgba(22, 22, 24, 0.62);
+  font-size: var(--type-label);
+  font-weight: var(--weight-label);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.login-card input {
+  min-height: 44px;
+  border: 1px solid rgba(22, 22, 24, 0.16);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-5);
+  background: rgba(22, 22, 24, 0.05);
+  color: #161618;
+  font-size: 16px; /* ≥16px stops iOS Safari zooming the field on focus */
+}
+
+.login-card input:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.login-card button {
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--gold-gradient);
+  color: #161618;
+  font-size: var(--type-title);
+  font-weight: var(--weight-title);
+  cursor: pointer;
+  transition: transform 120ms ease-out, box-shadow 180ms ease-out;
+}
+
+.login-card button:active {
+  transform: scale(0.98);
+}
+
+.login-error {
+  color: #9b2418;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-title);
+}
+
+.login-foot {
+  color: var(--ink-3);
+  font-size: var(--type-label);
+  font-weight: var(--weight-label);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card button {
+    transition: none;
   }
 }
 
@@ -2423,7 +2540,4 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
     padding: 6px 8px;
   }
 
-  .bottom-nav button {
-    height: 40px;
-  }
 }
