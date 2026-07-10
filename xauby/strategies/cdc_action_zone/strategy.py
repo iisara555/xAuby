@@ -20,17 +20,18 @@ from xauby.strategies.cdc_action_zone.indicators import (
 __all__ = ["CDCActionZoneStrategy", "classify_zone"]
 
 
-@register("cdc_action_zone")
+@register("xauby_actionzone")
 class CDCActionZoneStrategy(Strategy):
     """CDC Action Zone trend-following strategy on the primary timeframe.
 
-    Reads its tuning from the ``strategies.cdc_action_zone`` config block:
+    Reads its tuning from the ``strategy.config.xauby_actionzone`` config block:
         rsi_min, rsi_max, vol_min_ratio,
         use_d1_regime_filter, require_fresh_zone
     """
 
     version = "1.0.0"
     author = "xAuby"
+    display_name = "xAuby ActionZone"
     description = (
         "CDC Action Zone trend-following strategy using EMA 12/26 crossover "
         "zones on the 4H timeframe with optional D1 regime filter."

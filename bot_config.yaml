@@ -72,7 +72,7 @@ strategy_mode:
 mode_indicator_profiles:
   trend_only:
     active_strategies:
-    - cdc_action_zone
+    - xauby_actionzone
     primary_timeframe: 4h
     confirm_timeframe: 1d
     min_confidence: 0.4
@@ -169,9 +169,9 @@ pre_trade_gate:
   enabled: true
 strategy:
   use_closed_candles: true
-  active: cdc_action_zone
+  active: xauby_actionzone
   config:
-    donchian_trend:
+    xauby_donchian_trend:
       enabled: true
       timeframe: 4h
       primary_timeframe: 4h
@@ -192,7 +192,7 @@ strategy:
       exit_on_ema_loss: true
       max_calc_bars: 1000
       cool_down_minutes: 240
-    cdc_action_zone:
+    xauby_actionzone:
       enabled: true
       timeframe: 4h
       primary_timeframe: 4h
@@ -385,17 +385,17 @@ strategy:
       fixed_tp_pct: 0.8
     vol_breakout:
       fixed_tp_pct: 0.0
-  # Per-symbol strategy overrides. OKX XAU uses cdc_action_zone through the
+  # Per-symbol strategy overrides. OKX XAU uses xauby_actionzone through the
   # whitelist strategy_params so live/replay/paper stay aligned.
   symbols: {}
 strategies:
   enabled:
-  - cdc_action_zone
+  - xauby_actionzone
   min_confidence: 0.4
   min_strategies_agree: 1
   independent_strategy_execution: true
-  cdc_action_zone:
-    # หมายเหตุ: บล็อกนี้เป็น fallback — ตัวที่ runtime ใช้จริงคือ strategy.config.cdc_action_zone
+  xauby_actionzone:
+    # หมายเหตุ: บล็อกนี้เป็น fallback — ตัวที่ runtime ใช้จริงคือ strategy.config.xauby_actionzone
     # คงให้ตรงกันกันสับสน (CDC แท้: ไม่มี SL, เข้าเขียวแท้, ลงเต็มไม้)
     enabled: true
     use_d1_regime_filter: false
@@ -727,10 +727,10 @@ architecture:
   indicator_registry_enabled: true
   sync_yaml_pairs_from_whitelist: true
   strategy_chart_indicators:
-    donchian_trend:
-    - donchian_trend
-    cdc_action_zone:
-    - cdc_action_zone
+    xauby_donchian_trend:
+    - xauby_donchian_trend
+    xauby_actionzone:
+    - xauby_actionzone
     supertrend_ema200:
     - supertrend
     - ema200
@@ -793,21 +793,21 @@ regime_router:
   # docs/regime_churn_report.md.
   confidence_threshold: 0.65
   # Automated strategy router matrix (BTCUSDT only — the only router-enabled
-  # pair). Trend/breakout regimes -> DONCHIAN (donchian_trend); low-vol /
+  # pair). Trend/breakout regimes -> DONCHIAN (xauby_donchian_trend); low-vol /
   # range-bound regimes -> BBRSI mean-reversion; bearish / high-risk regimes ->
   # NO_TRADE (empty target). Spot account is LONG-only, so bearish regimes are
   # risk-off (flat to cash) rather than short.
   mapping:
     # Bullish — Trend-Following / Breakout
-    BULL_BREAKOUT: donchian_trend
-    BULL_TREND_STRONG: donchian_trend
-    BULL_TREND_WEAK: donchian_trend        # middle-band tight trailing stop
+    BULL_BREAKOUT: xauby_donchian_trend
+    BULL_TREND_STRONG: xauby_donchian_trend
+    BULL_TREND_WEAK: xauby_donchian_trend        # middle-band tight trailing stop
     # Low volatility / range-bound — Mean-Reversion
     LOW_VOL_ACCUMULATION: bbrsi_mean_reversion
     LOW_VOL_RANGE: bbrsi_mean_reversion
     SIDEWAYS_CHOP: bbrsi_mean_reversion
     # High volatility — catch the explosive momentum
-    VOLATILITY_EXPANSION: donchian_trend
+    VOLATILITY_EXPANSION: xauby_donchian_trend
     # Bearish / high-risk — risk-off (LONG-only spot: no shorting → NO_TRADE)
     BEAR_TREND_WEAK:
     PANIC_SELL:

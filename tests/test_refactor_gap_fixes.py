@@ -83,7 +83,7 @@ class TestConfidenceBypass(unittest.TestCase):
     def test_low_confidence_bypassed_below_30_history(self):
         route = self._route(history_count=10)
         self.assertTrue(route.strategy_changed)
-        self.assertEqual(route.strategy_name, "cdc_action_zone")
+        self.assertEqual(route.strategy_name, "xauby_actionzone")
 
     def test_low_confidence_blocks_at_30_history(self):
         route = self._route(history_count=30)

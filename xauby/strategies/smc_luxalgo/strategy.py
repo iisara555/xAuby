@@ -27,10 +27,11 @@ from xauby.strategies.signal import Signal, buy, close_short, hold, open_short, 
 TARGET_REGIMES = {"BULL_BREAKOUT", "BULL_TREND_STRONG", "BEAR_TREND_STRONG", "VOLATILITY_EXPANSION"}
 
 
-@register("smc_luxalgo")
+@register("xauby_smc_pro")
 class SMCLuxAlgoStrategy(Strategy):
     version = "0.1.0"
     author = "xAuby"
+    display_name = "xAuby SMC Pro"
     description = "Smart Money Concepts structure strategy inspired by LuxAlgo SMC."
     tags = ["smc", "luxalgo", "structure", "bos", "choch"]
     required_timeframes = ["4h"]

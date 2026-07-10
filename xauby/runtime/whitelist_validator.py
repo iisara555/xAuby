@@ -9,7 +9,12 @@ from xauby.runtime.symbol_utils import ALLOWED_TIMEFRAMES, normalize_market_symb
 
 
 def strategy_name_from_whitelist_entry(entry: Dict[str, Any]) -> str:
-    return str(entry.get("strategy") or entry.get("strategy_name") or "").strip()
+    raw = str(entry.get("strategy") or entry.get("strategy_name") or "").strip()
+    if not raw:
+        return ""
+    from xauby.strategies.registry import normalize_strategy_name
+
+    return normalize_strategy_name(raw)
 
 
 def validate_whitelist_file_exists(whitelist_path: str) -> None:

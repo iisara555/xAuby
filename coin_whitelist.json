@@ -11,7 +11,7 @@
       "enabled": true,
       "primary_timeframe": "4h",
       "confirm_timeframe": "1d",
-      "strategy": "cdc_action_zone",
+      "strategy": "xauby_actionzone",
       "strategy_params": {
         "backtest_data_proxy": "PAXGUSDT",
         "enable_short": true,

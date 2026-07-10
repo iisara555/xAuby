@@ -27,10 +27,11 @@ PARAM_GRID: List[Dict[str, Any]] = [
 TARGET_REGIMES = {"BULL_BREAKOUT", "BULL_TREND_STRONG", "BULL_TREND_WEAK"}
 
 
-@register("donchian_trend")
+@register("xauby_donchian_trend")
 class DonchianTrendStrategy(Strategy):
     version = "0.1.0"
     author = "xAuby"
+    display_name = "xAuby Donchian Trend"
     description = "Donchian breakout above EMA200 with ADX filter (turtle-style trend)."
     tags = ["btc", "donchian", "trend", "1h"]
     required_timeframes = ["1h"]

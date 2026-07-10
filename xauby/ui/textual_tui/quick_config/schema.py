@@ -508,7 +508,7 @@ def build_regime_mapping(ctx: Ctx) -> List[Field]:
     try:
         strategies = list_installed_strategies()
     except Exception:
-        strategies = ["cdc_action_zone"]
+        strategies = ["xauby_actionzone"]
     choices = [(s, s) for s in strategies] + [("NO_TRADE", "NO_TRADE (block buys)")]
     fields: List[Field] = []
     for reg in DEFAULT_REGIME_ROUTER_MAPPING:

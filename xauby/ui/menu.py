@@ -255,10 +255,12 @@ def draw_hermes_status_bar(W: int):
             cfg = yaml.safe_load(f) or {}
         yaml_sim = cfg.get("simulate_only", True)
         strategy_block = cfg.get("strategy") or {}
-        active_strategy = strategy_block.get("active") or cfg.get("active_strategy") or "cdc_action_zone"
+        from xauby.strategies.registry import normalize_strategy_name
+
+        active_strategy = normalize_strategy_name(strategy_block.get("active") or cfg.get("active_strategy") or "xauby_actionzone")
     except Exception:
         yaml_sim = True
-        active_strategy = "cdc_action_zone"
+        active_strategy = "xauby_actionzone"
 
     # Per-pair strategy / mode come from coin_whitelist.json (single source of
     # truth) so the status bar matches what each pair actually runs.

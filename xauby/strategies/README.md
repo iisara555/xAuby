@@ -16,7 +16,7 @@ or any specific trading idea. Those live as **plugins** in this folder.
 Trading Engine
 └── StrategyRunner (sandbox)
     └── Strategy Interface (xauby.strategies.Strategy)
-        ├── cdc_action_zone/      # CDC Action Zone (4H + D1 regime)
+        ├── cdc_action_zone/      # xAuby ActionZone (4H + D1 regime)
         ├── ict/                  # (your future ICT setup)
         ├── macro/                # (your future macro overlay)
         └── hybrid/               # (your future hybrid system)
@@ -112,11 +112,11 @@ missing fields fall back to class metadata.
 ```python
 from xauby.strategies import strategy_manifest
 
-strategy_manifest("cdc_action_zone")
+strategy_manifest("xauby_actionzone")
 # {
 #     "manifest_version": 1,
-#     "id": "cdc_action_zone",
-#     "name": "cdc_action_zone",
+#     "id": "xauby_actionzone",
+#     "name": "xAuby ActionZone",
 #     "version": "1.0.0",
 #     "author": "xAuby",
 #     "description": "CDC Action Zone trend-following ...",
@@ -144,10 +144,10 @@ via `self.config` (constructor) or `ctx.config` (per-tick).
 
 ```yaml
 strategy:
-  active: "cdc_action_zone"
+  active: "xauby_actionzone"
 
 strategies:
-  cdc_action_zone:
+  xauby_actionzone:
     rsi_min: 40.0
     rsi_max: 75.0
     vol_min_ratio: 1.0
@@ -182,7 +182,7 @@ Configure in `bot_config.yaml`:
 
 ```yaml
 strategy:
-  active: "cdc_action_zone"
+  active: "xauby_actionzone"
   sandbox_timeout: 5.0
 architecture:
   # warn (false) vs reject (true) plugins that fail the capability scan.
@@ -223,9 +223,9 @@ in `strategy.active`.
 ```python
 from xauby.strategies import available_strategies, load_strategy
 
-print(available_strategies())   # ['cdc_action_zone', ...]
+print(available_strategies())   # ['xauby_actionzone', ...]
 
-strat = load_strategy("cdc_action_zone", config={"rsi_min": 50})
+strat = load_strategy("xauby_actionzone", config={"rsi_min": 50})
 print(strat.describe())
 ```
 

@@ -31,7 +31,7 @@ class TestStrategyFromWhitelist(unittest.TestCase):
                 "XAUTUSDT",
                 project_root=tmp,
             )
-            self.assertEqual(name, "cdc_action_zone")
+            self.assertEqual(name, "xauby_actionzone")
 
     def test_strict_reads_whitelist_only(self):
         with tempfile.TemporaryDirectory() as tmp:

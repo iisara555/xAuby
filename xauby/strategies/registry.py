@@ -23,8 +23,20 @@ from xauby.strategies.manifest import strategy_manifest_from_class
 
 logger = logging.getLogger("xauby.strategies")
 
+STRATEGY_ID_ALIASES: Dict[str, str] = {
+    "cdc_action_zone": "xauby_actionzone",
+    "donchian_trend": "xauby_donchian_trend",
+    "smc_luxalgo": "xauby_smc_pro",
+}
+
 _REGISTRY: Dict[str, Type[Strategy]] = {}
 _DISCOVERED: bool = False
+
+
+def normalize_strategy_name(name: str | None) -> str:
+    """Return the canonical strategy id for a configured id or legacy alias."""
+    raw = str(name or "").strip()
+    return STRATEGY_ID_ALIASES.get(raw, raw)
 
 
 def register(name: str):
@@ -67,11 +79,12 @@ def available_strategies() -> List[str]:
 def strategy_manifest(name: str) -> Dict[str, Any]:
     """Return marketplace-facing manifest metadata for one strategy."""
     _discover_plugins()
-    if name not in _REGISTRY:
+    canonical = normalize_strategy_name(name)
+    if canonical not in _REGISTRY:
         raise KeyError(
             f"Unknown strategy {name!r}. Available: {available_strategies()}"
         )
-    return strategy_manifest_from_class(_REGISTRY[name])
+    return strategy_manifest_from_class(_REGISTRY[canonical])
 
 
 def available_strategy_manifests() -> List[Dict[str, Any]]:
@@ -98,22 +111,23 @@ def load_strategy(
         ConfigError: if ``strict`` and the strategy reports fatal config errors.
     """
     _discover_plugins()
-    if name not in _REGISTRY:
+    canonical = normalize_strategy_name(name)
+    if canonical not in _REGISTRY:
         raise KeyError(
             f"Unknown strategy {name!r}. Available: {available_strategies()}"
         )
-    cls = _REGISTRY[name]
+    cls = _REGISTRY[canonical]
     merged = {**cls.default_config(), **(config or {})}
     instance = cls(merged)
     warnings = instance.validate_config()
     for w in warnings:
-        logger.warning(f"[{name}] config warning: {w}")
+        logger.warning(f"[{canonical}] config warning: {w}")
     if strict:
         errors = instance.config_errors()
         if errors:
             from xauby.runtime.config_error import ConfigError
 
             raise ConfigError(
-                f"{name}: invalid strategy config (strict mode): " + "; ".join(errors)
+                f"{canonical}: invalid strategy config (strict mode): " + "; ".join(errors)
             )
     return instance

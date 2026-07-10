@@ -28,7 +28,7 @@ def run_plugin_replay(
     strategy_config: Dict[str, Any],
     engine_config: Optional[Dict[str, Any]] = None,
     symbol: str = "XAUTUSDT",
-    strategy_name: str = "cdc_action_zone",
+    strategy_name: str = "xauby_actionzone",
     initial_balance: float = DEFAULT_INITIAL_BALANCE,
     df_regime: Optional[pd.DataFrame] = None,
     primary_timeframe: Optional[str] = None,

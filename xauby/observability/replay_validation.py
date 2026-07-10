@@ -208,10 +208,10 @@ def validate_run(
         import warnings
         warnings.warn(
             "No strategy_name provided and no active strategy found in config. "
-            "Falling back to 'cdc_action_zone'. This fallback will be removed in a future release.",
+            "Falling back to 'xauby_actionzone'. This fallback will be removed in a future release.",
             stacklevel=2,
         )
-        strat_name = "cdc_action_zone"
+        strat_name = "xauby_actionzone"
     strat_cfg = strategy_config_from_yaml(cfg, strat_name)
     trading_cfg = cfg.get("trading") or {}
     sl_confirm_ticks = int(trading_cfg.get("sl_confirm_ticks", 3))

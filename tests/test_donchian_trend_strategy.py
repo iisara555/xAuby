@@ -39,9 +39,9 @@ def _collapse_df(n: int = 300) -> pd.DataFrame:
 
 class TestDonchianTrendStrategy(unittest.TestCase):
     def test_registered_and_loadable(self):
-        self.assertIn("donchian_trend", available_strategies())
+        self.assertIn("xauby_donchian_trend", available_strategies())
         s = load_strategy("donchian_trend", {"entry_len": 20})
-        self.assertEqual(s.name, "donchian_trend")
+        self.assertEqual(s.name, "xauby_donchian_trend")
         self.assertEqual(s.required_timeframes, ["1h"])
         self.assertEqual(s.config["entry_len"], 20)
 

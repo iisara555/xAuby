@@ -1414,7 +1414,7 @@ def quick_config_regime_mapping(current_mapping: dict) -> None:
     try:
         strategies = list_installed_strategies()
     except Exception:
-        strategies = ["cdc_action_zone"]
+        strategies = ["xauby_actionzone"]
     regimes = list(DEFAULT_REGIME_ROUTER_MAPPING.keys())
     while True:
         cfg = _load_bot_yaml()

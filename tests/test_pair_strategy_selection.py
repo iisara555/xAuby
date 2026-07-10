@@ -19,10 +19,11 @@ from xauby.strategies.registry import (
 
 class TestPairStrategySelection(unittest.TestCase):
     def test_strategy_manifest_is_marketplace_ready(self):
-        manifest = strategy_manifest("cdc_action_zone")
+        manifest = strategy_manifest("xauby_actionzone")
 
         self.assertEqual(manifest["manifest_version"], 1)
-        self.assertEqual(manifest["id"], "cdc_action_zone")
+        self.assertEqual(manifest["id"], "xauby_actionzone")
+        self.assertEqual(manifest["name"], "xAuby ActionZone")
         self.assertEqual(manifest["source"], "builtin")
         self.assertIn("4h", manifest["required_timeframes"])
         self.assertIn("default_config", manifest)
@@ -35,9 +36,21 @@ class TestPairStrategySelection(unittest.TestCase):
         manifests = available_strategy_manifests()
         ids = {m["id"] for m in manifests}
 
-        self.assertIn("cdc_action_zone", ids)
-        self.assertIn("donchian_trend", ids)
+        self.assertIn("xauby_actionzone", ids)
+        self.assertIn("xauby_donchian_trend", ids)
+        self.assertIn("xauby_smc_pro", ids)
+        self.assertNotIn("cdc_action_zone", ids)
+        self.assertNotIn("donchian_trend", ids)
         self.assertEqual(ids, set(available_strategies()))
+
+    def test_legacy_strategy_ids_resolve_to_canonical_plugins(self):
+        self.assertEqual(strategy_manifest("cdc_action_zone")["id"], "xauby_actionzone")
+        self.assertEqual(strategy_manifest("donchian_trend")["id"], "xauby_donchian_trend")
+        self.assertEqual(strategy_manifest("smc_luxalgo")["id"], "xauby_smc_pro")
+
+        self.assertEqual(load_strategy("cdc_action_zone").name, "xauby_actionzone")
+        self.assertEqual(load_strategy("donchian_trend").name, "xauby_donchian_trend")
+        self.assertEqual(load_strategy("smc_luxalgo").name, "xauby_smc_pro")
 
     def test_ict_lite_strategy_is_registered_and_loadable(self):
         self.assertIn("ict_lite_strategy", available_strategies())

@@ -121,7 +121,7 @@ class TestFormatting(unittest.TestCase):
         vm = build_backtest_view_model(result, status="done")
         lines = format_summary_lines(vm, 80)
         text = "\n".join(lines)
-        self.assertIn("cdc_action_zone", text)
+        self.assertIn("xauby_actionzone", text)
         self.assertIn("BTCUSDT", text)
         self.assertIn("2023-01", text)
         self.assertIn("42", text)

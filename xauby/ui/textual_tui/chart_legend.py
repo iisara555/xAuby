@@ -35,7 +35,7 @@ def _use_indicator_registry() -> bool:
 def _registry_legend_entries(strategy_name: Optional[str]) -> Tuple[List[tuple], List[tuple]]:
     from xauby.ui.chart_registry import chart_display_metadata
 
-    strat = strategy_name or "cdc_action_zone"
+    strat = strategy_name or "xauby_actionzone"
     meta = chart_display_metadata(strat)
     zones: List[tuple] = []
     lines: List[tuple] = []
@@ -84,7 +84,7 @@ def format_chart_legend(
         try:
             from xauby.ui.chart_registry import chart_display_metadata
 
-            cross_glyph = str(chart_display_metadata(strategy_name or "cdc_action_zone").get("cross_glyph") or "")
+            cross_glyph = str(chart_display_metadata(strategy_name or "xauby_actionzone").get("cross_glyph") or "")
         except Exception:
             cross_glyph = ""
     else:

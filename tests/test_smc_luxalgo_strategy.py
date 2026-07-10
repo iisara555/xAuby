@@ -97,9 +97,9 @@ class TestSMCLuxAlgoStrategy(unittest.TestCase):
         )
 
     def test_registered_and_loadable(self):
-        self.assertIn("smc_luxalgo", available_strategies())
+        self.assertIn("xauby_smc_pro", available_strategies())
         strategy = load_strategy("smc_luxalgo", {"internal_length": 3})
-        self.assertEqual(strategy.name, "smc_luxalgo")
+        self.assertEqual(strategy.name, "xauby_smc_pro")
 
     def test_bullish_structure_with_confluence_buys(self):
         signal = self._signal(_smc_bullish_df())

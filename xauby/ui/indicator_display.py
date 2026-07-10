@@ -9,6 +9,7 @@ import pandas as pd
 from xauby.runtime.architecture_config import strategy_chart_indicators
 from xauby.runtime.trading_config import strategy_config_block
 from xauby.strategies.indicators.registry import load_indicator
+from xauby.strategies.registry import normalize_strategy_name
 
 
 @dataclass
@@ -43,7 +44,8 @@ def build_indicator_view(
     symbol: str = "",
 ) -> IndicatorView:
     cfg = config or {}
-    ind_cfg = _indicator_config(cfg, strategy_name, symbol)
+    canonical_strategy = normalize_strategy_name(strategy_name)
+    ind_cfg = _indicator_config(cfg, canonical_strategy, symbol)
     out_df = df.copy()
     legend: List[Tuple[str, str, Tuple[int, int, int]]] = []
     metrics: List[Dict[str, Any]] = []
@@ -53,7 +55,7 @@ def build_indicator_view(
     zone_column = "zone"
     line_columns: List[str] = []
 
-    for name in strategy_chart_indicators(cfg, strategy_name):
+    for name in strategy_chart_indicators(cfg, canonical_strategy):
         plugin = load_indicator(name, ind_cfg)
         out_df = plugin.compute(out_df, ind_cfg)
         legend.extend(plugin.legend_entries())
@@ -81,7 +83,7 @@ def build_indicator_view(
                     line_columns.append(key)
 
     return IndicatorView(
-        strategy_name=strategy_name,
+        strategy_name=canonical_strategy,
         df=out_df,
         legend=legend,
         metrics=metrics,

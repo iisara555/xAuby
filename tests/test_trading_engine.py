@@ -37,8 +37,8 @@ class TestTradingEngineDecoupling(unittest.TestCase):
 
         # Both come from coin_whitelist.json (whitelist_strict mode); isolation
         # is proven by distinct instances even when the strategy name matches.
-        self.assertEqual(gold_strategy.name, "cdc_action_zone")
-        self.assertEqual(btc_strategy.name, "cdc_action_zone")
+        self.assertEqual(gold_strategy.name, "xauby_actionzone")
+        self.assertEqual(btc_strategy.name, "xauby_actionzone")
         self.assertIsNot(gold_strategy, btc_strategy)
         self.assertIsNot(gold_runner, btc_runner)
 

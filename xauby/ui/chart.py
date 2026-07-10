@@ -190,7 +190,7 @@ def get_chart_max_candles_cap() -> int:
 
 
 def _get_ap_smoothing() -> int:
-    """Read strategies.cdc_action_zone.ap_smoothing from bot_config.yaml.
+    """Read xAuby ActionZone ap_smoothing from bot_config.yaml.
 
     Mirrors the strategy so the dashboard chart zones match the bot's zones.
     1 = raw close, 2 = Piriya CDC V3 (AP = ema(close, 2)). Cached after first read.
@@ -203,7 +203,15 @@ def _get_ap_smoothing() -> int:
         import yaml
         with open("bot_config.yaml", "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
-        raw = cfg.get("strategies", {}).get("cdc_action_zone", {}).get("ap_smoothing", 1)
+        strategy_config = (cfg.get("strategy") or {}).get("config") or {}
+        legacy_config = cfg.get("strategies") or {}
+        raw = (
+            (strategy_config.get("xauby_actionzone") or {}).get("ap_smoothing")
+            or (strategy_config.get("cdc_action_zone") or {}).get("ap_smoothing")
+            or (legacy_config.get("xauby_actionzone") or {}).get("ap_smoothing")
+            or (legacy_config.get("cdc_action_zone") or {}).get("ap_smoothing")
+            or 1
+        )
         ap = max(1, int(raw))
     except Exception:
         ap = 1
@@ -465,7 +473,7 @@ def get_chart_lines_raw(
                     continue
 
         registry_active = _use_indicator_registry()
-        strat_for_chart = strategy_name or "cdc_action_zone"
+        strat_for_chart = strategy_name or "xauby_actionzone"
         zone_column = "zone"
         cross_glyph = "✦"
         line_defs = [

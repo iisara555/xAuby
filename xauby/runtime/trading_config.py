@@ -21,6 +21,7 @@ from xauby.runtime.exchange_config import resolve_quote_asset
 from xauby.runtime.pair_config import load_whitelist
 from xauby.runtime.strategy_pair_config import merge_strategy_config
 from xauby.runtime.whitelist_validator import strategy_name_from_whitelist_entry
+from xauby.strategies.registry import STRATEGY_ID_ALIASES, normalize_strategy_name
 
 
 STRATEGY_RESULT_KEYS = frozenset(
@@ -109,9 +110,15 @@ class CanonicalRuntimeConfig:
         return asdict(self)
 
 
-def active_strategy_name(cfg: Dict[str, Any], fallback: str = "cdc_action_zone") -> str:
+def _legacy_strategy_names(name: str) -> Tuple[str, ...]:
+    canonical = normalize_strategy_name(name)
+    aliases = tuple(old for old, new in STRATEGY_ID_ALIASES.items() if new == canonical)
+    return (canonical, *aliases)
+
+
+def active_strategy_name(cfg: Dict[str, Any], fallback: str = "xauby_actionzone") -> str:
     strategy_block = cfg.get("strategy") or {}
-    return str(strategy_block.get("active") or cfg.get("active_strategy") or fallback)
+    return normalize_strategy_name(strategy_block.get("active") or cfg.get("active_strategy") or fallback)
 
 
 def _base_from_symbol(symbol: str, quote: str = "USDT") -> str:
@@ -141,7 +148,7 @@ def strategy_name_for_symbol(
     cfg: Dict[str, Any],
     symbol: str,
     *,
-    fallback: str = "cdc_action_zone",
+    fallback: str = "xauby_actionzone",
     project_root: str = ".",
     whitelist_path: Optional[str] = None,
     strict: Optional[bool] = None,
@@ -158,7 +165,7 @@ def strategy_name_for_symbol(
         )
         if not wl_name:
             raise ConfigError(f"{sym}: missing 'strategy' in whitelist (strict mode)")
-        return wl_name
+        return normalize_strategy_name(wl_name)
 
     default = active_strategy_name(cfg, fallback)
     quote = str(((cfg.get("portfolio") or {}).get("quote_asset")) or resolve_quote_asset(cfg)).upper()
@@ -168,7 +175,7 @@ def strategy_name_for_symbol(
     if isinstance(override, dict):
         name = str(override.get("strategy") or override.get("strategy_name") or "").strip()
         if name:
-            return name
+            return normalize_strategy_name(name)
     return default
 
 
@@ -216,11 +223,22 @@ def strategy_config_block(
     Legacy fallback:
       strategies.<strategy_name> + coin_whitelist[].strategy_params overlay
     """
-    name = strategy_name or strategy_name_for_symbol(cfg, symbol)
+    name = normalize_strategy_name(strategy_name or strategy_name_for_symbol(cfg, symbol))
     strategy_root = cfg.get("strategy") or {}
-    canonical = (strategy_root.get("config") or {}).get(name)
+    canonical = None
+    strategy_config = strategy_root.get("config") or {}
+    legacy_config = cfg.get("strategies") or {}
+    for candidate in _legacy_strategy_names(name):
+        canonical = strategy_config.get(candidate)
+        if canonical is not None:
+            break
     if canonical is None:
-        canonical = (cfg.get("strategies") or {}).get(name) or {}
+        for candidate in _legacy_strategy_names(name):
+            canonical = legacy_config.get(candidate)
+            if canonical is not None:
+                break
+    if canonical is None:
+        canonical = {}
     plugin_defaults: Dict[str, Any] = {}
     try:
         from xauby.strategies.registry import strategy_manifest
@@ -489,7 +507,7 @@ def resolve_trading_config(
     project_root: str = ".",
     for_live: bool = True,
 ) -> EffectiveTradingConfig:
-    name = strategy_name or strategy_name_for_symbol(cfg, symbol)
+    name = normalize_strategy_name(strategy_name or strategy_name_for_symbol(cfg, symbol))
     strategy = strategy_config_block(
         cfg,
         name,

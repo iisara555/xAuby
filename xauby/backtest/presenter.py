@@ -9,6 +9,7 @@ from xauby.backtest.best_params import load_best_params
 from xauby.backtest.constants import PHONE_MAX_TRADES
 from xauby.backtest.runtime_config import extract_checklist_config
 from xauby.backtest.service import BacktestRunMeta, BacktestRunResult
+from xauby.strategies.registry import normalize_strategy_name
 from xauby.utils.colors import C_BOLD, C_GREEN, C_MUTED, C_PRIMARY, C_RED, C_RESET, C_YELLOW
 
 _PHONE_BREAKPOINT = 75
@@ -20,7 +21,7 @@ def _is_cdc_family(strategy_name: str) -> bool:
     Other registry strategies (SuperTrend, BB+RSI, …) do not use those gates,
     so showing them produces misleading values like ``RSI 0/100`` / ``Vol >=0.0``.
     """
-    return str(strategy_name or "").lower().startswith("cdc")
+    return normalize_strategy_name(strategy_name).lower() == "xauby_actionzone"
 
 
 @dataclass
@@ -166,12 +167,13 @@ def build_backtest_view_model(result: Optional[BacktestRunResult], *, status: st
 
     meta = result.meta
     stats = result.stats or {}
+    strategy_name = normalize_strategy_name(meta.strategy_name)
 
     if not meta.run_ok:
         checks = build_parity_checks(meta, stats)
         return BacktestViewModel(
             symbol=meta.symbol,
-            strategy_name=meta.strategy_name,
+            strategy_name=strategy_name,
             period_label=_period_str(meta),
             total_trades=0,
             net_return_pct=0.0,
@@ -195,7 +197,7 @@ def build_backtest_view_model(result: Optional[BacktestRunResult], *, status: st
 
     return BacktestViewModel(
         symbol=meta.symbol,
-        strategy_name=meta.strategy_name,
+        strategy_name=strategy_name,
         period_label=period,
         total_trades=int(stats.get("total_trades", 0) or 0),
         net_return_pct=float(stats.get("net_profit_pct", 0.0) or 0.0),

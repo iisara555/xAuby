@@ -73,7 +73,7 @@ class TestTradingConfigResolver(unittest.TestCase):
         self.assertEqual(data["quote_asset"], "USDT")
         self.assertTrue(data["simulate_only"])
         self.assertIn("XAUTUSDT", data["symbols"])
-        self.assertEqual(data["symbols"]["XAUTUSDT"]["strategy_name"], "cdc_action_zone")
+        self.assertEqual(data["symbols"]["XAUTUSDT"]["strategy_name"], "xauby_actionzone")
         self.assertEqual(data["symbols"]["XAUTUSDT"]["execution_mode"], "sim")
         self.assertEqual(data["symbols"]["XAUTUSDT"]["portfolio"]["risk_pct"], 0.02)
         self.assertNotIn("architecture", cfg)
@@ -163,7 +163,7 @@ class TestTradingConfigResolver(unittest.TestCase):
             }
         }
 
-        self.assertEqual(strategy_name_for_symbol(cfg, "XAUTUSDT"), "cdc_action_zone")
+        self.assertEqual(strategy_name_for_symbol(cfg, "XAUTUSDT"), "xauby_actionzone")
         self.assertEqual(strategy_name_for_symbol(cfg, "BTCUSDT"), "ict_lite_strategy")
 
         # Isolate from the repo's real coin_whitelist.json: the legacy pair
@@ -215,14 +215,14 @@ class TestTradingConfigResolver(unittest.TestCase):
     def test_router_strategy_does_not_inherit_base_strategy_symbol_params(self):
         cfg = {
             "strategy": {
-                "active": "donchian_trend",
+                "active": "xauby_donchian_trend",
                 "config": {
-                    "donchian_trend": {"vol_min_ratio": 0.0},
+                    "xauby_donchian_trend": {"vol_min_ratio": 0.0},
                     "bbkc_squeeze": {"fixed_tp_pct": 0.0},
                 },
                 "symbols": {
                     "BTCUSDT": {
-                        "strategy": "donchian_trend",
+                        "strategy": "xauby_donchian_trend",
                         "rsi_min": 45.0,
                         "rsi_max": 70.0,
                         "vol_min_ratio": 1.2,

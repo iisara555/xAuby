@@ -13,9 +13,21 @@ logger = logging.getLogger("xauby.strategies.indicators")
 _REGISTRY: Dict[str, Type[Indicator]] = {}
 _DISCOVERED: bool = False
 
+INDICATOR_ID_ALIASES: Dict[str, str] = {
+    "cdc_action_zone": "xauby_actionzone",
+    "donchian_trend": "xauby_donchian_trend",
+    "smc_luxalgo": "xauby_smc_pro",
+}
+
+STRATEGY_ID_ALIASES: Dict[str, str] = {
+    "cdc_action_zone": "xauby_actionzone",
+    "donchian_trend": "xauby_donchian_trend",
+    "smc_luxalgo": "xauby_smc_pro",
+}
+
 DEFAULT_STRATEGY_CHART_MAP: Dict[str, List[str]] = {
-    "donchian_trend": ["donchian_trend"],
-    "cdc_action_zone": ["cdc_action_zone"],
+    "xauby_donchian_trend": ["xauby_donchian_trend"],
+    "xauby_actionzone": ["xauby_actionzone"],
     "supertrend_ema200": ["supertrend", "ema200"],
     "btc_ema_pullback": ["btc_ema_pullback"],
     "ict_lite_strategy": ["ict_lite"],
@@ -23,12 +35,22 @@ DEFAULT_STRATEGY_CHART_MAP: Dict[str, List[str]] = {
     "bbrsi_mean_reversion": ["bbrsi_mean_reversion"],
     "simple_scalp_plus": ["simple_scalp_plus"],
     "sol_ema_pullback": ["sol_ema_pullback"],
-    "smc_luxalgo": ["smc_luxalgo"],
+    "xauby_smc_pro": ["xauby_smc_pro"],
     "xauby_vwap_pullback": ["xauby_vwap_pullback"],
     "rsi2_meanrev": ["rsi2_meanrev"],
     "vol_breakout": ["vol_breakout"],
     "supertrend_short": ["supertrend", "ema200"],
 }
+
+
+def normalize_indicator_name(name: str | None) -> str:
+    raw = str(name or "").strip()
+    return INDICATOR_ID_ALIASES.get(raw, raw)
+
+
+def normalize_strategy_chart_name(name: str | None) -> str:
+    raw = str(name or "").strip()
+    return STRATEGY_ID_ALIASES.get(raw, raw)
 
 
 def register(name: str):
@@ -66,11 +88,12 @@ def available_indicators() -> List[str]:
 
 def load_indicator(name: str, config: Dict[str, Any] | None = None) -> Indicator:
     _discover_plugins()
-    if name not in _REGISTRY:
+    canonical = normalize_indicator_name(name)
+    if canonical not in _REGISTRY:
         raise KeyError(
             f"Unknown indicator {name!r}. Available: {available_indicators()}"
         )
-    cls = _REGISTRY[name]
+    cls = _REGISTRY[canonical]
     return cls(config or {})
 
 
@@ -81,5 +104,6 @@ def indicators_for_strategy(
     chart_map: Dict[str, List[str]] | None = None,
 ) -> List[Indicator]:
     mapping = chart_map or DEFAULT_STRATEGY_CHART_MAP
-    names = mapping.get(strategy_name) or mapping.get(str(strategy_name)) or []
+    canonical = normalize_strategy_chart_name(strategy_name)
+    names = mapping.get(canonical) or mapping.get(str(strategy_name)) or []
     return [load_indicator(n, config) for n in names]

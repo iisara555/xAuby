@@ -10,11 +10,11 @@ from xauby.strategies.indicators.registry import register
 from xauby.strategies.smc_luxalgo.strategy import SMCLuxAlgoStrategy
 
 
-@register("smc_luxalgo")
+@register("xauby_smc_pro")
 class SMCLuxAlgoIndicator(Indicator):
     display_config: Dict[str, Any] = {
         "chart_type": "smc_luxalgo",
-        "label": "SMC LuxAlgo",
+        "label": "xAuby SMC Pro",
         "unit": "price",
         "zone_column": "smc_zone",
         "zone_label": "SMC State",

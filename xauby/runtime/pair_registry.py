@@ -132,10 +132,18 @@ class PairRegistry:
         active_mode = self.config.get("strategy_mode", {}).get("active", "trend_only")
         mode_cfg = self.config.get("strategy_mode", {}).get(active_mode, {}) or {}
         confirm = _normalize_tf(mode_cfg.get("confirm_timeframe", "1d"))
-        strat = self.config.get("strategies", {}).get(
-            self.config.get("strategy", {}).get("active", "cdc_action_zone")
-            or "cdc_action_zone",
-            {},
+        from xauby.strategies.registry import normalize_strategy_name
+
+        active_strategy = normalize_strategy_name(
+            self.config.get("strategy", {}).get("active", "xauby_actionzone") or "xauby_actionzone"
+        )
+        strategy_config = (self.config.get("strategy") or {}).get("config") or {}
+        legacy_config = self.config.get("strategies", {}) or {}
+        strat = (
+            strategy_config.get(active_strategy)
+            or legacy_config.get(active_strategy)
+            or legacy_config.get("cdc_action_zone")
+            or {}
         )
         use_d1 = bool(strat.get("use_d1_regime_filter", False))
         return primary, confirm, use_d1

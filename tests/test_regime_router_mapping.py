@@ -48,7 +48,7 @@ class TestRegimeRouterMapping(unittest.TestCase):
         spec = PairSpec(symbol="BTCUSDT", strategy_name="supertrend_ema200")
         route = router.evaluate("BTCUSDT", _regime("BULL_BREAKOUT"), sc, spec, has_open_position=False)
         self.assertTrue(route.strategy_changed)
-        self.assertEqual(route.strategy_name, "cdc_action_zone")
+        self.assertEqual(route.strategy_name, "xauby_actionzone")
 
     def test_no_trade_regime(self):
         sc = SymbolContext(symbol="BTCUSDT", strategy_name="cdc_action_zone")

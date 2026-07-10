@@ -69,10 +69,12 @@ def _replace_yaml_key(line: str, key: str, value: str) -> str:
 def get_active_strategy_name(cfg: dict) -> str:
     """Resolve the active strategy plugin id from bot_config.yaml."""
     strategy_block = cfg.get("strategy") or {}
-    return (
+    from xauby.strategies.registry import normalize_strategy_name
+
+    return normalize_strategy_name(
         strategy_block.get("active")
         or cfg.get("active_strategy")
-        or "cdc_action_zone"
+        or "xauby_actionzone"
     )
 
 
@@ -82,7 +84,7 @@ def list_installed_strategies() -> list:
         from xauby.strategies import available_strategies
         return available_strategies()
     except Exception:
-        return ["cdc_action_zone"]
+        return ["xauby_actionzone"]
 
 
 def _load_bot_yaml() -> dict:
@@ -201,7 +203,9 @@ def _strategy_name_for_symbol_from_cfg(cfg: dict, symbol: str) -> str:
     except Exception:
         sym = _normalize_symbol(symbol)
         block = ((cfg.get("strategy") or {}).get("symbols") or {}).get(sym) or {}
-        return str(block.get("strategy") or (cfg.get("strategy") or {}).get("active") or "cdc_action_zone")
+        from xauby.strategies.registry import normalize_strategy_name
+
+        return normalize_strategy_name(block.get("strategy") or (cfg.get("strategy") or {}).get("active") or "xauby_actionzone")
 
 
 def _strategy_cfg_for_symbol(cfg: dict, symbol: str) -> dict:
@@ -270,7 +274,7 @@ def update_yaml_config(sim_only=None, max_risk=None, sl_atr=None, rsi_min=None, 
             ps = portfolio.setdefault("symbols", {}).setdefault(sym, {}).setdefault("position_sizing", {})
             ps["risk_pct"] = risk_val
 
-      target_strategy = active_strategy or (strategy_root.get("active") or "cdc_action_zone")
+      target_strategy = active_strategy or (strategy_root.get("active") or "xauby_actionzone")
       if active_strategy is not None:
         if sym:
             symbol_overrides.setdefault(sym, {})["strategy"] = active_strategy
@@ -319,6 +323,10 @@ def _set_pair_strategy_values(
 ) -> bool:
     """Write per-pair strategy values to the active source of truth."""
     sym = _normalize_symbol(symbol)
+    if strategy is not None:
+        from xauby.strategies.registry import normalize_strategy_name
+
+        strategy = normalize_strategy_name(strategy)
     try:
         from xauby.runtime.architecture_config import whitelist_strict
 
@@ -374,4 +382,3 @@ def update_env_variable(key: str, val: str):
     with open(path, "w", encoding="utf-8") as f:
         f.writelines(lines)
     _harden_env_perms(path)
-

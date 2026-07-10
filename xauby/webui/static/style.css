@@ -2122,9 +2122,9 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   stroke-linejoin: round;
 }
 
-/* ---------- Desktop layout ---------- */
+/* ---------- Tablet / desktop layout ---------- */
 
-@media (min-width: 980px) {
+@media (min-width: 700px) {
   body {
     display: grid;
     place-items: center;
@@ -2133,14 +2133,13 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 
   .app-shell {
     position: relative;
-    width: min(1280px, calc(100vw - 48px));
-    min-width: 920px;
-    height: min(760px, calc(100dvh - 48px));
-    min-height: 620px;
+    width: min(1060px, calc(100vw - 28px));
+    height: min(980px, calc(100dvh - 24px));
+    min-height: min(680px, calc(100dvh - 24px));
     margin: 0;
-    padding: 24px 24px 0;
+    padding: 18px 18px 0;
     border: 1px solid rgba(248, 244, 238, 0.16);
-    border-radius: 44px;
+    border-radius: 32px;
     background:
       linear-gradient(180deg, rgba(151, 174, 240, 0.08), transparent 32%),
       var(--bg-1);
@@ -2148,11 +2147,21 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   }
 
   .app-top {
-    padding: 0 0 18px;
+    padding: 0 0 14px;
   }
 
   h1 {
-    font-size: 34px;
+    font-size: 32px;
+  }
+
+  .user-profile {
+    grid-template-columns: 26px minmax(0, 1fr);
+    margin-top: 6px;
+  }
+
+  .user-avatar {
+    width: 26px;
+    height: 26px;
   }
 
   .health-strip {
@@ -2161,14 +2170,14 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 
   .view-stack {
     height: 100%;
-    gap: var(--space-6);
+    gap: var(--space-4);
     padding-bottom: calc(var(--nav-height) + 34px);
-    overflow: hidden;
+    overflow: auto;
   }
 
   body[data-view="overview"] [data-section="overview"] {
-    grid-template-columns: 380px minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.15fr);
+    grid-template-rows: auto minmax(0, 1fr);
     align-content: stretch;
   }
 
@@ -2178,46 +2187,62 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   }
 
   body[data-view="overview"] .market-grid {
-    grid-column: 1;
-    grid-row: 2;
+    grid-column: 2;
+    grid-row: 1;
     align-self: start;
   }
 
   body[data-view="overview"] .portfolio-panel {
     grid-column: 1;
-    grid-row: 3;
-    align-self: start;
+    grid-row: 2;
+    align-self: stretch;
   }
 
   body[data-view="overview"] .chart-panel {
     display: grid;
     grid-column: 2;
-    grid-row: 1 / span 3;
+    grid-row: 2;
     grid-template-rows: auto minmax(0, 1fr) auto auto;
     min-height: 0;
   }
 
   body[data-view="overview"] .balance-card > div > strong {
-    font-size: 56px;
+    font-size: 50px;
   }
 
   body[data-view="overview"] .mini-card {
-    min-height: 118px;
+    min-height: 112px;
   }
 
   body[data-view="overview"] #priceCanvas {
     height: 100%;
-    min-height: 350px;
+    min-height: 320px;
   }
 
-  body[data-view="signal"] [data-section="signal"] {
+  body[data-view="signal"] [data-section="signal"],
+  body[data-view="activity"] [data-section="activity"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: minmax(0, 1fr);
     align-content: stretch;
     overflow: hidden;
   }
 
-  body[data-view="signal"] .panel {
+  body[data-view="operator"] [data-section="operator"],
+  body[data-view="regime"] [data-section="regime"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  body[data-view="operator"] [data-section="operator"] > .detail-hero,
+  body[data-view="regime"] [data-section="regime"] > .detail-hero {
+    grid-row: span 2;
+  }
+
+  body[data-view="signal"] .panel,
+  body[data-view="operator"] .panel,
+  body[data-view="regime"] .panel {
     min-height: 0;
     overflow-y: auto;
     scrollbar-color: rgba(255, 67, 26, 0.72) transparent;
@@ -2228,33 +2253,9 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
     transform: none;
   }
 
-  body[data-view="activity"] [data-section="activity"] {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: minmax(0, 1fr);
-    align-content: stretch;
-    height: 100%;
-    overflow: hidden;
-  }
-
   body[data-view="activity"] .activity-panel:first-child .timeline,
   body[data-view="activity"] .activity-panel:nth-child(2) .trades {
     max-height: none;
-  }
-
-  body[data-view="operator"] [data-section="operator"],
-  body[data-view="regime"] [data-section="regime"] {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: minmax(0, 1fr);
-    align-content: stretch;
-    overflow: hidden;
-  }
-
-  body[data-view="operator"] .panel,
-  body[data-view="regime"] .panel {
-    min-height: 0;
-    overflow-y: auto;
-    scrollbar-color: rgba(255, 67, 26, 0.72) transparent;
-    scrollbar-width: thin;
   }
 
   body[data-view="operator"] .panel:hover,
@@ -2270,23 +2271,112 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 
   .app-shell::after {
     position: absolute;
-    border-bottom-right-radius: 44px;
-    border-bottom-left-radius: 44px;
+    border-bottom-right-radius: 32px;
+    border-bottom-left-radius: 32px;
+  }
+}
+
+@media (min-width: 980px) {
+  .app-shell {
+    width: min(1420px, calc(100vw - 32px));
+    height: min(900px, calc(100dvh - 24px));
+    min-height: min(640px, calc(100dvh - 24px));
+    padding: 18px 20px 0;
+  }
+
+  .app-top {
+    padding-bottom: 12px;
+  }
+
+  .view-stack {
+    gap: var(--space-4);
+    overflow: hidden;
+  }
+
+  body[data-view="overview"] [data-section="overview"] {
+    grid-template-columns: minmax(300px, 0.88fr) minmax(260px, 0.72fr) minmax(360px, 1.35fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  body[data-view="overview"] .balance-card {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+  }
+
+  body[data-view="overview"] .market-grid {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: stretch;
+  }
+
+  body[data-view="overview"] .portfolio-panel {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  body[data-view="overview"] .chart-panel {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+
+  body[data-view="overview"] .balance-card > div > strong {
+    font-size: 54px;
+  }
+
+  body[data-view="overview"] .market-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-view="overview"] .mini-card {
+    min-height: 0;
+  }
+
+  body[data-view="overview"] .portfolio-body {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: var(--space-3);
+    min-height: 0;
+  }
+
+  body[data-view="overview"] #portfolioCanvas {
+    width: min(178px, 100%);
+    height: 178px;
+  }
+
+  body[data-view="overview"] .portfolio-legend,
+  body[data-view="overview"] .portfolio-stats {
+    width: 100%;
+  }
+
+  body[data-view="overview"] #priceCanvas {
+    min-height: 360px;
+  }
+
+  body[data-view="operator"] [data-section="operator"],
+  body[data-view="regime"] [data-section="regime"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  body[data-view="operator"] [data-section="operator"] > .detail-hero,
+  body[data-view="regime"] [data-section="regime"] > .detail-hero {
+    grid-row: auto;
   }
 }
 
 @media (min-width: 1280px) and (min-aspect-ratio: 16 / 10) {
   .app-shell {
-    width: min(1360px, calc(100vw - 64px));
-    height: min(780px, calc(100dvh - 56px));
+    width: min(1500px, calc(100vw - 48px));
+    height: min(920px, calc(100dvh - 32px));
   }
 
   body[data-view="overview"] [data-section="overview"] {
-    grid-template-columns: 400px minmax(0, 1fr);
+    grid-template-columns: 360px 310px minmax(460px, 1fr);
   }
 
   body[data-view="overview"] #priceCanvas {
-    min-height: 385px;
+    min-height: 400px;
   }
 }
 

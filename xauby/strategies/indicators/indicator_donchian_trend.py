@@ -71,11 +71,11 @@ def _adx_np(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int) -
     return adx
 
 
-@register("donchian_trend")
+@register("xauby_donchian_trend")
 class DonchianTrendIndicator(Indicator):
     display_config: Dict[str, Any] = {
         "chart_type": "trend_zones",
-        "label": "Donchian Trend",
+        "label": "xAuby Donchian Trend",
         "unit": "price",
         "zone_column": "donchian_zone",
         "zone_label": "DC Zone",

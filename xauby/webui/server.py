@@ -144,7 +144,15 @@ def _cdc_ap_smoothing(project_root: str) -> int:
 
         with open(config_path, "r", encoding="utf-8") as handle:
             cfg = yaml.safe_load(handle) or {}
-        raw = ((cfg.get("strategies") or {}).get("cdc_action_zone") or {}).get("ap_smoothing", 1)
+        strategy_config = (cfg.get("strategy") or {}).get("config") or {}
+        legacy_config = cfg.get("strategies") or {}
+        raw = (
+            (strategy_config.get("xauby_actionzone") or {}).get("ap_smoothing")
+            or (strategy_config.get("cdc_action_zone") or {}).get("ap_smoothing")
+            or (legacy_config.get("xauby_actionzone") or {}).get("ap_smoothing")
+            or (legacy_config.get("cdc_action_zone") or {}).get("ap_smoothing")
+            or 1
+        )
         return max(1, int(raw or 1))
     except Exception:
         return 1

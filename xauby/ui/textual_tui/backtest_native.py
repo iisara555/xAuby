@@ -173,7 +173,7 @@ class BacktestNativeBody(Widget):
         if name := str(state.get("strategy_name") or "").strip():
             return name
         fb = fallback_bot_state(focus_symbol=sym)
-        return str(fb.get("strategy_name") or "cdc_action_zone")
+        return str(fb.get("strategy_name") or "xauby_actionzone")
 
     def _cache_key(self) -> Tuple[str, str, str]:
         fp = runtime_config_fingerprint(self.state or {})

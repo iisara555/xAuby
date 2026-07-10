@@ -107,7 +107,9 @@ def resolve_strategy_name(
         name = str(bot_state.get("strategy_name") or "").strip()
         if name:
             return name
-    return str((cfg.get("strategy") or {}).get("active") or "cdc_action_zone")
+    from xauby.strategies.registry import normalize_strategy_name
+
+    return normalize_strategy_name((cfg.get("strategy") or {}).get("active") or "xauby_actionzone")
 
 
 def _prepare_backtest_config(

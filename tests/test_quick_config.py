@@ -197,7 +197,7 @@ class TestQuickConfigWrite(unittest.TestCase):
             self.assertTrue(ok)
             with open(path, "r", encoding="utf-8") as f:
                 saved = __import__("json").load(f)
-            self.assertEqual(saved["assets"][0]["strategy"], "cdc_action_zone")
+            self.assertEqual(saved["assets"][0]["strategy"], "xauby_actionzone")
             self.assertEqual(saved["assets"][0]["strategy_params"]["rsi_min"], 42.0)
             self.assertNotIn("BTCUSDT", (temp.loaded()["strategy"].get("symbols") or {}))
 

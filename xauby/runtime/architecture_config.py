@@ -6,7 +6,10 @@ from typing import Any, Dict, List
 from xauby.strategies.indicators.registry import (
     DEFAULT_STRATEGY_CHART_MAP,
     available_indicators,
+    normalize_indicator_name,
+    normalize_strategy_chart_name,
 )
+from xauby.strategies.registry import normalize_strategy_name
 
 DEFAULT_ARCHITECTURE: Dict[str, Any] = {
     "whitelist_strict": False,
@@ -30,9 +33,9 @@ DEFAULT_ARCHITECTURE: Dict[str, Any] = {
 #   spec "supertrend"          -> registered "supertrend_ema200"
 #   spec "BBRSIMeanReversion"  -> registered "bbrsi_mean_reversion"
 DEFAULT_REGIME_ROUTER_MAPPING: Dict[str, str | None] = {
-    "BULL_BREAKOUT": "cdc_action_zone",
-    "BULL_TREND_STRONG": "cdc_action_zone",
-    "BULL_TREND_WEAK": "cdc_action_zone",
+    "BULL_BREAKOUT": "xauby_actionzone",
+    "BULL_TREND_STRONG": "xauby_actionzone",
+    "BULL_TREND_WEAK": "xauby_actionzone",
     "LOW_VOL_ACCUMULATION": "bbkc_squeeze",
     "LOW_VOL_RANGE": "bbkc_squeeze",
     "VOLATILITY_EXPANSION": "supertrend_ema200",
@@ -53,7 +56,11 @@ def architecture_block(cfg: Dict[str, Any]) -> Dict[str, Any]:
     chart_map = dict(DEFAULT_ARCHITECTURE["strategy_chart_indicators"])
     user_map = raw.get("strategy_chart_indicators") or {}
     if isinstance(user_map, dict):
-        chart_map.update(user_map)
+        for key, val in user_map.items():
+            if isinstance(val, list):
+                chart_map[normalize_strategy_chart_name(str(key))] = [
+                    normalize_indicator_name(str(item)) for item in val
+                ]
     merged["strategy_chart_indicators"] = chart_map
     return merged
 
@@ -151,13 +158,13 @@ def sync_yaml_pairs_from_whitelist(cfg: Dict[str, Any]) -> bool:
 
 def strategy_chart_indicators(cfg: Dict[str, Any], strategy_name: str) -> List[str]:
     mapping = architecture_block(cfg).get("strategy_chart_indicators") or {}
-    strat = str(strategy_name)
+    strat = normalize_strategy_chart_name(strategy_name)
     names = mapping.get(strategy_name) or mapping.get(strat)
     if isinstance(names, list) and names:
         return [str(n) for n in names]
     # Future strategy plugins can render a chart without YAML edits when they
     # provide a same-name indicator plugin, e.g. strategy "foo" -> indicator "foo".
-    if strat in available_indicators():
+    if normalize_indicator_name(strat) in available_indicators():
         return [strat]
     return []
 
@@ -171,7 +178,7 @@ def regime_router_mapping(cfg: Dict[str, Any]) -> Dict[str, str | None]:
             if val in (None, "None", "null", ""):
                 merged[str(key)] = None
             else:
-                merged[str(key)] = str(val)
+                merged[str(key)] = normalize_strategy_name(str(val))
     return merged
 
 

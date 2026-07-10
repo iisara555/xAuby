@@ -18,11 +18,11 @@ from xauby.strategies.indicators.base import Indicator
 from xauby.strategies.indicators.registry import register
 
 
-@register("cdc_action_zone")
+@register("xauby_actionzone")
 class CDCActionZoneIndicator(Indicator):
     display_config: Dict[str, Any] = {
         "chart_type": "cdc_zones",
-        "label": "CDC Action Zone",
+        "label": "xAuby ActionZone",
         "unit": "price",
         "zones": [
             {"key": "GREEN", "label": "Buy zone", "color": (52, 211, 153)},

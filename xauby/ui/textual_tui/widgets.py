@@ -90,7 +90,7 @@ class AppHeader(Static):
         
         symbol = _chart_symbol(self._state)
         chart_tf = resolve_chart_timeframe(str(self._state.get("primary_timeframe", "4h") or "4h"))
-        strat = str(self._state.get("strategy_name") or "cdc_action_zone")
+        strat = str(self._state.get("strategy_name") or "xauby_actionzone")
 
         sim_only = bool(self._state.get("simulate_only", True))
         read_only = bool(self._state.get("read_only", False))

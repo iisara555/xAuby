@@ -484,7 +484,7 @@ def _synthesise_detailed_regime(
 def _strategy_bias_for_regime(regime: str, risk_state: str, transition_risk: str) -> Dict[str, Any]:
     if regime in {"BULL_BREAKOUT", "BULL_TREND_STRONG", "BULL_TREND_WEAK"}:
         family = "trend_following"
-        preferred = ["supertrend_ema200", "cdc_action_zone"]
+        preferred = ["supertrend_ema200", "xauby_actionzone"]
         allowed = ["BUY", "HOLD", "SELL"]
         posture = "risk_on"
     elif regime in {"BEAR_BREAKDOWN", "BEAR_TREND_STRONG", "PANIC_SELL"}:

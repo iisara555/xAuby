@@ -53,7 +53,7 @@ def strategy_manifest_from_class(cls: Type[Strategy]) -> Dict[str, Any]:
     base = {
         "manifest_version": MANIFEST_VERSION,
         "id": cls.name,
-        "name": cls.name,
+        "name": getattr(cls, "display_name", cls.name),
         "version": getattr(cls, "version", "0.0.0"),
         "author": getattr(cls, "author", "unknown"),
         "description": getattr(cls, "description", ""),

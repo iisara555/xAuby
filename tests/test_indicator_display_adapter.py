@@ -22,10 +22,10 @@ class TestIndicatorDisplayAdapter(unittest.TestCase):
 
     def test_build_cdc_view(self):
         view = build_indicator_view(self._sample_df(), "cdc_action_zone", {})
-        self.assertEqual(view.strategy_name, "cdc_action_zone")
+        self.assertEqual(view.strategy_name, "xauby_actionzone")
         self.assertIn("zone", view.df.columns)
         payload = build_indicator_display_payload(view)
-        self.assertEqual(payload["strategy"], "cdc_action_zone")
+        self.assertEqual(payload["strategy"], "xauby_actionzone")
         self.assertIn("metrics", payload)
 
     def test_build_supertrend_view(self):
@@ -44,10 +44,10 @@ class TestIndicatorDisplayAdapter(unittest.TestCase):
         self.assertNotIn("ema12", vol.df.columns)
 
     def test_zone_metric_is_not_rendered_twice(self):
-        for strategy in ("cdc_action_zone", "supertrend_ema200"):
+        for strategy in ("xauby_actionzone", "supertrend_ema200"):
             view = build_indicator_view(self._sample_df(), strategy, {})
             labels = [item["label"] for item in view.panel_items]
-            zone_label = "Zone" if strategy == "cdc_action_zone" else "ST Zone"
+            zone_label = "Zone" if strategy == "xauby_actionzone" else "ST Zone"
             self.assertEqual(labels.count(zone_label), 1)
 
 

@@ -43,7 +43,7 @@ def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name:
         ret_pct = float(t.get("net_pnl_pct", 0.0)) or (pnl / entry_cost * 100.0)
 
         entries.append(TrackRecordEntry(
-            strategy_name=str(t.get("strategy_name") or t.get("trigger") or "cdc_action_zone"),
+            strategy_name=str(t.get("strategy_name") or t.get("trigger") or "xauby_actionzone"),
             symbol=str(t.get("symbol") or "XAUTUSDT"),
             entry_time=str(t.get("opened_at") or ""),
             exit_time=str(t.get("closed_at") or ""),
@@ -79,9 +79,9 @@ def generate_comparison_report(trades: List[Dict[str, Any]]) -> Dict[str, Perfor
             # Fallback for legacy trades
             trigger = str(t.get("trigger") or "")
             if "Stop Loss" in trigger or "ZONE_RED" in trigger:
-                strat = "cdc_action_zone"
+                strat = "xauby_actionzone"
             else:
-                strat = trigger or "cdc_action_zone"
+                strat = trigger or "xauby_actionzone"
         by_strategy.setdefault(strat, []).append(t)
 
     reports = {}
