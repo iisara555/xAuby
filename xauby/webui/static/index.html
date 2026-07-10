@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css?v=20260710-ui11" />
   </head>
   <body data-view="overview">
     <main class="app-shell">
@@ -66,7 +66,7 @@
           <article class="mini-card">
             <span>Position</span>
             <strong id="positionValue">--</strong>
-            <small id="pnlValue">PnL --</small>
+            <small id="pnlValue">Net PnL --</small>
           </article>
         </section>
 
@@ -157,19 +157,82 @@
         </article>
       </section>
 
+      <section class="view-stack" data-section="operator">
+        <article class="panel operator-panel detail-hero">
+          <div class="panel-head">
+            <h2>Position Detail</h2>
+            <span id="operatorMode">--</span>
+          </div>
+          <div class="detail-grid" id="positionDetail"></div>
+          <div class="protection-grid" id="protectionDetail"></div>
+        </article>
+
+        <article class="panel operator-panel detail-accent-orange">
+          <div class="panel-head">
+            <h2>Execution Health</h2>
+            <span id="feedBadge">--</span>
+          </div>
+          <div class="detail-grid" id="executionDetail"></div>
+          <div class="metric-strip" id="latencyDetail"></div>
+        </article>
+
+        <article class="panel operator-panel detail-accent-blue">
+          <div class="panel-head">
+            <h2>Risk & Signal</h2>
+            <span id="signalBadge">--</span>
+          </div>
+          <div class="detail-grid" id="riskDetail"></div>
+          <div class="checklist compact-checklist" id="operatorChecklist"></div>
+        </article>
+      </section>
+
+      <section class="view-stack" data-section="regime">
+        <article class="panel regime-card regime-detail-panel detail-hero">
+          <div class="panel-head">
+            <h2>Market Regime</h2>
+            <span id="regimeDetailBadge">--</span>
+          </div>
+          <div class="kv regime-grid expanded-regime-grid" id="regimeDetailGrid"></div>
+          <div class="reason-list" id="regimeReasons"></div>
+        </article>
+
+        <article class="panel regime-card detail-accent-orange">
+          <div class="panel-head">
+            <h2>Macro Guard</h2>
+            <span id="macroGuardBadge">--</span>
+          </div>
+          <div class="detail-grid" id="macroGuardDetail"></div>
+        </article>
+
+        <article class="panel regime-card detail-accent-blue">
+          <div class="panel-head">
+            <h2>Strategy Bias</h2>
+            <span id="routerBadge">--</span>
+          </div>
+          <div class="detail-grid" id="strategyBiasDetail"></div>
+          <div class="reason-list" id="featureDetail"></div>
+        </article>
+      </section>
+
       <section class="view-stack" data-section="activity">
         <article class="panel activity-panel">
           <div class="panel-head">
-            <h2>Events</h2>
-            <span id="eventCount">--</span>
+            <div>
+              <h2>Event Log</h2>
+              <p>Latest system decisions and execution events</p>
+            </div>
+            <span><strong id="eventCount">--</strong> events</span>
           </div>
           <div class="timeline" id="events"></div>
         </article>
 
         <article class="panel activity-panel">
           <div class="panel-head">
-            <h2>Trades</h2>
-            <span id="tradeCount">--</span>
+            <div>
+              <h2>Trade Log</h2>
+              <p>Closed positions with realized result</p>
+            </div>
+            <span><strong id="tradeCount">--</strong> trades</span>
           </div>
           <div class="trades" id="trades"></div>
         </article>
@@ -184,12 +247,20 @@
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg>
           <span>Signal</span>
         </button>
+        <button type="button" data-view-target="operator" aria-label="Operator">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M9 19V9"/><path d="M14 19V3"/><path d="M19 19v-7"/></svg>
+          <span>Ops</span>
+        </button>
+        <button type="button" data-view-target="regime" aria-label="Regime">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l6-6 4 4 6-8"/><path d="M4 20h16"/></svg>
+          <span>Regime</span>
+        </button>
         <button type="button" data-view-target="activity" aria-label="Activity">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg>
           <span>Activity</span>
         </button>
       </nav>
     </main>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=20260710-ui11"></script>
   </body>
 </html>

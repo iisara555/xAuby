@@ -221,6 +221,261 @@ def _focus_snapshot(state: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
+def _as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return default
+    return n if n == n else default
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _clean_symbol(value: Any) -> str:
+    return str(value or "").upper().replace("_", "")
+
+
+def _position_open(position: Dict[str, Any]) -> bool:
+    return str(position.get("state") or "").lower() == "bought"
+
+
+def _safe_pct(value: Any) -> Optional[float]:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    return n if n == n else None
+
+
+def _operator_detail_from_state(
+    state: Dict[str, Any],
+    focus: Dict[str, Any],
+    *,
+    age_sec: Any = None,
+) -> Dict[str, Any]:
+    position = focus.get("position") if isinstance(focus.get("position"), dict) else {}
+    signal = focus.get("signal_meta") if isinstance(focus.get("signal_meta"), dict) else {}
+    risk = focus.get("risk") if isinstance(focus.get("risk"), dict) else {}
+    latency = focus.get("latency") if isinstance(focus.get("latency"), dict) else {}
+    exchange = focus.get("exchange") if isinstance(focus.get("exchange"), dict) else {}
+    aggregate = state.get("aggregate") if isinstance(state.get("aggregate"), dict) else {}
+    position_open = _position_open(position)
+    entry_price = _as_float(position.get("entry_price"))
+    mark_price = _as_float(position.get("mark_price") or focus.get("current_price"))
+    stop_loss = _as_float(position.get("stop_loss"))
+    take_profit = _as_float(position.get("take_profit"))
+    qty = _as_float(position.get("quantity"))
+    side = str(position.get("position_side") or "LONG").upper()
+    risk_pct = _as_float(risk.get("risk_pct")) * 100.0
+    partial_trigger = _as_float(position.get("partial_tp_trigger_price"))
+    partial_fraction = _as_float(position.get("partial_tp_fraction"))
+
+    protection_items = [
+        {
+            "label": "Stop Loss",
+            "value": stop_loss,
+            "status": "ok" if stop_loss > 0 else ("warn" if position_open else "muted"),
+        },
+        {
+            "label": "Take Profit",
+            "value": take_profit,
+            "status": "ok" if take_profit > 0 else "muted",
+        },
+        {
+            "label": "Partial TP",
+            "value": {
+                "taken": bool(position.get("partial_tp_taken")),
+                "trigger_price": partial_trigger,
+                "fraction": partial_fraction,
+                "pct": _as_float(position.get("partial_tp_pct")),
+            },
+            "status": "ok" if position.get("partial_tp_taken") else ("info" if partial_trigger > 0 else "muted"),
+        },
+        {
+            "label": "Liq. Price",
+            "value": _as_float(position.get("liquidation_price")),
+            "status": "info" if _as_float(position.get("liquidation_price")) > 0 else "muted",
+        },
+    ]
+
+    return {
+        "mode": focus.get("execution_mode") or ("sim" if focus.get("simulate_only") else "live"),
+        "read_only": bool(focus.get("read_only") or aggregate.get("read_only")),
+        "symbol": _clean_symbol(focus.get("symbol") or state.get("focus_symbol") or state.get("symbol")),
+        "strategy": focus.get("strategy_name") or signal.get("strategy_name") or "",
+        "strategy_version": focus.get("strategy_version") or "",
+        "state_age_sec": age_sec,
+        "exchange": {
+            "id": exchange.get("id") or exchange.get("name") or "",
+            "provider": exchange.get("provider") or "",
+            "market_type": exchange.get("market_type") or position.get("market_type") or "",
+            "fee_source": ((exchange.get("fees") or {}) if isinstance(exchange.get("fees"), dict) else {}).get("source") or "",
+        },
+        "position": {
+            "open": position_open,
+            "state": position.get("state") or "idle",
+            "side": side if position_open else "",
+            "quantity": qty,
+            "entry_price": entry_price,
+            "mark_price": mark_price,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "opened_at": position.get("opened_at") or "",
+            "management_mode": position.get("management_mode") or "",
+            "margin_mode": position.get("margin_mode") or "",
+            "leverage": _as_float(position.get("leverage"), 1.0),
+            "unrealized_pnl": _as_float(position.get("unrealized_pnl")),
+            "unrealized_pnl_pct": _safe_pct(position.get("unrealized_pnl_pct")),
+            "unrealized_pnl_gross": _as_float(position.get("unrealized_pnl_gross")),
+            "estimated_entry_fee": _as_float(position.get("estimated_entry_fee")),
+            "estimated_exit_fee": _as_float(position.get("estimated_exit_fee")),
+            "estimated_total_fees": _as_float(position.get("estimated_total_fees")),
+            "funding_paid": _as_float(position.get("funding_paid")),
+            "feed_health": position.get("feed_health") or ("DEGRADED" if focus.get("degraded") else "OK"),
+            "degraded": bool(focus.get("degraded")),
+            "degrade_reason": focus.get("degrade_reason") or "",
+            "stop_loss_order_id": position.get("stop_loss_order_id"),
+            "protection": protection_items,
+        },
+        "risk": {
+            "risk_pct": risk_pct,
+            "sl_atr_mult": _as_float(risk.get("sl_atr_mult")),
+            "trailing_atr_mult": _as_float(risk.get("trailing_atr_mult")),
+            "breakeven_sl_enabled": bool(risk.get("breakeven_sl_enabled")),
+            "require_fresh_zone": bool(risk.get("require_fresh_zone")),
+            "fresh_zone_window": _as_int(risk.get("fresh_zone_window")),
+        },
+        "signal": {
+            "action": signal.get("action") or "",
+            "intent": signal.get("intent") or "",
+            "reason": signal.get("reason") or "",
+            "confidence": _safe_pct(signal.get("confidence")),
+            "status_summary": signal.get("status_summary") or "",
+            "checklist": signal.get("checklist") if isinstance(signal.get("checklist"), list) else [],
+        },
+        "latency": {
+            "api_latency_ms": _as_int(latency.get("api_latency_ms") or focus.get("api_latency_ms")),
+            "ws_tick_age_ms": _as_int(latency.get("ws_tick_age_ms")),
+            "tick_duration_ms": _as_int(latency.get("tick_duration_ms")),
+            "sync_candles_ms": _as_int(latency.get("sync_candles_ms")),
+            "state_export_ms": _as_int(latency.get("state_export_ms")),
+            "strategy_ms": _as_int(latency.get("strategy_ms")),
+            "regime_ms": _as_int(latency.get("regime_ms")),
+            "event_store_ms": _as_int(latency.get("event_store_ms")),
+            "clock_offset_seconds": _as_float(latency.get("clock_offset_seconds") or focus.get("clock_offset_seconds")),
+        },
+    }
+
+
+def _regime_detail_from_state(state: Dict[str, Any], focus: Dict[str, Any]) -> Dict[str, Any]:
+    regime = focus.get("regime") if isinstance(focus.get("regime"), dict) else {}
+    macro = focus.get("macro_guard") if isinstance(focus.get("macro_guard"), dict) else {}
+    router = focus.get("regime_router") if isinstance(focus.get("regime_router"), dict) else {}
+    bias = regime.get("strategy_bias") if isinstance(regime.get("strategy_bias"), dict) else {}
+    features = regime.get("features") if isinstance(regime.get("features"), dict) else {}
+    reasons = regime.get("reasons") if isinstance(regime.get("reasons"), list) else []
+    return {
+        "state": regime.get("regime") or "UNKNOWN",
+        "trend": regime.get("trend") or "",
+        "volatility": regime.get("volatility") or "",
+        "macro_bias": regime.get("macro_bias") or "",
+        "confidence": _safe_pct(regime.get("confidence")),
+        "phase": regime.get("phase") or "",
+        "risk_state": regime.get("risk_state") or "",
+        "trend_strength": regime.get("trend_strength") or "",
+        "volatility_state": regime.get("volatility_state") or "",
+        "liquidity_state": regime.get("liquidity_state") or "",
+        "transition_risk": regime.get("transition_risk") or "",
+        "gold_score": _safe_pct(regime.get("gold_score")),
+        "strategy_bias": {
+            "family": bias.get("family") or "",
+            "posture": bias.get("posture") or "",
+            "allowed_actions": bias.get("allowed_actions") if isinstance(bias.get("allowed_actions"), list) else [],
+            "preferred": bias.get("preferred") if isinstance(bias.get("preferred"), list) else [],
+        },
+        "reasons": [
+            {
+                "label": str(item.get("label") or ""),
+                "supportive": bool(item.get("supportive")),
+            }
+            for item in reasons
+            if isinstance(item, dict)
+        ],
+        "features": {
+            key: features.get(key)
+            for key in (
+                "ema_spread_pct",
+                "atr_pct",
+                "atr_percentile",
+                "volume_ratio",
+                "momentum_5_pct",
+                "momentum_20_pct",
+                "trend_quality",
+                "macro_alignment",
+                "institutional_confidence",
+            )
+            if key in features
+        },
+        "macro_guard": {
+            "enabled": bool(macro.get("enabled")),
+            "blocks_buy": bool(macro.get("blocks_buy")),
+            "scope": macro.get("scope") or "",
+            "score": _safe_pct(macro.get("score")),
+            "blocking_threshold": _safe_pct(macro.get("blocking_threshold")),
+            "summary": macro.get("summary") or "",
+            "dxy_score": _safe_pct(macro.get("dxy_score")),
+            "dxy_price": _safe_pct(macro.get("dxy_price")),
+            "fred_rate": _safe_pct(macro.get("fred_rate")),
+            "news_reason": macro.get("news_reason") or "",
+        },
+        "router": {
+            "enabled": bool(router.get("enabled")),
+            "no_trade_state": router.get("no_trade_state") or "",
+            "confirmed_regime": router.get("confirmed_regime") or "",
+            "pending_regime": router.get("pending_regime") or "",
+            "warning": router.get("warning") or "",
+            "live_confirmed": bool(router.get("live_confirmed")),
+        },
+        "primary_timeframe": focus.get("primary_timeframe") or "4h",
+        "confirm_timeframe": focus.get("confirm_timeframe") or "",
+        "last_candle_timestamp": focus.get("last_candle_timestamp"),
+    }
+
+
+def dashboard_detail_payload(project_root: str) -> Dict[str, Any]:
+    state_payload = load_state(project_root)
+    if not state_payload["ok"]:
+        return {
+            **state_payload,
+            "operator": {},
+            "regime_detail": {},
+            "activity": {"events": [], "trades": []},
+        }
+    state = state_payload["state"]
+    focus = _focus_snapshot(state)
+    symbol = _clean_symbol(focus.get("symbol") or state.get("focus_symbol") or state.get("symbol"))
+    events = recent_events_payload(project_root).get("events") or []
+    trades = trades_payload(project_root, limit=30, symbol=symbol).get("trades") or []
+    return {
+        "ok": True,
+        "age_sec": state_payload.get("age_sec"),
+        "stale": state_payload.get("stale", False),
+        "operator": _operator_detail_from_state(state, focus, age_sec=state_payload.get("age_sec")),
+        "regime_detail": _regime_detail_from_state(state, focus),
+        "activity": {
+            "events": events[-40:],
+            "trades": trades[:30],
+            "event_count": len(events),
+            "trade_count": len(trades),
+        },
+    }
+
+
 def _state_currency_payload(state: Dict[str, Any], project_root: str) -> Dict[str, Any]:
     focus = _focus_snapshot(state)
     equity = (
@@ -494,6 +749,9 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/recent-events":
             self._send_json(recent_events_payload(self.project_root))
+            return
+        if path == "/api/dashboard-detail":
+            self._send_json(dashboard_detail_payload(self.project_root))
             return
         if path == "/api/trades":
             raw_limit = (query.get("limit") or ["20"])[0]

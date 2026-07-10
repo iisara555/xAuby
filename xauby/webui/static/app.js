@@ -674,6 +674,262 @@ function renderChecklist(items) {
   });
 }
 
+function formatMaybeMoney(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n === 0) return "--";
+  return fmtMoney(n, digits);
+}
+
+function formatMaybePrice(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "--";
+  return fmtNum(n, Math.abs(n) >= 100 ? 2 : digits);
+}
+
+function formatMaybePct(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "--";
+  return `${fmtNum(n, digits)}%`;
+}
+
+function tileClass(base, item = {}) {
+  return [
+    base,
+    item.status ? `state-${item.status}` : "",
+    item.featured ? "featured" : "",
+    item.wide ? "wide" : "",
+    item.compact ? "compact" : "",
+    item.subtle ? "subtle" : "",
+  ].filter(Boolean).join(" ");
+}
+
+function renderDetailGrid(id, items) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  const rows = Array.isArray(items) ? items : [];
+  root.innerHTML = rows.length ? "" : `<div class="empty-state">No detail data</div>`;
+  rows.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = tileClass("detail-item", item);
+    row.innerHTML = `
+      <span>${escapeHtml(item.label || "--")}</span>
+      <strong>${escapeHtml(item.value ?? "--")}</strong>
+    `;
+    root.appendChild(row);
+  });
+}
+
+function renderMetricStrip(id, items) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  const rows = Array.isArray(items) ? items : [];
+  root.innerHTML = rows.length ? "" : `<div class="empty-state">No metrics</div>`;
+  rows.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = tileClass("metric-item", item);
+    row.innerHTML = `
+      <span>${escapeHtml(item.label || "--")}</span>
+      <strong>${escapeHtml(item.value ?? "--")}</strong>
+    `;
+    root.appendChild(row);
+  });
+}
+
+function renderProtection(items) {
+  const root = document.getElementById("protectionDetail");
+  if (!root) return;
+  const rows = Array.isArray(items) ? items : [];
+  root.innerHTML = rows.length ? "" : `<div class="empty-state">No protection data</div>`;
+  rows.forEach((item) => {
+    const value = item.value && typeof item.value === "object"
+      ? (
+        item.label === "Partial TP"
+          ? `${item.value.taken ? "Banked" : "Waiting"}${Number(item.value.trigger_price) > 0 ? ` @ ${formatMaybePrice(item.value.trigger_price)}` : ""}${Number(item.value.fraction) > 0 ? ` · ${fmtNum(Number(item.value.fraction) * 100, 0)}%` : ""}`
+          : "--"
+      )
+      : formatMaybePrice(item.value);
+    const row = document.createElement("div");
+    row.className = tileClass("protection-item", {
+      ...item,
+      featured: item.featured || item.label === "Stop Loss" || item.label === "Take Profit",
+    });
+    row.innerHTML = `
+      <span>${escapeHtml(item.label || "--")}</span>
+      <strong>${escapeHtml(value)}</strong>
+    `;
+    root.appendChild(row);
+  });
+}
+
+function renderChecklistInto(id, items) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  root.innerHTML = "";
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length) {
+    root.innerHTML = `<div class="check-item"><span class="dot"></span><strong>No checklist</strong><span>--</span></div>`;
+    return;
+  }
+  rows.slice(0, 10).forEach((item) => {
+    const row = document.createElement("div");
+    row.className = `check-item ${item.ok ? "ok" : ""}`;
+    row.innerHTML = `
+      <span class="dot"></span>
+      <strong>${escapeHtml(item.label || "--")}</strong>
+      <span>${escapeHtml(item.value || item.hint || "--")}</span>
+    `;
+    root.appendChild(row);
+  });
+}
+
+function renderReasonList(id, items, options = {}) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  const source = Array.isArray(items) ? items : [];
+  const rows = Number(options.limit) > 0 ? source.slice(0, options.limit) : source;
+  root.innerHTML = rows.length ? "" : `<div class="empty-state">No detail data</div>`;
+  rows.forEach((item) => {
+    const row = document.createElement("div");
+    const status = item.status || (item.supportive === true ? "ok" : item.supportive === false ? "warn" : "info");
+    row.className = tileClass("reason-item", { ...item, status });
+    row.innerHTML = `
+      <strong>${escapeHtml(item.label || "--")}</strong>
+      <span>${escapeHtml(item.value ?? (item.supportive ? "Support" : "Headwind"))}</span>
+    `;
+    root.appendChild(row);
+  });
+}
+
+function renderOperatorDetail(detail) {
+  if (!detail || !detail.ok) return;
+  const op = detail.operator || {};
+  const pos = op.position || {};
+  const risk = op.risk || {};
+  const sig = op.signal || {};
+  const latency = op.latency || {};
+  const exchange = op.exchange || {};
+  const mode = String(op.mode || "--").toUpperCase();
+  text("operatorMode", `${mode}${op.read_only ? " · RO" : ""}`);
+  setStateClass("operatorMode", op.read_only ? "warn" : healthSemantic(mode));
+  text("feedBadge", pos.feed_health || "--");
+  setStateClass("feedBadge", healthSemantic(pos.feed_health));
+  text("signalBadge", sig.action || "--");
+  setStateClass("signalBadge", signalSemantic(sig.action));
+
+  const positionPnl = Number(pos.unrealized_pnl || 0);
+  const positionSide = String(pos.side || "").toUpperCase();
+  renderDetailGrid("positionDetail", [
+    {
+      label: "State",
+      value: pos.open ? `${pos.side || "--"} ${pos.state || ""}` : "FLAT",
+      featured: true,
+      status: pos.open ? (positionSide === "SHORT" ? "warn" : "ok") : "muted",
+    },
+    {
+      label: "Net PnL",
+      value: `${formatMaybeMoney(pos.unrealized_pnl)}${pos.unrealized_pnl_pct == null ? "" : ` (${fmtSignedPct(pos.unrealized_pnl_pct, 2)})`}`,
+      featured: true,
+      status: positionPnl < 0 ? "warn" : positionPnl > 0 ? "ok" : "info",
+    },
+    { label: "Symbol", value: op.symbol || currentSymbol || "--", compact: true },
+    { label: "Quantity", value: Number(pos.quantity) > 0 ? fmtNum(pos.quantity, 6) : "--", compact: true },
+    { label: "Entry", value: formatMaybePrice(pos.entry_price) },
+    { label: "Mark", value: formatMaybePrice(pos.mark_price) },
+    { label: "Gross PnL", value: formatMaybeMoney(pos.unrealized_pnl_gross), compact: true },
+    { label: "Fees", value: formatMaybeMoney(pos.estimated_total_fees), compact: true },
+    { label: "Funding", value: formatMaybeMoney(pos.funding_paid), compact: true, subtle: true },
+    { label: "Opened", value: relativeTime(pos.opened_at), compact: true, subtle: true },
+    { label: "Mode", value: [pos.management_mode, pos.margin_mode, Number(pos.leverage) ? `${fmtNum(pos.leverage, 1)}x` : ""].filter(Boolean).join(" · ") || "--", compact: true },
+    { label: "SL Order", value: pos.stop_loss_order_id || "--", compact: true, subtle: true },
+  ]);
+  renderProtection(pos.protection || []);
+
+  renderDetailGrid("executionDetail", [
+    {
+      label: "Exchange",
+      value: `${String(exchange.id || "--").toUpperCase()} ${String(exchange.market_type || "").toUpperCase()}`.trim(),
+      featured: true,
+      status: "info",
+    },
+    { label: "State Age", value: compactSecs(op.state_age_sec), featured: true, status: Number(op.state_age_sec || 0) < 120 ? "ok" : "warn" },
+    { label: "Provider", value: exchange.provider || "--", compact: true },
+    { label: "Fee Source", value: exchange.fee_source || "--", compact: true },
+    { label: "Strategy", value: op.strategy || "--", compact: true },
+    { label: "Version", value: op.strategy_version || "--", compact: true, subtle: true },
+  ]);
+  renderMetricStrip("latencyDetail", [
+    { label: "REST", value: `${latency.api_latency_ms || 0}ms`, status: latency.api_latency_ms < 350 ? "ok" : "warn", featured: true },
+    { label: "WS Age", value: compactSecs((latency.ws_tick_age_ms || 0) / 1000), status: latency.ws_tick_age_ms < 15000 ? "ok" : "warn", featured: true },
+    { label: "Tick", value: `${latency.tick_duration_ms || 0}ms`, status: latency.tick_duration_ms < 3000 ? "ok" : "warn", compact: true },
+    { label: "Sync", value: `${latency.sync_candles_ms || 0}ms`, status: "info", compact: true },
+    { label: "State", value: `${latency.state_export_ms || 0}ms`, status: "info", compact: true },
+    { label: "Drift", value: `${fmtNum(latency.clock_offset_seconds || 0, 2)}s`, status: Math.abs(Number(latency.clock_offset_seconds || 0)) < 5 ? "ok" : "warn", compact: true },
+  ]);
+
+  renderDetailGrid("riskDetail", [
+    { label: "Risk", value: formatMaybePct(risk.risk_pct, 1), featured: true, status: "warn" },
+    { label: "Signal", value: sig.action || "--", featured: true, status: signalSemantic(sig.action) || "info" },
+    { label: "Summary", value: sig.status_summary || "--", wide: true, status: "info" },
+    { label: "SL ATR", value: Number(risk.sl_atr_mult) ? `${fmtNum(risk.sl_atr_mult, 2)}x` : "--", compact: true },
+    { label: "Trail ATR", value: Number(risk.trailing_atr_mult) ? `${fmtNum(risk.trailing_atr_mult, 2)}x` : "--", compact: true },
+    { label: "Breakeven", value: risk.breakeven_sl_enabled ? "Enabled" : "Off", compact: true, subtle: true },
+    { label: "Fresh Zone", value: risk.require_fresh_zone ? `${risk.fresh_zone_window || "--"} bar` : "Off", compact: true },
+  ]);
+  renderChecklistInto("operatorChecklist", sig.checklist || []);
+}
+
+function renderRegimeDetail(detail) {
+  if (!detail || !detail.ok) return;
+  const regime = detail.regime_detail || {};
+  const macro = regime.macro_guard || {};
+  const bias = regime.strategy_bias || {};
+  const router = regime.router || {};
+  text("regimeDetailBadge", `${fmtNum((Number(regime.confidence) || 0) * 100, 0)}%`);
+  setStateClass("regimeDetailBadge", regimeSemantic(regime.state));
+  text("macroGuardBadge", macro.enabled ? (macro.blocks_buy ? "BLOCK" : "ON") : "OFF");
+  setStateClass("macroGuardBadge", macro.enabled ? (macro.blocks_buy ? "neg" : "pos") : "muted");
+  text("routerBadge", router.enabled ? (router.live_confirmed ? "LIVE" : "PENDING") : "OFF");
+  setStateClass("routerBadge", router.enabled ? (router.live_confirmed ? "pos" : "warn") : "muted");
+
+  renderDetailGrid("regimeDetailGrid", [
+    { label: "State", value: compactState(regime.state), featured: true, status: regimeSemantic(regime.state) },
+    { label: "Risk", value: regime.risk_state || "--", featured: true, status: riskSemantic(regime.risk_state) },
+    { label: "Trend", value: regime.trend || "--", status: trendSemantic(regime.trend), compact: true },
+    { label: "Confidence", value: `${fmtNum((Number(regime.confidence) || 0) * 100, 0)}%`, status: "info", compact: true },
+    { label: "Volatility", value: regime.volatility_state || regime.volatility || "--", compact: true },
+    { label: "Liquidity", value: regime.liquidity_state || "--", compact: true },
+    { label: "Phase", value: regime.phase || "--", compact: true, subtle: true },
+    { label: "Transition", value: regime.transition_risk || "--", compact: true, subtle: true },
+    { label: "Gold Score", value: regime.gold_score == null ? "--" : fmtNum(regime.gold_score, 0), compact: true, subtle: true },
+  ]);
+  renderReasonList("regimeReasons", regime.reasons || [], { limit: 4 });
+
+  renderDetailGrid("macroGuardDetail", [
+    { label: "Status", value: macro.enabled ? (macro.blocks_buy ? "Blocking" : "Monitoring") : "Disabled", featured: true, status: macro.blocks_buy ? "warn" : macro.enabled ? "ok" : "muted" },
+    { label: "Summary", value: macro.summary || macro.news_reason || "--", wide: true, status: "info" },
+    { label: "Score", value: macro.score == null ? "--" : fmtNum(macro.score, 3), compact: true },
+    { label: "Threshold", value: macro.blocking_threshold == null ? "--" : fmtNum(macro.blocking_threshold, 3), compact: true },
+    { label: "DXY", value: macro.dxy_price == null ? "--" : fmtNum(macro.dxy_price, 2), compact: true },
+    { label: "Rates", value: macro.fred_rate == null ? "--" : `${fmtNum(macro.fred_rate, 2)}%`, compact: true },
+  ]);
+
+  renderDetailGrid("strategyBiasDetail", [
+    { label: "Family", value: bias.family || "--", featured: true, status: "info" },
+    { label: "Posture", value: bias.posture || "--", featured: true, status: bias.posture === "cautious" ? "warn" : "ok" },
+    { label: "Allowed", value: Array.isArray(bias.allowed_actions) && bias.allowed_actions.length ? bias.allowed_actions.join(", ") : "--", compact: true },
+    { label: "Preferred", value: Array.isArray(bias.preferred) && bias.preferred.length ? bias.preferred.join(", ") : "--", compact: true },
+    { label: "Router", value: router.no_trade_state || "--", compact: true, subtle: true },
+    router.warning ? { label: "Warning", value: router.warning, wide: true, subtle: true } : null,
+  ].filter(Boolean));
+
+  const features = regime.features || {};
+  renderReasonList("featureDetail", Object.entries(features).slice(0, 6).map(([key, value]) => ({
+    label: key.replace(/_/g, " "),
+    value: typeof value === "number" ? fmtNum(value, Math.abs(value) >= 10 ? 1 : 3) : value,
+    status: "info",
+  })));
+}
+
 function renderCdcDetail(indicatorDisplay) {
   const root = document.getElementById("cdcDetail");
   if (!root) return;
@@ -699,19 +955,27 @@ function renderEvents(events) {
   const rows = Array.isArray(events) ? events.slice(-40).reverse() : [];
   text("eventCount", `${rows.length}`);
   root.innerHTML = rows.length ? "" : `<div class="empty-state">No recent events</div>`;
-  rows.forEach((event) => {
+  rows.forEach((event, index) => {
     const row = document.createElement("div");
     row.className = "event-row";
     const label = event.event_type || event.event || "--";
     const ts = event.ts || "";
     const payload = event.payload || {};
-    const detail = compactEventDetail(payload.reason || payload.action || payload.regime || payload.price || "");
+    const detail = compactEventDetail(payload.reason || payload.action || payload.regime || payload.price || payload.symbol || "");
     const chip = eventChip(label);
+    const symbol = payload.symbol || payload.pair || payload.market || "";
+    const value = payload.price || payload.qty || payload.quantity || payload.pnl || "";
+    const meta = [symbol, value].filter(Boolean).join(" · ");
     row.innerHTML = `
-      <span class="ev-chip ${chip.cls}">${escapeHtml(chip.label)}</span>
-      <div class="ev-body">
-        <small>${escapeHtml(relativeTime(ts))}</small>
-        <strong>${escapeHtml(label)}${detail ? `: ${escapeHtml(detail)}` : ""}</strong>
+      <span class="event-rail" aria-hidden="true"><i></i></span>
+      <div class="log-main">
+        <div class="log-topline">
+          <span class="ev-chip ${chip.cls}">${escapeHtml(chip.label)}</span>
+          <strong>${escapeHtml(label)}</strong>
+          <small>${escapeHtml(relativeTime(ts))}</small>
+        </div>
+        <div class="log-detail">${detail ? escapeHtml(detail) : index === 0 ? "Most recent system event" : "System event recorded"}</div>
+        ${meta ? `<div class="log-meta">${escapeHtml(meta)}</div>` : ""}
       </div>
     `;
     root.appendChild(row);
@@ -731,13 +995,31 @@ function renderTrades(trades) {
     const short = sym.replace("USDT", "").slice(0, 3) || "--";
     const trig = String(trade.trigger || "").toLowerCase();
     const trigCls = /tp|take|target/.test(trig) ? "chip-pos" : /stop|sl|liq/.test(trig) ? "chip-neg" : "chip-muted";
+    const side = String(trade.side || trade.direction || "").toUpperCase();
+    const entry = trade.entry_price || trade.entry || "";
+    const exit = trade.exit_price || trade.close_price || trade.mark_price || "";
+    const size = trade.quantity || trade.qty || "";
+    const detail = [
+      side,
+      entry ? `Entry ${fmtNum(entry, 2)}` : "",
+      exit ? `Exit ${fmtNum(exit, 2)}` : "",
+      size ? `Qty ${fmtNum(size, 4)}` : "",
+    ].filter(Boolean).join(" · ");
     const row = document.createElement("div");
     row.className = "trade-row";
     row.innerHTML = `
-      <span class="ev-chip ${pnl >= 0 ? "chip-pos" : "chip-neg"}">${escapeHtml(short)}</span>
-      <div class="ev-body">
-        <small>${escapeHtml(relativeTime(trade.closed_at || trade.opened_at))}</small>
-        <strong>${escapeHtml(sym)} <span class="${pnlClass}">${fmtMoney(pnl)}</span>${trade.trigger ? ` <span class="ev-tag ${trigCls}">${escapeHtml(compactTrigger(trade.trigger))}</span>` : ""}</strong>
+      <span class="event-rail" aria-hidden="true"><i></i></span>
+      <div class="log-main">
+        <div class="log-topline trade-topline">
+          <span class="ev-chip ${pnl >= 0 ? "chip-pos" : "chip-neg"}">${escapeHtml(short)}</span>
+          <strong>${escapeHtml(sym)}</strong>
+          <span class="trade-pnl ${pnlClass}">${fmtMoney(pnl)}</span>
+        </div>
+        <div class="log-detail">${detail ? escapeHtml(detail) : "Closed trade"}</div>
+        <div class="log-meta">
+          <span>${escapeHtml(relativeTime(trade.closed_at || trade.opened_at))}</span>
+          ${trade.trigger ? `<span class="ev-tag ${trigCls}">${escapeHtml(compactTrigger(trade.trigger))}</span>` : ""}
+        </div>
       </div>
     `;
     root.appendChild(row);
@@ -889,11 +1171,17 @@ function updateState(payload) {
   const positionPnl = Number(pos.unrealized_pnl || 0);
   cls("pnlValue", positionOpen ? (positionPnl > 0 ? "positive" : positionPnl < 0 ? "negative" : "neutral") : "neutral");
   const partialTp = partialTpSummary(pos, positionOpen);
+  const estimatedFees = Number(pos.estimated_total_fees || 0);
+  const fundingPaid = Number(pos.funding_paid || 0);
+  const pnlDetails = [];
+  if (estimatedFees) pnlDetails.push(`fees ${fmtMoney(estimatedFees)}`);
+  if (fundingPaid) pnlDetails.push(`funding ${fmtMoney(fundingPaid)}`);
+  if (partialTp) pnlDetails.push(partialTp);
   liveText(
     "pnlValue",
     positionOpen
-      ? `PnL ${fmtMoney(positionPnl)}${partialTp ? ` · ${partialTp}` : ""}`
-      : "PnL --"
+      ? `Net PnL ${fmtMoney(positionPnl)}${pnlDetails.length ? ` · ${pnlDetails.join(" · ")}` : ""}`
+      : "Net PnL --"
   );
   liveText("signalAction", sig.action || "--");
   liveText("overviewSignal", sig.action || "--");
@@ -971,7 +1259,7 @@ function initNavigation() {
     button.addEventListener("click", () => setView(button.dataset.viewTarget));
   });
   const initial = location.hash.replace("#", "");
-  if (["overview", "signal", "activity"].includes(initial)) {
+  if (["overview", "signal", "operator", "regime", "activity"].includes(initial)) {
     setView(initial, false);
   } else if (initial === "health") {
     setView("overview", false);
@@ -979,11 +1267,12 @@ function initNavigation() {
 }
 
 async function refresh() {
-  const [stateResult, healthResult, eventsResult, tradesResult] = await Promise.allSettled([
+  const [stateResult, healthResult, eventsResult, tradesResult, detailResult] = await Promise.allSettled([
     getJson("/api/state"),
     getJson("/api/health"),
     getJson("/api/recent-events"),
     getJson("/api/trades?limit=30"),
+    getJson("/api/dashboard-detail"),
   ]);
 
   if (stateResult.status === "fulfilled") {
@@ -1015,6 +1304,13 @@ async function refresh() {
   if (healthResult.status === "fulfilled") updateHealth(healthResult.value);
   if (eventsResult.status === "fulfilled") renderEvents(eventsResult.value.events || []);
   if (tradesResult.status === "fulfilled") renderTrades(tradesResult.value.trades || []);
+  if (detailResult.status === "fulfilled") {
+    renderOperatorDetail(detailResult.value);
+    renderRegimeDetail(detailResult.value);
+    const activity = detailResult.value.activity || {};
+    if (Array.isArray(activity.events)) renderEvents(activity.events);
+    if (Array.isArray(activity.trades)) renderTrades(activity.trades);
+  }
 }
 
 initNavigation();

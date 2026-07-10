@@ -12,6 +12,7 @@ from unittest import mock
 from xauby.webui.server import (
     candles_payload,
     create_server,
+    dashboard_detail_payload,
     health_payload,
     meta_payload,
     recent_events_payload,
@@ -206,6 +207,67 @@ class WebUIServerTest(unittest.TestCase):
 
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["events"], [{"event_type": "focused"}])
+
+    def test_dashboard_detail_payload_contains_operator_and_regime_sections(self):
+        self.create_db()
+        self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "execution_mode": "live",
+                        "read_only": False,
+                        "current_price": 4127.1,
+                        "position": {
+                            "state": "bought",
+                            "position_side": "SHORT",
+                            "quantity": 0.033,
+                            "entry_price": 4115.3,
+                            "mark_price": 4127.1,
+                            "stop_loss": 4100.0,
+                            "take_profit": 3950.0,
+                            "estimated_total_fees": 0.13,
+                            "feed_health": "OK",
+                        },
+                        "signal_meta": {
+                            "action": "HOLD",
+                            "reason": "Holding active position",
+                            "checklist": [{"label": "Stop", "value": "OK", "ok": True}],
+                        },
+                        "risk": {"risk_pct": 0.02, "sl_atr_mult": 2.0},
+                        "latency": {"api_latency_ms": 42, "ws_tick_age_ms": 100},
+                        "regime": {
+                            "regime": "BEAR_TREND_WEAK",
+                            "trend": "BEARISH",
+                            "confidence": 0.54,
+                            "risk_state": "DEFENSIVE",
+                            "reasons": [{"label": "Trend Bearish", "supportive": False}],
+                        },
+                        "macro_guard": {"enabled": False, "summary": "Disabled"},
+                        "recent_events": [{"event_type": "signal_evaluated"}],
+                    }
+                },
+            }
+        )
+
+        payload = dashboard_detail_payload(self.project_root)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["operator"]["symbol"], "XAUTUSDT")
+        self.assertTrue(payload["operator"]["position"]["open"])
+        self.assertEqual(payload["operator"]["position"]["side"], "SHORT")
+        self.assertEqual(payload["regime_detail"]["state"], "BEAR_TREND_WEAK")
+        self.assertEqual(payload["activity"]["event_count"], 1)
+        self.assertEqual(payload["activity"]["trade_count"], 1)
+
+    def test_dashboard_detail_payload_handles_missing_state(self):
+        payload = dashboard_detail_payload(self.project_root)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["operator"], {})
+        self.assertEqual(payload["regime_detail"], {})
+        self.assertEqual(payload["activity"], {"events": [], "trades": []})
 
     def test_trades_endpoint_reads_sqlite_in_read_only_mode(self):
         self.create_db()
