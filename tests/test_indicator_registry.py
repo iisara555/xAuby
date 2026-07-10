@@ -28,6 +28,7 @@ class TestIndicatorRegistry(unittest.TestCase):
             "btc_ema_pullback": ["btc_ema_pullback"],
             "ict_lite_strategy": ["ict_lite"],
             "rsi2_meanrev": ["rsi2_meanrev"],
+            "smc_luxalgo": ["smc_luxalgo"],
             "vol_breakout": ["vol_breakout"],
         }
         for strategy_name, expected_names in cases.items():
