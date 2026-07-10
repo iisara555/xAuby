@@ -1767,6 +1767,9 @@ body[data-view="activity"] [data-section="activity"] {
 .timeline,
 .trades {
   display: grid;
+  /* auto rows resolve to the rows' min-height here (nested-grid quirk) and
+     let the meta line paint over the next row; max-content sizes to content. */
+  grid-auto-rows: max-content;
   align-content: start;
   gap: var(--space-1);
   min-height: 0;
@@ -1936,9 +1939,28 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   box-shadow: 0 0 0 4px rgba(255, 67, 26, 0.13);
 }
 
+/* Timeline dot mirrors the row's severity so state changes scan at a glance. */
+.event-row.sev-pos .event-rail i { background: #158b46; box-shadow: 0 0 0 4px rgba(21, 139, 70, 0.16); }
+.event-row.sev-neg .event-rail i { background: #d2331a; box-shadow: 0 0 0 4px rgba(210, 51, 26, 0.16); }
+.event-row.sev-warn .event-rail i { background: #b47a15; box-shadow: 0 0 0 4px rgba(180, 122, 21, 0.18); }
+.event-row.sev-muted .event-rail i { background: rgba(22, 22, 24, 0.38); box-shadow: 0 0 0 4px rgba(22, 22, 24, 0.08); }
+
 .trade-row .event-rail i {
   background: #161618;
   box-shadow: 0 0 0 4px rgba(22, 22, 24, 0.12);
+}
+
+.log-day {
+  padding: 10px 0 2px;
+  color: rgba(22, 22, 24, 0.5);
+  font-size: var(--type-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.log-day:first-child {
+  padding-top: 0;
 }
 
 .log-main {
@@ -2024,12 +2046,19 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   white-space: nowrap;
 }
 
+.trade-pnl,
+.log-detail,
+.log-meta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Darkened for AA-large contrast on the blue trade panel gradient. */
 .activity-panel .green {
-  color: #116b31;
+  color: #0a4f24;
 }
 
 .activity-panel .red {
-  color: #9b2418;
+  color: #8a1c0f;
 }
 
 .activity-panel .chip-pos { background: rgba(21, 139, 70, 0.14); color: #116b31; }
@@ -2038,6 +2067,14 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 .activity-panel .chip-info { background: rgba(255, 67, 26, 0.18); color: #9b2418; }
 .activity-panel .chip-cyan { background: rgba(22, 22, 24, 0.12); color: #161618; }
 .activity-panel .chip-muted { background: rgba(22, 22, 24, 0.1); color: rgba(22, 22, 24, 0.68); }
+.activity-panel .chip-side-long { background: rgba(10, 79, 36, 0.16); color: #0a4f24; }
+.activity-panel .chip-side-short { background: rgba(22, 22, 24, 0.72); color: #f8f4ee; }
+
+.trade-row .ev-chip {
+  min-width: 0;
+  padding: 0 9px;
+  white-space: nowrap;
+}
 
 /* ---------- Bottom nav ---------- */
 

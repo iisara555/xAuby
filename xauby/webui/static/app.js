@@ -958,15 +958,59 @@ function renderCdcDetail(indicatorDisplay) {
   });
 }
 
+const EVENT_WORD_CAPS = { tp: "TP", sl: "SL", pnl: "PnL", ws: "WS", api: "API", ok: "OK" };
+
+function humanizeEventType(value) {
+  const words = String(value || "").replace(/[_-]+/g, " ").trim().split(" ").filter(Boolean);
+  if (!words.length) return "--";
+  const mapped = words.map((w) => EVENT_WORD_CAPS[w.toLowerCase()] || w.toLowerCase());
+  return mapped[0].charAt(0).toUpperCase() + mapped[0].slice(1) + (mapped.length > 1 ? ` ${mapped.slice(1).join(" ")}` : "");
+}
+
+function absoluteTime(ts) {
+  const parsed = parseUtcish(ts);
+  if (!Number.isFinite(parsed)) return "";
+  return new Date(parsed).toLocaleString();
+}
+
+function timeEl(ts) {
+  // Relative label for scanning, absolute timestamp on hover for auditing.
+  const abs = absoluteTime(ts);
+  return `<time datetime="${escapeHtml(String(ts || ""))}"${abs ? ` title="${escapeHtml(abs)}"` : ""}>${escapeHtml(relativeTime(ts))}</time>`;
+}
+
+function dayLabel(ts) {
+  const parsed = parseUtcish(ts);
+  if (!Number.isFinite(parsed)) return "";
+  const day = new Date(parsed);
+  const today = new Date();
+  const startOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOf(today) - startOf(day)) / 86400000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return day.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function heldDuration(openedAt, closedAt) {
+  const start = parseUtcish(openedAt);
+  const end = parseUtcish(closedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return "";
+  const mins = Math.round((end - start) / 60000);
+  if (mins < 60) return `held ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `held ${hours}h${mins % 60 ? ` ${mins % 60}m` : ""}`;
+  return `held ${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
 function renderEvents(events) {
   const root = document.getElementById("events");
   if (!root) return;
   const rows = Array.isArray(events) ? events.slice(-40).reverse() : [];
   text("eventCount", `${rows.length}`);
   root.innerHTML = rows.length ? "" : `<div class="empty-state">No recent events</div>`;
-  rows.forEach((event, index) => {
-    const row = document.createElement("div");
-    row.className = "event-row";
+  root.setAttribute("role", "list");
+  let lastDay = "";
+  rows.forEach((event) => {
     const label = event.event_type || event.event || "--";
     const ts = event.ts || "";
     const payload = event.payload || {};
@@ -974,16 +1018,31 @@ function renderEvents(events) {
     const chip = eventChip(label);
     const symbol = payload.symbol || payload.pair || payload.market || "";
     const value = payload.price || payload.qty || payload.quantity || payload.pnl || "";
-    const meta = [symbol, value].filter(Boolean).join(" · ");
+    // Skip meta parts already shown in the detail line (no repeated values).
+    const metaParts = [symbol, value].filter(Boolean).map(String).filter((part) => !detail.includes(part));
+    const meta = metaParts.join(" · ");
+
+    const day = dayLabel(ts);
+    if (day && day !== lastDay) {
+      const sep = document.createElement("div");
+      sep.className = "log-day";
+      sep.textContent = day;
+      root.appendChild(sep);
+      lastDay = day;
+    }
+
+    const row = document.createElement("div");
+    row.className = `event-row sev-${chip.cls.replace("chip-", "")}`;
+    row.setAttribute("role", "listitem");
     row.innerHTML = `
       <span class="event-rail" aria-hidden="true"><i></i></span>
       <div class="log-main">
         <div class="log-topline">
-          <span class="ev-chip ${chip.cls}">${escapeHtml(chip.label)}</span>
-          <strong>${escapeHtml(label)}</strong>
-          <small>${escapeHtml(relativeTime(ts))}</small>
+          <span class="ev-chip ${chip.cls}" aria-hidden="true">${escapeHtml(chip.label)}</span>
+          <strong title="${escapeHtml(label)}">${escapeHtml(humanizeEventType(label))}</strong>
+          <small>${timeEl(ts)}</small>
         </div>
-        <div class="log-detail">${detail ? escapeHtml(detail) : index === 0 ? "Most recent system event" : "System event recorded"}</div>
+        ${detail ? `<div class="log-detail">${escapeHtml(detail)}</div>` : ""}
         ${meta ? `<div class="log-meta">${escapeHtml(meta)}</div>` : ""}
       </div>
     `;
@@ -997,36 +1056,41 @@ function renderTrades(trades) {
   const rows = Array.isArray(trades) ? trades.slice(0, 30) : [];
   text("tradeCount", `${rows.length}`);
   root.innerHTML = rows.length ? "" : `<div class="empty-state">No closed trades</div>`;
+  root.setAttribute("role", "list");
   rows.forEach((trade) => {
     const pnl = Number(trade.net_pnl || 0);
     const pnlClass = pnl >= 0 ? "green" : "red";
+    const pnlSign = pnl > 0 ? "+" : "";
     const sym = String(trade.symbol || "--");
-    const short = sym.replace("USDT", "").slice(0, 3) || "--";
     const trig = String(trade.trigger || "").toLowerCase();
     const trigCls = /tp|take|target/.test(trig) ? "chip-pos" : /stop|sl|liq/.test(trig) ? "chip-neg" : "chip-muted";
     const side = String(trade.side || trade.direction || "").toUpperCase();
+    const isShort = side.includes("SHORT") || side.includes("SELL");
+    const sideLabel = isShort ? "▼ SHORT" : "▲ LONG";
     const entry = trade.entry_price || trade.entry || "";
     const exit = trade.exit_price || trade.close_price || trade.mark_price || "";
     const size = trade.quantity || trade.qty || "";
     const detail = [
-      side,
-      entry ? `Entry ${fmtNum(entry, 2)}` : "",
-      exit ? `Exit ${fmtNum(exit, 2)}` : "",
+      entry && exit ? `${fmtNum(entry, 2)} → ${fmtNum(exit, 2)}` : (entry ? `Entry ${fmtNum(entry, 2)}` : ""),
       size ? `Qty ${fmtNum(size, 4)}` : "",
     ].filter(Boolean).join(" · ");
+    const held = heldDuration(trade.opened_at, trade.closed_at);
+    const closedTs = trade.closed_at || trade.opened_at;
     const row = document.createElement("div");
     row.className = "trade-row";
+    row.setAttribute("role", "listitem");
     row.innerHTML = `
       <span class="event-rail" aria-hidden="true"><i></i></span>
       <div class="log-main">
         <div class="log-topline trade-topline">
-          <span class="ev-chip ${pnl >= 0 ? "chip-pos" : "chip-neg"}">${escapeHtml(short)}</span>
+          <span class="ev-chip ${isShort ? "chip-side-short" : "chip-side-long"}">${escapeHtml(sideLabel)}</span>
           <strong>${escapeHtml(sym)}</strong>
-          <span class="trade-pnl ${pnlClass}">${fmtMoney(pnl)}</span>
+          <span class="trade-pnl ${pnlClass}">${pnlSign}${fmtMoney(pnl)}</span>
         </div>
-        <div class="log-detail">${detail ? escapeHtml(detail) : "Closed trade"}</div>
+        ${detail ? `<div class="log-detail">${escapeHtml(detail)}</div>` : ""}
         <div class="log-meta">
-          <span>${escapeHtml(relativeTime(trade.closed_at || trade.opened_at))}</span>
+          <span>${timeEl(closedTs)}</span>
+          ${held ? `<span>${escapeHtml(held)}</span>` : ""}
           ${trade.trigger ? `<span class="ev-tag ${trigCls}">${escapeHtml(compactTrigger(trade.trigger))}</span>` : ""}
         </div>
       </div>
