@@ -13,8 +13,9 @@ RegimeRouter support, exchange stop-losses, Textual TUI, and Telegram operations
 [![Exchange](https://img.shields.io/badge/Exchange-OKX%20via%20CCXT-111827)](https://www.okx.com/)
 [![UI](https://img.shields.io/badge/TUI-Textual-5c2dee)](https://textual.textualize.io/)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-blue)](docs/README.md)
+[![Website](https://img.shields.io/badge/Website-Live%20on%20Vercel-000000?logo=vercel)](https://x-auby-lgf2789a2-itsara-kaewruangs-projects.vercel.app/)
 
-[Quick Start](#quick-start) | [Screens](#screens) | [Configuration](#configuration-essentials) | [Current Runtime State](#current-runtime-state) | [Backtest](#backtest-and-optimization) | [TUI](docs/tui.md) | [WebUI](docs/webui.md) | [Telegram](docs/telegram.md)
+[Live Website](https://x-auby-lgf2789a2-itsara-kaewruangs-projects.vercel.app/) | [Quick Start](#quick-start) | [Screens](#screens) | [Configuration](#configuration-essentials) | [Current Runtime State](#current-runtime-state) | [Backtest](#backtest-and-optimization) | [TUI](docs/tui.md) | [WebUI](docs/webui.md) | [Telegram](docs/telegram.md)
 
 </div>
 
@@ -57,6 +58,11 @@ RegimeRouter support, exchange stop-losses, Textual TUI, and Telegram operations
 current committed runtime is focused on **XAUUSDT** on **OKX USDT-settled swap**
 via CCXT, with both long and short execution enabled at 1x leverage.
 
+The public-facing research platform is live at
+[x-auby-lgf2789a2-itsara-kaewruangs-projects.vercel.app](https://x-auby-lgf2789a2-itsara-kaewruangs-projects.vercel.app/).
+It presents xAuby's research-first approach: validate ideas, document risk and
+execution assumptions, and only then consider capital deployment.
+
 1. Ingest candles and tickers through REST plus WebSocket.
 2. Resolve the configured strategy, timeframe, execution mode, and portfolio budget for every active pair.
 3. Run each pair through its own strategy instance and `StrategyRunner`.
@@ -66,6 +72,26 @@ via CCXT, with both long and short execution enabled at 1x leverage.
 7. Operate through Textual TUI, launcher, scripts, and Telegram.
 
 > Start in simulation first. Enable live only after risk limits, alerts, replay validation, and per-pair router gates are checked.
+
+---
+
+## Promotional Website
+
+The promotional site is a standalone Next.js app in [`Website/`](Website/).
+It is deployed independently from the Python trading runtime, so it can safely
+be used to explain the product without exposing trading credentials or runtime
+state.
+
+| Task | Command / location |
+|------|--------------------|
+| Visit the live site | [Open xAuby Research Platform](https://x-auby-lgf2789a2-itsara-kaewruangs-projects.vercel.app/) |
+| Preview locally | `cd Website && npm install && npm run dev` |
+| Production build | `cd Website && npm run build` |
+| Page source | `Website/public/research-platform.html` |
+
+Vercel is configured with `Website/` as the project root. Pushes to the
+connected Git branch can be deployed from Vercel without changing the trading
+engine.
 
 ---
 
