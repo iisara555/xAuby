@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://xauby.vercel.app"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://x-auby.vercel.app"),
   title: "xAuby | Gold Trading Research Platform",
   description:
     "A research-first automated gold trading platform with documented validation before capital deployment.",
