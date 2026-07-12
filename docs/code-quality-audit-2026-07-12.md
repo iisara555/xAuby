@@ -19,11 +19,11 @@ Current test health is blocked at collection by an untracked test that imports a
 
 ### High - Reverse open path bypasses normal entry guard parity
 
-The new stop-and-reverse helper in `xauby/engine/loop.py` opens the reverse position after a successful close with only state, RegimeRouter, and max-position checks (`open_reverse_after_close`, around lines 2005-2050). It does not reuse the same full entry gate path used for normal idle entries around lines 1930-1969. In particular, reverse opens can bypass cooldown and WebSocket reconnect cooldown. For reverse-to-short, `execute_open_short` also lacks the Telegram pause check that `execute_buy` has in `xauby/engine/orders.py` lines 1170-1181.
+The new stop-and-reverse helper in `xauby/engine/loop.py` opens the reverse position after a successful close with only state, RegimeRouter, and max-position checks (`open_reverse_after_close`, around lines 2005-2050). It does not reuse the same full entry safety gates used for normal idle entries around lines 1930-1969. Reverse entries must intentionally bypass loss/re-entry cooldowns because the normal CDC stop-and-reverse case is a fresh opposite entry immediately after a losing close; applying loss cooldown here reintroduces the phase-lock bug. They should still respect operator/safety guards such as Telegram pause, WebSocket reconnect cooldown, macro guard, RegimeRouter, max-open limits, and live flat confirmation. For reverse-to-short, `execute_open_short` also lacks the Telegram pause check that `execute_buy` has in `xauby/engine/orders.py` lines 1170-1181.
 
-Impact: a live stop-and-reverse could open a fresh short immediately after close even while a global pause or reconnect cooldown is intended to block new entries.
+Impact: a live stop-and-reverse could open a fresh short immediately after close even while a global pause or reconnect cooldown is intended to block new entries, or it could be blocked by loss cooldowns and only reverse after profitable exits.
 
-Recommended fix: extract one shared `entry_allowed(symbol, side, action_context)` guard used by normal long entries, normal short entries, and post-close reverse entries. Add tests for Telegram pause, cooldown, reconnect cooldown, macro guard, RegimeRouter, and max-open behavior for both normal and reverse entries.
+Recommended fix: extract one shared `entry_allowed(symbol, side, action_context)` guard with an explicit `reverse_after_close` action context. In that context, bypass loss/re-entry cooldown checks but keep Telegram pause, reconnect cooldown, macro guard, RegimeRouter, max-open, and live flat-confirmation checks. Add tests for both normal and reverse contexts.
 
 ### High - Full test collection is currently broken
 
@@ -43,7 +43,7 @@ Recommended fix: add one pure net-unrealized PnL helper that returns gross, esti
 
 ### High - Strict whitelist source of truth has drifted from older tests and docs
 
-`coin_whitelist.json` now has one enabled asset, `XAU`, resolving to `XAUUSDT` with `xauby_actionzone`, live mode, and long/short enabled. Older tests in `tests/test_audit_fixes.py` still force or assert `XAUTUSDT` and `BTCUSDT` specs at lines 33-39, and several engine tests still assume `BTCUSDT` exists. Under `architecture.whitelist_strict`, those symbols fail with missing strategy or unknown context.
+`coin_whitelist.json` now has one enabled asset, `XAU`, resolving to `XAUUSDT` with `xauby_actionzone`, live mode, long/short enabled, and active per-pair strategy parameters such as `fresh_zone_window: 1`. Older tests in `tests/test_audit_fixes.py` still force or assert `XAUTUSDT` and `BTCUSDT` specs at lines 33-39, and several engine tests still assume `BTCUSDT` exists. Under `architecture.whitelist_strict`, those symbols fail with missing strategy or unknown context.
 
 Impact: important regression tests for sim/live gating, reconcile, semi-auto symbol targeting, and PnL accounting no longer validate the active architecture.
 
@@ -86,7 +86,7 @@ Recommended fix: add a narrow allowlist for this exact frontend metadata path/ke
 ### Do Now
 
 1. Fix or remove `tests/test_unrealized_pnl_net.py` so full pytest collection works.
-2. Make reverse entries reuse normal entry guards, including Telegram pause, cooldown, reconnect cooldown, macro guard, RegimeRouter, and max-open checks.
+2. Make reverse entries reuse normal entry safety guards with explicit context: bypass loss/re-entry cooldowns for `reverse_after_close`, but keep Telegram pause, reconnect cooldown, macro guard, RegimeRouter, max-open, and live flat-confirmation checks.
 3. Fix gross/net unrealized PnL semantics in state export and WebUI labels.
 4. Convert multi-symbol regression tests to use temporary whitelist fixtures instead of deployed whitelist assumptions.
 
@@ -110,6 +110,6 @@ Recommended fix: add a narrow allowlist for this exact frontend metadata path/ke
 
 - Full pytest collection exits 0.
 - Focused trading/webui suite exits 0.
-- Reverse entries cannot open when Telegram pause or cooldown blocks a normal entry.
+- Reverse entries bypass loss/re-entry cooldowns but cannot open when Telegram pause, reconnect cooldown, macro guard, RegimeRouter, max-open, or live flat-confirmation blocks them.
 - WebUI "Net PnL" equals gross PnL minus estimated fees and funding for both long and short positions.
 - Test fixtures no longer require active deployed symbols except tests explicitly validating deployed config.

@@ -712,9 +712,10 @@ class LiteDB(IDatabaseRepository):
                         symbol, state, entry_price, stop_loss, take_profit,
                         highest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
-                        liquidation_price, funding_paid, management_mode
+                        liquidation_price, funding_paid, management_mode,
+                        partial_tp_taken
                     )
-                    VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy')
+                    VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy', 0)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state='idle',
                         entry_price=0,
@@ -726,7 +727,8 @@ class LiteDB(IDatabaseRepository):
                         last_transition_at=excluded.last_transition_at,
                         stop_loss_order_id=NULL,
                         position_side='LONG', leverage=1.0, margin_mode='spot',
-                        liquidation_price=0, funding_paid=0, management_mode='strategy'
+                        liquidation_price=0, funding_paid=0, management_mode='strategy',
+                        partial_tp_taken=0
                 """, (sym, transition_str))
             return True
         except Exception as e:

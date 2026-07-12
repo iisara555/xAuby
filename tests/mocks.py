@@ -81,6 +81,9 @@ class MockExchangeGateway(IExchangeGateway):
         self.balances_called = True
         return Portfolio(balances={"USDT": 1000.0, "XAUT": 2.0})
 
+    def get_positions(self, symbols: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        return []
+
 
 def install_test_pair(
     engine: Any,
@@ -138,9 +141,55 @@ class MockDatabaseRepository(IDatabaseRepository):
             quantity=0.0,
         )
 
-    def save_trade_state(self, position: Position) -> None:
+    def save_trade_state(
+        self,
+        symbol_or_position: Any = None,
+        state: Optional[str] = None,
+        entry_price: float = 0.0,
+        stop_loss: float = 0.0,
+        take_profit: float = 0.0,
+        highest_price_seen: float = 0.0,
+        quantity: float = 0.0,
+        opened_at: Optional[str] = None,
+        last_transition_at: Optional[str] = None,
+        stop_loss_order_id: Optional[str] = None,
+        position_side: str = "LONG",
+        leverage: float = 1.0,
+        margin_mode: str = "spot",
+        liquidation_price: float = 0.0,
+        funding_paid: float = 0.0,
+        management_mode: str = "strategy",
+        partial_tp_taken: bool = False,
+        *,
+        symbol: Optional[str] = None,
+    ) -> None:
         self.save_state_called = True
-        self.trade_state = position
+        if isinstance(symbol_or_position, Position):
+            self.trade_state = symbol_or_position
+            return
+        if symbol_or_position is not None:
+            symbol = str(symbol_or_position)
+        if symbol is None:
+            raise ValueError("save_trade_state requires a symbol or Position")
+        self.trade_state = Position(
+            symbol=symbol,
+            state=state or "idle",
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            highest_price_seen=highest_price_seen,
+            quantity=quantity,
+            opened_at=opened_at,
+            last_transition_at=last_transition_at,
+            stop_loss_order_id=stop_loss_order_id,
+            position_side=str(position_side or "LONG").upper(),
+            leverage=leverage,
+            margin_mode=margin_mode,
+            liquidation_price=liquidation_price,
+            funding_paid=funding_paid,
+            management_mode=management_mode,
+            partial_tp_taken=partial_tp_taken,
+        )
 
     def save_closed_trade(self, trade: Dict[str, Any] = None, **kwargs) -> None:
         self.closed_trades.append(dict(trade or kwargs))

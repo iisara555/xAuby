@@ -249,6 +249,7 @@ class OrderMixin:
             highest_price_seen=fill_price, quantity=fill_qty, opened_at=now_iso,
             position_side="SHORT", leverage=leverage, margin_mode="isolated",
             funding_paid=0.0,
+            partial_tp_taken=False,
         )
         self._emit_event(EventType.POSITION_OPENED, symbol=sym, position_side="SHORT",
                          side="SELL", qty=fill_qty, leverage=leverage, slippage_bps=slip_bps)
@@ -277,16 +278,88 @@ class OrderMixin:
         if not result.success:
             logger.error(result.error or "SHORT close failed")
             return False
+        filled_qty = float(result.qty or qty)
+        if filled_qty <= 0:
+            logger.error("SHORT close returned no filled quantity for %s", sym)
+            return False
         exit_price = float(result.price or ticker_price)
-        entry_notional = entry * qty
-        exit_notional = exit_price * qty
+        entry_notional = entry * filled_qty
+        exit_notional = exit_price * filled_qty
         fee_pct = self._symbol_fee_pct(sym)
         entry_fee = entry_notional * fee_pct
         exit_fee = float(result.fees or exit_notional * fee_pct)
-        net_pnl = (entry - exit_price) * qty - entry_fee - exit_fee - funding
+        funding_share = funding * min(1.0, filled_qty / qty) if funding else 0.0
+        net_pnl = (entry - exit_price) * filled_qty - entry_fee - exit_fee - funding_share
         net_pct = net_pnl / entry_notional * 100.0 if entry_notional else 0.0
+        remaining_qty = max(0.0, qty - filled_qty)
+        min_remaining_qty = self._min_tradeable_base_qty(sym, exit_price)
+        remaining_is_tradeable = (
+            remaining_qty > 0.0001
+            and (min_remaining_qty <= 0 or remaining_qty >= min_remaining_qty)
+        )
+        if remaining_is_tradeable:
+            if not self._record_partial_closed_trade(
+                state,
+                filled_qty,
+                exit_price,
+                trigger_reason,
+                entry_fee=entry_fee,
+                exit_fee=exit_fee,
+                symbol=sym,
+                side="SHORT",
+                funding_share=funding_share,
+            ):
+                return False
+            sl_order_id = state.get("stop_loss_order_id")
+            if sl_order_id and not self._use_sim_broker(sym) and not self.simulate_only:
+                try:
+                    self.client.cancel_order(sym, sl_order_id)
+                except Exception as exc:
+                    logger.error("Failed to cancel SHORT SL %s after partial close: %s", sl_order_id, exc)
+                self.send_telegram_alert(
+                    "⚠️ *Short Stop Loss Requires Review*: Partial close left a smaller "
+                    "SHORT remainder; existing exchange SL was cleared or may need manual resize.",
+                    level=AlertLevel.CRITICAL,
+                )
+                sl_order_id = None
+            now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+            self.db.save_trade_state(
+                symbol=sym,
+                state="bought",
+                entry_price=entry,
+                stop_loss=state.get("stop_loss", 0.0),
+                take_profit=state.get("take_profit", 0.0),
+                highest_price_seen=state.get("highest_price_seen", entry),
+                quantity=remaining_qty,
+                opened_at=state.get("opened_at"),
+                last_transition_at=now_iso,
+                stop_loss_order_id=sl_order_id,
+                position_side="SHORT",
+                leverage=state.get("leverage", 1.0),
+                margin_mode=state.get("margin_mode", "isolated"),
+                liquidation_price=state.get("liquidation_price", 0.0),
+                funding_paid=funding - funding_share,
+                management_mode=state.get("management_mode", "strategy"),
+                partial_tp_taken=bool(state.get("partial_tp_taken")),
+            )
+            self._emit_event(
+                EventType.POSITION_CLOSED,
+                symbol=sym,
+                position_side="SHORT",
+                exit=exit_price,
+                pnl=round(net_pnl, 2),
+                pnl_pct=round(net_pct, 2),
+                trigger=trigger_reason,
+                partial=True,
+            )
+            self.send_telegram_alert(
+                f"SHORT PARTIAL CLOSE {sym} @ {exit_price:.4f} | "
+                f"Filled {filled_qty:.6f}, remaining {remaining_qty:.6f} | "
+                f"PnL {net_pnl:+.2f} ({net_pct:+.2f}%)"
+            )
+            return True
         ok = self.db.close_position_atomic(
-            sym, side="SHORT", amount=qty, entry_price=entry, exit_price=exit_price,
+            sym, side="SHORT", amount=filled_qty, entry_price=entry, exit_price=exit_price,
             entry_cost=entry_notional, gross_exit=exit_notional,
             entry_fee=entry_fee, exit_fee=exit_fee, total_fees=entry_fee + exit_fee,
             net_pnl=net_pnl, net_pnl_pct=net_pct, trigger=trigger_reason,
@@ -1416,6 +1489,7 @@ class OrderMixin:
                 opened_at=now_iso,
                 last_transition_at=now_iso,
                 management_mode=position_management_mode,
+                partial_tp_taken=False,
             )
             
             base_coin = self._get_base_asset(sym)
@@ -1487,6 +1561,7 @@ class OrderMixin:
                 opened_at=now_iso,
                 last_transition_at=now_iso,
                 management_mode=position_management_mode,
+                partial_tp_taken=False,
             )
 
             base_coin = self._get_base_asset(sym)
@@ -1785,6 +1860,7 @@ class OrderMixin:
                         position_side="LONG",
                         leverage=float((self.config.get("derivatives") or {}).get("default_leverage", 1) or 1),
                         margin_mode="isolated" if is_live_swap else "spot",
+                        partial_tp_taken=False,
                     )
                     
                     base_coin = self._get_base_asset(sym)

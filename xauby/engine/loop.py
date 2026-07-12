@@ -2072,14 +2072,6 @@ class LoopMixin:
                 return reason_txt
             if reverse_open_count >= max_open:
                 return f"Blocked: max open positions ({max_open})"
-            blocked, block_reason = self._is_buy_blocked_by_cooldown(symbol=sym)
-            if blocked:
-                self._emit_event(
-                    EventType.COOLDOWN_BLOCKED,
-                    reason=block_reason,
-                    symbol=sym,
-                )
-                return block_reason
             with self._ws_status_lock:
                 ws_disconnected_at = self._ws_disconnected_at
             if ws_disconnected_at > 0 and (
@@ -2094,6 +2086,42 @@ class LoopMixin:
                 return reason_txt
             return None
 
+        def reverse_flat_block_reason(refreshed: Dict[str, Any]) -> Optional[str]:
+            if refreshed.get("state") != "idle":
+                return f"state after close is {refreshed.get('state')}"
+            residual_fields = {
+                "quantity": float(refreshed.get("quantity") or 0.0),
+                "entry_price": float(refreshed.get("entry_price") or 0.0),
+                "stop_loss": float(refreshed.get("stop_loss") or 0.0),
+                "take_profit": float(refreshed.get("take_profit") or 0.0),
+            }
+            dirty = [name for name, value in residual_fields.items() if abs(value) > 1e-12]
+            if dirty:
+                values = ", ".join(f"{name}={residual_fields[name]:.12g}" for name in dirty)
+                return f"local state not flat after close ({values})"
+            if refreshed.get("stop_loss_order_id"):
+                return "local state still has stop_loss_order_id after close"
+            if bool(refreshed.get("partial_tp_taken")):
+                return "local state still has partial_tp_taken after close"
+            if self._execution_mode(sym) != "live":
+                return None
+            caps = getattr(self.client, "capabilities", {}) or {}
+            if not caps.get("positions") or not hasattr(self.client, "get_positions"):
+                return None
+            try:
+                live_positions = self.client.get_positions([sym]) or []
+            except Exception as exc:
+                logger.error("Reverse flat confirmation failed for %s: %s", sym, exc, exc_info=True)
+                return f"exchange flat confirmation failed: {exc}"
+            for pos in live_positions:
+                if str(pos.get("symbol", "")).upper().replace("_", "") != sym:
+                    continue
+                qty = abs(float(pos.get("quantity") or pos.get("contracts") or 0.0))
+                if qty > 1e-12:
+                    side = str(pos.get("position_side") or "?").upper()
+                    return f"exchange still reports {side} position qty={qty:.12g}"
+            return None
+
         def open_reverse_after_close(close_ok: bool) -> None:
             if not close_ok:
                 return
@@ -2102,11 +2130,12 @@ class LoopMixin:
             if reverse_side not in {"LONG", "SHORT"}:
                 return
             refreshed = self.db.get_trade_state(sym)
-            if refreshed.get("state") != "idle":
+            flat_reason = reverse_flat_block_reason(refreshed)
+            if flat_reason:
                 logger.warning(
-                    "Reverse open blocked for %s: state after close is %s",
+                    "Reverse open blocked for %s: %s",
                     sym,
-                    refreshed.get("state"),
+                    flat_reason,
                 )
                 return
             reverse_open_count = sum(

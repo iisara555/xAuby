@@ -20,8 +20,9 @@ from xauby.engine.orders import OrderMixin
 
 
 class _FakeBroker:
-    def __init__(self, fill_price=None, fees=0.0, fail=False):
+    def __init__(self, fill_price=None, fill_qty=None, fees=0.0, fail=False):
         self.fill_price = fill_price
+        self.fill_qty = fill_qty
         self.fees = fees
         self.fail = fail
         self.calls = []
@@ -33,7 +34,7 @@ class _FakeBroker:
         )
         if self.fail:
             return FillResult(False, error="broker down")
-        return FillResult(True, qty=qty, price=self.fill_price or price, fees=self.fees)
+        return FillResult(True, qty=self.fill_qty or qty, price=self.fill_price or price, fees=self.fees)
 
 
 class _Engine(OrderMixin):
@@ -144,6 +145,48 @@ class TestExecutePartialTp(unittest.TestCase):
         st = self.db.get_trade_state("XAUUSDT")
         self.assertEqual(st.position_side, "SHORT")
         self.assertTrue(st.partial_tp_taken)
+
+    def test_full_close_resets_partial_tp_flag(self):
+        state = _bought_state(self.db, qty=2.0, entry=2000.0)
+        self.assertTrue(
+            self.eng.execute_partial_tp(
+                state, 2240.0, fraction=0.5, threshold_pct=12.0, symbol="XAUUSDT"
+            )
+        )
+        self.assertTrue(self.db.get_trade_state("XAUUSDT").partial_tp_taken)
+
+        closed = self.db.close_position_atomic(
+            "XAUUSDT",
+            side="BUY",
+            amount=1.0,
+            entry_price=2000.0,
+            exit_price=2100.0,
+            entry_cost=2000.0,
+            gross_exit=2100.0,
+            net_pnl=90.0,
+            net_pnl_pct=4.5,
+            trigger="full close",
+        )
+        self.assertTrue(closed)
+        st = self.db.get_trade_state("XAUUSDT")
+        self.assertEqual(st.state, "idle")
+        self.assertFalse(st.partial_tp_taken)
+
+    def test_short_close_partial_fill_keeps_short_remainder(self):
+        self.broker.fill_qty = 0.75
+        state = _bought_state(self.db, side="SHORT", qty=2.0, entry=2000.0, funding=4.0)
+        ok = self.eng.execute_close_short(
+            state, 1900.0, trigger_reason="reverse close", symbol="XAUUSDT"
+        )
+        self.assertTrue(ok)
+        st = self.db.get_trade_state("XAUUSDT")
+        self.assertEqual(st.state, "bought")
+        self.assertEqual(st.position_side, "SHORT")
+        self.assertAlmostEqual(st.quantity, 1.25)
+        trade = self.db.get_closed_trades("XAUUSDT", limit=1)[0]
+        self.assertEqual(trade["side"], "SHORT")
+        self.assertAlmostEqual(trade["amount"], 0.75)
+        self.assertTrue(any(payload.get("partial") for _, payload in self.eng.events))
 
     def test_one_shot_flag_blocks_second_fire(self):
         state = _bought_state(self.db)
