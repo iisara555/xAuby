@@ -24,6 +24,46 @@ from xauby.api.utils import round_step
 logger = logging.getLogger("lite_bot")
 
 
+def estimate_net_unrealized_pnl(
+    state: Dict[str, Any],
+    *,
+    mark_price: float,
+    fee_pct: float,
+) -> Dict[str, float]:
+    entry = float(state.get("entry_price") or 0.0)
+    qty = float(state.get("quantity") or 0.0)
+    mark = float(mark_price or 0.0)
+    fee = max(0.0, float(fee_pct or 0.0))
+    if entry <= 0 or qty <= 0 or mark <= 0 or str(state.get("state") or "") != "bought":
+        return {
+            "gross_pnl": 0.0,
+            "entry_fee": 0.0,
+            "exit_fee": 0.0,
+            "total_fees": 0.0,
+            "funding_paid": float(state.get("funding_paid") or 0.0),
+            "net_pnl": 0.0,
+            "net_pnl_pct": 0.0,
+        }
+    side = str(state.get("position_side") or "LONG").upper()
+    direction = -1.0 if side == "SHORT" else 1.0
+    entry_notional = entry * qty
+    exit_notional = mark * qty
+    gross = direction * (mark - entry) * qty
+    entry_fee = entry_notional * fee
+    exit_fee = exit_notional * fee
+    funding_paid = float(state.get("funding_paid") or 0.0)
+    net = gross - entry_fee - exit_fee - funding_paid
+    return {
+        "gross_pnl": gross,
+        "entry_fee": entry_fee,
+        "exit_fee": exit_fee,
+        "total_fees": entry_fee + exit_fee,
+        "funding_paid": funding_paid,
+        "net_pnl": net,
+        "net_pnl_pct": (net / entry_notional * 100.0) if entry_notional > 0 else 0.0,
+    }
+
+
 class LoopMixin:
     def _wait_for_sl_replacement_balance(
         self,
@@ -511,11 +551,12 @@ class LoopMixin:
             base_qty = float(totals.get(base, 0.0) or 0.0)
             st = self.db.get_trade_state(sym)
         base_value = base_qty * price if price > 0 else 0.0
-        unrealized = 0.0
-        if st.get("state") == "bought" and price > 0:
-            direction = -1.0 if str(st.get("position_side") or "LONG").upper() == "SHORT" else 1.0
-            unrealized = direction * (price - float(st["entry_price"])) * float(st["quantity"])
-        exposure = base_value + unrealized
+        pnl = estimate_net_unrealized_pnl(
+            st,
+            mark_price=price,
+            fee_pct=self._symbol_fee_pct(sym),
+        )
+        exposure = base_value + float(pnl["net_pnl"])
         portfolio_total = self.get_portfolio_equity_total()
         return {
             "portfolio_total_usdt": round(portfolio_total, 2),
@@ -523,7 +564,9 @@ class LoopMixin:
             "base_asset": base,
             "base_quantity": round(base_qty, 8),
             "base_value_usdt": round(base_value, 2),
-            "unrealized_pnl_usdt": round(unrealized, 2),
+            "unrealized_pnl_usdt": round(float(pnl["net_pnl"]), 2),
+            "unrealized_pnl_gross_usdt": round(float(pnl["gross_pnl"]), 2),
+            "estimated_total_fees_usdt": round(float(pnl["total_fees"]), 2),
             "symbol_exposure_usdt": round(exposure, 2),
         }
 
@@ -864,14 +907,11 @@ class LoopMixin:
 
         equity_breakdown = self.get_symbol_equity_breakdown(sym)
         portfolio_total = float(equity_breakdown.get("portfolio_total_usdt", 0.0))
-        pos_unrealized_pnl = 0.0
-        pos_unrealized_pnl_pct = 0.0
-        if state["state"] == "bought" and current_price > 0:
-            _ep = float(state.get("entry_price") or 0.0)
-            _qty = float(state.get("quantity") or 0.0)
-            direction = -1.0 if str(state.get("position_side") or "LONG").upper() == "SHORT" else 1.0
-            pos_unrealized_pnl = direction * (current_price - _ep) * _qty
-            pos_unrealized_pnl_pct = direction * ((current_price - _ep) / _ep) * 100 if _ep > 0 else 0.0
+        unrealized = estimate_net_unrealized_pnl(
+            state,
+            mark_price=current_price,
+            fee_pct=self._symbol_fee_pct(sym),
+        )
 
         reg = sc.current_regime
         exchange_cfg = self.config.get("exchange") or {}
@@ -924,8 +964,12 @@ class LoopMixin:
                 "take_profit": state["take_profit"],
                 "highest_price_seen": state["highest_price_seen"],
                 "quantity": state["quantity"],
-                "unrealized_pnl": pos_unrealized_pnl,
-                "unrealized_pnl_pct": pos_unrealized_pnl_pct,
+                "unrealized_pnl": unrealized["net_pnl"],
+                "unrealized_pnl_pct": unrealized["net_pnl_pct"],
+                "unrealized_pnl_gross": unrealized["gross_pnl"],
+                "estimated_entry_fee": unrealized["entry_fee"],
+                "estimated_exit_fee": unrealized["exit_fee"],
+                "estimated_total_fees": unrealized["total_fees"],
                 "opened_at": state["opened_at"],
                 "stop_loss_order_id": state.get("stop_loss_order_id"),
                 "position_side": state.get("position_side", "LONG"),
@@ -2002,6 +2046,93 @@ class LoopMixin:
 
         atr = float(signal.volatility) if signal.volatility else 0.0
 
+        def reverse_entry_block_reason(reverse_open_count: int) -> Optional[str]:
+            if guard_enabled and guard_applies:
+                threshold = float(
+                    self.config.get("macro_sentiment_guard", {}).get("blocking_threshold", -0.5)
+                )
+                if guard_score < threshold:
+                    self._emit_event(
+                        EventType.GUARD_BLOCKED,
+                        score=round(guard_score, 3),
+                        threshold=threshold,
+                        symbol=sym,
+                    )
+                    return f"Blocked by Macro Sentiment Guard ({guard_score:+.2f})"
+            from xauby.runtime.telegram_control import trading_pause_reason
+
+            paused, pause_reason = trading_pause_reason()
+            if paused:
+                reason_txt = f"Blocked: Telegram pause ({pause_reason})"
+                self._emit_event(EventType.GUARD_BLOCKED, reason=reason_txt, symbol=sym)
+                return reason_txt
+            if sc.blocks_new_entries():
+                reason_txt = f"Blocked: RegimeRouter {sc.no_trade_state}"
+                self._emit_event(EventType.GUARD_BLOCKED, reason=reason_txt, symbol=sym)
+                return reason_txt
+            if reverse_open_count >= max_open:
+                return f"Blocked: max open positions ({max_open})"
+            blocked, block_reason = self._is_buy_blocked_by_cooldown(symbol=sym)
+            if blocked:
+                self._emit_event(
+                    EventType.COOLDOWN_BLOCKED,
+                    reason=block_reason,
+                    symbol=sym,
+                )
+                return block_reason
+            with self._ws_status_lock:
+                ws_disconnected_at = self._ws_disconnected_at
+            if ws_disconnected_at > 0 and (
+                time.time() - ws_disconnected_at < self._ws_buy_block_seconds
+            ):
+                reason_txt = "Blocked: WebSocket reconnect cooldown"
+                self._emit_event(
+                    EventType.COOLDOWN_BLOCKED,
+                    reason="WebSocket reconnect cooldown",
+                    symbol=sym,
+                )
+                return reason_txt
+            return None
+
+        def open_reverse_after_close(close_ok: bool) -> None:
+            if not close_ok:
+                return
+            metadata = signal.metadata if isinstance(getattr(signal, "metadata", None), dict) else {}
+            reverse_side = str(metadata.get("reverse_to_position_side") or "").upper()
+            if reverse_side not in {"LONG", "SHORT"}:
+                return
+            refreshed = self.db.get_trade_state(sym)
+            if refreshed.get("state") != "idle":
+                logger.warning(
+                    "Reverse open blocked for %s: state after close is %s",
+                    sym,
+                    refreshed.get("state"),
+                )
+                return
+            reverse_open_count = sum(
+                1
+                for s in self._pair_registry.active()
+                if self.db.get_trade_state(s.symbol).get("state") == "bought"
+            )
+            block_reason = reverse_entry_block_reason(reverse_open_count)
+            if block_reason:
+                logger.warning("Reverse open blocked for %s: %s", sym, block_reason)
+                return
+            reverse_reason = str(metadata.get("reverse_reason") or signal.reason or "")
+            logger.info("Stop-and-reverse opening %s on %s: %s", reverse_side, sym, reverse_reason)
+            if reverse_side == "SHORT":
+                self.execute_open_short(signal, ticker_price, symbol=sym)
+                return
+            self.execute_buy(
+                ticker_price,
+                atr,
+                signal_stop_loss_price=signal.stop_loss_price,
+                signal_stop_loss_distance=signal.stop_loss_distance,
+                symbol=sym,
+                risk_pct_override=regime_risk_override,
+                sl_atr_mult_delta=regime_sl_delta,
+            )
+
         if self.trading_mode == "semi_auto":
             state = self._process_semi_auto_idle(
                 state, action, ticker_price, atr, signal, symbol=sym
@@ -2020,9 +2151,10 @@ class LoopMixin:
             )
         if action == "SELL" and state["state"] == "bought":
             if str(state.get("position_side") or "LONG").upper() == "SHORT":
-                self.execute_close_short(state, ticker_price, trigger_reason=reason, symbol=sym)
+                closed = self.execute_close_short(state, ticker_price, trigger_reason=reason, symbol=sym)
             else:
-                self.execute_sell(state, ticker_price, trigger_reason=reason, symbol=sym)
+                closed = self.execute_sell(state, ticker_price, trigger_reason=reason, symbol=sym)
+            open_reverse_after_close(closed)
         elif action == "BUY" and state["state"] == "idle" and signal_side == "SHORT":
             self.execute_open_short(signal, ticker_price, symbol=sym)
         elif state["state"] == "bought":

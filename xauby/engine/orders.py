@@ -347,6 +347,66 @@ class OrderMixin:
         funding_share = funding * min(1.0, filled_qty / qty) if funding else 0.0
         net_pnl = (exit_price - entry) * filled_qty - entry_fee - exit_fee - funding_share
         net_pct = net_pnl / entry_notional * 100.0 if entry_notional else 0.0
+        remaining_qty = max(0.0, qty - filled_qty)
+        min_remaining_qty = self._min_tradeable_base_qty(sym, exit_price)
+        remaining_is_tradeable = (
+            remaining_qty > 0.0001
+            and (min_remaining_qty <= 0 or remaining_qty >= min_remaining_qty)
+        )
+        if remaining_is_tradeable:
+            if not self._record_partial_closed_trade(
+                state,
+                filled_qty,
+                exit_price,
+                trigger_reason,
+                entry_fee=entry_fee,
+                exit_fee=exit_fee,
+                symbol=sym,
+                side="BUY",
+                funding_share=funding_share,
+            ):
+                return False
+            now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+            new_sl_res = self._place_sl_with_retry(
+                remaining_qty, float(state.get("stop_loss", 0.0) or 0.0), symbol=sym
+            )
+            new_sl_order_id = new_sl_res[0] if new_sl_res else None
+            self.db.save_trade_state(
+                symbol=sym,
+                state="bought",
+                entry_price=entry,
+                stop_loss=state.get("stop_loss", 0.0),
+                take_profit=state.get("take_profit", 0.0),
+                highest_price_seen=state.get("highest_price_seen", entry),
+                quantity=remaining_qty,
+                opened_at=state.get("opened_at"),
+                last_transition_at=now_iso,
+                stop_loss_order_id=new_sl_order_id,
+                position_side="LONG",
+                leverage=state.get("leverage", 1.0),
+                margin_mode=state.get("margin_mode", "spot"),
+                funding_paid=funding - funding_share,
+            )
+            base_coin = self._get_base_asset(sym)
+            msg = (
+                f"🔴 [LIVE SELL PARTIAL] Exit {filled_qty:.6f} {base_coin} @ {exit_price:.2f} USDT "
+                f"| Remaining: {remaining_qty:.6f} {base_coin} | Trigger: {trigger_reason} "
+                f"| PnL: {net_pnl:+.2f} USDT"
+            )
+            logger.info(msg)
+            self.last_log_message = msg
+            self.send_telegram_alert(msg)
+            self._emit_event(
+                EventType.POSITION_CLOSED,
+                symbol=sym,
+                position_side="LONG",
+                exit=exit_price,
+                pnl=round(net_pnl, 2),
+                pnl_pct=round(net_pct, 2),
+                trigger=trigger_reason,
+                partial=True,
+            )
+            return True
         ok = self.db.close_position_atomic(
             sym, side="BUY", amount=filled_qty, entry_price=entry, exit_price=exit_price,
             entry_cost=entry_notional, gross_exit=exit_notional,
@@ -361,11 +421,15 @@ class OrderMixin:
                 symbol=sym, kind="long exit",
             ) if not self._use_sim_broker(sym) else 0.0
             self._emit_event(EventType.POSITION_CLOSED, symbol=sym, position_side="LONG",
-                             exit=exit_price, pnl=net_pnl, pnl_pct=net_pct,
+                             exit=exit_price, pnl=round(net_pnl, 2), pnl_pct=round(net_pct, 2),
                              trigger=trigger_reason, slippage_bps=slip_bps)
-            self.send_telegram_alert(
-                f"LONG CLOSE {sym} @ {exit_price:.4f} | PnL {net_pnl:+.2f} ({net_pct:+.2f}%)"
+            base_coin = self._get_base_asset(sym)
+            msg = (
+                f"🔴 [LIVE SELL FILLED] Exit {filled_qty:.6f} {base_coin} @ {exit_price:.2f} USDT "
+                f"| Trigger: {trigger_reason} | PnL: {net_pnl:+.2f} USDT ({net_pct:+.2f}%)"
             )
+            self.last_log_message = msg
+            self.send_telegram_alert(msg)
         return ok
 
     def execute_partial_tp(

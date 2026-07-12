@@ -526,6 +526,38 @@ class PositionSimulator:
             return self._manage_short(events, pos, open_p, high, low, atr, bar_time, signal)
         return self._manage_long(events, pos, open_p, high, atr, bar_time, signal)
 
+    @staticmethod
+    def _reverse_side(signal: Signal) -> str:
+        metadata = signal.metadata if isinstance(signal.metadata, dict) else {}
+        return str(metadata.get("reverse_to_position_side") or "").upper()
+
+    def _open_reverse_from_signal(
+        self,
+        events: List[Dict[str, Any]],
+        *,
+        open_p: float,
+        atr: float,
+        bar_time: int,
+        signal: Signal,
+    ) -> None:
+        side = self._reverse_side(signal)
+        opened = False
+        if side == "SHORT":
+            opened = self.try_open_short(open_p, atr, bar_time, signal=signal)
+        elif side == "LONG":
+            opened = self.try_open(open_p, atr, bar_time, signal=signal)
+        if opened:
+            events.append(
+                {
+                    "event_type": "position_opened",
+                    "entry": open_p,
+                    "stop_loss": self.position.stop_loss,
+                    "qty": self.position.qty,
+                    "side": side,
+                    "trigger": "REVERSE",
+                }
+            )
+
     def _manage_long(
         self,
         events: List[Dict[str, Any]],
@@ -556,6 +588,14 @@ class PositionSimulator:
                 trigger_type = "TRAILING_STOP" if pos.stop_loss >= pos.entry_price else "STOP_LOSS"
             self._close(open_p, bar_time, trigger_type)
             events.append({"event_type": "position_closed", "exit": open_p})
+            if trigger_type == "SIGNAL":
+                self._open_reverse_from_signal(
+                    events,
+                    open_p=open_p,
+                    atr=atr,
+                    bar_time=bar_time,
+                    signal=signal,
+                )
             return events
 
         # Engine-managed fixed take-profit (mirrors live ``price >= take_profit``).
@@ -642,6 +682,14 @@ class PositionSimulator:
                 trigger_type = "TRAILING_STOP" if pos.stop_loss <= pos.entry_price else "STOP_LOSS"
             self._close(open_p, bar_time, trigger_type)
             events.append({"event_type": "position_closed", "exit": open_p})
+            if trigger_type == "SIGNAL":
+                self._open_reverse_from_signal(
+                    events,
+                    open_p=open_p,
+                    atr=atr,
+                    bar_time=bar_time,
+                    signal=signal,
+                )
             return events
 
         # Fixed take-profit sits BELOW entry for a short.

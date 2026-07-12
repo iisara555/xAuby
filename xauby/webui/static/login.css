@@ -191,6 +191,69 @@ body.login-body::after {
   gap: 8px;
 }
 
+.login-body .login-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  gap: 10px;
+  box-sizing: border-box;
+  border: 1px solid rgba(248, 244, 238, 0.14);
+  border-radius: 999px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #15171d;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 13px 26px rgba(0, 0, 0, 0.18);
+}
+
+.login-body .login-google[hidden],
+.login-body .login-separator[hidden],
+.login-body .login-field[hidden],
+.login-body .login-card button[hidden] {
+  display: none;
+}
+
+.login-body .login-google:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px rgba(151, 174, 240, 0.2), 0 13px 26px rgba(0, 0, 0, 0.18);
+}
+
+.login-body .login-google-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #4285f4, #34a853 45%, #fbbc05 72%, #ea4335);
+  color: #fff;
+  font-family: Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.login-body .login-separator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: rgba(248, 244, 238, 0.42);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.login-body .login-separator::before,
+.login-body .login-separator::after {
+  height: 1px;
+  background: rgba(248, 244, 238, 0.11);
+  content: "";
+}
+
 .login-body .login-card label {
   color: rgba(248, 244, 238, 0.68);
   font-size: 10px;

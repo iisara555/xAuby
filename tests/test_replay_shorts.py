@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 from xauby.observability.replay import PositionSimulator, ReplayEngine
-from xauby.strategies.signal import close_short, hold, open_short
+from xauby.strategies.signal import buy, close_short, hold, open_short, sell
 
 
 def _sim(**kw):
@@ -87,6 +87,52 @@ class TestShortExits(unittest.TestCase):
         self.assertLess(sim.position.stop_loss, start_sl)
         # candidate = lowest(90) + atr(2)*1.0 = 92.
         self.assertAlmostEqual(sim.position.stop_loss, 92.0)
+
+
+class TestStopAndReverseReplay(unittest.TestCase):
+    def test_long_signal_close_reverses_to_short_same_bar(self):
+        sim = _sim()
+        sim.on_bar(open_p=100.0, high=100.0, low=100.0, close=100.0, atr=5.0,
+                   zone="", bar_time=1, signal=buy("fresh green", volatility=5.0))
+
+        ev = sim.on_bar(
+            open_p=98.0, high=99.0, low=96.0, close=97.0, atr=5.0,
+            zone="RED", bar_time=2,
+            signal=sell(
+                "4H zone turned RED",
+                volatility=5.0,
+                metadata={"reverse_to_position_side": "SHORT"},
+            ),
+        )
+
+        event_types = [e["event_type"] for e in ev]
+        self.assertEqual(event_types[-2:], ["position_closed", "position_opened"])
+        self.assertTrue(sim.has_position)
+        self.assertEqual(sim.position.side, -1)
+        self.assertEqual(ev[-1]["side"], "SHORT")
+        self.assertEqual(ev[-1]["trigger"], "REVERSE")
+
+    def test_short_signal_close_reverses_to_long_same_bar(self):
+        sim = _sim()
+        sim.on_bar(open_p=100.0, high=100.0, low=100.0, close=100.0, atr=5.0,
+                   zone="", bar_time=1, signal=open_short("fresh red", volatility=5.0))
+
+        ev = sim.on_bar(
+            open_p=102.0, high=103.0, low=101.0, close=102.5, atr=5.0,
+            zone="GREEN", bar_time=2,
+            signal=close_short(
+                "4H zone turned GREEN",
+                volatility=5.0,
+                metadata={"reverse_to_position_side": "LONG"},
+            ),
+        )
+
+        event_types = [e["event_type"] for e in ev]
+        self.assertEqual(event_types[-2:], ["position_closed", "position_opened"])
+        self.assertTrue(sim.has_position)
+        self.assertEqual(sim.position.side, 1)
+        self.assertEqual(ev[-1]["side"], "LONG")
+        self.assertEqual(ev[-1]["trigger"], "REVERSE")
 
 
 class TestShortReplayEngine(unittest.TestCase):

@@ -421,77 +421,90 @@ class CDCActionZoneStrategy(Strategy):
                 )
             return None
 
+        def long_entry_signal() -> Signal:
+            if require_fresh_zone and green_streak > fresh_zone_window:
+                return hold(
+                    f"4H zone GREEN but not fresh "
+                    f"(green for {green_streak} bars > window {fresh_zone_window})",
+                    **common,
+                )
+            ema_ok, ema_reason = self._ema_cross_check(
+                ema_fast, ema_slow, ema_fast_prev, ema_slow_prev,
+                green_streak=green_streak,
+                fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
+            )
+            if not ema_ok:
+                return hold(f"EMA cross check failed: {ema_reason}", **common)
+            if use_d1_regime:
+                d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
+                if d1_zone not in ("GREEN", "YELLOW", "ORANGE"):
+                    return hold(f"Daily regime filter blocked (D1 zone: {d1_zone})", **common)
+            blocked = slope_blocks(+1)
+            if blocked is not None:
+                return blocked
+            blocked = filters_pass()
+            if blocked is not None:
+                return blocked
+            return buy(
+                reason=(
+                    f"Fresh long entry (4H={h4_zone}, streak={green_streak}/{fresh_zone_window}, "
+                    f"D1={indicators.get('cdc_zone_d1', 'N/A')}, "
+                    f"RSI={rsi:.1f}, Vol={vol_ratio:.2f}x)"
+                ),
+                confidence=0.7,
+                **common,
+            )
+
+        def short_entry_signal() -> Signal:
+            if require_fresh_zone and red_streak > fresh_zone_window:
+                return hold(
+                    f"4H zone RED but not fresh "
+                    f"(red for {red_streak} bars > window {fresh_zone_window})",
+                    **common,
+                )
+            ema_ok, ema_reason = self._ema_cross_check_bear(
+                ema_fast, ema_slow, ema_fast_prev, ema_slow_prev,
+                red_streak=red_streak,
+                fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
+            )
+            if not ema_ok:
+                return hold(f"Bearish EMA cross check failed: {ema_reason}", **common)
+            if use_d1_regime:
+                d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
+                if d1_zone not in ("RED", "BLUE", "LBLUE"):
+                    return hold(f"Daily regime filter blocked for short (D1 zone: {d1_zone})", **common)
+            blocked = slope_blocks(-1)
+            if blocked is not None:
+                return blocked
+            blocked = filters_pass(-1)
+            if blocked is not None:
+                return blocked
+            return open_short(
+                reason=(
+                    f"Fresh short entry (4H={h4_zone}, streak={red_streak}/{fresh_zone_window}, "
+                    f"D1={indicators.get('cdc_zone_d1', 'N/A')}, "
+                    f"RSI={rsi:.1f}, Vol={vol_ratio:.2f}x)"
+                ),
+                confidence=0.7,
+                **common,
+            )
+
+        def reverse_metadata(entry: Signal) -> Dict[str, Any]:
+            return {
+                "reverse_to_position_side": entry.position_side,
+                "reverse_reason": entry.reason,
+                "reverse_confidence": entry.confidence,
+            }
+
         # ---------------- ENTRY (no position) ----------------
         if not ctx.has_position:
             # ----- LONG on a fresh GREEN zone -----
             if h4_zone == "GREEN":
-                if require_fresh_zone and green_streak > fresh_zone_window:
-                    return hold(
-                        f"4H zone GREEN but not fresh "
-                        f"(green for {green_streak} bars > window {fresh_zone_window})",
-                        **common,
-                    )
-                ema_ok, ema_reason = self._ema_cross_check(
-                    ema_fast, ema_slow, ema_fast_prev, ema_slow_prev,
-                    green_streak=green_streak,
-                    fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
-                )
-                if not ema_ok:
-                    return hold(f"EMA cross check failed: {ema_reason}", **common)
-                if use_d1_regime:
-                    d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
-                    if d1_zone not in ("GREEN", "YELLOW", "ORANGE"):
-                        return hold(f"Daily regime filter blocked (D1 zone: {d1_zone})", **common)
-                blocked = slope_blocks(+1)
-                if blocked is not None:
-                    return blocked
-                blocked = filters_pass()
-                if blocked is not None:
-                    return blocked
-                return buy(
-                    reason=(
-                        f"Fresh long entry (4H={h4_zone}, streak={green_streak}/{fresh_zone_window}, "
-                        f"D1={indicators.get('cdc_zone_d1', 'N/A')}, "
-                        f"RSI={rsi:.1f}, Vol={vol_ratio:.2f}x)"
-                    ),
-                    confidence=0.7,
-                    **common,
-                )
+                return long_entry_signal()
 
             # ----- SHORT on a fresh RED zone (CDC stop-and-reverse) -----
             if enable_short and h4_zone == "RED":
-                if require_fresh_zone and red_streak > fresh_zone_window:
-                    return hold(
-                        f"4H zone RED but not fresh "
-                        f"(red for {red_streak} bars > window {fresh_zone_window})",
-                        **common,
-                    )
-                ema_ok, ema_reason = self._ema_cross_check_bear(
-                    ema_fast, ema_slow, ema_fast_prev, ema_slow_prev,
-                    red_streak=red_streak,
-                    fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
-                )
-                if not ema_ok:
-                    return hold(f"Bearish EMA cross check failed: {ema_reason}", **common)
-                if use_d1_regime:
-                    d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
-                    if d1_zone not in ("RED", "BLUE", "LBLUE"):
-                        return hold(f"Daily regime filter blocked for short (D1 zone: {d1_zone})", **common)
-                blocked = slope_blocks(-1)
-                if blocked is not None:
-                    return blocked
-                blocked = filters_pass(-1)
-                if blocked is not None:
-                    return blocked
-                return open_short(
-                    reason=(
-                        f"Fresh short entry (4H={h4_zone}, streak={red_streak}/{fresh_zone_window}, "
-                        f"D1={indicators.get('cdc_zone_d1', 'N/A')}, "
-                        f"RSI={rsi:.1f}, Vol={vol_ratio:.2f}x)"
-                    ),
-                    confidence=0.7,
-                    **common,
-                )
+                return short_entry_signal()
 
             return hold(f"4H zone not actionable (current: {h4_zone})", **common)
 
@@ -514,7 +527,19 @@ class CDCActionZoneStrategy(Strategy):
                     **common,
                 )
             if h4_zone == "GREEN":
-                return close_short("4H zone turned GREEN", confidence=0.9, **common)
+                metadata: Dict[str, Any] = {}
+                entry = long_entry_signal()
+                if entry.action == "BUY" and str(entry.intent).upper() == "OPEN":
+                    metadata = reverse_metadata(entry)
+                return close_short(
+                    "4H zone turned GREEN",
+                    confidence=0.9,
+                    metadata=metadata,
+                    stop_loss_price=entry.stop_loss_price,
+                    stop_loss_distance=entry.stop_loss_distance,
+                    trail_distance=entry.trail_distance,
+                    **common,
+                )
             if cfg_bool("exit_on_bear_cross", False) and 0 < ema_slow <= ema_fast:
                 return close_short(
                     f"Bullish EMA cross (EMA12 {ema_fast:.2f} >= EMA26 {ema_slow:.2f})",
@@ -538,7 +563,22 @@ class CDCActionZoneStrategy(Strategy):
             )
 
         if h4_zone == "RED":
-            return sell("4H zone turned RED", confidence=0.9, **common)
+            metadata = {}
+            if enable_short:
+                entry = short_entry_signal()
+                if entry.is_short and str(entry.intent).upper() == "OPEN":
+                    metadata = reverse_metadata(entry)
+            else:
+                entry = hold("SHORT disabled", **common)
+            return sell(
+                "4H zone turned RED",
+                confidence=0.9,
+                metadata=metadata,
+                stop_loss_price=entry.stop_loss_price,
+                stop_loss_distance=entry.stop_loss_distance,
+                trail_distance=entry.trail_distance,
+                **common,
+            )
 
         # TradingView CDC V3 sells on the bearish cross itself; waiting for the
         # RED zone usually exits later (price passes BLUE/LBLUE first).

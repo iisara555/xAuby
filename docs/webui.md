@@ -78,8 +78,9 @@ The browser shows the branded xAuby sign-in page; enter the password from
 `XAUBY_WEBUI_PASSWORD`.
 
 The WebUI refuses non-loopback binds without `XAUBY_WEBUI_PASSWORD` or
-`XAUBY_WEBUI_TOKEN`, unless `XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE=1` is explicitly
-set. Do not use that override on a public VPS.
+`XAUBY_WEBUI_TOKEN`, or configured Google sign-in, unless
+`XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE=1` is explicitly set. Do not use that override
+on a public VPS.
 
 ## Sign-In And Sessions
 
@@ -105,10 +106,41 @@ API and tunnel clients are unaffected: `/api/*` still answers `401` with
 override with `XAUBY_WEBUI_USERNAME`) and `Authorization: Bearer` tokens
 (`XAUBY_WEBUI_TOKEN`) keep working on every endpoint.
 
+## Google Sign-In
+
+Google sign-in is optional and only turns on when all required OAuth settings
+and at least one allowlist are present:
+
+```bash
+export XAUBY_GOOGLE_CLIENT_ID='<google-oauth-client-id>'
+export XAUBY_GOOGLE_CLIENT_SECRET='<google-oauth-client-secret>'
+export XAUBY_GOOGLE_REDIRECT_URI='https://your-host.example/auth/google/callback'
+export XAUBY_GOOGLE_ALLOWED_EMAILS='you@gmail.com'
+# or allow a whole Google Workspace domain:
+export XAUBY_GOOGLE_ALLOWED_DOMAINS='example.com'
+```
+
+Create a Google OAuth client of type **Web application** and add the exact
+`XAUBY_GOOGLE_REDIRECT_URI` value to its Authorized redirect URIs. The callback
+path is:
+
+```text
+/auth/google/callback
+```
+
+For private Tailscale HTTP access, Google OAuth may be easier behind an HTTPS
+front door such as Tailscale Serve or another reverse proxy, because Google
+requires redirect URIs to match the OAuth client configuration exactly. Keep
+`XAUBY_WEBUI_PASSWORD` configured as a fallback unless Google sign-in has been
+tested from every device.
+
 ## Endpoints
 
 - `GET /login` / `POST /login` (sign-in page + form)
 - `GET /logout`
+- `GET /auth/config`
+- `GET /auth/google/start`
+- `GET /auth/google/callback`
 - `GET /api/state`
 - `GET /api/health`
 - `GET /api/recent-events`

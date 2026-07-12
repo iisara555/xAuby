@@ -22,7 +22,8 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from xauby.meta import load_bot_display_name, load_webui_avatar
 from xauby.observability.health import HealthMonitor
@@ -73,8 +74,33 @@ def _webui_auth_from_env() -> tuple[str, str, str]:
     return username, password, bearer_token
 
 
+def _csv_env(name: str) -> set[str]:
+    return {
+        item.strip().lower()
+        for item in os.environ.get(name, "").split(",")
+        if item.strip()
+    }
+
+
+def _google_auth_from_env() -> Dict[str, Any]:
+    allowed_emails = _csv_env("XAUBY_GOOGLE_ALLOWED_EMAILS")
+    allowed_domains = {item.lstrip("@") for item in _csv_env("XAUBY_GOOGLE_ALLOWED_DOMAINS")}
+    client_id = os.environ.get("XAUBY_GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("XAUBY_GOOGLE_CLIENT_SECRET", "").strip()
+    return {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": os.environ.get("XAUBY_GOOGLE_REDIRECT_URI", "").strip(),
+        "allowed_emails": allowed_emails,
+        "allowed_domains": allowed_domains,
+        "enabled": bool(client_id and client_secret and (allowed_emails or allowed_domains)),
+    }
+
+
 _SESSION_COOKIE = "xauby_session"
+_OAUTH_STATE_COOKIE = "xauby_oauth_state"
 _SESSION_TTL_SEC = 7 * 24 * 3600
+_OAUTH_STATE_TTL_SEC = 10 * 60
 # Static paths a browser needs before signing in. Everything else — including
 # /app.js and the operator avatar — stays behind auth so nothing personal or
 # behavioral leaks pre-login.
@@ -83,6 +109,9 @@ _PREAUTH_STATIC = {
     "/login.css",
     "/login.js",
     "/logout",
+    "/auth/config",
+    "/auth/google/start",
+    "/auth/google/callback",
     "/style.css",
     "/xau-logo.svg",
 }
@@ -116,14 +145,77 @@ def _verify_session(secret: bytes, cookie_value: str) -> bool:
     return hmac.compare_digest(sig, expected)
 
 
-def _validate_bind_security(host: str, username: str, password: str, bearer_token: str) -> None:
+def _sign_oauth_state(secret: bytes, state: str, expires_at: int) -> str:
+    msg = f"{state}.{int(expires_at)}".encode("utf-8")
+    sig = hmac.new(secret, msg, "sha256").hexdigest()
+    return f"{state}.{int(expires_at)}.{sig}"
+
+
+def _verify_oauth_state(secret: bytes, cookie_value: str, supplied_state: str) -> bool:
+    raw_state, raw_exp, sig = str(cookie_value or "").rsplit(".", 2) if cookie_value.count(".") >= 2 else ("", "0", "")
+    if not raw_state or not supplied_state or not hmac.compare_digest(raw_state, supplied_state):
+        return False
+    try:
+        expires_at = int(raw_exp)
+    except (TypeError, ValueError):
+        return False
+    if expires_at < time.time():
+        return False
+    expected = hmac.new(
+        secret,
+        f"{raw_state}.{expires_at}".encode("utf-8"),
+        "sha256",
+    ).hexdigest()
+    return hmac.compare_digest(sig, expected)
+
+
+def _google_request_json(url: str, data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    request = Request(url, data=data, headers=headers or {})
+    with urlopen(request, timeout=8) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _google_exchange_code(config: Dict[str, Any], code: str, redirect_uri: str) -> Dict[str, Any]:
+    payload = urlencode(
+        {
+            "code": code,
+            "client_id": config["client_id"],
+            "client_secret": config["client_secret"],
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }
+    ).encode("utf-8")
+    return _google_request_json(
+        "https://oauth2.googleapis.com/token",
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+
+def _google_tokeninfo(id_token: str) -> Dict[str, Any]:
+    return _google_request_json(
+        "https://oauth2.googleapis.com/tokeninfo?" + urlencode({"id_token": id_token})
+    )
+
+
+def _google_email_allowed(config: Dict[str, Any], email: str) -> bool:
+    normalized = str(email or "").strip().lower()
+    if not normalized or "@" not in normalized:
+        return False
+    if normalized in config.get("allowed_emails", set()):
+        return True
+    domain = normalized.rsplit("@", 1)[1]
+    return domain in config.get("allowed_domains", set())
+
+
+def _validate_bind_security(host: str, username: str, password: str, bearer_token: str, google_auth: Optional[Dict[str, Any]] = None) -> None:
     if _is_loopback_host(host):
         return
-    if password or bearer_token or _truthy_env("XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE"):
+    if password or bearer_token or (google_auth or {}).get("enabled") or _truthy_env("XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE"):
         return
     raise ValueError(
         "Refusing to bind xAuby WebUI to a non-loopback host without auth. "
-        "Set XAUBY_WEBUI_PASSWORD or XAUBY_WEBUI_TOKEN, or bind to 127.0.0.1."
+        "Set XAUBY_WEBUI_PASSWORD, XAUBY_WEBUI_TOKEN, Google OAuth env vars, or bind to 127.0.0.1."
     )
 
 
@@ -726,21 +818,30 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         )
 
     def _session_cookie_value(self) -> str:
+        return self._cookie_value(_SESSION_COOKIE)
+
+    def _oauth_state_cookie_value(self) -> str:
+        return self._cookie_value(_OAUTH_STATE_COOKIE)
+
+    def _cookie_value(self, name: str) -> str:
         cookie = SimpleCookie()
         try:
             cookie.load(self.headers.get("Cookie", ""))
         except Exception:
             return ""
-        morsel = cookie.get(_SESSION_COOKIE)
+        morsel = cookie.get(name)
         return morsel.value if morsel else ""
+
+    def _browser_auth_enabled(self) -> bool:
+        return self._password_auth_enabled() or bool(getattr(self, "google_auth", {}).get("enabled"))
 
     def _is_authorized(self) -> bool:
         password = getattr(self, "basic_password", "")
         bearer_token = getattr(self, "bearer_token", "")
-        if not password and not bearer_token:
+        if not password and not bearer_token and not self._browser_auth_enabled():
             return True
 
-        if password and _verify_session(
+        if self._browser_auth_enabled() and _verify_session(
             getattr(self, "session_secret", b""), self._session_cookie_value()
         ):
             return True
@@ -784,16 +885,108 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _session_cookie_header(self, value: str, max_age: int) -> tuple[str, str]:
+    def _cookie_header(self, name: str, value: str, max_age: int, *, http_only: bool = True) -> tuple[str, str]:
         secure = "; Secure" if _truthy_env("XAUBY_WEBUI_COOKIE_SECURE") else ""
+        http_only_flag = "HttpOnly; " if http_only else ""
         return (
             "Set-Cookie",
-            f"{_SESSION_COOKIE}={value}; Path=/; Max-Age={max_age}; "
-            f"HttpOnly; SameSite=Lax{secure}",
+            f"{name}={value}; Path=/; Max-Age={max_age}; "
+            f"{http_only_flag}SameSite=Lax{secure}",
         )
+
+    def _session_cookie_header(self, value: str, max_age: int) -> tuple[str, str]:
+        return self._cookie_header(_SESSION_COOKIE, value, max_age)
+
+    def _oauth_state_cookie_header(self, value: str, max_age: int) -> tuple[str, str]:
+        return self._cookie_header(_OAUTH_STATE_COOKIE, value, max_age)
 
     def _password_auth_enabled(self) -> bool:
         return bool(getattr(self, "basic_password", ""))
+
+    def _google_auth_enabled(self) -> bool:
+        return bool(getattr(self, "google_auth", {}).get("enabled"))
+
+    def _request_origin(self) -> str:
+        scheme = "https" if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else "http"
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or ""
+        return f"{scheme}://{host}"
+
+    def _google_redirect_uri(self) -> str:
+        configured = str(getattr(self, "google_auth", {}).get("redirect_uri") or "").strip()
+        if configured:
+            return configured
+        return self._request_origin().rstrip("/") + "/auth/google/callback"
+
+    def _send_google_start(self) -> None:
+        config = getattr(self, "google_auth", {})
+        if not config.get("enabled"):
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        state = secrets.token_urlsafe(32)
+        expires_at = int(time.time()) + _OAUTH_STATE_TTL_SEC
+        signed_state = _sign_oauth_state(getattr(self, "session_secret", b""), state, expires_at)
+        params = {
+            "client_id": config["client_id"],
+            "redirect_uri": self._google_redirect_uri(),
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "prompt": "select_account",
+        }
+        self._send_redirect(
+            "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params),
+            extra_headers=[self._oauth_state_cookie_header(signed_state, _OAUTH_STATE_TTL_SEC)],
+        )
+
+    def _send_google_callback(self, query: Dict[str, list[str]]) -> None:
+        config = getattr(self, "google_auth", {})
+        if not config.get("enabled"):
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if query.get("error"):
+            self._send_redirect("/login?google_error=1")
+            return
+        code = (query.get("code") or [""])[0]
+        state = (query.get("state") or [""])[0]
+        if not code or not _verify_oauth_state(
+            getattr(self, "session_secret", b""),
+            self._oauth_state_cookie_value(),
+            state,
+        ):
+            self._send_redirect("/login?google_error=state")
+            return
+        try:
+            token_payload = _google_exchange_code(config, code, self._google_redirect_uri())
+            id_token = str(token_payload.get("id_token") or "")
+            if not id_token:
+                raise ValueError("missing id_token")
+            claims = _google_tokeninfo(id_token)
+        except Exception:
+            self._send_redirect("/login?google_error=token")
+            return
+
+        email = str(claims.get("email") or "").strip().lower()
+        aud = str(claims.get("aud") or "")
+        issuer = str(claims.get("iss") or "")
+        email_verified = str(claims.get("email_verified") or "").lower() in {"1", "true", "yes"}
+        if (
+            aud != config.get("client_id")
+            or issuer not in {"accounts.google.com", "https://accounts.google.com"}
+            or not email_verified
+            or not _google_email_allowed(config, email)
+        ):
+            self._send_redirect("/login?google_error=denied")
+            return
+
+        expires_at = int(time.time()) + _SESSION_TTL_SEC
+        session_token = _sign_session(getattr(self, "session_secret", b""), expires_at)
+        self._send_redirect(
+            "/",
+            extra_headers=[
+                self._oauth_state_cookie_header("", 0),
+                self._session_cookie_header(session_token, _SESSION_TTL_SEC),
+            ],
+        )
 
     def _send_static(self, path: str) -> None:
         rel = "index.html" if path in {"", "/"} else path.lstrip("/")
@@ -828,15 +1021,32 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         # Sign-in surface: reachable without auth so the login page can render.
         if path in _PREAUTH_STATIC:
             if path == "/login":
-                if not self._password_auth_enabled():
+                if not self._browser_auth_enabled():
                     self._send_redirect("/")
                     return
                 self._send_static("login.html")
                 return
+            if path == "/auth/config":
+                self._send_json(
+                    {
+                        "google_enabled": self._google_auth_enabled(),
+                        "password_enabled": self._password_auth_enabled(),
+                    }
+                )
+                return
+            if path == "/auth/google/start":
+                self._send_google_start()
+                return
+            if path == "/auth/google/callback":
+                self._send_google_callback(query)
+                return
             if path == "/logout":
                 self._send_redirect(
-                    "/login" if self._password_auth_enabled() else "/",
-                    extra_headers=[self._session_cookie_header("", 0)],
+                    "/login" if self._browser_auth_enabled() else "/",
+                    extra_headers=[
+                        self._session_cookie_header("", 0),
+                        self._oauth_state_cookie_header("", 0),
+                    ],
                 )
                 return
             self._send_static(path)
@@ -924,7 +1134,8 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
 def create_server(host: str, port: int, project_root: str = ".") -> ThreadingHTTPServer:
     root = os.path.abspath(project_root)
     username, password, bearer_token = _webui_auth_from_env()
-    _validate_bind_security(host, username, password, bearer_token)
+    google_auth = _google_auth_from_env()
+    _validate_bind_security(host, username, password, bearer_token, google_auth)
 
     class Handler(XAubyWebUIHandler):
         pass
@@ -934,6 +1145,7 @@ def create_server(host: str, port: int, project_root: str = ".") -> ThreadingHTT
     Handler.basic_username = username
     Handler.basic_password = password
     Handler.bearer_token = bearer_token
+    Handler.google_auth = google_auth
     Handler.session_secret = _session_secret_from_env()
 
     return ThreadingHTTPServer((host, int(port)), Handler)

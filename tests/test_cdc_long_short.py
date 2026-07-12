@@ -137,6 +137,66 @@ class TestCdcLongShort(unittest.TestCase):
         self.assertEqual(sig.intent, TradeIntent.CLOSE.value)
         self.assertEqual(sig.position_side, PositionSide.SHORT.value)
 
+    def test_long_reverse_to_short_on_fresh_red(self):
+        ind = _ind(
+            cdc_zone_4h="RED",
+            cdc_zone_4h_green_streak=0,
+            cdc_zone_4h_red_streak=1,
+            ema_fast_4h=99.0,
+            ema_slow_4h=100.0,
+            ema_fast_4h_prev=101.0,
+            ema_slow_4h_prev=100.0,
+        )
+        with patch(PATCH, return_value=ind):
+            sig = self.strat.analyze(_ctx(has_position=True, position_side="LONG"))
+        self.assertEqual(sig.action, "SELL")
+        self.assertEqual(sig.intent, TradeIntent.CLOSE.value)
+        self.assertEqual(sig.position_side, PositionSide.LONG.value)
+        self.assertEqual(sig.metadata["reverse_to_position_side"], PositionSide.SHORT.value)
+        self.assertIn("Fresh short entry", sig.metadata["reverse_reason"])
+
+    def test_long_stale_red_closes_without_reverse(self):
+        ind = _ind(
+            cdc_zone_4h="RED",
+            cdc_zone_4h_green_streak=0,
+            cdc_zone_4h_red_streak=2,
+            ema_fast_4h=98.0,
+            ema_slow_4h=100.0,
+            ema_fast_4h_prev=99.0,
+            ema_slow_4h_prev=100.0,
+        )
+        with patch(PATCH, return_value=ind):
+            sig = self.strat.analyze(_ctx(has_position=True, position_side="LONG"))
+        self.assertEqual(sig.action, "SELL")
+        self.assertNotIn("reverse_to_position_side", sig.metadata)
+
+    def test_long_red_with_failed_short_gate_closes_without_reverse(self):
+        ind = _ind(
+            cdc_zone_4h="RED",
+            cdc_zone_4h_green_streak=0,
+            cdc_zone_4h_red_streak=1,
+            ema_fast_4h=99.0,
+            ema_slow_4h=100.0,
+            ema_fast_4h_prev=101.0,
+            ema_slow_4h_prev=100.0,
+            rsi_4h=80.0,
+        )
+        ctx = _ctx(has_position=True, position_side="LONG")
+        ctx.config["rsi_short_max"] = 70.0
+        with patch(PATCH, return_value=ind):
+            sig = self.strat.analyze(ctx)
+        self.assertEqual(sig.action, "SELL")
+        self.assertNotIn("reverse_to_position_side", sig.metadata)
+
+    def test_short_reverse_to_long_on_fresh_green(self):
+        with patch(PATCH, return_value=_ind(cdc_zone_4h="GREEN", cdc_zone_4h_green_streak=1)):
+            sig = self.strat.analyze(_ctx(has_position=True, position_side="SHORT"))
+        self.assertEqual(sig.action, "BUY")
+        self.assertEqual(sig.intent, TradeIntent.CLOSE.value)
+        self.assertEqual(sig.position_side, PositionSide.SHORT.value)
+        self.assertEqual(sig.metadata["reverse_to_position_side"], PositionSide.LONG.value)
+        self.assertIn("Fresh long entry", sig.metadata["reverse_reason"])
+
     def test_short_holds_while_red(self):
         with patch(PATCH, return_value=_ind(cdc_zone_4h="RED")):
             sig = self.strat.analyze(_ctx(has_position=True, position_side="SHORT"))

@@ -8,16 +8,25 @@ from unittest.mock import MagicMock, patch
 from xauby.engine.trading import LiteTradingEngine
 from xauby.engine.brokers.sim_broker import SimBroker
 from xauby.database.db import LiteDB
-from tests.mocks import MockExchangeGateway, MockDatabaseRepository, MockNotificationService
+from tests.mocks import (
+    MockExchangeGateway,
+    MockDatabaseRepository,
+    MockNotificationService,
+    install_test_pair,
+)
 
 
 def make_engine():
-    return LiteTradingEngine(
+    engine = LiteTradingEngine(
         config_path="bot_config.yaml",
         client=MockExchangeGateway(),
         db=MockDatabaseRepository(),
         notification_service=MockNotificationService(),
     )
+    install_test_pair(engine, "XAUTUSDT", execution_mode="live")
+    install_test_pair(engine, "BTCUSDT", execution_mode="sim")
+    install_test_pair(engine, "SOLUSDT", execution_mode="live")
+    return engine
 
 
 class TestPerSymbolExecutionGating(unittest.TestCase):
@@ -80,6 +89,7 @@ class TestSellDustDoesNotResurrectPosition(unittest.TestCase):
     def test_dust_clear_skips_sl_restore(self):
         self.engine.client.get_balances = lambda: {"XAUT": {"available": 1e-7, "reserved": 0.0}}
         self.engine.client.get_symbol_filters = lambda s: {"minQty": 0.001, "stepSize": 0.001}
+        self.engine._should_close_long_with_broker = lambda state, symbol: False
         save_state = MagicMock()
         self.engine.db.save_trade_state = save_state
         state = {
@@ -311,6 +321,7 @@ class TestSimSellDisplayedPnlIncludesFees(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.engine = make_engine()
+        install_test_pair(self.engine, "BTCUSDT", execution_mode="live")
         self.engine.db = LiteDB(os.path.join(self.tmp.name, "test.db"))
         self.engine.read_only = False
         self.engine.live_trading_allowed = False
