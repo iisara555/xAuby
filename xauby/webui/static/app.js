@@ -689,6 +689,12 @@ function formatMaybeMoney(value, digits = 2) {
   return fmtMoney(n, digits);
 }
 
+function formatMoneyValue(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "--";
+  return fmtMoney(n, digits);
+}
+
 function formatMaybePrice(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return "--";
@@ -826,6 +832,11 @@ function renderOperatorDetail(detail) {
   setStateClass("signalBadge", signalSemantic(sig.action));
 
   const positionPnl = Number(pos.unrealized_pnl || 0);
+  const grossPnl = Number(pos.unrealized_pnl_gross || 0);
+  const entryFee = Number(pos.estimated_entry_fee || 0);
+  const exitFee = Number(pos.estimated_exit_fee || 0);
+  const totalFees = Number(pos.estimated_total_fees || 0);
+  const fundingPaid = Number(pos.funding_paid || 0);
   const positionSide = String(pos.side || "").toUpperCase();
   renderDetailGrid("positionDetail", [
     {
@@ -840,13 +851,21 @@ function renderOperatorDetail(detail) {
       featured: true,
       status: positionPnl < 0 ? "warn" : positionPnl > 0 ? "ok" : "info",
     },
+    {
+      label: "PnL Breakdown",
+      value: `Gross ${formatMoneyValue(grossPnl)} · Fees ${formatMoneyValue(totalFees)} · Funding ${formatMoneyValue(fundingPaid)}`,
+      wide: true,
+      status: positionPnl < 0 ? "warn" : positionPnl > 0 ? "ok" : "info",
+    },
     { label: "Symbol", value: op.symbol || currentSymbol || "--", compact: true },
     { label: "Quantity", value: Number(pos.quantity) > 0 ? fmtNum(pos.quantity, 6) : "--", compact: true },
     { label: "Entry", value: formatMaybePrice(pos.entry_price) },
     { label: "Mark", value: formatMaybePrice(pos.mark_price) },
-    { label: "Gross PnL", value: formatMaybeMoney(pos.unrealized_pnl_gross), compact: true },
-    { label: "Fees", value: formatMaybeMoney(pos.estimated_total_fees), compact: true },
-    { label: "Funding", value: formatMaybeMoney(pos.funding_paid), compact: true, subtle: true },
+    { label: "Gross PnL", value: formatMoneyValue(grossPnl), compact: true, status: grossPnl < 0 ? "warn" : grossPnl > 0 ? "ok" : "info" },
+    { label: "Entry Fee", value: formatMoneyValue(entryFee), compact: true, subtle: true },
+    { label: "Exit Fee", value: formatMoneyValue(exitFee), compact: true, subtle: true },
+    { label: "Fees Total", value: formatMoneyValue(totalFees), compact: true, status: totalFees > 0 ? "warn" : "info" },
+    { label: "Funding", value: formatMoneyValue(fundingPaid), compact: true, status: fundingPaid > 0 ? "warn" : fundingPaid < 0 ? "ok" : "info" },
     { label: "Opened", value: relativeTime(pos.opened_at), compact: true, subtle: true },
     { label: "Mode", value: [pos.management_mode, pos.margin_mode, Number(pos.leverage) ? `${fmtNum(pos.leverage, 1)}x` : ""].filter(Boolean).join(" · ") || "--", compact: true },
     { label: "SL Order", value: pos.stop_loss_order_id || "--", compact: true, subtle: true },
@@ -1244,11 +1263,13 @@ function updateState(payload) {
   const positionPnl = Number(pos.unrealized_pnl || 0);
   cls("pnlValue", positionOpen ? (positionPnl > 0 ? "positive" : positionPnl < 0 ? "negative" : "neutral") : "neutral");
   const partialTp = partialTpSummary(pos, positionOpen);
+  const grossPnl = Number(pos.unrealized_pnl_gross || 0);
   const estimatedFees = Number(pos.estimated_total_fees || 0);
   const fundingPaid = Number(pos.funding_paid || 0);
   const pnlDetails = [];
-  if (estimatedFees) pnlDetails.push(`fees ${fmtMoney(estimatedFees)}`);
-  if (fundingPaid) pnlDetails.push(`funding ${fmtMoney(fundingPaid)}`);
+  pnlDetails.push(`gross ${formatMoneyValue(grossPnl)}`);
+  pnlDetails.push(`fees ${formatMoneyValue(estimatedFees)}`);
+  pnlDetails.push(`funding ${formatMoneyValue(fundingPaid)}`);
   if (partialTp) pnlDetails.push(partialTp);
   liveText(
     "pnlValue",
