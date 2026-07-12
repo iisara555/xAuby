@@ -9,6 +9,40 @@ from xauby.engine.brokers.base import FillResult, SimPositionLedger
 _ORDER_DONE_STATUSES = ("FILLED", "CANCELED", "REJECTED", "EXPIRED")
 
 
+def _order_attr(order: Any, name: str, default: Any = None) -> Any:
+    if isinstance(order, dict):
+        aliases = {
+            "order_id": ("orderId", "id"),
+            "order_type": ("type", "orderType"),
+            "raw_payload": ("raw",),
+        }
+        if name in order:
+            return order.get(name, default)
+        for key in aliases.get(name, ()):
+            if key in order:
+                return order.get(key, default)
+        return default
+    return getattr(order, name, default)
+
+
+def _avg_fill_price(order: Any, filled_qty: float, fallback: float) -> float:
+    raw = _order_attr(order, "raw_payload", None) or {}
+    if isinstance(order, dict):
+        raw = {**order, **raw}
+    try:
+        quote = float(
+            raw.get("cummulativeQuoteQty", 0.0)
+            or raw.get("cumulativeQuoteQty", 0.0)
+            or raw.get("cost", 0.0)
+            or 0.0
+        )
+        if quote > 0 and filled_qty > 0:
+            return quote / filled_qty
+    except (TypeError, ValueError):
+        pass
+    return float(_order_attr(order, "price", fallback) or fallback)
+
+
 class LiveBroker:
     mode = "live"
 
@@ -85,17 +119,19 @@ class LiveBroker:
         local/exchange position-side mismatch. Poll ``get_order`` instead of
         trusting the initial response.
         """
-        status = str(getattr(order, "status", "") or "").upper()
-        raw = getattr(order, "raw_payload", None) or {}
+        status = str(_order_attr(order, "status", "") or "").upper()
+        raw = _order_attr(order, "raw_payload", None) or {}
+        if isinstance(order, dict):
+            raw = {**order, **raw}
         filled = float(raw.get("executedQty", 0.0) or raw.get("filled", 0.0) or 0.0)
         if status == "FILLED" and filled <= 0:
             # Adapters without granular fill data (or the test gateway) only
             # populate Order.amount on a terminal status — treat that as fully
             # filled rather than misreading "no raw payload" as "not filled".
-            filled = float(getattr(order, "amount", 0.0) or 0.0)
+            filled = float(_order_attr(order, "amount", 0.0) or 0.0)
         elif status != "FILLED":
             filled = 0.0
-        order_id = getattr(order, "order_id", "")
+        order_id = _order_attr(order, "order_id", "")
         if status in _ORDER_DONE_STATUSES or not order_id:
             return status, filled
 
@@ -125,11 +161,12 @@ class LiveBroker:
         if status != "FILLED" or filled_qty <= 0:
             return FillResult(
                 success=False,
-                order_id=order.order_id,
+                order_id=_order_attr(order, "order_id", ""),
                 error=f"open order not confirmed filled (status={status or 'unknown'})",
             )
-        return FillResult(True, qty=filled_qty, price=float(order.price or price),
-                          order_type=order.order_type, order_id=order.order_id)
+        return FillResult(True, qty=filled_qty, price=_avg_fill_price(order, filled_qty, price),
+                          order_type=_order_attr(order, "order_type", "MARKET"),
+                          order_id=_order_attr(order, "order_id", ""))
 
     def execute_close(self, symbol, position_side, qty, price, entry_price, entry_cost, funding_paid=0.0):
         side = "BUY" if str(position_side).upper() == "SHORT" else "SELL"
@@ -138,11 +175,12 @@ class LiveBroker:
             reduce_only=True, amount_in_base=True,
         )
         status, filled_qty = self._confirm_fill(symbol, order)
-        if status != "FILLED" or filled_qty <= 0:
+        if filled_qty <= 0 or status not in {"FILLED", "CANCELED"}:
             return FillResult(
                 success=False,
-                order_id=order.order_id,
+                order_id=_order_attr(order, "order_id", ""),
                 error=f"close order not confirmed filled (status={status or 'unknown'})",
             )
-        return FillResult(True, qty=filled_qty, price=float(order.price or price),
-                          order_type=order.order_type, order_id=order.order_id)
+        return FillResult(True, qty=filled_qty, price=_avg_fill_price(order, filled_qty, price),
+                          order_type=_order_attr(order, "order_type", "MARKET"),
+                          order_id=_order_attr(order, "order_id", ""))

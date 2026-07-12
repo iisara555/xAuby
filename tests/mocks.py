@@ -11,6 +11,8 @@ from xauby.domain.models import Candle, Order, Position, Portfolio
 from xauby.api.interface import IExchangeGateway
 from xauby.storage.interface import IDatabaseRepository
 from xauby.notifications.interface import INotificationService, AlertLevel
+from xauby.runtime.pair_registry import PairSpec
+from xauby.engine.symbol_context import SymbolContext
 
 
 class MockExchangeGateway(IExchangeGateway):
@@ -78,6 +80,28 @@ class MockExchangeGateway(IExchangeGateway):
     def fetch_balances(self) -> Portfolio:
         self.balances_called = True
         return Portfolio(balances={"USDT": 1000.0, "XAUT": 2.0})
+
+
+def install_test_pair(
+    engine: Any,
+    symbol: str,
+    *,
+    strategy_name: str = "xauby_actionzone",
+    execution_mode: str = "sim",
+    allowed_sides: tuple[str, ...] = ("long", "short"),
+    short_live_enabled: bool = True,
+) -> None:
+    sym = symbol.upper().replace("_", "")
+    spec = PairSpec(
+        symbol=sym,
+        strategy_name=strategy_name,
+        execution_mode=execution_mode,
+        allowed_sides=allowed_sides,
+        short_live_enabled=short_live_enabled,
+    )
+    engine._pair_registry.update_spec(spec)
+    engine._strategy_names_by_symbol[sym] = strategy_name
+    engine.contexts[sym] = SymbolContext.from_spec(spec)
 
 
 class MockDatabaseRepository(IDatabaseRepository):
@@ -205,6 +229,7 @@ class MockDatabaseRepository(IDatabaseRepository):
         entry_regime: Optional[str] = None,
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
+        execution_mode: Optional[str] = None,
     ) -> bool:
         self.closed_trades.append({
             "symbol": symbol,
@@ -225,7 +250,17 @@ class MockDatabaseRepository(IDatabaseRepository):
             "entry_regime": entry_regime,
             "exit_regime": exit_regime,
             "strategy_name": strategy_name,
+            "execution_mode": execution_mode,
         })
+        self.trade_state = Position(
+            symbol=symbol,
+            state="idle",
+            entry_price=0.0,
+            stop_loss=0.0,
+            take_profit=0.0,
+            highest_price_seen=0.0,
+            quantity=0.0,
+        )
         return True
 
 

@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, patch
 from xauby.engine.trading import LiteTradingEngine
 from xauby.domain.models import Position
 from xauby.runtime.config_error import ConfigError
-from tests.mocks import MockExchangeGateway, MockDatabaseRepository, MockNotificationService
+from tests.mocks import (
+    MockExchangeGateway,
+    MockDatabaseRepository,
+    MockNotificationService,
+    install_test_pair,
+)
 
 
 
@@ -22,6 +27,7 @@ class TestTradingEngineDecoupling(unittest.TestCase):
             db=self.db,
             notification_service=self.notification,
         )
+        install_test_pair(self.engine, "BTCUSDT", execution_mode="live")
 
     def test_engine_initialization_with_mocks(self):
         # Verify engine uses the injected mocks
@@ -123,6 +129,7 @@ class TestTradingEngineConcurrency(unittest.TestCase):
             db=self.db,
             notification_service=self.notification,
         )
+        install_test_pair(self.engine, "BTCUSDT", execution_mode="sim")
 
     def test_ws_disconnected_at_thread_safety(self):
         """Multiple threads writing _ws_disconnected_at concurrently should not crash."""

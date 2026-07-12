@@ -1,0 +1,27 @@
+:root {
+  color-scheme: dark;
+  background: #161614;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background: #161614;
+}
+
+.site-shell {
+  min-height: 100dvh;
+}
+
+.site-frame {
+  display: block;
+  width: 100%;
+  min-height: 100dvh;
+  border: 0;
+  background: #161614;
+}

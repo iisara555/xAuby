@@ -8,7 +8,7 @@ import time
 import unittest
 from base64 import b64encode
 from urllib.error import HTTPError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 from unittest import mock
 
@@ -34,6 +34,11 @@ class WebUIServerTest(unittest.TestCase):
         os.environ.pop("XAUBY_WEBUI_PASSWORD", None)
         os.environ.pop("XAUBY_WEBUI_TOKEN", None)
         os.environ.pop("XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE", None)
+        os.environ.pop("XAUBY_GOOGLE_CLIENT_ID", None)
+        os.environ.pop("XAUBY_GOOGLE_CLIENT_SECRET", None)
+        os.environ.pop("XAUBY_GOOGLE_REDIRECT_URI", None)
+        os.environ.pop("XAUBY_GOOGLE_ALLOWED_EMAILS", None)
+        os.environ.pop("XAUBY_GOOGLE_ALLOWED_DOMAINS", None)
         self.tmp = tempfile.TemporaryDirectory()
         self.project_root = self.tmp.name
 
@@ -185,6 +190,16 @@ class WebUIServerTest(unittest.TestCase):
 
     def test_webui_allows_remote_bind_with_auth(self):
         with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):
+            server = create_server("0.0.0.0", 0, project_root=self.project_root)
+            server.server_close()
+
+    def test_webui_allows_remote_bind_with_google_auth(self):
+        env = {
+            "XAUBY_GOOGLE_CLIENT_ID": "client.apps.googleusercontent.com",
+            "XAUBY_GOOGLE_CLIENT_SECRET": "secret",
+            "XAUBY_GOOGLE_ALLOWED_EMAILS": "owner@example.com",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
             server = create_server("0.0.0.0", 0, project_root=self.project_root)
             server.server_close()
 
@@ -439,6 +454,11 @@ class WebUILoginTest(unittest.TestCase):
         os.environ.pop("XAUBY_WEBUI_TOKEN", None)
         os.environ.pop("XAUBY_WEBUI_COOKIE_SECURE", None)
         os.environ.pop("XAUBY_WEBUI_SESSION_SECRET", None)
+        os.environ.pop("XAUBY_GOOGLE_CLIENT_ID", None)
+        os.environ.pop("XAUBY_GOOGLE_CLIENT_SECRET", None)
+        os.environ.pop("XAUBY_GOOGLE_REDIRECT_URI", None)
+        os.environ.pop("XAUBY_GOOGLE_ALLOWED_EMAILS", None)
+        os.environ.pop("XAUBY_GOOGLE_ALLOWED_DOMAINS", None)
         self.tmp = tempfile.TemporaryDirectory()
         self.project_root = self.tmp.name
 
@@ -483,6 +503,108 @@ class WebUILoginTest(unittest.TestCase):
         self.assertIn(b"One system.", body)
         self.assertIn("Content-Security-Policy", headers)
         self.assertNotIn("WWW-Authenticate", headers)
+
+    def test_auth_config_reports_google_enabled_only_when_allowlisted(self):
+        env = {
+            "XAUBY_WEBUI_PASSWORD": "pw",
+            "XAUBY_GOOGLE_CLIENT_ID": "client.apps.googleusercontent.com",
+            "XAUBY_GOOGLE_CLIENT_SECRET": "secret",
+            "XAUBY_GOOGLE_ALLOWED_EMAILS": "owner@example.com",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            base = self.serve()
+            status, _, body = self.request(base, "GET", "/auth/config")
+
+        self.assertEqual(status, 200)
+        payload = json.loads(body.decode("utf-8"))
+        self.assertTrue(payload["password_enabled"])
+        self.assertTrue(payload["google_enabled"])
+
+    def test_google_start_redirects_to_google_with_state_cookie(self):
+        env = {
+            "XAUBY_GOOGLE_CLIENT_ID": "client.apps.googleusercontent.com",
+            "XAUBY_GOOGLE_CLIENT_SECRET": "secret",
+            "XAUBY_GOOGLE_REDIRECT_URI": "http://example.test/auth/google/callback",
+            "XAUBY_GOOGLE_ALLOWED_EMAILS": "owner@example.com",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            base = self.serve()
+            status, headers, _ = self.request(base, "GET", "/auth/google/start")
+
+        self.assertEqual(status, 302)
+        location = headers.get("Location", "")
+        self.assertTrue(location.startswith("https://accounts.google.com/o/oauth2/v2/auth?"))
+        self.assertIn("client_id=client.apps.googleusercontent.com", location)
+        self.assertIn("redirect_uri=http%3A%2F%2Fexample.test%2Fauth%2Fgoogle%2Fcallback", location)
+        self.assertIn("xauby_oauth_state=", headers.get("Set-Cookie", ""))
+
+    def test_google_callback_sets_session_cookie_for_allowed_email(self):
+        env = {
+            "XAUBY_GOOGLE_CLIENT_ID": "client.apps.googleusercontent.com",
+            "XAUBY_GOOGLE_CLIENT_SECRET": "secret",
+            "XAUBY_GOOGLE_REDIRECT_URI": "http://example.test/auth/google/callback",
+            "XAUBY_GOOGLE_ALLOWED_EMAILS": "owner@example.com",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            base = self.serve()
+            _, start_headers, _ = self.request(base, "GET", "/auth/google/start")
+            state = parse_qs(urlparse(start_headers["Location"]).query)["state"][0]
+            state_cookie = self.session_cookie(start_headers)
+            with mock.patch("xauby.webui.server._google_exchange_code", return_value={"id_token": "id"}), \
+                 mock.patch(
+                     "xauby.webui.server._google_tokeninfo",
+                     return_value={
+                         "aud": "client.apps.googleusercontent.com",
+                         "iss": "https://accounts.google.com",
+                         "email": "owner@example.com",
+                         "email_verified": "true",
+                     },
+                 ):
+                status, headers, _ = self.request(
+                    base,
+                    "GET",
+                    f"/auth/google/callback?code=ok&state={state}",
+                    headers={"Cookie": state_cookie},
+                )
+            cookie = self.session_cookie(headers)
+            page_status, _, _ = self.request(base, "GET", "/", headers={"Cookie": cookie})
+
+        self.assertEqual(status, 302)
+        self.assertEqual(headers.get("Location"), "/")
+        self.assertIn("xauby_session=", headers.get("Set-Cookie", ""))
+        self.assertEqual(page_status, 200)
+
+    def test_google_callback_rejects_unlisted_email(self):
+        env = {
+            "XAUBY_GOOGLE_CLIENT_ID": "client.apps.googleusercontent.com",
+            "XAUBY_GOOGLE_CLIENT_SECRET": "secret",
+            "XAUBY_GOOGLE_ALLOWED_EMAILS": "owner@example.com",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            base = self.serve()
+            _, start_headers, _ = self.request(base, "GET", "/auth/google/start")
+            state = parse_qs(urlparse(start_headers["Location"]).query)["state"][0]
+            state_cookie = self.session_cookie(start_headers)
+            with mock.patch("xauby.webui.server._google_exchange_code", return_value={"id_token": "id"}), \
+                 mock.patch(
+                     "xauby.webui.server._google_tokeninfo",
+                     return_value={
+                         "aud": "client.apps.googleusercontent.com",
+                         "iss": "https://accounts.google.com",
+                         "email": "other@example.com",
+                         "email_verified": "true",
+                     },
+                 ):
+                status, headers, _ = self.request(
+                    base,
+                    "GET",
+                    f"/auth/google/callback?code=ok&state={state}",
+                    headers={"Cookie": state_cookie},
+                )
+
+        self.assertEqual(status, 302)
+        self.assertEqual(headers.get("Location"), "/login?google_error=denied")
+        self.assertNotIn("xauby_session=", headers.get("Set-Cookie", ""))
 
     def test_html_redirects_to_login_but_api_keeps_401(self):
         with mock.patch.dict(os.environ, {"XAUBY_WEBUI_PASSWORD": "pw"}, clear=False):

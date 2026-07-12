@@ -139,7 +139,7 @@ def entropy(value: str) -> float:
 
 
 def normalize(value: str) -> str:
-    return value.strip().strip("\"'").strip(",")
+    return value.strip().strip("\"'").strip(",;")
 
 
 def is_placeholder(value: str) -> bool:
@@ -170,6 +170,8 @@ def assignment_severity(key: str, value: str) -> str | None:
     key_lower = key.lower()
     normalized = normalize(value)
     if is_placeholder(normalized) or is_code_expression(normalized):
+        return None
+    if key_lower.endswith(".required") and normalized.lower() in {"true", "false"}:
         return None
     if key_lower in {"token", "tokens"} and normalized.lstrip("-").isdigit():
         return None
