@@ -34,7 +34,7 @@ def _candles_df(n: int = 150, price: float = 100.0) -> pd.DataFrame:
 
 
 class TestShortDispatch(unittest.TestCase):
-    def _engine(self, sym="XAUUSDT", state=None):
+    def _engine(self, sym="XAUUSDT", state=None, execution_mode="sim"):
         engine = LiteTradingEngine(
             config_path="bot_config.yaml",
             client=MockExchangeGateway(),
@@ -45,7 +45,7 @@ class TestShortDispatch(unittest.TestCase):
         # Run the pair in sim execution mode so the dispatch is exercised without
         # live client calls (set_leverage/margin) on the mock.
         spec = engine._pair_registry.get(sym)
-        engine._pair_registry.update_spec(replace(spec, execution_mode="sim"))
+        engine._pair_registry.update_spec(replace(spec, execution_mode=execution_mode))
         engine._active_tick_symbol = sym
         if state is not None:
             engine.db.trade_state = state
@@ -64,6 +64,7 @@ class TestShortDispatch(unittest.TestCase):
         *,
         close_to_idle=False,
         close_result=True,
+        refreshed_state_after_close=None,
         extra_patches=(),
     ):
         runner = SimpleNamespace(run=lambda ctx: signal)
@@ -84,7 +85,7 @@ class TestShortDispatch(unittest.TestCase):
             m_buy, m_open_short, m_sell, m_close_short = entered[4:8]
             if close_to_idle:
                 def _mark_idle(*_args, **_kwargs):
-                    engine.db.trade_state = {
+                    engine.db.trade_state = refreshed_state_after_close or {
                         "state": "idle", "entry_price": 0.0, "stop_loss": 0.0,
                         "take_profit": 0.0, "highest_price_seen": 0.0, "quantity": 0.0,
                     }
@@ -155,7 +156,7 @@ class TestShortDispatch(unittest.TestCase):
         calls.sell.assert_called_once()
         calls.open_short.assert_not_called()
 
-    def test_reverse_open_short_is_blocked_by_cooldown_after_close(self):
+    def test_reverse_open_short_bypasses_loss_cooldown_after_close(self):
         long_state = {
             "state": "bought", "position_side": "LONG", "entry_price": 100.0,
             "stop_loss": 0.0, "take_profit": 0.0, "highest_price_seen": 100.0,
@@ -177,6 +178,63 @@ class TestShortDispatch(unittest.TestCase):
                     engine,
                     "_is_buy_blocked_by_cooldown",
                     return_value=(True, "cooldown active"),
+                )
+            ],
+        )
+        calls.sell.assert_called_once()
+        calls.open_short.assert_called_once()
+
+    def test_reverse_open_short_is_blocked_by_local_residual_after_close(self):
+        long_state = {
+            "state": "bought", "position_side": "LONG", "entry_price": 100.0,
+            "stop_loss": 0.0, "take_profit": 0.0, "highest_price_seen": 100.0,
+            "quantity": 1.0, "opened_at": "2026-06-21T00:00:00",
+        }
+        engine, sym = self._engine(state=long_state)
+        signal = sell(
+            "red close",
+            volatility=1.0,
+            metadata={"reverse_to_position_side": "SHORT"},
+        )
+        calls = self._run_tick(
+            engine,
+            sym,
+            signal,
+            close_to_idle=True,
+            refreshed_state_after_close={
+                "state": "idle",
+                "entry_price": 0.0,
+                "stop_loss": 0.0,
+                "take_profit": 0.0,
+                "highest_price_seen": 0.0,
+                "quantity": 0.000001,
+            },
+        )
+        calls.sell.assert_called_once()
+        calls.open_short.assert_not_called()
+
+    def test_reverse_open_short_is_blocked_by_live_exchange_position_after_close(self):
+        long_state = {
+            "state": "bought", "position_side": "LONG", "entry_price": 100.0,
+            "stop_loss": 0.0, "take_profit": 0.0, "highest_price_seen": 100.0,
+            "quantity": 1.0, "opened_at": "2026-06-21T00:00:00",
+        }
+        engine, sym = self._engine(state=long_state, execution_mode="live")
+        signal = sell(
+            "red close",
+            volatility=1.0,
+            metadata={"reverse_to_position_side": "SHORT"},
+        )
+        calls = self._run_tick(
+            engine,
+            sym,
+            signal,
+            close_to_idle=True,
+            extra_patches=[
+                patch.object(
+                    engine.client,
+                    "get_positions",
+                    return_value=[{"symbol": sym, "position_side": "LONG", "quantity": 0.1}],
                 )
             ],
         )
