@@ -14,11 +14,11 @@
       "strategy": "xauby_actionzone",
       "strategy_params": {
         "backtest_data_proxy": "PAXGUSDT",
-        "enable_short": true,
+        "enable_short": false,
         "ap_smoothing": 2,
-        "use_d1_regime_filter": false,
+        "use_d1_regime_filter": true,
         "require_fresh_zone": true,
-        "fresh_zone_window": 1,
+        "fresh_zone_window": 3,
         "rsi_min": 0.0,
         "rsi_max": 100.0,
         "vol_min_ratio": 0.0,
@@ -33,15 +33,19 @@
         "require_slow_slope": true,
         "slow_slope_bars": 3,
         "partial_tp_pct": 12.0,
-        "partial_tp_fraction": 0.5
+        "partial_tp_fraction": 0.5,
+        "minimal_roi": {
+          "0": 8.0,
+          "1440": 5.0,
+          "4320": 3.0
+        }
       },
       "mode": "live",
       "allowed_sides": [
-        "long",
-        "short"
+        "long"
       ],
       "leverage": 1.0,
-      "short_live_enabled": true,
+      "short_live_enabled": false,
       "regime_router_enabled": false,
       "regime_router_live_confirmed": false,
       "sim_fee_pct": 0.05
