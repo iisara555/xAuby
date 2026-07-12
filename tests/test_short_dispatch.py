@@ -42,6 +42,13 @@ class TestShortDispatch(unittest.TestCase):
             notification_service=MockNotificationService(),
         )
         engine.simulate_only = False
+        if execution_mode == "live":
+            # per_symbol_execution_mode demotes a pair's "live" spec back to
+            # "sim" unless live_trading_allowed is also true (base.py
+            # _execution_mode) — set it so exec_mode="live" tests actually
+            # exercise the live-only branches (e.g. exchange flat confirmation)
+            # instead of silently falling through to the sim path.
+            engine.live_trading_allowed = True
         # Run the pair in sim execution mode so the dispatch is exercised without
         # live client calls (set_leverage/margin) on the mock.
         spec = engine._pair_registry.get(sym)
