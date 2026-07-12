@@ -247,7 +247,13 @@ class WebUIServerTest(unittest.TestCase):
                             "mark_price": 4127.1,
                             "stop_loss": 4100.0,
                             "take_profit": 3950.0,
+                            "unrealized_pnl": -0.72,
+                            "unrealized_pnl_pct": -0.53,
+                            "unrealized_pnl_gross": -0.39,
+                            "estimated_entry_fee": 0.12,
+                            "estimated_exit_fee": 0.21,
                             "estimated_total_fees": 0.13,
+                            "funding_paid": 0.2,
                             "feed_health": "OK",
                         },
                         "signal_meta": {
@@ -277,6 +283,11 @@ class WebUIServerTest(unittest.TestCase):
         self.assertEqual(payload["operator"]["symbol"], "XAUTUSDT")
         self.assertTrue(payload["operator"]["position"]["open"])
         self.assertEqual(payload["operator"]["position"]["side"], "SHORT")
+        self.assertEqual(payload["operator"]["position"]["unrealized_pnl_gross"], -0.39)
+        self.assertEqual(payload["operator"]["position"]["estimated_entry_fee"], 0.12)
+        self.assertEqual(payload["operator"]["position"]["estimated_exit_fee"], 0.21)
+        self.assertEqual(payload["operator"]["position"]["estimated_total_fees"], 0.13)
+        self.assertEqual(payload["operator"]["position"]["funding_paid"], 0.2)
         self.assertEqual(payload["regime_detail"]["state"], "BEAR_TREND_WEAK")
         self.assertEqual(payload["activity"]["event_count"], 1)
         self.assertEqual(payload["activity"]["trade_count"], 1)
