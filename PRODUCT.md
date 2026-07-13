@@ -44,8 +44,9 @@ with his own name and photo, not a mass-market exchange app or a
 white-labeled template. The execution matches the project's own marketing
 site: Dieter Rams / Swiss-industrial restraint rather than generic "premium
 fintech minimalism" — a single confident orange accent against a warm
-near-black shell, sharp rectangles instead of rounded cards, hairline
-borders instead of shadows, light cream "paper" surfaces used sparingly for
+near-black shell, a flat 14px corner radius everywhere instead of the old
+tiered 16/24/30px scale, hairline borders instead of shadows, light cream
+"paper" surfaces used sparingly for
 the numbers that matter most (balance, signal), and one display webfont
 (Space Grotesk) used for everything, not just the big figures. Trust comes
 from restraint in what's *shown* (no clutter, no controls) and restraint in
@@ -57,9 +58,10 @@ because it isn't competing with a second one.
 
 - The generic neon-crypto dashboard: purple/cyan gradients, glassmorphism
   cards, glow shadows on everything. (An earlier WebUI iteration leaned this
-  way; the current single-accent, zero-radius, zero-shadow system is the
-  more disciplined alternative — matched to the project's own marketing
-  site rather than invented independently.)
+  way; the current single-accent, zero-shadow system is the more
+  disciplined alternative — matched to the project's own marketing site as
+  it actually renders, corner radius included, rather than invented
+  independently.)
 - A second accent color standing in for "more design": the dashboard
   previously ran an orange-and-blue duotone. That duotone is gone — every
   place blue used to mark "the other half" of a pairing (Position card,

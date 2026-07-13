@@ -3,10 +3,11 @@
 Visual system for the xAuby WebUI (`xauby/webui/static/`). Register: product
 (see PRODUCT.md). Direction: Dieter Rams / Swiss-industrial minimalism,
 matched to the project's marketing site (`Website/public/research-platform.html`)
-— a single confident orange accent on a warm near-black shell, sharp
-rectangles instead of rounded cards, hairline borders instead of shadows.
-Less color, less ornament, more restraint than a conventional fintech
-dashboard — not the previous orange-and-blue duotone.
+as it actually renders — a single confident orange accent on a warm
+near-black shell, a uniform 14px corner radius on every card/button/tile
+instead of the old tiered 16/24/30px scale, hairline borders instead of
+shadows. Less color, less ornament, more restraint than a conventional
+fintech dashboard — not the previous orange-and-blue duotone.
 
 ## Theme
 
@@ -81,16 +82,20 @@ but each view gets its own desktop grid (Overview splits into a balance
 column + chart column; Operator/Regime become 3-column; Signal/Activity
 become 2-column) rather than just scaling the phone layout up.
 
-**Radii are zero everywhere** except literal circles (status LED-adjacent
+**Radii are a flat `14px`** (`--radius-sm` / `--radius-md` / `--radius-lg` all
+resolve to the same value — there is no tiered scale) on every card, panel,
+tile, chip, badge, and input, plus literal circles (status LED-adjacent
 elements, the user's avatar photo, the Google-logo mark) and the bottom-nav
-pill shell, kept as a deliberate, narrow exception because it is a
-functional mobile affordance, not decoration — sharper and flatter than a
-typical dense fintech UI, matching the marketing site's authored template
-exactly (zero radius in its inline styles). Stat tiles are uniform `--tile`
-fills bordered with a 1px hairline (`--line` / `--line-strong`); the hero
-cards (balance, signal hero, the two Activity panels) instead render as
-light cream "paper" with near-black text (`#161614`), a deliberate inversion
-against the dark shell — used sparingly, not on every panel.
+pill shell (`--radius-pill`, 999px) for genuinely round elements. This
+matches the marketing site's *actual rendered* corners, not its raw
+inline-style source — the site's own bundler wrapper forces
+`border-radius: 14px !important` onto everything with a background or
+border (see the site's `<style>` block), so 14px, not zero, is the real
+authored-and-shipped look. Stat tiles are uniform `--tile` fills bordered
+with a 1px hairline (`--line` / `--line-strong`); the hero cards (balance,
+signal hero, the two Activity panels) instead render as light cream "paper"
+with near-black text (`#161614`), a deliberate inversion against the dark
+shell — used sparingly, not on every panel.
 
 **No shadows, no gradients.** Depth and separation come entirely from 1px
 hairline borders and flat background-fill contrast, matching the marketing
@@ -108,14 +113,15 @@ previous system used a glow/lift on hover, the current one shifts
   two-line subtitle) and `cli_ui.webui_avatar`; unset config falls back to
   the bundled gold-coin mark. This is a personalized product, not a
   white-labeled template.
-- **Status pill** (`.status-pill`): a sharp-cornered outline, not a filled
-  pill — orange border/text for LIVE, amber border/text for everything else
-  (SIM, STALE, no-state, offline). No new DOM element was added for this
-  pass; the badge conveys state through border/text color alone, keeping the
-  dashboard's element structure unchanged.
+- **Status pill** (`.status-pill`): a 14px-rounded outline, not a filled
+  capsule — orange border/text for LIVE, amber border/text for everything
+  else (SIM, STALE, no-state, offline). No new DOM element was added for
+  this pass; the badge conveys state through border/text color alone,
+  keeping the dashboard's element structure unchanged.
 - **Health strip**: 2×2 micro-chips (engine / state age / ws age / api),
   durations compacted (`24d`, not raw seconds).
-- **Bottom nav**: fixed pill bar (the one surviving rounded shape), flat
+- **Bottom nav**: fixed full-pill bar (999px, rounder than the 14px used
+  everywhere else — the one place a true capsule shape survives), flat
   translucent fill with a light blur — no gradient, no inset glow; the
   active tab is filled solid orange with dark text.
 - **Balance / Signal-hero / Activity panels**: light cream flat surface,
@@ -131,8 +137,8 @@ previous system used a glow/lift on hover, the current one shifts
   neutral-gray-outlined badge. Accented-vs-neutral replaces
   orange-vs-blue as the way two panels in a group visually differ — there is
   no colored full-bleed fill left anywhere in these panels.
-- **Chips** (`.chip-*` / `.ev-chip`): sharp rectangles, mostly outline-only.
-  Inside the Activity log (light cream background) chips use true green/red
+- **Chips** (`.chip-*` / `.ev-chip`): 14px-rounded rectangles, mostly
+  outline-only. Inside the Activity log (light cream background) chips use true green/red
   for PnL polarity plus the site's own `#e03a10` for the "orange that reads
   on cream" role; everywhere else chips use the orange accent, the neutral
   gray, or amber warn.

@@ -41,7 +41,7 @@ body.login-body::after {
   margin: 0;
   overflow: hidden;
   border: 1px solid #ff431a;
-  border-radius: 0;
+  border-radius: var(--radius-lg, 14px);
   background: #ff431a;
   box-shadow: none;
 }
@@ -165,7 +165,7 @@ body.login-body::after {
   gap: 10px;
   box-sizing: border-box;
   border: 1px solid var(--line, rgba(236, 233, 226, 0.16));
-  border-radius: 0;
+  border-radius: var(--radius-sm, 14px);
   padding: 0 16px;
   background: #ece9e2;
   color: #161614;
@@ -234,7 +234,7 @@ body.login-body::after {
   min-height: 48px;
   box-sizing: border-box;
   border: 1px solid rgba(236, 233, 226, 0.16);
-  border-radius: 0;
+  border-radius: var(--radius-sm, 14px);
   padding: 0 14px;
   background: rgba(236, 233, 226, 0.06);
   color: #ece9e2;
@@ -263,7 +263,7 @@ body.login-body::after {
 .login-body .login-error {
   margin: -6px 0 0;
   border: 1px solid rgba(255, 67, 26, 0.35);
-  border-radius: 0;
+  border-radius: var(--radius-sm, 14px);
   padding: 9px 11px;
   color: #ff6a3c;
   background: rgba(255, 67, 26, 0.1);
@@ -275,7 +275,7 @@ body.login-body::after {
   min-height: 52px;
   margin-top: 8px;
   border: 1px solid #ece9e2;
-  border-radius: 0;
+  border-radius: var(--radius-sm, 14px);
   background: #ece9e2;
   color: #161614;
   font-family: "Space Grotesk", sans-serif;

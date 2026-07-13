@@ -483,7 +483,13 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     ctx.moveTo(x, yHigh);
     ctx.lineTo(x, yLow);
     ctx.stroke();
-    ctx.fillRect(x - bodyW / 2, bodyY, bodyW, bodyH);
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(x - bodyW / 2, bodyY, bodyW, bodyH, Math.min(3, bodyW / 3));
+      ctx.fill();
+    } else {
+      ctx.fillRect(x - bodyW / 2, bodyY, bodyW, bodyH);
+    }
   });
 
   const drawEma = (series, color) => {
@@ -538,7 +544,13 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   ctx.restore();
 
   ctx.fillStyle = "#ff6a3c";
-  ctx.fillRect(labelX, latestY - 12, labelW, 24);
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(labelX, latestY - 12, labelW, 24, 7);
+    ctx.fill();
+  } else {
+    ctx.fillRect(labelX, latestY - 12, labelW, 24);
+  }
   ctx.fillStyle = "#161614";
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);

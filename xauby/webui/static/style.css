@@ -28,9 +28,9 @@
   --warn-tint: rgba(199, 154, 42, 0.14);
   --info: var(--neutral);
   --info-tint: var(--neutral-soft);
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
+  --radius-sm: 14px;
+  --radius-md: 14px;
+  --radius-lg: 14px;
   --radius-pill: 999px;
   --space-1: 4px;
   --space-2: 6px;
@@ -233,7 +233,7 @@ h2 {
 .status-pill,
 .balance-chip,
 .ev-tag {
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   font-weight: 600;
   line-height: 1;
 }
@@ -274,7 +274,7 @@ h2 {
 
 .health-strip span {
   padding: 2px 5px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--tile);
   color: var(--ink-3);
@@ -378,7 +378,7 @@ body[data-view="activity"] [data-section="activity"] {
   position: relative;
   display: grid;
   border-color: var(--cream);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   padding: var(--space-5) var(--space-6) var(--space-4);
   background: var(--cream);
   box-shadow: none;
@@ -494,7 +494,7 @@ body[data-view="activity"] [data-section="activity"] {
   align-content: space-between;
   gap: 2px;
   min-height: 76px;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   padding: var(--space-5) var(--space-5) var(--space-4);
 }
 
@@ -620,7 +620,7 @@ body[data-view="activity"] [data-section="activity"] {
 /* ---------- Panels ---------- */
 
 .panel {
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   padding: var(--space-6) var(--space-5) var(--space-5);
 }
 
@@ -688,7 +688,7 @@ canvas {
 .portfolio-panel .panel-head > span {
   max-width: 48%;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   padding: 6px 10px;
   border: 1px solid var(--line);
   color: var(--ink-2);
@@ -810,7 +810,7 @@ canvas {
 .cdc-detail div,
 .regime-grid > div {
   min-width: 0;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   padding: 7px 9px;
   background: var(--tile);
@@ -890,7 +890,7 @@ body[data-view="signal"] .panel:hover {
   min-height: 112px;
   gap: var(--space-5);
   border: 1px solid var(--cream);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   margin: 0;
   padding: var(--space-5) var(--space-6);
   background: var(--cream);
@@ -901,7 +901,7 @@ body[data-view="signal"] .panel:hover {
   width: 100%;
   max-width: 100%;
   border: 1px solid var(--line);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   padding: var(--space-5);
   background: var(--surface);
   box-shadow: none;
@@ -931,7 +931,7 @@ body[data-view="signal"] .panel:hover {
 .confidence-pill,
 .regime-card .panel-head > span,
 .activity-panel .panel-head > span {
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   padding: 7px 11px;
   font-size: var(--type-caption);
   font-weight: var(--weight-label);
@@ -984,7 +984,7 @@ body[data-view="signal"] .panel:hover {
   align-items: center;
   gap: var(--space-3);
   min-height: 40px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   padding: 8px 10px;
   background: var(--tile);
@@ -1162,7 +1162,7 @@ body[data-view="regime"] [data-section="regime"] > .regime-card.detail-accent-bl
 
 .operator-panel .panel-head > span,
 body[data-view="regime"] [data-section="regime"] > .regime-card .panel-head > span {
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   padding: 7px 11px;
   font-size: var(--type-caption);
   font-weight: var(--weight-label);
@@ -1201,7 +1201,7 @@ body[data-view="regime"] [data-section="regime"] > .regime-card .panel-head > sp
 .reason-item {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   background: var(--tile);
 }
@@ -1942,7 +1942,7 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   place-items: center;
   min-width: 36px;
   height: 24px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   font-size: var(--type-label);
   font-weight: 640;
   letter-spacing: 0;
@@ -2122,7 +2122,7 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
     margin: 0;
     padding: 18px 18px 0;
     border: 1px solid var(--line);
-    border-radius: 0;
+    border-radius: 28px;
     background: var(--bg-1);
     box-shadow: none;
   }
