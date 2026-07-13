@@ -4,10 +4,10 @@ Visual system for the xAuby WebUI (`xauby/webui/static/`). Register: product
 (see PRODUCT.md). Direction: Dieter Rams / Swiss-industrial minimalism,
 matched to the project's marketing site (`Website/public/research-platform.html`)
 as it actually renders — a single confident orange accent on a warm
-near-black shell, a uniform 14px corner radius on every card/button/tile
-instead of the old tiered 16/24/30px scale, hairline borders instead of
-shadows. Less color, less ornament, more restraint than a conventional
-fintech dashboard — not the previous orange-and-blue duotone.
+near-black shell, an 8px corner radius on cards/panels, hairline borders
+instead of shadows, and borderless hairline-row tiles (no boxed stat cells)
+inside detail panels. Less color, less ornament, more restraint than a
+conventional fintech dashboard — not the previous orange-and-blue duotone.
 
 ## Theme
 
@@ -36,12 +36,12 @@ else is a neutral or a state color:**
 | `--cream` | `#ece9e2` | Fill for the two light "paper" surfaces (balance card, signal hero) plus the Activity log panels |
 
 `--pos` and `--neg` both resolve to `--orange` at the root — the dashboard
-does not use green/red for profit/loss on the dark shell. Real green/red
-only show up inside the Activity log (`#116b31` / `#e03a10` text, tinted
-backgrounds), against the light activity-panel fill, for trade PnL chips —
-the one place PRODUCT.md's principle "profit/loss doesn't get its own hue on
-the dark shell" is deliberately not applied, because those rows sit on cream,
-not on `--bg-0`.
+does not use green/red for profit/loss anywhere, including the Activity log.
+The log's cream-background panels were the one earlier exception (true green
+`#116b31` / red `#e03a10` chip text); that exception is gone — trade PnL,
+event chips, and side badges all read as orange (positive / fill-type) or a
+dark-neutral gray (negative / muted) on the cream fill, matching PRODUCT.md's
+principle "profit/loss doesn't get its own hue" without a carve-out.
 
 There is no blue anywhere in this palette. Where the previous duotone used
 `--blue`/`--blue-deep` as the "other half" of a pairing (Position mini-card,
@@ -82,20 +82,22 @@ but each view gets its own desktop grid (Overview splits into a balance
 column + chart column; Operator/Regime become 3-column; Signal/Activity
 become 2-column) rather than just scaling the phone layout up.
 
-**Radii are a flat `14px`** (`--radius-sm` / `--radius-md` / `--radius-lg` all
-resolve to the same value — there is no tiered scale) on every card, panel,
-tile, chip, badge, and input, plus literal circles (status LED-adjacent
-elements, the user's avatar photo, the Google-logo mark) and the bottom-nav
-pill shell (`--radius-pill`, 999px) for genuinely round elements. This
-matches the marketing site's *actual rendered* corners, not its raw
-inline-style source — the site's own bundler wrapper forces
-`border-radius: 14px !important` onto everything with a background or
-border (see the site's `<style>` block), so 14px, not zero, is the real
-authored-and-shipped look. Stat tiles are uniform `--tile` fills bordered
-with a 1px hairline (`--line` / `--line-strong`); the hero cards (balance,
-signal hero, the two Activity panels) instead render as light cream "paper"
-with near-black text (`#161614`), a deliberate inversion against the dark
-shell — used sparingly, not on every panel.
+**Radii are a flat `8px`** (`--radius-sm` / `--radius-md` / `--radius-lg` all
+resolve to the same value) on every card, panel, chip, badge, and input,
+plus literal circles (status LED-adjacent elements, the user's avatar photo,
+the Google-logo mark) and the bottom-nav pill shell (`--radius-pill`, 999px)
+for genuinely round elements. Stat tiles (`.detail-item` / `.protection-item`
+/ `.metric-item` / `.reason-item`) are no longer boxed — they're borderless
+rows separated by a single `border-bottom` hairline (`--line` on dark
+surfaces, a darker rgba on the cream hero cards), so a detail panel reads as
+a flat list rather than a grid of cards; state (`ok`/`warn`/`info`/`muted`)
+is carried by the value text color, not a background fill. The hero cards
+(balance, signal hero, the two Activity panels, Position Detail, Market
+Regime) render as light cream "paper" with near-black text (`#161614`), a
+deliberate inversion against the dark shell — used sparingly, not on every
+panel. Position Detail and Market Regime lead with one large featured
+number (Unrealized PnL; Regime name) followed by two 4-tile groups rather
+than a dense flat grid of every available field.
 
 **No shadows, no gradients.** Depth and separation come entirely from 1px
 hairline borders and flat background-fill contrast, matching the marketing
@@ -113,17 +115,19 @@ previous system used a glow/lift on hover, the current one shifts
   two-line subtitle) and `cli_ui.webui_avatar`; unset config falls back to
   the bundled gold-coin mark. This is a personalized product, not a
   white-labeled template.
-- **Status pill** (`.status-pill`): a 14px-rounded outline, not a filled
+- **Status pill** (`.status-pill`): an 8px-rounded outline, not a filled
   capsule — orange border/text for LIVE, amber border/text for everything
-  else (SIM, STALE, no-state, offline). No new DOM element was added for
-  this pass; the badge conveys state through border/text color alone,
-  keeping the dashboard's element structure unchanged.
+  else (SIM, STALE, no-state, offline), with a small pulsing dot
+  (`.pill-dot`, `currentColor`) inside the pill next to the label.
 - **Health strip**: 2×2 micro-chips (engine / state age / ws age / api),
   durations compacted (`24d`, not raw seconds).
-- **Bottom nav**: fixed full-pill bar (999px, rounder than the 14px used
-  everywhere else — the one place a true capsule shape survives), flat
-  translucent fill with a light blur — no gradient, no inset glow; the
-  active tab is filled solid orange with dark text.
+- **Bottom nav**: a fixed rounded bar (16px radius) holding a horizontally
+  swipeable text-only track — no icons. A fixed orange indicator pill sits
+  at the bar's horizontal center; the five view buttons scroll underneath it
+  via `transform: translateX`, snapping to the nearest view on touch
+  release (drag threshold: nearest of five 80px-wide slots) or on a plain
+  click. The active label inverts to dark text where it sits under the
+  indicator; inactive labels stay a muted cream.
 - **Balance / Signal-hero / Activity panels**: light cream flat surface,
   dark text, no shadow — the app's "trust" surfaces, used for the figures
   that matter most (equity, the current signal, the event/trade logs) rather
@@ -137,19 +141,22 @@ previous system used a glow/lift on hover, the current one shifts
   neutral-gray-outlined badge. Accented-vs-neutral replaces
   orange-vs-blue as the way two panels in a group visually differ — there is
   no colored full-bleed fill left anywhere in these panels.
-- **Chips** (`.chip-*` / `.ev-chip`): 14px-rounded rectangles, mostly
-  outline-only. Inside the Activity log (light cream background) chips use true green/red
-  for PnL polarity plus the site's own `#e03a10` for the "orange that reads
-  on cream" role; everywhere else chips use the orange accent, the neutral
-  gray, or amber warn.
+- **Chips** (`.chip-*` / `.ev-chip`): 8px-rounded rectangles, mostly
+  outline-only. Inside the Activity log (light cream background) event
+  chips are uniformly solid orange with dark text regardless of category —
+  the category distinction lives in the small rail dot next to each row
+  (orange for fill/open-type events, amber for risk events, muted gray for
+  signal/regime/price events) rather than in chip color. Trade side badges
+  (LONG/SHORT) share one neutral chip style, distinguished only by label
+  text. Everywhere else chips use the orange accent, the neutral gray, or
+  amber warn — no green, no red.
 - **Sign-in page** (`login.html`, served at `/login` when a password is set):
   a frameless single-column flow on the same `#161614` canvas as the
-  dashboard. The hero is a flat solid-orange block (no liquid gradient, no
-  animated light streaks) with dark text, matching the mini-card / detail-
-  accent-orange treatment used elsewhere; the primary button is the same
-  flat cream-fill / orange-hover pattern as the marketing site's buttons,
-  not a blue gradient. Space Grotesk is now the sole font here too (the
-  hero previously used a separate Noto Sans face for the summary line).
+  dashboard. The hero is a dark gradient block (`#1e1e1b` → `#161614`, no
+  liquid animation, no light streaks) with cream text and an orange
+  `h1::first-letter`, matching the dark-shell treatment used elsewhere; the
+  primary button is the same flat cream-fill / orange-hover pattern as the
+  marketing site's buttons. Space Grotesk is the sole font here too.
   Login-specific overrides live in `login.css` so dashboard layout rules
   cannot leak into the pre-auth screen. Pre-auth shows only generic
   branding and never exposes runtime state, the operator photo, or the

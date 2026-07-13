@@ -44,15 +44,16 @@ with his own name and photo, not a mass-market exchange app or a
 white-labeled template. The execution matches the project's own marketing
 site: Dieter Rams / Swiss-industrial restraint rather than generic "premium
 fintech minimalism" — a single confident orange accent against a warm
-near-black shell, a flat 14px corner radius everywhere instead of the old
-tiered 16/24/30px scale, hairline borders instead of shadows, light cream
-"paper" surfaces used sparingly for
-the numbers that matter most (balance, signal), and one display webfont
-(Space Grotesk) used for everything, not just the big figures. Trust comes
-from restraint in what's *shown* (no clutter, no controls) and restraint in
-*how* it's shown (one hue, no ornament) rather than from a muted palette —
-the one color allowed on the shell is allowed to be confident precisely
-because it isn't competing with a second one.
+near-black shell, an 8px corner radius on cards and panels, hairline
+borders instead of shadows, borderless hairline-row tiles inside detail
+panels rather than boxed stat cells, light cream "paper" surfaces used
+sparingly for the numbers that matter most (balance, signal, position PnL,
+regime), and one display webfont (Space Grotesk) used for everything, not
+just the big figures. Trust comes from restraint in what's *shown* (no
+clutter, no controls) and restraint in *how* it's shown (one hue, no
+ornament) rather than from a muted palette — the one color allowed on the
+shell is allowed to be confident precisely because it isn't competing with
+a second one.
 
 ## Anti-references
 
@@ -70,7 +71,9 @@ because it isn't competing with a second one.
   already carries brand and status.
 - Exchange-app maximalism: ticker grids, blinking numbers, ten colors per
   screen. (The palette caps at one accent, one neutral, and one warning
-  color; profit/loss does not get its own hue on the dark shell.)
+  color; profit/loss does not get its own hue anywhere, including the
+  Activity log — an earlier iteration carved out true green/red there, that
+  carve-out is gone.)
 - Desktop-admin chrome shrunk onto a phone: sidebars, dense tables, hover-
   dependent affordances.
 
@@ -86,8 +89,9 @@ because it isn't competing with a second one.
    only other color that means "look at this now." Where two halves of a
    pairing need to read as distinct (price vs. position, execution vs.
    risk), the second half is a neutral gray or an unaccented panel, never a
-   second accent hue. Green/red are reserved for the Activity trade log,
-   not used for PnL on the dark shell.
+   second accent hue. Green and red are not used anywhere, including the
+   Activity/Trade log — profit/loss reads as orange (positive) or
+   dark-neutral gray (negative) everywhere in the app.
 3. **Read-only means calm.** No affordances that imply control. No urgency
    theater. Anomalies get loud (amber warn); normal operation stays quiet.
 4. **Phone-native, Safari-first.** Designed for iOS Safari viewport
