@@ -41,25 +41,34 @@ he wants to go deeper than the glance — still without a single control.
 
 Personal, confident, a little bold — this is one man's gold desk, branded
 with his own name and photo, not a mass-market exchange app or a
-white-labeled template. The execution leans warmer and more graphic than
-generic "premium fintech minimalism": a bright orange-and-blue duotone
-against a near-black shell, light cream "paper" cards for the numbers that
-matter most (balance, signal, detail heroes), and a display webfont (Space
-Grotesk) for the big figures. Trust comes from restraint in what's *shown*
-(no clutter, no controls) rather than from a muted palette — the color
-itself is allowed to be confident.
+white-labeled template. The execution matches the project's own marketing
+site: Dieter Rams / Swiss-industrial restraint rather than generic "premium
+fintech minimalism" — a single confident orange accent against a warm
+near-black shell, sharp rectangles instead of rounded cards, hairline
+borders instead of shadows, light cream "paper" surfaces used sparingly for
+the numbers that matter most (balance, signal), and one display webfont
+(Space Grotesk) used for everything, not just the big figures. Trust comes
+from restraint in what's *shown* (no clutter, no controls) and restraint in
+*how* it's shown (one hue, no ornament) rather than from a muted palette —
+the one color allowed on the shell is allowed to be confident precisely
+because it isn't competing with a second one.
 
 ## Anti-references
 
 - The generic neon-crypto dashboard: purple/cyan gradients, glassmorphism
-  cards, glow shadows on everything. (The previous WebUI iteration leaned
-  this way; the current orange/blue duotone is a deliberate, more
-  disciplined alternative — a bold accent color without the
-  gradient-on-everything excess.)
+  cards, glow shadows on everything. (An earlier WebUI iteration leaned this
+  way; the current single-accent, zero-radius, zero-shadow system is the
+  more disciplined alternative — matched to the project's own marketing
+  site rather than invented independently.)
+- A second accent color standing in for "more design": the dashboard
+  previously ran an orange-and-blue duotone. That duotone is gone — every
+  place blue used to mark "the other half" of a pairing (Position card,
+  EMA26, info chips, accent panels) now uses a neutral gray or no color at
+  all, on the theory that a second hue reads as decoration once one hue
+  already carries brand and status.
 - Exchange-app maximalism: ticker grids, blinking numbers, ten colors per
-  screen. (The duotone system intentionally caps the palette at two
-  accents plus one warning color; profit/loss does not get its own hue on
-  the dark shell.)
+  screen. (The palette caps at one accent, one neutral, and one warning
+  color; profit/loss does not get its own hue on the dark shell.)
 - Desktop-admin chrome shrunk onto a phone: sidebars, dense tables, hover-
   dependent affordances.
 
@@ -70,12 +79,13 @@ itself is allowed to be confident.
    equity → position → signal → everything else. The other four tabs trade
    some of that glanceability for detail the same single operator wants on
    demand — each still answers its own one question without scrolling.
-2. **Two accents, everything else is state.** Orange and blue are the
-   brand's duotone, used for identity, navigation, and to distinguish the
-   two halves of a pairing (price vs. position, execution vs. risk); amber
-   warn is the only color that means "look at this now." Green/red are
-   reserved for the Activity trade log, not used for PnL on the dark
-   shell.
+2. **One accent, everything else is state.** Orange is the brand's only
+   accent, used for identity, navigation, and LIVE status; amber warn is the
+   only other color that means "look at this now." Where two halves of a
+   pairing need to read as distinct (price vs. position, execution vs.
+   risk), the second half is a neutral gray or an unaccented panel, never a
+   second accent hue. Green/red are reserved for the Activity trade log,
+   not used for PnL on the dark shell.
 3. **Read-only means calm.** No affordances that imply control. No urgency
    theater. Anomalies get loud (amber warn); normal operation stays quiet.
 4. **Phone-native, Safari-first.** Designed for iOS Safari viewport

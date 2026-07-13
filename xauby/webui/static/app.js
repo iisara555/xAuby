@@ -120,13 +120,13 @@ let latestMarketPrice = null;
 // Canvas can't read CSS custom properties, so chart colors are literal here.
 // Keep in sync with style.css :root —
 //   #ff431a = --orange (brand / up-candles / price line)
-//   #ff7040 = --orange-mid (EMA fast, price pill)
-//   #97aef0 = --blue / --info (down-candles, EMA slow)
-//   #f8f4ee = --cream / --ink-1 (captions; rgba(248,244,238,x) = muted ink)
-//   #161618 = dark ink on accent fills
-// #70e0c2 / #c6b7ff extend the categorical data-viz palette for 5th/6th
-// portfolio assets only (see DESIGN.md) — they are not UI state colors.
-const PORTFOLIO_COLORS = ["#ff431a", "#97aef0", "#ff7040", "#f8f4ee", "#70e0c2", "#c6b7ff"];
+//   #ff6a3c = --orange-mid (EMA fast, price pill)
+//   #8a877f = --neutral / --info (down-candles, EMA slow — no blue in this palette)
+//   #ece9e2 = --cream / --ink-1 (captions; rgba(236,233,226,x) = muted ink)
+//   #161614 = dark ink on accent fills
+// The portfolio donut has no categorical hue palette to draw on (single-accent
+// system), so extra slices step through accent/cream/neutral at two alphas.
+const PORTFOLIO_COLORS = ["#ff431a", "#ece9e2", "#8a877f", "#ff6a3c", "rgba(236,233,226,.55)", "rgba(138,135,127,.55)"];
 
 function timeframeToMinutes(timeframe) {
   const match = /^([0-9]+)\s*([mhdw])$/i.exec(String(timeframe || "").trim());
@@ -428,7 +428,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   const plotW = w - leftPad - rightPad;
   const plotH = h - topPad - bottomPad;
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = "rgba(248, 244, 238, 0.07)";
+  ctx.strokeStyle = "rgba(236, 233, 226, 0.12)";
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 8]);
   for (let i = 1; i < 5; i += 1) {
@@ -469,7 +469,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   candles.forEach((c, i) => {
     const x = leftPad + slot * i + slot / 2;
     const up = c.close >= c.open;
-    const color = up ? "#ff7040" : "#97aef0";
+    const color = up ? "#ff6a3c" : "#8a877f";
     const yOpen = yFor(c.open);
     const yClose = yFor(c.close);
     const yHigh = yFor(c.high);
@@ -483,13 +483,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     ctx.moveTo(x, yHigh);
     ctx.lineTo(x, yLow);
     ctx.stroke();
-    ctx.beginPath();
-    if (ctx.roundRect) {
-      ctx.roundRect(x - bodyW / 2, bodyY, bodyW, bodyH, 2);
-      ctx.fill();
-    } else {
-      ctx.fillRect(x - bodyW / 2, bodyY, bodyW, bodyH);
-    }
+    ctx.fillRect(x - bodyW / 2, bodyY, bodyW, bodyH);
   });
 
   const drawEma = (series, color) => {
@@ -498,8 +492,6 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     ctx.lineWidth = 1.7;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
-    ctx.shadowBlur = 3;
     ctx.beginPath();
     let started = false;
     series.forEach((value, i) => {
@@ -516,10 +508,10 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     if (started) ctx.stroke();
     ctx.restore();
   };
-  drawEma(emaSlow, "rgba(151, 174, 240, 0.76)");
-  drawEma(emaFast, "#ff7040");
+  drawEma(emaSlow, "rgba(138, 135, 127, 0.85)");
+  drawEma(emaFast, "#ff6a3c");
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.62)";
+  ctx.fillStyle = "rgba(236, 233, 226, 0.62)";
   ctx.font = "11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -545,19 +537,13 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   ctx.stroke();
   ctx.restore();
 
-  ctx.fillStyle = "#ff7040";
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(labelX, latestY - 12, labelW, 24, 12);
-    ctx.fill();
-  } else {
-    ctx.fillRect(labelX, latestY - 12, labelW, 24);
-  }
-  ctx.fillStyle = "#161618";
+  ctx.fillStyle = "#ff6a3c";
+  ctx.fillRect(labelX, latestY - 12, labelW, 24);
+  ctx.fillStyle = "#161614";
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.62)";
+  ctx.fillStyle = "rgba(236, 233, 226, 0.62)";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   chartAxisLabels(currentTimeframe, candles.length).forEach((labelText, index) => {
@@ -586,7 +572,7 @@ function drawPortfolio(segments = lastPortfolioSegments) {
 
   ctx.lineWidth = lineWidth;
   ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.strokeStyle = "rgba(236, 233, 226, 0.12)";
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.stroke();
@@ -605,12 +591,12 @@ function drawPortfolio(segments = lastPortfolioSegments) {
     });
   }
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.54)";
+  ctx.fillStyle = "rgba(236, 233, 226, 0.55)";
   ctx.font = "10px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("Portfolio", cx, cy - 7);
-  ctx.fillStyle = "#f8f4ee";
+  ctx.fillStyle = "#ece9e2";
   ctx.font = "600 13px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.fillText(total > 0 ? `${segments.length} Asset${segments.length === 1 ? "" : "s"}` : "--", cx, cy + 9);
 }
