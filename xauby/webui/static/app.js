@@ -173,7 +173,10 @@ function shortStatus(value, fallback = "--") {
   if (raw === "RUNNING") return "RUN";
   if (raw === "DEGRADED") return "DEG";
   if (raw === "STOPPED") return "STOP";
-  return raw;
+  if (raw.includes("ACTIVE")) return "ACT";
+  // Guard against long/unrecognized backend status strings (e.g. a stale
+  // PID fallback message) blowing out the compact health-strip chip.
+  return raw.length > 6 ? `${raw.slice(0, 5)}…` : raw;
 }
 
 function compactTrigger(trigger) {

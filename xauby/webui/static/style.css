@@ -1053,7 +1053,10 @@ body[data-view="signal"] .panel:hover {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--neg);
+  /* --neg aliases --orange on this dark shell (no red/green for pos/neg),
+     so a not-ok dot needs its own muted color or it's indistinguishable
+     from the ok state below. */
+  background: rgba(236, 233, 226, 0.14);
 }
 
 .ok .dot {
@@ -1101,6 +1104,8 @@ body[data-view="signal"] .panel:hover {
   font-size: var(--type-caption);
   font-weight: var(--weight-value);
   line-height: 1.2;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ---------- Operator / Regime detail ---------- */
