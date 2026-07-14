@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/style.css?v=20260713-rams1" />
+    <link rel="stylesheet" href="/style.css?v=20260713-manual1" />
   </head>
   <body data-view="overview">
     <main class="app-shell">
@@ -167,6 +167,32 @@
           <div class="protection-grid" id="protectionDetail"></div>
         </article>
 
+        <article class="panel operator-panel manual-trade-panel detail-accent-orange">
+          <div class="panel-head">
+            <h2>Manual Trade</h2>
+            <span id="manualTradeStatus">LOCKED</span>
+          </div>
+          <div class="manual-trade-summary">
+            <div>
+              <span>Symbol</span>
+              <strong id="manualTradeSymbol">--</strong>
+            </div>
+            <div>
+              <span>Position</span>
+              <strong id="manualTradePosition">--</strong>
+            </div>
+          </div>
+          <div class="manual-mode" id="manualModeControls" aria-label="Manual buy management mode">
+            <button class="active" type="button" data-manual-mode="strategy">Bot-managed</button>
+            <button type="button" data-manual-mode="manual">Manual sell only</button>
+          </div>
+          <div class="manual-actions">
+            <button id="manualBuyButton" class="manual-action buy" type="button">Buy</button>
+            <button id="manualSellButton" class="manual-action sell" type="button">Sell</button>
+          </div>
+          <p class="manual-trade-note" id="manualTradeNote">--</p>
+        </article>
+
         <article class="panel operator-panel detail-accent-orange">
           <div class="panel-head">
             <h2>Execution Health</h2>
@@ -249,6 +275,27 @@
         </div>
       </nav>
     </main>
-    <script type="module" src="/app.js?v=20260713-rams1"></script>
+    <div class="trade-modal" id="manualTradeModal" hidden>
+      <form class="trade-dialog" id="manualTradeForm" autocomplete="off">
+        <div class="trade-dialog-head">
+          <div>
+            <span id="manualTradeModalMode">Manual</span>
+            <h2 id="manualTradeModalTitle">Confirm</h2>
+          </div>
+          <button class="icon-close" id="manualTradeClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="trade-dialog-summary" id="manualTradeModalSummary"></div>
+        <label class="trade-code-field">
+          <span>Confirmation code</span>
+          <input id="manualTradeCode" name="confirmation_code" type="password" autocomplete="one-time-code" inputmode="text" maxlength="128" required />
+        </label>
+        <p class="trade-error" id="manualTradeError" role="alert"></p>
+        <div class="trade-dialog-actions">
+          <button id="manualTradeCancel" type="button">Cancel</button>
+          <button id="manualTradeSubmit" type="submit">Confirm</button>
+        </div>
+      </form>
+    </div>
+    <script type="module" src="/app.js?v=20260713-manual1"></script>
   </body>
 </html>

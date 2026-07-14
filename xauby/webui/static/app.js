@@ -116,6 +116,12 @@ let lastPortfolioSegments = [];
 let currentSymbol = "";
 let currentTimeframe = "4h";
 let latestMarketPrice = null;
+let latestOperator = null;
+let manualManagementMode = "strategy";
+let pendingManualOrder = null;
+let manualOrderSubmitting = false;
+let manualTradeNotice = null;
+const CHART_CANDLE_COUNT = 32;
 
 // Canvas can't read CSS custom properties, so chart colors are literal here.
 // Keep in sync with style.css :root —
@@ -353,7 +359,7 @@ function normalizeCandles(values) {
     }
     candles.push(candle);
   });
-  return candles.slice(-28);
+  return candles.slice(-CHART_CANDLE_COUNT);
 }
 
 function emaSeries(candles, period) {
@@ -790,6 +796,211 @@ function renderReasonList(id, items, options = {}) {
   });
 }
 
+function manualTradingReasonLabel(reason) {
+  const raw = String(reason || "");
+  if (raw === "confirmation_code_not_configured") return "Trade code not configured";
+  if (raw === "read_only") return "Read-only mode";
+  if (raw === "state_stale") return "State stale";
+  return raw ? raw.replace(/_/g, " ") : "Locked";
+}
+
+function manualPositionSummary(pos) {
+  if (!pos || !pos.open) return "FLAT";
+  const side = String(pos.side || "LONG").toUpperCase();
+  const qty = Number(pos.quantity);
+  return `${side}${Number.isFinite(qty) && qty > 0 ? ` ${fmtNum(qty, 6)}` : ""}`;
+}
+
+function setManualTradeNotice(message, semantic = "info") {
+  manualTradeNotice = {
+    message: String(message || ""),
+    semantic,
+    expiresAt: Date.now() + 10000,
+  };
+}
+
+function renderManualTradeControls(op) {
+  const statusEl = document.getElementById("manualTradeStatus");
+  if (!statusEl) return;
+  latestOperator = op || null;
+  const pos = (op || {}).position || {};
+  const manual = (op || {}).manual_trading || {};
+  const symbol = (op || {}).symbol || currentSymbol || "--";
+  const armed = Boolean(manual.enabled);
+  const positionOpen = Boolean(pos.open);
+  const canBuy = Boolean(armed && !positionOpen && symbol && symbol !== "--");
+  const canSell = Boolean(armed && positionOpen && symbol && symbol !== "--");
+  const status = armed ? "ARMED" : "LOCKED";
+  const statusSemantic = armed ? "pos" : "warn";
+
+  text("manualTradeStatus", status);
+  setStateClass("manualTradeStatus", statusSemantic);
+  text("manualTradeSymbol", symbol);
+  text("manualTradePosition", manualPositionSummary(pos));
+  setStateClass("manualTradePosition", positionOpen ? signalSemantic(pos.side || "LONG") : "muted");
+
+  const buyButton = document.getElementById("manualBuyButton");
+  const sellButton = document.getElementById("manualSellButton");
+  if (buyButton) {
+    buyButton.disabled = !canBuy;
+    buyButton.setAttribute("aria-disabled", String(!canBuy));
+  }
+  if (sellButton) {
+    sellButton.disabled = !canSell;
+    sellButton.setAttribute("aria-disabled", String(!canSell));
+  }
+
+  document.querySelectorAll("[data-manual-mode]").forEach((button) => {
+    const mode = button.dataset.manualMode || "strategy";
+    button.classList.toggle("active", mode === manualManagementMode);
+    button.disabled = !armed || positionOpen;
+  });
+
+  const noteEl = document.getElementById("manualTradeNote");
+  if (!noteEl) return;
+  let note = armed
+    ? (positionOpen ? "Position open" : "Ready")
+    : manualTradingReasonLabel(manual.disabled_reason);
+  let semantic = armed ? "pos" : "warn";
+  if (manualTradeNotice && manualTradeNotice.expiresAt > Date.now()) {
+    note = manualTradeNotice.message;
+    semantic = manualTradeNotice.semantic;
+  } else if (manualTradeNotice) {
+    manualTradeNotice = null;
+  }
+  noteEl.textContent = note;
+  noteEl.className = `manual-trade-note state-${semantic}`;
+}
+
+function closeManualTradeModal() {
+  const modal = document.getElementById("manualTradeModal");
+  if (modal) modal.hidden = true;
+  document.body.classList.remove("modal-open");
+  pendingManualOrder = null;
+  manualOrderSubmitting = false;
+  const errorEl = document.getElementById("manualTradeError");
+  if (errorEl) errorEl.textContent = "";
+}
+
+function setManualSubmitBusy(busy) {
+  manualOrderSubmitting = busy;
+  const submit = document.getElementById("manualTradeSubmit");
+  if (submit) {
+    submit.disabled = busy;
+    submit.textContent = busy ? "Queueing" : "Confirm";
+  }
+}
+
+function openManualTradeModal(action) {
+  const op = latestOperator || {};
+  const pos = op.position || {};
+  const manual = op.manual_trading || {};
+  const symbol = op.symbol || currentSymbol;
+  const normalizedAction = String(action || "").toUpperCase();
+  if (!manual.enabled) {
+    setManualTradeNotice(manualTradingReasonLabel(manual.disabled_reason), "warn");
+    renderManualTradeControls(op);
+    return;
+  }
+  if (!symbol || (normalizedAction === "BUY" && pos.open) || (normalizedAction === "SELL" && !pos.open)) {
+    setManualTradeNotice("Position state changed", "warn");
+    renderManualTradeControls(op);
+    return;
+  }
+
+  const managementMode = normalizedAction === "BUY"
+    ? manualManagementMode
+    : String(pos.management_mode || "strategy").toLowerCase();
+  pendingManualOrder = {
+    action: normalizedAction,
+    symbol,
+    management_mode: managementMode === "manual" ? "manual" : "strategy",
+  };
+
+  const modal = document.getElementById("manualTradeModal");
+  const summary = document.getElementById("manualTradeModalSummary");
+  const codeInput = document.getElementById("manualTradeCode");
+  const errorEl = document.getElementById("manualTradeError");
+  text("manualTradeModalMode", normalizedAction === "BUY" ? "Manual Buy" : "Manual Sell");
+  text("manualTradeModalTitle", `${normalizedAction} ${symbol}`);
+  if (summary) {
+    const modeLabel = pendingManualOrder.management_mode === "manual" ? "Manual sell only" : "Bot-managed";
+    summary.innerHTML = `
+      <div><span>Symbol</span><strong>${escapeHtml(symbol)}</strong></div>
+      <div><span>Position</span><strong>${escapeHtml(manualPositionSummary(pos))}</strong></div>
+      <div><span>Mode</span><strong>${escapeHtml(normalizedAction === "BUY" ? modeLabel : "Close tracked position")}</strong></div>
+    `;
+  }
+  if (errorEl) errorEl.textContent = "";
+  if (codeInput) codeInput.value = "";
+  if (modal) {
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+    window.setTimeout(() => codeInput && codeInput.focus(), 30);
+  }
+}
+
+async function submitManualTrade(event) {
+  event.preventDefault();
+  if (!pendingManualOrder || manualOrderSubmitting) return;
+  const codeInput = document.getElementById("manualTradeCode");
+  const errorEl = document.getElementById("manualTradeError");
+  const confirmationCode = String((codeInput || {}).value || "").trim();
+  if (!confirmationCode) {
+    if (errorEl) errorEl.textContent = "Confirmation code is required";
+    return;
+  }
+  setManualSubmitBusy(true);
+  try {
+    const result = await api.submitManualOrder({
+      ...pendingManualOrder,
+      confirmation_code: confirmationCode,
+    });
+    const shortId = String(result.request_id || "").slice(0, 8);
+    setManualTradeNotice(
+      `Queued ${result.action || pendingManualOrder.action} ${result.symbol || pendingManualOrder.symbol}${shortId ? ` #${shortId}` : ""}`,
+      "pos",
+    );
+    closeManualTradeModal();
+    await refreshDashboard();
+  } catch (error) {
+    if (errorEl) errorEl.textContent = error.message || "Manual order failed";
+  } finally {
+    setManualSubmitBusy(false);
+  }
+}
+
+function initManualTradeControls() {
+  document.querySelectorAll("[data-manual-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      manualManagementMode = button.dataset.manualMode === "manual" ? "manual" : "strategy";
+      renderManualTradeControls(latestOperator || {});
+    });
+  });
+  const buyButton = document.getElementById("manualBuyButton");
+  const sellButton = document.getElementById("manualSellButton");
+  const form = document.getElementById("manualTradeForm");
+  const cancel = document.getElementById("manualTradeCancel");
+  const close = document.getElementById("manualTradeClose");
+  const modal = document.getElementById("manualTradeModal");
+  if (buyButton) buyButton.addEventListener("click", () => openManualTradeModal("BUY"));
+  if (sellButton) sellButton.addEventListener("click", () => openManualTradeModal("SELL"));
+  if (form) form.addEventListener("submit", submitManualTrade);
+  if (cancel) cancel.addEventListener("click", closeManualTradeModal);
+  if (close) close.addEventListener("click", closeManualTradeModal);
+  if (modal) {
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closeManualTradeModal();
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    const activeModal = document.getElementById("manualTradeModal");
+    if (event.key === "Escape" && activeModal && !activeModal.hidden) {
+      closeManualTradeModal();
+    }
+  });
+}
+
 function renderOperatorDetail(detail) {
   if (!detail || !detail.ok) return;
   const op = detail.operator || {};
@@ -799,6 +1010,7 @@ function renderOperatorDetail(detail) {
   const latency = op.latency || {};
   const exchange = op.exchange || {};
   const mode = String(op.mode || "--").toUpperCase();
+  renderManualTradeControls(op);
   text("operatorMode", `${mode}${op.read_only ? " · RO" : ""}`);
   setStateClass("operatorMode", op.read_only ? "warn" : healthSemantic(mode));
   text("feedBadge", pos.feed_health || "--");
@@ -1294,6 +1506,8 @@ function updateHealth(payload) {
 
 const NAV_ORDER = ["overview", "signal", "operator", "regime", "activity"];
 const NAV_ITEM_WIDTH = 80;
+const NAV_DRAG_THRESHOLD = 22;
+let suppressNavClickUntil = 0;
 
 function navTrackShift(view, deltaX = 0) {
   const index = Math.max(0, NAV_ORDER.indexOf(view));
@@ -1321,41 +1535,92 @@ function setView(view) {
 function initNavDrag() {
   const track = document.getElementById("navTrack");
   if (!track) return;
+  const gestureSurface = track.closest(".bottom-nav") || track;
   let startX = 0;
+  let startY = 0;
   let deltaX = 0;
+  let tracking = false;
   let dragging = false;
+  let pointerId = null;
 
-  const onStart = (clientX) => {
+  const onStart = (clientX, clientY = 0, nextPointerId = null) => {
     startX = clientX;
+    startY = clientY;
     deltaX = 0;
-    dragging = true;
-    track.classList.add("dragging");
+    tracking = true;
+    dragging = false;
+    pointerId = nextPointerId;
   };
-  const onMove = (clientX) => {
-    if (!dragging) return;
+  const onMove = (clientX, clientY = startY, event = null) => {
+    if (!tracking) return;
     deltaX = clientX - startX;
+    const deltaY = clientY - startY;
+    if (!dragging) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+      if (Math.abs(deltaY) > Math.abs(deltaX) * 1.15) {
+        tracking = false;
+        return;
+      }
+      dragging = true;
+      track.classList.add("dragging");
+    }
+    if (event && event.cancelable) event.preventDefault();
     track.style.transform = `translateX(${navTrackShift(document.body.dataset.view, deltaX)}px)`;
   };
   const onEnd = () => {
-    if (!dragging) return;
+    if (!tracking) return;
+    tracking = false;
     dragging = false;
     track.classList.remove("dragging");
     const currentIndex = Math.max(0, NAV_ORDER.indexOf(document.body.dataset.view));
-    const shift = Math.round(deltaX / NAV_ITEM_WIDTH);
-    const nextIndex = Math.min(NAV_ORDER.length - 1, Math.max(0, currentIndex - shift));
+    const stepCount = Math.abs(deltaX) >= NAV_DRAG_THRESHOLD
+      ? Math.max(1, Math.round(Math.abs(deltaX) / NAV_ITEM_WIDTH))
+      : 0;
+    const direction = deltaX < 0 ? 1 : -1;
+    const nextIndex = Math.min(NAV_ORDER.length - 1, Math.max(0, currentIndex + direction * stepCount));
     deltaX = 0;
+    if (stepCount > 0) suppressNavClickUntil = Date.now() + 450;
     setView(NAV_ORDER[nextIndex]);
   };
 
-  track.addEventListener("touchstart", (e) => onStart(e.touches[0].clientX), { passive: true });
-  track.addEventListener("touchmove", (e) => onMove(e.touches[0].clientX), { passive: true });
-  track.addEventListener("touchend", onEnd);
-  track.addEventListener("touchcancel", onEnd);
+  if (window.PointerEvent) {
+    gestureSurface.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      onStart(event.clientX, event.clientY, event.pointerId);
+      if (gestureSurface.setPointerCapture) gestureSurface.setPointerCapture(event.pointerId);
+    });
+    gestureSurface.addEventListener("pointermove", (event) => {
+      if (pointerId != null && event.pointerId !== pointerId) return;
+      onMove(event.clientX, event.clientY, event);
+    });
+    gestureSurface.addEventListener("pointerup", (event) => {
+      if (pointerId != null && event.pointerId !== pointerId) return;
+      if (gestureSurface.releasePointerCapture) gestureSurface.releasePointerCapture(event.pointerId);
+      pointerId = null;
+      onEnd();
+    });
+    gestureSurface.addEventListener("pointercancel", () => {
+      pointerId = null;
+      onEnd();
+    });
+  } else {
+    gestureSurface.addEventListener("touchstart", (e) => onStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+    gestureSurface.addEventListener("touchmove", (e) => onMove(e.touches[0].clientX, e.touches[0].clientY, e), { passive: false });
+    gestureSurface.addEventListener("touchend", onEnd);
+    gestureSurface.addEventListener("touchcancel", onEnd);
+  }
 }
 
 function initNavigation() {
   document.querySelectorAll("[data-view-target]").forEach((button) => {
-    button.addEventListener("click", () => setView(button.dataset.viewTarget));
+    button.addEventListener("click", (event) => {
+      if (Date.now() < suppressNavClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      setView(button.dataset.viewTarget);
+    });
   });
   initNavDrag();
   const initial = location.hash.replace("#", "");
@@ -1391,6 +1656,11 @@ async function refreshDashboard() {
     text("signalReason", `WebUI state refresh failed: ${stateResult.reason}`);
     cls("modePill", "status-pill warn");
     text("modePillLabel", "Offline");
+    renderManualTradeControls({
+      symbol: currentSymbol,
+      position: { open: false },
+      manual_trading: { enabled: false, disabled_reason: "state_stale" },
+    });
   }
 
   if (healthResult.status === "fulfilled") updateHealth(healthResult.value);
@@ -1402,10 +1672,17 @@ async function refreshDashboard() {
     const activity = detailResult.value.activity || {};
     if (Array.isArray(activity.events)) renderEvents(activity.events);
     if (Array.isArray(activity.trades)) renderTrades(activity.trades);
+  } else {
+    renderManualTradeControls({
+      symbol: currentSymbol,
+      position: { open: false },
+      manual_trading: { enabled: false, disabled_reason: "state_stale" },
+    });
   }
 }
 
 initNavigation();
+initManualTradeControls();
 loadMeta();
 const scheduler = createRefreshScheduler(refreshDashboard);
 scheduler.start();

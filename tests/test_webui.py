@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from unittest import mock
 
 from xauby.webui.server import (
+    WEBUI_CHART_CANDLE_COUNT,
     _sign_session,
     _verify_session,
     candles_payload,
@@ -39,6 +40,8 @@ class WebUIServerTest(unittest.TestCase):
         os.environ.pop("XAUBY_GOOGLE_REDIRECT_URI", None)
         os.environ.pop("XAUBY_GOOGLE_ALLOWED_EMAILS", None)
         os.environ.pop("XAUBY_GOOGLE_ALLOWED_DOMAINS", None)
+        os.environ.pop("XAUBY_WEBUI_TRADE_CONFIRMATION_CODE", None)
+        os.environ.pop("XAUBY_WEBUI_TRADE_CODE", None)
         self.tmp = tempfile.TemporaryDirectory()
         self.project_root = self.tmp.name
 
@@ -136,6 +139,14 @@ class WebUIServerTest(unittest.TestCase):
         req = Request(url, headers={"Authorization": f"Basic {token}"})
         with urlopen(req, timeout=3) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    def post_json(self, url, payload, headers=None):
+        body = json.dumps(payload).encode("utf-8")
+        req_headers = {"Content-Type": "application/json"}
+        req_headers.update(headers or {})
+        req = Request(url, data=body, headers=req_headers, method="POST")
+        with urlopen(req, timeout=3) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
 
     def test_state_endpoint_reads_runtime_state(self):
         self.write_state(
@@ -292,6 +303,188 @@ class WebUIServerTest(unittest.TestCase):
         self.assertEqual(payload["activity"]["event_count"], 1)
         self.assertEqual(payload["activity"]["trade_count"], 1)
 
+    def test_dashboard_detail_reports_manual_trade_guard_status(self):
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_TRADE_CONFIRMATION_CODE": "confirm123"}, clear=False):
+            self.write_state(
+                {
+                    "focus_symbol": "XAUTUSDT",
+                    "by_symbol": {
+                        "XAUTUSDT": {
+                            "symbol": "XAUTUSDT",
+                            "execution_mode": "live",
+                            "read_only": False,
+                            "position": {"state": "idle"},
+                        }
+                    },
+                }
+            )
+
+            payload = dashboard_detail_payload(self.project_root)
+
+        manual = payload["operator"]["manual_trading"]
+        self.assertTrue(manual["configured"])
+        self.assertTrue(manual["enabled"])
+        self.assertTrue(manual["requires_code"])
+
+    def test_manual_order_endpoint_is_disabled_without_confirmation_code(self):
+        self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "read_only": False,
+                        "position": {"state": "idle"},
+                    }
+                },
+            }
+        )
+        base = self.serve()
+
+        with self.assertRaises(HTTPError) as raised:
+            self.post_json(
+                f"{base}/api/manual-order",
+                {"action": "BUY", "symbol": "XAUTUSDT", "confirmation_code": "confirm123"},
+            )
+
+        self.assertEqual(raised.exception.code, 403)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.project_root, "core", "manual_order_request.json"))
+        )
+
+    def test_manual_buy_endpoint_queues_short_lived_ipc_request(self):
+        self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "read_only": False,
+                        "position": {"state": "idle"},
+                    }
+                },
+            }
+        )
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_TRADE_CONFIRMATION_CODE": "confirm123"}, clear=False):
+            base = self.serve()
+            status, payload = self.post_json(
+                f"{base}/api/manual-order",
+                {
+                    "action": "BUY",
+                    "symbol": "XAUTUSDT",
+                    "management_mode": "manual",
+                    "confirmation_code": "confirm123",
+                },
+            )
+
+        self.assertEqual(status, 202)
+        self.assertTrue(payload["queued"])
+        self.assertEqual(payload["symbol"], "XAUTUSDT")
+        self.assertEqual(payload["action"], "BUY")
+        request_path = os.path.join(self.project_root, "core", "manual_order_request.json")
+        with open(request_path, "r", encoding="utf-8") as handle:
+            request = json.load(handle)
+        self.assertEqual(request["source"], "webui")
+        self.assertEqual(request["management_mode"], "manual")
+
+    def test_manual_order_endpoint_rejects_bad_confirmation_code(self):
+        self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "read_only": False,
+                        "position": {"state": "idle"},
+                    }
+                },
+            }
+        )
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_TRADE_CONFIRMATION_CODE": "confirm123"}, clear=False):
+            base = self.serve()
+            with self.assertRaises(HTTPError) as raised:
+                self.post_json(
+                    f"{base}/api/manual-order",
+                    {"action": "BUY", "symbol": "XAUTUSDT", "confirmation_code": "wrong"},
+                )
+
+        self.assertEqual(raised.exception.code, 403)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.project_root, "core", "manual_order_request.json"))
+        )
+
+    def test_manual_order_endpoint_rejects_stale_state(self):
+        state_path = self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "read_only": False,
+                        "position": {"state": "idle"},
+                    }
+                },
+            }
+        )
+        old = time.time() - 130
+        os.utime(state_path, (old, old))
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_TRADE_CONFIRMATION_CODE": "confirm123"}, clear=False):
+            base = self.serve()
+            with self.assertRaises(HTTPError) as raised:
+                self.post_json(
+                    f"{base}/api/manual-order",
+                    {"action": "BUY", "symbol": "XAUTUSDT", "confirmation_code": "confirm123"},
+                )
+
+        self.assertEqual(raised.exception.code, 409)
+
+    def test_manual_order_endpoint_rejects_read_only_state(self):
+        self.write_state(
+            {
+                "read_only": True,
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "read_only": False,
+                        "position": {"state": "idle"},
+                    }
+                },
+            }
+        )
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_TRADE_CONFIRMATION_CODE": "confirm123"}, clear=False):
+            base = self.serve()
+            with self.assertRaises(HTTPError) as raised:
+                self.post_json(
+                    f"{base}/api/manual-order",
+                    {"action": "BUY", "symbol": "XAUTUSDT", "confirmation_code": "confirm123"},
+                )
+
+        self.assertEqual(raised.exception.code, 409)
+
+    def test_manual_sell_endpoint_requires_tracked_position(self):
+        self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "read_only": False,
+                        "position": {"state": "idle"},
+                    }
+                },
+            }
+        )
+        with mock.patch.dict(os.environ, {"XAUBY_WEBUI_TRADE_CONFIRMATION_CODE": "confirm123"}, clear=False):
+            base = self.serve()
+            with self.assertRaises(HTTPError) as raised:
+                self.post_json(
+                    f"{base}/api/manual-order",
+                    {"action": "SELL", "symbol": "XAUTUSDT", "confirmation_code": "confirm123"},
+                )
+
+        self.assertEqual(raised.exception.code, 409)
+
     def test_dashboard_detail_payload_handles_missing_state(self):
         payload = dashboard_detail_payload(self.project_root)
 
@@ -369,6 +562,15 @@ class WebUIServerTest(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["limit"], 80)
         self.assertEqual(len(payload["candles"]), 5)
+
+    def test_candles_endpoint_defaults_to_webui_chart_count(self):
+        self.create_db()
+        base = self.serve()
+
+        payload = self.get_json(f"{base}/api/candles?symbol=XAUUSDT&timeframe=4h")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["limit"], WEBUI_CHART_CANDLE_COUNT)
 
     def test_static_index_is_served(self):
         base = self.serve()
@@ -470,6 +672,8 @@ class WebUILoginTest(unittest.TestCase):
         os.environ.pop("XAUBY_GOOGLE_REDIRECT_URI", None)
         os.environ.pop("XAUBY_GOOGLE_ALLOWED_EMAILS", None)
         os.environ.pop("XAUBY_GOOGLE_ALLOWED_DOMAINS", None)
+        os.environ.pop("XAUBY_WEBUI_TRADE_CONFIRMATION_CODE", None)
+        os.environ.pop("XAUBY_WEBUI_TRADE_CODE", None)
         self.tmp = tempfile.TemporaryDirectory()
         self.project_root = self.tmp.name
 
@@ -479,6 +683,7 @@ class WebUILoginTest(unittest.TestCase):
 
     serve = WebUIServerTest.serve
     get_json_with_basic_auth = WebUIServerTest.get_json_with_basic_auth
+    write_state = WebUIServerTest.write_state
 
     def request(self, base, method, path, body=None, headers=None):
         parsed = urlparse(base)
@@ -694,6 +899,42 @@ class WebUILoginTest(unittest.TestCase):
             status, _, _ = self.request(base, "POST", "/api/state")
 
         self.assertEqual(status, 404)
+
+    def test_manual_order_post_requires_authenticated_session(self):
+        self.write_state(
+            {
+                "focus_symbol": "XAUTUSDT",
+                "by_symbol": {
+                    "XAUTUSDT": {
+                        "symbol": "XAUTUSDT",
+                        "read_only": False,
+                        "position": {"state": "idle"},
+                    }
+                },
+            }
+        )
+        env = {
+            "XAUBY_WEBUI_PASSWORD": "pw",
+            "XAUBY_WEBUI_TRADE_CONFIRMATION_CODE": "confirm123",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            base = self.serve()
+            status, headers, _ = self.request(
+                base,
+                "POST",
+                "/api/manual-order",
+                body=json.dumps(
+                    {
+                        "action": "BUY",
+                        "symbol": "XAUTUSDT",
+                        "confirmation_code": "confirm123",
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+            )
+
+        self.assertEqual(status, 401)
+        self.assertIn("WWW-Authenticate", headers)
 
     def test_no_password_mode_keeps_zero_friction(self):
         base = self.serve()
