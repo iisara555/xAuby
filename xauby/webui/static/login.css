@@ -1,5 +1,5 @@
 html {
-  background: #07080d;
+  background: #161614;
 }
 
 body.login-body {
@@ -8,10 +8,7 @@ body.login-body {
   min-height: 100svh;
   overflow-x: hidden;
   padding: max(28px, env(safe-area-inset-top)) 22px max(28px, env(safe-area-inset-bottom));
-  background:
-    radial-gradient(circle at 8% 10%, rgba(255, 67, 26, 0.14), transparent 28%),
-    radial-gradient(circle at 92% 88%, rgba(82, 111, 230, 0.16), transparent 30%),
-    #07080d;
+  background: #161614;
   color-scheme: dark;
 }
 
@@ -43,50 +40,19 @@ body.login-body::after {
   min-height: 350px;
   margin: 0;
   overflow: hidden;
-  border: 0;
-  border-radius: 30px;
-  background:
-    radial-gradient(ellipse at 105% -5%, rgba(255, 232, 220, 0.92), transparent 27%),
-    radial-gradient(ellipse at -10% 110%, rgba(130, 27, 7, 0.55), transparent 46%),
-    linear-gradient(135deg, #ff8a45 0%, #ff5a21 38%, #ff431a 68%, #c62b0d 100%);
-  background-size: 135% 135%;
-  animation: login-page-liquid 14s ease-in-out infinite alternate;
-  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line-strong, rgba(236, 233, 226, 0.35));
+  border-radius: var(--radius-lg, 8px);
+  background: linear-gradient(160deg, #1e1e1b, #161614);
+  box-shadow: none;
 }
 
-.login-body .login-hero::before {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(124deg, transparent 29%, rgba(255, 255, 255, 0.1) 40%, transparent 50%);
-  content: "";
-}
-
+.login-body .login-hero::before,
 .login-body .login-hero::after {
   display: none;
 }
 
 .login-body .login-liquid-line {
-  position: absolute;
-  z-index: 1;
-  width: 145%;
-  height: 15%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 170, 208, 0.12) 28%, rgba(255, 247, 241, 0.86) 53%, rgba(255, 174, 214, 0.18) 72%, transparent 100%);
-  filter: blur(6px);
-  transform: rotate(-28deg);
-  animation: login-page-streak 11s ease-in-out infinite alternate;
-}
-
-.login-body .login-liquid-line-one {
-  top: 14%;
-  right: -43%;
-}
-
-.login-body .login-liquid-line-two {
-  top: 64%;
-  right: -28%;
-  opacity: 0.58;
-  animation-delay: -5s;
+  display: none;
 }
 
 .login-body .login-hero-copy {
@@ -103,39 +69,39 @@ body.login-body::after {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #fff;
+  color: #ece9e2;
   font-family: "Space Grotesk", sans-serif;
   font-size: 23px;
   font-weight: 700;
-  letter-spacing: -0.07em;
+  letter-spacing: -0.03em;
 }
 
 .login-body .login-hero h1 {
   overflow: visible;
   display: block;
   margin: 0;
-  color: #fff;
+  color: #ece9e2;
   font-family: "Space Grotesk", sans-serif;
   font-size: clamp(40px, 10.5vw, 50px);
-  font-weight: 500;
-  letter-spacing: 0;
-  line-height: 0.9;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
   -webkit-line-clamp: none;
 }
 
 .login-body .login-hero h1::first-letter {
-  color: #fff;
+  color: #ff431a;
 }
 
 .login-body .login-hero-copy > div:last-child > p {
   max-width: 300px;
   margin: 15px 0 0;
-  color: rgba(255, 255, 255, 0.92);
-  font-family: "Noto Sans", sans-serif;
+  color: rgba(236, 233, 226, 0.72);
+  font-family: "Space Grotesk", sans-serif;
   font-size: 13px;
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
 .login-body .login-access {
@@ -169,20 +135,20 @@ body.login-body::after {
   overflow: visible;
   display: block;
   margin: 0;
-  color: #f8f4ee;
+  color: #ece9e2;
   font-family: "Space Grotesk", sans-serif;
   font-size: 21px;
   font-weight: 600;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.02em;
   line-height: 1;
   -webkit-line-clamp: none;
 }
 
 .login-body .login-card-heading > p:last-child {
   margin: 0;
-  color: rgba(248, 244, 238, 0.5);
+  color: rgba(236, 233, 226, 0.55);
   font-size: 12px;
-  font-weight: 520;
+  font-weight: 500;
   line-height: 1.35;
 }
 
@@ -198,16 +164,16 @@ body.login-body::after {
   min-height: 50px;
   gap: 10px;
   box-sizing: border-box;
-  border: 1px solid rgba(248, 244, 238, 0.14);
-  border-radius: 999px;
+  border: 1px solid var(--line, rgba(236, 233, 226, 0.16));
+  border-radius: var(--radius-sm, 14px);
   padding: 0 16px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #15171d;
+  background: #ece9e2;
+  color: #161614;
   font-family: "Space Grotesk", sans-serif;
   font-size: 14px;
   font-weight: 700;
   text-decoration: none;
-  box-shadow: 0 13px 26px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
 }
 
 .login-body .login-google[hidden],
@@ -218,8 +184,9 @@ body.login-body::after {
 }
 
 .login-body .login-google:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 4px rgba(151, 174, 240, 0.2), 0 13px 26px rgba(0, 0, 0, 0.18);
+  outline: 2px solid #ff6a3c;
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 .login-body .login-google-mark {
@@ -241,7 +208,7 @@ body.login-body::after {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  color: rgba(248, 244, 238, 0.42);
+  color: rgba(236, 233, 226, 0.45);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -250,12 +217,12 @@ body.login-body::after {
 .login-body .login-separator::before,
 .login-body .login-separator::after {
   height: 1px;
-  background: rgba(248, 244, 238, 0.11);
+  background: rgba(236, 233, 226, 0.14);
   content: "";
 }
 
 .login-body .login-card label {
-  color: rgba(248, 244, 238, 0.68);
+  color: rgba(236, 233, 226, 0.7);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -266,28 +233,28 @@ body.login-body::after {
   width: 100%;
   min-height: 48px;
   box-sizing: border-box;
-  border: 1px solid rgba(248, 244, 238, 0.09);
-  border-radius: 12px;
+  border: 1px solid rgba(236, 233, 226, 0.16);
+  border-radius: var(--radius-sm, 14px);
   padding: 0 14px;
-  background: rgba(255, 255, 255, 0.07);
-  color: #f8f4ee;
+  background: rgba(236, 233, 226, 0.06);
+  color: #ece9e2;
   font-size: 16px;
   letter-spacing: 0;
 }
 
 .login-body .login-card input::placeholder {
-  color: rgba(248, 244, 238, 0.36);
+  color: rgba(236, 233, 226, 0.4);
 }
 
 .login-body .login-card input:focus-visible {
   outline: 0;
-  border-color: #97aef0;
-  background: rgba(151, 174, 240, 0.08);
-  box-shadow: 0 0 0 4px rgba(151, 174, 240, 0.15);
+  border-color: #ff6a3c;
+  background: rgba(255, 67, 26, 0.06);
+  box-shadow: 0 0 0 1px #ff6a3c;
 }
 
 .login-body .login-field-hint {
-  color: rgba(248, 244, 238, 0.4);
+  color: rgba(236, 233, 226, 0.45);
   font-size: 10px;
   font-weight: 500;
   line-height: 1.35;
@@ -295,10 +262,11 @@ body.login-body::after {
 
 .login-body .login-error {
   margin: -6px 0 0;
-  border-radius: 9px;
+  border: 1px solid rgba(255, 67, 26, 0.35);
+  border-radius: var(--radius-sm, 14px);
   padding: 9px 11px;
-  color: #ffb1a6;
-  background: rgba(255, 67, 26, 0.14);
+  color: #ff6a3c;
+  background: rgba(255, 67, 26, 0.1);
   font-size: 11px;
   font-weight: 700;
 }
@@ -306,34 +274,26 @@ body.login-body::after {
 .login-body .login-card button {
   min-height: 52px;
   margin-top: 8px;
-  border: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #97aef0, #7795f1);
-  color: #161618;
+  border: 1px solid #ece9e2;
+  border-radius: var(--radius-sm, 14px);
+  background: #ece9e2;
+  color: #161614;
   font-family: "Space Grotesk", sans-serif;
   font-size: 15px;
   font-weight: 700;
-  box-shadow: 0 13px 26px rgba(82, 111, 230, 0.25);
+  box-shadow: none;
 }
 
 .login-body .login-card button:hover {
-  background: linear-gradient(135deg, #b0c2ff, #97aef0);
-  box-shadow: 0 17px 30px rgba(82, 111, 230, 0.34);
+  border-color: #ff431a;
+  background: #ff431a;
+  color: #161614;
+  box-shadow: none;
   filter: none;
 }
 
 .login-body .login-card button:active {
   transform: scale(0.988);
-}
-
-@keyframes login-page-liquid {
-  from { background-position: 0% 0%; }
-  to { background-position: 100% 76%; }
-}
-
-@keyframes login-page-streak {
-  from { margin-right: -2%; opacity: 0.45; }
-  to { margin-right: 7%; opacity: 0.9; }
 }
 
 @media (min-width: 900px) {
@@ -354,7 +314,6 @@ body.login-body::after {
 
   .login-body .login-hero {
     min-height: 340px;
-    border-radius: 27px;
   }
 
   .login-body .login-access {

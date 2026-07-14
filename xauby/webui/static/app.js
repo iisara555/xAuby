@@ -120,13 +120,13 @@ let latestMarketPrice = null;
 // Canvas can't read CSS custom properties, so chart colors are literal here.
 // Keep in sync with style.css :root —
 //   #ff431a = --orange (brand / up-candles / price line)
-//   #ff7040 = --orange-mid (EMA fast, price pill)
-//   #97aef0 = --blue / --info (down-candles, EMA slow)
-//   #f8f4ee = --cream / --ink-1 (captions; rgba(248,244,238,x) = muted ink)
-//   #161618 = dark ink on accent fills
-// #70e0c2 / #c6b7ff extend the categorical data-viz palette for 5th/6th
-// portfolio assets only (see DESIGN.md) — they are not UI state colors.
-const PORTFOLIO_COLORS = ["#ff431a", "#97aef0", "#ff7040", "#f8f4ee", "#70e0c2", "#c6b7ff"];
+//   #ff6a3c = --orange-mid (EMA fast, price pill)
+//   #8a877f = --neutral / --info (down-candles, EMA slow — no blue in this palette)
+//   #ece9e2 = --cream / --ink-1 (captions; rgba(236,233,226,x) = muted ink)
+//   #161614 = dark ink on accent fills
+// The portfolio donut has no categorical hue palette to draw on (single-accent
+// system), so extra slices step through accent/cream/neutral at two alphas.
+const PORTFOLIO_COLORS = ["#ff431a", "#ece9e2", "#8a877f", "#ff6a3c", "rgba(236,233,226,.55)", "rgba(138,135,127,.55)"];
 
 function timeframeToMinutes(timeframe) {
   const match = /^([0-9]+)\s*([mhdw])$/i.exec(String(timeframe || "").trim());
@@ -173,7 +173,10 @@ function shortStatus(value, fallback = "--") {
   if (raw === "RUNNING") return "RUN";
   if (raw === "DEGRADED") return "DEG";
   if (raw === "STOPPED") return "STOP";
-  return raw;
+  if (raw.includes("ACTIVE")) return "ACT";
+  // Guard against long/unrecognized backend status strings (e.g. a stale
+  // PID fallback message) blowing out the compact health-strip chip.
+  return raw.length > 6 ? `${raw.slice(0, 5)}…` : raw;
 }
 
 function compactTrigger(trigger) {
@@ -428,7 +431,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   const plotW = w - leftPad - rightPad;
   const plotH = h - topPad - bottomPad;
   ctx.clearRect(0, 0, w, h);
-  ctx.strokeStyle = "rgba(248, 244, 238, 0.07)";
+  ctx.strokeStyle = "rgba(236, 233, 226, 0.12)";
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 8]);
   for (let i = 1; i < 5; i += 1) {
@@ -469,7 +472,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   candles.forEach((c, i) => {
     const x = leftPad + slot * i + slot / 2;
     const up = c.close >= c.open;
-    const color = up ? "#ff7040" : "#97aef0";
+    const color = up ? "#ff6a3c" : "#8a877f";
     const yOpen = yFor(c.open);
     const yClose = yFor(c.close);
     const yHigh = yFor(c.high);
@@ -485,7 +488,7 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     ctx.stroke();
     ctx.beginPath();
     if (ctx.roundRect) {
-      ctx.roundRect(x - bodyW / 2, bodyY, bodyW, bodyH, 2);
+      ctx.roundRect(x - bodyW / 2, bodyY, bodyW, bodyH, Math.min(3, bodyW / 3));
       ctx.fill();
     } else {
       ctx.fillRect(x - bodyW / 2, bodyY, bodyW, bodyH);
@@ -498,8 +501,6 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     ctx.lineWidth = 1.7;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
-    ctx.shadowBlur = 3;
     ctx.beginPath();
     let started = false;
     series.forEach((value, i) => {
@@ -516,10 +517,10 @@ function drawChart(values, referencePrice = latestMarketPrice) {
     if (started) ctx.stroke();
     ctx.restore();
   };
-  drawEma(emaSlow, "rgba(151, 174, 240, 0.76)");
-  drawEma(emaFast, "#ff7040");
+  drawEma(emaSlow, "rgba(138, 135, 127, 0.85)");
+  drawEma(emaFast, "#ff6a3c");
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.62)";
+  ctx.fillStyle = "rgba(236, 233, 226, 0.62)";
   ctx.font = "11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
@@ -545,19 +546,19 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   ctx.stroke();
   ctx.restore();
 
-  ctx.fillStyle = "#ff7040";
+  ctx.fillStyle = "#ff6a3c";
   ctx.beginPath();
   if (ctx.roundRect) {
-    ctx.roundRect(labelX, latestY - 12, labelW, 24, 12);
+    ctx.roundRect(labelX, latestY - 12, labelW, 24, 7);
     ctx.fill();
   } else {
     ctx.fillRect(labelX, latestY - 12, labelW, 24);
   }
-  ctx.fillStyle = "#161618";
+  ctx.fillStyle = "#161614";
   ctx.textAlign = "center";
   ctx.fillText(label, w - labelW / 2 - 3, latestY);
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.62)";
+  ctx.fillStyle = "rgba(236, 233, 226, 0.62)";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   chartAxisLabels(currentTimeframe, candles.length).forEach((labelText, index) => {
@@ -586,7 +587,7 @@ function drawPortfolio(segments = lastPortfolioSegments) {
 
   ctx.lineWidth = lineWidth;
   ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.strokeStyle = "rgba(236, 233, 226, 0.12)";
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.stroke();
@@ -605,12 +606,12 @@ function drawPortfolio(segments = lastPortfolioSegments) {
     });
   }
 
-  ctx.fillStyle = "rgba(248, 244, 238, 0.54)";
+  ctx.fillStyle = "rgba(236, 233, 226, 0.55)";
   ctx.font = "10px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("Portfolio", cx, cy - 7);
-  ctx.fillStyle = "#f8f4ee";
+  ctx.fillStyle = "#ece9e2";
   ctx.font = "600 13px -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
   ctx.fillText(total > 0 ? `${segments.length} Asset${segments.length === 1 ? "" : "s"}` : "--", cx, cy + 9);
 }
@@ -750,32 +751,6 @@ function renderMetricStrip(id, items) {
   });
 }
 
-function renderProtection(items) {
-  const root = document.getElementById("protectionDetail");
-  if (!root) return;
-  const rows = Array.isArray(items) ? items : [];
-  root.innerHTML = rows.length ? "" : `<div class="empty-state">No protection data</div>`;
-  rows.forEach((item) => {
-    const value = item.value && typeof item.value === "object"
-      ? (
-        item.label === "Partial TP"
-          ? `${item.value.taken ? "Banked" : "Waiting"}${Number(item.value.trigger_price) > 0 ? ` @ ${formatMaybePrice(item.value.trigger_price)}` : ""}${Number(item.value.fraction) > 0 ? ` · ${fmtNum(Number(item.value.fraction) * 100, 0)}%` : ""}`
-          : "--"
-      )
-      : formatMaybePrice(item.value);
-    const row = document.createElement("div");
-    row.className = tileClass("protection-item", {
-      ...item,
-      featured: item.featured || item.label === "Stop Loss" || item.label === "Take Profit",
-    });
-    row.innerHTML = `
-      <span>${escapeHtml(item.label || "--")}</span>
-      <strong>${escapeHtml(value)}</strong>
-    `;
-    root.appendChild(row);
-  });
-}
-
 function renderChecklistInto(id, items) {
   const root = document.getElementById(id);
   if (!root) return;
@@ -805,11 +780,11 @@ function renderReasonList(id, items, options = {}) {
   root.innerHTML = rows.length ? "" : `<div class="empty-state">No detail data</div>`;
   rows.forEach((item) => {
     const row = document.createElement("div");
-    const status = item.status || (item.supportive === true ? "ok" : item.supportive === false ? "warn" : "info");
+    const status = item.status || (item.supportive === true ? "ok" : item.supportive === false ? "muted" : "info");
     row.className = tileClass("reason-item", { ...item, status });
     row.innerHTML = `
       <strong>${escapeHtml(item.label || "--")}</strong>
-      <span>${escapeHtml(item.value ?? (item.supportive ? "Support" : "Headwind"))}</span>
+      <span>${escapeHtml(item.value ?? (item.supportive ? "Supportive" : "Neutral"))}</span>
     `;
     root.appendChild(row);
   });
@@ -832,45 +807,34 @@ function renderOperatorDetail(detail) {
   setStateClass("signalBadge", signalSemantic(sig.action));
 
   const positionPnl = Number(pos.unrealized_pnl || 0);
-  const grossPnl = Number(pos.unrealized_pnl_gross || 0);
-  const entryFee = Number(pos.estimated_entry_fee || 0);
-  const exitFee = Number(pos.estimated_exit_fee || 0);
-  const totalFees = Number(pos.estimated_total_fees || 0);
-  const fundingPaid = Number(pos.funding_paid || 0);
   const positionSide = String(pos.side || "").toUpperCase();
   renderDetailGrid("positionDetail", [
     {
-      label: "State",
-      value: pos.open ? `${pos.side || "--"} ${pos.state || ""}` : "FLAT",
-      featured: true,
-      status: pos.open ? (positionSide === "SHORT" ? "warn" : "ok") : "muted",
-    },
-    {
-      label: "Net PnL",
+      label: "Unrealized PnL",
       value: `${formatMaybeMoney(pos.unrealized_pnl)}${pos.unrealized_pnl_pct == null ? "" : ` (${fmtSignedPct(pos.unrealized_pnl_pct, 2)})`}`,
       featured: true,
       status: positionPnl < 0 ? "warn" : positionPnl > 0 ? "ok" : "info",
     },
     {
-      label: "PnL Breakdown",
-      value: `Gross ${formatMoneyValue(grossPnl)} · Fees ${formatMoneyValue(totalFees)} · Funding ${formatMoneyValue(fundingPaid)}`,
-      wide: true,
-      status: positionPnl < 0 ? "warn" : positionPnl > 0 ? "ok" : "info",
+      label: "Side",
+      value: pos.open ? `${pos.side || "--"} ${pos.state || ""}` : "FLAT",
+      compact: true,
+      status: pos.open ? (positionSide === "SHORT" ? "warn" : "ok") : "muted",
     },
-    { label: "Symbol", value: op.symbol || currentSymbol || "--", compact: true },
     { label: "Quantity", value: Number(pos.quantity) > 0 ? fmtNum(pos.quantity, 6) : "--", compact: true },
-    { label: "Entry", value: formatMaybePrice(pos.entry_price) },
-    { label: "Mark", value: formatMaybePrice(pos.mark_price) },
-    { label: "Gross PnL", value: formatMoneyValue(grossPnl), compact: true, status: grossPnl < 0 ? "warn" : grossPnl > 0 ? "ok" : "info" },
-    { label: "Entry Fee", value: formatMoneyValue(entryFee), compact: true, subtle: true },
-    { label: "Exit Fee", value: formatMoneyValue(exitFee), compact: true, subtle: true },
-    { label: "Fees Total", value: formatMoneyValue(totalFees), compact: true, status: totalFees > 0 ? "warn" : "info" },
-    { label: "Funding", value: formatMoneyValue(fundingPaid), compact: true, status: fundingPaid > 0 ? "warn" : fundingPaid < 0 ? "ok" : "info" },
-    { label: "Opened", value: relativeTime(pos.opened_at), compact: true, subtle: true },
-    { label: "Mode", value: [pos.management_mode, pos.margin_mode, Number(pos.leverage) ? `${fmtNum(pos.leverage, 1)}x` : ""].filter(Boolean).join(" · ") || "--", compact: true },
-    { label: "SL Order", value: pos.stop_loss_order_id || "--", compact: true, subtle: true },
+    { label: "Entry", value: formatMaybePrice(pos.entry_price), compact: true },
+    { label: "Mark", value: formatMaybePrice(pos.mark_price), compact: true },
   ]);
-  renderProtection(pos.protection || []);
+
+  const stopLoss = Number(pos.stop_loss) || 0;
+  const takeProfit = Number(pos.take_profit) || 0;
+  const trailingMult = Number(risk.trailing_atr_mult) || 0;
+  renderDetailGrid("protectionDetail", [
+    { label: "Stop Loss", value: formatMaybePrice(pos.stop_loss), compact: true, status: stopLoss > 0 ? "ok" : "muted" },
+    { label: "Take Profit", value: formatMaybePrice(pos.take_profit), compact: true, status: takeProfit > 0 ? "ok" : "muted" },
+    { label: "Trailing", value: trailingMult ? `${fmtNum(trailingMult, 2)}x ATR` : "--", compact: true, status: trailingMult ? "info" : "muted" },
+    { label: "Stop Order", value: pos.stop_loss_order_id || "--", compact: true, subtle: true },
+  ]);
 
   renderDetailGrid("executionDetail", [
     {
@@ -920,15 +884,11 @@ function renderRegimeDetail(detail) {
   setStateClass("routerBadge", router.enabled ? (router.live_confirmed ? "pos" : "warn") : "muted");
 
   renderDetailGrid("regimeDetailGrid", [
-    { label: "State", value: compactState(regime.state), featured: true, status: regimeSemantic(regime.state) },
-    { label: "Risk", value: regime.risk_state || "--", featured: true, status: riskSemantic(regime.risk_state) },
+    { label: "Regime", value: compactState(regime.state), featured: true, status: regimeSemantic(regime.state) },
     { label: "Trend", value: regime.trend || "--", status: trendSemantic(regime.trend), compact: true },
-    { label: "Confidence", value: `${fmtNum((Number(regime.confidence) || 0) * 100, 0)}%`, status: "info", compact: true },
     { label: "Volatility", value: regime.volatility_state || regime.volatility || "--", compact: true },
-    { label: "Liquidity", value: regime.liquidity_state || "--", compact: true },
-    { label: "Phase", value: regime.phase || "--", compact: true, subtle: true },
-    { label: "Transition", value: regime.transition_risk || "--", compact: true, subtle: true },
-    { label: "Gold Score", value: regime.gold_score == null ? "--" : fmtNum(regime.gold_score, 0), compact: true, subtle: true },
+    { label: "Macro Bias", value: regime.macro_bias || "--", status: macroBiasSemantic(regime.macro_bias), compact: true },
+    { label: "Confidence", value: `${fmtNum((Number(regime.confidence) || 0) * 100, 0)}%`, status: "info", compact: true },
   ]);
   renderReasonList("regimeReasons", regime.reasons || [], { limit: 4 });
 
@@ -1158,6 +1118,13 @@ function trendSemantic(value) {
   return "muted";
 }
 
+function macroBiasSemantic(value) {
+  const s = String(value || "").toUpperCase();
+  if (s.includes("RISK-ON") || s.includes("RISK ON")) return "pos";
+  if (s.includes("RISK-OFF") || s.includes("RISK OFF")) return "warn";
+  return "muted";
+}
+
 function riskSemantic(value) {
   const r = String(value || "").toUpperCase();
   if (r.includes("PANIC")) return "neg";
@@ -1191,7 +1158,7 @@ function updateState(payload) {
     text("symbolTitle", "State unavailable");
     text("signalReason", payload.error || "Waiting for state file");
     cls("modePill", "status-pill warn");
-    text("modePill", "No state");
+    text("modePillLabel", "No state");
     return;
   }
   const state = payload.state || {};
@@ -1229,7 +1196,7 @@ function updateState(payload) {
   text("symbolTitle", symbol);
   currentSymbol = symbol;
   const stale = Boolean(payload.stale);
-  text("modePill", stale ? "STALE" : modeText);
+  text("modePillLabel", stale ? "STALE" : modeText);
   cls("modePill", `status-pill ${!stale && modeText === "LIVE" ? "live" : "warn"}`);
   text("signalRegimeLabel", stale ? "STALE" : modeText);
   setStateClass("signalRegimeLabel", stale ? "warn" : healthSemantic(modeText));
@@ -1325,20 +1292,23 @@ function updateHealth(payload) {
   setStateClass("engineStatus", healthSemantic(engine));
 }
 
-function setView(view, animateNav = true) {
-  const previousView = document.body.dataset.view;
-  const shouldAnimateNav = animateNav && previousView !== view && !prefersReducedMotion();
+const NAV_ORDER = ["overview", "signal", "operator", "regime", "activity"];
+const NAV_ITEM_WIDTH = 80;
+
+function navTrackShift(view, deltaX = 0) {
+  const index = Math.max(0, NAV_ORDER.indexOf(view));
+  return -index * NAV_ITEM_WIDTH + deltaX;
+}
+
+function setView(view) {
   document.body.dataset.view = view;
   document.querySelectorAll("[data-view-target]").forEach((button) => {
-    const active = button.dataset.viewTarget === view;
-    button.classList.toggle("active", active);
-    button.classList.remove("nav-pressed");
-    if (active && shouldAnimateNav) {
-      void button.offsetWidth;
-      button.classList.add("nav-pressed");
-      window.setTimeout(() => button.classList.remove("nav-pressed"), 180);
-    }
+    button.classList.toggle("active", button.dataset.viewTarget === view);
   });
+  const track = document.getElementById("navTrack");
+  if (track && !track.classList.contains("dragging")) {
+    track.style.transform = `translateX(${navTrackShift(view)}px)`;
+  }
   if (location.hash !== `#${view}`) {
     history.replaceState(null, "", `#${view}`);
   }
@@ -1348,15 +1318,51 @@ function setView(view, animateNav = true) {
   });
 }
 
+function initNavDrag() {
+  const track = document.getElementById("navTrack");
+  if (!track) return;
+  let startX = 0;
+  let deltaX = 0;
+  let dragging = false;
+
+  const onStart = (clientX) => {
+    startX = clientX;
+    deltaX = 0;
+    dragging = true;
+    track.classList.add("dragging");
+  };
+  const onMove = (clientX) => {
+    if (!dragging) return;
+    deltaX = clientX - startX;
+    track.style.transform = `translateX(${navTrackShift(document.body.dataset.view, deltaX)}px)`;
+  };
+  const onEnd = () => {
+    if (!dragging) return;
+    dragging = false;
+    track.classList.remove("dragging");
+    const currentIndex = Math.max(0, NAV_ORDER.indexOf(document.body.dataset.view));
+    const shift = Math.round(deltaX / NAV_ITEM_WIDTH);
+    const nextIndex = Math.min(NAV_ORDER.length - 1, Math.max(0, currentIndex - shift));
+    deltaX = 0;
+    setView(NAV_ORDER[nextIndex]);
+  };
+
+  track.addEventListener("touchstart", (e) => onStart(e.touches[0].clientX), { passive: true });
+  track.addEventListener("touchmove", (e) => onMove(e.touches[0].clientX), { passive: true });
+  track.addEventListener("touchend", onEnd);
+  track.addEventListener("touchcancel", onEnd);
+}
+
 function initNavigation() {
   document.querySelectorAll("[data-view-target]").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.viewTarget));
   });
+  initNavDrag();
   const initial = location.hash.replace("#", "");
-  if (["overview", "signal", "operator", "regime", "activity"].includes(initial)) {
-    setView(initial, false);
-  } else if (initial === "health") {
-    setView("overview", false);
+  if (NAV_ORDER.includes(initial) || initial === "health") {
+    setView(NAV_ORDER.includes(initial) ? initial : "overview");
+  } else {
+    setView("overview");
   }
 }
 
@@ -1384,7 +1390,7 @@ async function refreshDashboard() {
   } else {
     text("signalReason", `WebUI state refresh failed: ${stateResult.reason}`);
     cls("modePill", "status-pill warn");
-    text("modePill", "Offline");
+    text("modePillLabel", "Offline");
   }
 
   if (healthResult.status === "fulfilled") updateHealth(healthResult.value);

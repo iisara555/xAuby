@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  background: #161614;
+  background: #060006;
 }
 
 * {
@@ -11,7 +11,7 @@ html,
 body {
   min-height: 100%;
   margin: 0;
-  background: #161614;
+  background: #060006;
 }
 
 .site-shell {
@@ -23,5 +23,5 @@ body {
   width: 100%;
   min-height: 100dvh;
   border: 0;
-  background: #161614;
+  background: #060006;
 }
