@@ -1,7 +1,8 @@
 # WebUI
 
-xAuby includes a small read-only browser dashboard for checking the bot from a
-desktop or phone. It does not place, cancel, pause, or resume trades.
+xAuby includes a small browser dashboard for checking the bot from a desktop or
+phone. By default it is monitor-only. Manual buy/sell controls stay disabled
+unless a separate trade confirmation code is configured.
 
 ## Start On The VPS
 
@@ -21,9 +22,35 @@ Keep the engine running separately as usual. The WebUI reads:
 - `core/xauby.db`
 - recent health, log, and event files
 
-The mobile Home view shows live OKX runtime status, 24 recent OHLC candles,
+The mobile Home view shows live OKX runtime status, 32 recent OHLC candles,
 EMA12/EMA26 overlays, CDC Action Zone details, and open-position partial TP
 status. Activity uses its own scrolling view for events and closed trades.
+
+## Manual Buy/Sell
+
+Manual trading is intentionally fail-closed:
+
+- The WebUI never places exchange orders directly. It writes the same short-lived
+  `core/manual_order_request.json` IPC request used by the TUI, and the engine
+  consumes it on the next tick.
+- The engine still applies its normal execution, sizing, cooldown, pair, feed,
+  read-only, and risk/allocation guards.
+- The request expires after 120 seconds if the engine does not claim it.
+- The WebUI refuses manual orders when the runtime state file is stale, when the
+  focused symbol does not match the request, when BUY is requested while a
+  tracked position is open, or when SELL is requested while no tracked position
+  exists.
+
+Enable the controls by setting a confirmation code with at least 6 characters:
+
+```bash
+export XAUBY_WEBUI_TRADE_CONFIRMATION_CODE='<separate-random-code>'
+```
+
+`XAUBY_WEBUI_TRADE_CODE` is accepted as a shorter alias. This code is separate
+from `XAUBY_WEBUI_PASSWORD`; keep both configured if the WebUI is reachable from
+another device. With `BOT_READ_ONLY=true`, the WebUI manual controls remain
+locked.
 
 ## Partial TP Status
 
@@ -35,8 +62,8 @@ PnL line when the active strategy has it configured:
 - `PTP banked` means the partial close has already executed for the current
   position and the remainder is riding to the normal strategy exit.
 
-The WebUI is read-only; it only reflects the engine state file and does not
-manually trigger or cancel partial TP orders.
+Partial TP remains engine-managed; the WebUI manual controls only queue full
+manual BUY/SELL requests for the focused symbol.
 
 ## Windows Access
 
@@ -60,7 +87,7 @@ For phones, SSH tunneling is awkward. The simple free option is Tailscale:
 
 1. Install Tailscale on the VPS and on your phone.
 2. Log in to the same tailnet.
-3. Keep the WebUI read-only.
+3. Keep manual trading disabled unless you need it.
 4. Set a WebUI password before binding to any non-loopback address:
 
 ```bash
@@ -145,6 +172,8 @@ tested from every device.
 - `GET /api/health`
 - `GET /api/recent-events`
 - `GET /api/trades?limit=10`
-- `GET /api/candles?symbol=XAUUSDT&timeframe=4h&limit=24`
+- `GET /api/candles?symbol=XAUUSDT&timeframe=4h&limit=32`
+- `POST /api/manual-order` (disabled unless
+  `XAUBY_WEBUI_TRADE_CONFIRMATION_CODE` or `XAUBY_WEBUI_TRADE_CODE` is set)
 
-All API endpoints are read-only.
+All GET API endpoints are read-only.

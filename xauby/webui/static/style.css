@@ -1498,6 +1498,249 @@ body[data-view="regime"] [data-section="regime"] > .regime-card .panel-head > sp
   border: 1px solid var(--neutral);
 }
 
+/* ---------- Manual trade controls ---------- */
+
+.manual-trade-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.manual-trade-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.manual-trade-summary > div {
+  min-width: 0;
+  min-height: 52px;
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+}
+
+.manual-trade-summary span,
+.manual-trade-note,
+.trade-dialog-summary span,
+.trade-code-field span,
+.trade-dialog-head span {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--type-label);
+  font-weight: var(--weight-label);
+  line-height: 1.15;
+}
+
+.manual-trade-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-1);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-value);
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.manual-mode,
+.manual-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.manual-mode button,
+.manual-action,
+.trade-dialog-actions button,
+.icon-close {
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  background: var(--tile);
+  font-weight: var(--weight-title);
+  letter-spacing: 0;
+}
+
+.manual-mode button {
+  min-height: 38px;
+  padding: 0 8px;
+  font-size: var(--type-caption);
+}
+
+.manual-mode button.active {
+  border-color: var(--orange);
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.manual-action {
+  min-height: 48px;
+  padding: 0 10px;
+  font-size: 15px;
+}
+
+.manual-action.buy {
+  border-color: var(--orange);
+  color: #161614;
+  background: var(--orange);
+}
+
+.manual-action.sell {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: transparent;
+}
+
+.manual-mode button:disabled,
+.manual-action:disabled,
+.trade-dialog-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.44;
+}
+
+.manual-trade-note {
+  min-height: 16px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.manual-trade-note.state-pos {
+  color: var(--orange);
+}
+
+.manual-trade-note.state-warn {
+  color: var(--warn);
+}
+
+.manual-trade-note.state-info {
+  color: var(--neutral);
+}
+
+.trade-modal[hidden] {
+  display: none;
+}
+
+.trade-modal {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding: 16px 16px calc(var(--nav-bottom) + 16px);
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.trade-dialog {
+  display: grid;
+  width: min(430px, 100%);
+  gap: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  background: var(--surface);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.42);
+}
+
+.trade-dialog-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.trade-dialog-head h2 {
+  margin-top: 3px;
+  color: var(--ink-1);
+  font-size: 21px;
+  overflow-wrap: anywhere;
+}
+
+.icon-close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.trade-dialog-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.trade-dialog-summary > div {
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 7px;
+}
+
+.trade-dialog-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-1);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-value);
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.trade-code-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.trade-code-field input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  color: var(--ink-1);
+  background: var(--tile);
+  font-size: 16px;
+  outline: none;
+}
+
+.trade-code-field input:focus {
+  border-color: var(--orange);
+}
+
+.trade-error {
+  min-height: 18px;
+  color: var(--warn);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-label);
+  line-height: 1.3;
+}
+
+.trade-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.trade-dialog-actions button {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: var(--type-caption);
+}
+
+.trade-dialog-actions button[type="submit"] {
+  border-color: var(--orange);
+  color: #161614;
+  background: var(--orange);
+}
+
+@media (min-height: 720px) {
+  .trade-modal {
+    place-items: center;
+  }
+}
+
 /* Execution Health / Macro Guard (orange edge) and Risk & Signal / Strategy
    Bias (neutral, no edge) are now dark framed panels, not colored fills — the
    tile system below just flattens to hairline-divided list rows on top of
@@ -2037,6 +2280,7 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   width: min(400px, calc(100% - 28px));
   height: var(--nav-height);
   overflow: hidden;
+  touch-action: pan-y;
   transform: translateX(-50%);
   border: 1px solid var(--line-strong);
   border-radius: 16px;
@@ -2066,6 +2310,8 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
   height: 100%;
   padding: 0 calc(50% - 40px);
   touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
   transform: translateX(0);
   transition: transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2075,8 +2321,11 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
 }
 
 .bottom-nav button {
+  display: grid;
+  place-items: center;
   flex: 0 0 80px;
   width: 80px;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   border: 0;
@@ -2406,4 +2655,3 @@ body[data-view="activity"] .trades::-webkit-scrollbar-thumb {
     height: 158px;
   }
 }
-

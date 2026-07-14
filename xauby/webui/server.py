@@ -1,4 +1,4 @@
-"""Small read-only WebUI server backed by runtime state files.
+"""Small WebUI server backed by runtime state files.
 
 The server intentionally uses only the Python standard library. It is designed
 to bind to localhost on the VPS and be reached through SSH tunnel or a private
@@ -27,6 +27,12 @@ from urllib.request import Request, urlopen
 
 from xauby.meta import load_bot_display_name, load_webui_avatar
 from xauby.observability.health import HealthMonitor
+from xauby.runtime.manual_orders import (
+    MANUAL_ORDER_MAX_AGE_SECONDS,
+    VALID_MANAGEMENT_MODES,
+    VALID_MANUAL_ACTIONS,
+    write_manual_order_request,
+)
 from xauby.runtime.paths import bot_state_path, db_path as runtime_db_path, usd_thb_rate_path
 from xauby.strategies.cdc_action_zone.indicators import classify_zone
 
@@ -115,6 +121,10 @@ _PREAUTH_STATIC = {
     "/style.css",
     "/xau-logo.svg",
 }
+_MANUAL_TRADE_MIN_CODE_LENGTH = 6
+_MANUAL_ORDER_MAX_STATE_AGE_SECONDS = 120.0
+_JSON_POST_MAX_BYTES = 4096
+WEBUI_CHART_CANDLE_COUNT = 32
 
 
 def _session_secret_from_env() -> bytes:
@@ -217,6 +227,40 @@ def _validate_bind_security(host: str, username: str, password: str, bearer_toke
         "Refusing to bind xAuby WebUI to a non-loopback host without auth. "
         "Set XAUBY_WEBUI_PASSWORD, XAUBY_WEBUI_TOKEN, Google OAuth env vars, or bind to 127.0.0.1."
     )
+
+
+def _manual_trade_confirmation_code() -> str:
+    """Return the configured manual-trade code, or empty when disabled."""
+    code = (
+        os.environ.get("XAUBY_WEBUI_TRADE_CONFIRMATION_CODE")
+        or os.environ.get("XAUBY_WEBUI_TRADE_CODE")
+        or ""
+    ).strip()
+    return code if len(code) >= _MANUAL_TRADE_MIN_CODE_LENGTH else ""
+
+
+def _manual_trading_status(*, read_only: bool, age_sec: Any = None) -> Dict[str, Any]:
+    configured = bool(_manual_trade_confirmation_code())
+    try:
+        age = float(age_sec)
+    except (TypeError, ValueError):
+        age = None
+    state_fresh = bool(age is not None and 0 <= age <= _MANUAL_ORDER_MAX_STATE_AGE_SECONDS)
+    disabled_reason = ""
+    if not configured:
+        disabled_reason = "confirmation_code_not_configured"
+    elif read_only:
+        disabled_reason = "read_only"
+    elif not state_fresh:
+        disabled_reason = "state_stale"
+    return {
+        "enabled": bool(configured and not read_only and state_fresh),
+        "configured": configured,
+        "requires_code": True,
+        "state_fresh": state_fresh,
+        "max_state_age_sec": _MANUAL_ORDER_MAX_STATE_AGE_SECONDS,
+        "disabled_reason": disabled_reason,
+    }
 
 
 def _ema_sma_seeded(values: list[float], length: int) -> list[Optional[float]]:
@@ -409,6 +453,7 @@ def _operator_detail_from_state(
     latency = focus.get("latency") if isinstance(focus.get("latency"), dict) else {}
     exchange = focus.get("exchange") if isinstance(focus.get("exchange"), dict) else {}
     aggregate = state.get("aggregate") if isinstance(state.get("aggregate"), dict) else {}
+    read_only = bool(focus.get("read_only") or state.get("read_only") or aggregate.get("read_only"))
     position_open = _position_open(position)
     entry_price = _as_float(position.get("entry_price"))
     mark_price = _as_float(position.get("mark_price") or focus.get("current_price"))
@@ -450,8 +495,9 @@ def _operator_detail_from_state(
 
     return {
         "mode": focus.get("execution_mode") or ("sim" if focus.get("simulate_only") else "live"),
-        "read_only": bool(focus.get("read_only") or aggregate.get("read_only")),
+        "read_only": read_only,
         "symbol": _clean_symbol(focus.get("symbol") or state.get("focus_symbol") or state.get("symbol")),
+        "manual_trading": _manual_trading_status(read_only=read_only, age_sec=age_sec),
         "strategy": focus.get("strategy_name") or signal.get("strategy_name") or "",
         "strategy_version": focus.get("strategy_version") or "",
         "state_age_sec": age_sec,
@@ -738,10 +784,10 @@ def candles_payload(
     project_root: str,
     symbol: str,
     timeframe: str = "4h",
-    limit: int = 24,
+    limit: int = WEBUI_CHART_CANDLE_COUNT,
 ) -> Dict[str, Any]:
     db_path = _project_path(project_root, runtime_db_path())
-    limit = max(1, min(int(limit or 24), 80))
+    limit = max(1, min(int(limit or WEBUI_CHART_CANDLE_COUNT), 80))
     warmup_limit = min(max(limit + 200, 240), 600)
     symbol = str(symbol or "").upper().replace("_", "")
     timeframe = str(timeframe or "4h").lower()
@@ -781,6 +827,164 @@ def candles_payload(
             conn.close()
     except sqlite3.Error as exc:
         return {"ok": False, "candles": [], "error": str(exc), "path": db_path}
+
+
+def manual_order_payload(
+    project_root: str,
+    payload: Dict[str, Any],
+) -> tuple[HTTPStatus, Dict[str, Any]]:
+    """Validate and queue a confirmed manual order request.
+
+    The WebUI never talks to the exchange. It writes the same short-lived local
+    IPC request as the TUI; the engine still owns all execution/risk checks.
+    """
+    configured_code = _manual_trade_confirmation_code()
+    if not configured_code:
+        return (
+            HTTPStatus.FORBIDDEN,
+            {
+                "ok": False,
+                "error": "manual trading is disabled",
+                "reason": "confirmation_code_not_configured",
+                "min_code_length": _MANUAL_TRADE_MIN_CODE_LENGTH,
+            },
+        )
+
+    supplied_code = str(
+        payload.get("confirmation_code")
+        or payload.get("confirm_code")
+        or payload.get("code")
+        or ""
+    ).strip()
+    if not supplied_code or not hmac.compare_digest(supplied_code, configured_code):
+        return (
+            HTTPStatus.FORBIDDEN,
+            {"ok": False, "error": "invalid confirmation code", "reason": "bad_code"},
+        )
+
+    action = str(payload.get("action") or "").upper()
+    if action not in VALID_MANUAL_ACTIONS:
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {
+                "ok": False,
+                "error": f"action must be one of {sorted(VALID_MANUAL_ACTIONS)}",
+            },
+        )
+
+    management_mode = str(payload.get("management_mode") or "strategy").lower()
+    if management_mode not in VALID_MANAGEMENT_MODES:
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {
+                "ok": False,
+                "error": f"management_mode must be one of {sorted(VALID_MANAGEMENT_MODES)}",
+            },
+        )
+
+    state_payload = load_state(project_root)
+    if not state_payload["ok"]:
+        return (
+            HTTPStatus.CONFLICT,
+            {"ok": False, "error": "runtime state is unavailable", "reason": "state_missing"},
+        )
+
+    try:
+        age = float(state_payload.get("age_sec"))
+    except (TypeError, ValueError):
+        age = None
+    if age is None or age < 0 or age > _MANUAL_ORDER_MAX_STATE_AGE_SECONDS:
+        return (
+            HTTPStatus.CONFLICT,
+            {
+                "ok": False,
+                "error": "runtime state is stale",
+                "reason": "state_stale",
+                "age_sec": state_payload.get("age_sec"),
+                "max_state_age_sec": _MANUAL_ORDER_MAX_STATE_AGE_SECONDS,
+            },
+        )
+
+    state = state_payload["state"]
+    focus = _focus_snapshot(state)
+    focus_symbol = _clean_symbol(focus.get("symbol") or state.get("focus_symbol") or state.get("symbol"))
+    requested_symbol = _clean_symbol(payload.get("symbol") or focus_symbol)
+    if not requested_symbol:
+        return (
+            HTTPStatus.BAD_REQUEST,
+            {"ok": False, "error": "symbol is required", "reason": "symbol_required"},
+        )
+    if not focus_symbol or requested_symbol != focus_symbol:
+        return (
+            HTTPStatus.CONFLICT,
+            {
+                "ok": False,
+                "error": "requested symbol is not the focused runtime symbol",
+                "reason": "symbol_mismatch",
+                "symbol": requested_symbol,
+                "focus_symbol": focus_symbol,
+            },
+        )
+
+    aggregate = state.get("aggregate") if isinstance(state.get("aggregate"), dict) else {}
+    if bool(focus.get("read_only") or state.get("read_only") or aggregate.get("read_only")):
+        return (
+            HTTPStatus.CONFLICT,
+            {"ok": False, "error": "engine is read-only", "reason": "read_only"},
+        )
+
+    position = focus.get("position") if isinstance(focus.get("position"), dict) else {}
+    position_state = str(position.get("state") or "idle").lower()
+    if action == "BUY" and position_state != "idle":
+        return (
+            HTTPStatus.CONFLICT,
+            {
+                "ok": False,
+                "error": f"{requested_symbol} already has a tracked position",
+                "reason": "position_open",
+            },
+        )
+    if action == "SELL":
+        if position_state != "bought":
+            return (
+                HTTPStatus.CONFLICT,
+                {
+                    "ok": False,
+                    "error": f"{requested_symbol} has no tracked position",
+                    "reason": "position_missing",
+                },
+            )
+        position_mode = str(position.get("management_mode") or management_mode).lower()
+        management_mode = position_mode if position_mode in VALID_MANAGEMENT_MODES else "strategy"
+
+    try:
+        request = write_manual_order_request(
+            requested_symbol,
+            action,
+            management_mode=management_mode,
+            source="webui",
+            project_root=project_root,
+        )
+    except ValueError as exc:
+        return (HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
+    except Exception as exc:
+        return (
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            {"ok": False, "error": f"manual order queue failed: {exc}"},
+        )
+
+    return (
+        HTTPStatus.ACCEPTED,
+        {
+            "ok": True,
+            "queued": True,
+            "symbol": request["symbol"],
+            "action": request["action"],
+            "management_mode": request["management_mode"],
+            "request_id": request["request_id"],
+            "expires_in_sec": MANUAL_ORDER_MAX_AGE_SECONDS,
+        },
+    )
 
 
 class XAubyWebUIHandler(BaseHTTPRequestHandler):
@@ -1013,6 +1217,43 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _post_origin_allowed(self) -> bool:
+        origin = str(self.headers.get("Origin") or "").rstrip("/")
+        if not origin:
+            return True
+        return hmac.compare_digest(origin, self._request_origin().rstrip("/"))
+
+    def _read_json_post_body(self) -> tuple[Optional[Dict[str, Any]], Optional[HTTPStatus], str]:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            length = 0
+        if length <= 0:
+            return {}, None, ""
+        if length > _JSON_POST_MAX_BYTES:
+            return None, HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body is too large"
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            return None, HTTPStatus.BAD_REQUEST, f"invalid JSON: {exc.msg}"
+        if not isinstance(payload, dict):
+            return None, HTTPStatus.BAD_REQUEST, "JSON body must be an object"
+        return payload, None, ""
+
+    def _handle_manual_order_post(self) -> None:
+        if not self._post_origin_allowed():
+            self._send_json(
+                {"ok": False, "error": "origin is not allowed", "reason": "bad_origin"},
+                HTTPStatus.FORBIDDEN,
+            )
+            return
+        payload, error_status, error = self._read_json_post_body()
+        if error_status is not None:
+            self._send_json({"ok": False, "error": error}, error_status)
+            return
+        status, response = manual_order_payload(self.project_root, payload or {})
+        self._send_json(response, status)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -1085,11 +1326,11 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
             self._send_json(trades_payload(self.project_root, limit=limit, symbol=symbol))
             return
         if path == "/api/candles":
-            raw_limit = (query.get("limit") or ["24"])[0]
+            raw_limit = (query.get("limit") or [str(WEBUI_CHART_CANDLE_COUNT)])[0]
             try:
                 limit = int(raw_limit)
             except (TypeError, ValueError):
-                limit = 24
+                limit = WEBUI_CHART_CANDLE_COUNT
             symbol = (query.get("symbol") or [""])[0]
             timeframe = (query.get("timeframe") or ["4h"])[0]
             self._send_json(
@@ -1105,6 +1346,12 @@ class XAubyWebUIHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if path == "/api/manual-order":
+            if not self._is_authorized():
+                self._send_auth_required()
+                return
+            self._handle_manual_order_post()
+            return
         if path != "/login":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -1152,7 +1399,7 @@ def create_server(host: str, port: int, project_root: str = ".") -> ThreadingHTT
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the read-only xAuby WebUI")
+    parser = argparse.ArgumentParser(description="Run the xAuby WebUI")
     parser.add_argument("--host", default=os.environ.get("WEBUI_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("WEBUI_PORT", "8787")))
     parser.add_argument("--project-root", default=os.getcwd())
