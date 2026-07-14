@@ -50,6 +50,41 @@
     });
   };
 
+  const removeHeroVideo = () => {
+    const hero = document.querySelector("[data-hero-scrub]");
+    if (!hero) return;
+
+    hero.removeAttribute("data-hero-scrub");
+    hero.style.minHeight = "auto";
+
+    const video = hero.querySelector("video");
+    if (video) {
+      video.pause();
+      video.querySelectorAll("source").forEach((source) => source.remove());
+      video.removeAttribute("src");
+      video.removeAttribute("poster");
+      video.remove();
+    }
+
+    const frame = hero.querySelector(".xn-hero-sticky");
+    if (frame) {
+      frame.style.position = "relative";
+      frame.style.height = "auto";
+      frame.style.minHeight = "min(680px, 100svh)";
+      frame.style.background = "radial-gradient(circle at 82% 22%, rgba(255,67,26,.18), transparent 32%), linear-gradient(135deg, #161614 0%, #060006 68%)";
+    }
+
+    const shade = hero.querySelector(".xn-hero-shade");
+    if (shade) shade.style.background = "linear-gradient(90deg, rgba(6,0,6,.22), rgba(6,0,6,0))";
+
+    const content = hero.querySelector(".xn-hero-content");
+    if (content) {
+      content.style.opacity = "1";
+      content.style.filter = "none";
+      content.style.transform = "none";
+    }
+  };
+
   const addResearchUpdate = (section) => {
     if (!section || section.querySelector("[data-report-update]")) return;
     const milestones = section.querySelector("ol");
@@ -154,6 +189,7 @@
   };
 
   const apply = () => {
+    removeHeroVideo();
     applyRoundedSystem();
     updateCurrentConfiguration();
     addRoadmap();
