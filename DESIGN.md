@@ -156,11 +156,11 @@ previous system used a glow/lift on hover, the current one shifts
   liquid animation, no light streaks) with cream text and an orange
   `h1::first-letter`, matching the dark-shell treatment used elsewhere; the
   primary button is the same flat cream-fill / orange-hover pattern as the
-  marketing site's buttons. Space Grotesk is the sole font here too.
-  Login-specific overrides live in `login.css` so dashboard layout rules
-  cannot leak into the pre-auth screen. Pre-auth shows only generic
-  branding and never exposes runtime state, the operator photo, or the
-  operator name.
+  marketing site's buttons. The hero headline uses Montserrat Bold while the
+  rest of the screen uses Space Grotesk. Login-specific overrides live in
+  `login.css` so dashboard layout rules cannot leak into the pre-auth screen.
+  Pre-auth shows only generic branding and never exposes runtime state, the
+  operator photo, or the operator name.
 
 ## Motion
 

@@ -80,12 +80,12 @@ body.login-body::after {
   overflow: visible;
   display: block;
   margin: 0;
-  color: #ece9e2;
-  font-family: "Space Grotesk", sans-serif;
+  color: #fff;
+  font-family: "Montserrat", sans-serif;
   font-size: clamp(40px, 10.5vw, 50px);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 0.95;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 0.9;
   -webkit-line-clamp: none;
 }
 
