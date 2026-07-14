@@ -35,6 +35,7 @@
     replaceExactText("span", "RUNNING: 1 pair", "LIVE: XAU · long only");
     replaceExactText("span", "RUNNING: OKX only", "OKX swap · isolated · 1×");
     replaceExactText("h3", "Strategy plugins", "Current live strategy");
+    replaceExactText("p", "Current live configuration", "Operating controls");
 
     document.querySelectorAll("p").forEach((paragraph) => {
       const text = paragraph.textContent?.trim();
@@ -47,6 +48,35 @@
           "Today the operator uses the dashboard, terminal, and Telegram alerts. Phase 1 of the roadmap moves normal operations to the webapp without bypassing engine safeguards.";
       }
     });
+  };
+
+  const addResearchUpdate = (section) => {
+    if (!section || section.querySelector("[data-report-update]")) return;
+    const milestones = section.querySelector("ol");
+    if (!milestones) return;
+
+    const update = document.createElement("div");
+    update.dataset.reportUpdate = "2026-07-14";
+    update.style.cssText = "margin:0 0 16px;";
+    update.innerHTML = `
+      <div style="padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;margin-bottom:16px;">
+        <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">Latest research-backed configuration</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">XAU / XAUUSDT</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">PAXGUSDT research proxy · 4h / 1d</span></div>
+          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Long only</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">D1 regime filter · fresh zone window 3</span></div>
+          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Strict ROI</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">8% now · 5% after 1d · 3% after 3d</span></div>
+          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">BTC: SIM ONLY</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">At least 8 trades · PF > 1.3 · MDD <= 12%</span></div>
+        </div>
+        <p style="margin:14px 0 0;font-size:11px;line-height:1.55;color:rgba(236,233,226,.48);">Short execution, ATR stop, trailing stop, and breakeven are disabled. The XAU profile retains the slope filter and takes 50% partial profit at +12%. This research information is not a return promise.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;">
+        <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">BACKTEST</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">PF 2.00</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">46% win rate · 8% max drawdown</span></div>
+        <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">WALK-FORWARD</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">4 / 5</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Profitable folds in the reported result</span></div>
+        <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">PLANNING RANGE</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">PF 1.3-1.7</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Use this range, not PF 2.00, for planning</span></div>
+      </div>
+      <div style="padding:18px 20px;border:1px solid rgba(255,122,77,.62);background:rgba(255,122,77,.08);margin-bottom:16px;"><strong style="font-size:13px;">Validation note</strong><p style="margin:7px 0 0;max-width:80ch;font-size:12px;line-height:1.6;color:rgba(236,233,226,.74);">The report flags a walk-forward discrepancy around folds 1-2. Confirm raw fold results and replay validation before considering the ROI profile deploy-ready. The earlier Efficient Frontier allocation used an older XAU configuration and must be recalculated before capital is assigned.</p></div>`;
+    milestones.before(update);
+    applyRoundedSystem();
   };
 
   const addRoadmap = () => {
@@ -100,6 +130,7 @@
         </ol>
       </div>`;
     footer.before(section);
+    addResearchUpdate(section);
     applyRoundedSystem();
   };
 
