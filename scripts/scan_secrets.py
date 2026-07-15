@@ -152,7 +152,7 @@ def is_placeholder(value: str) -> bool:
         return True
     if PLACEHOLDER_RE.fullmatch(normalized):
         return True
-    if normalized.startswith(("os.environ", "getenv(", "env(", "settings.", "`", "${", "<")):
+    if normalized.startswith(("?", "os.environ", "getenv(", "env(", "settings.", "`", "${", "<")):
         return True
     if normalized.endswith((">`", "`")):
         return True
@@ -169,6 +169,8 @@ def is_code_expression(value: str) -> bool:
 def assignment_severity(key: str, value: str) -> str | None:
     key_lower = key.lower()
     normalized = normalize(value)
+    if key_lower == "nopasswd":
+        return None
     if is_placeholder(normalized) or is_code_expression(normalized):
         return None
     if key_lower.endswith(".required") and normalized.lower() in {"true", "false"}:

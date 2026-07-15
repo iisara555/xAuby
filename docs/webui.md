@@ -1,5 +1,10 @@
 # WebUI
 
+> This document describes the legacy single-operator WebUI. Hosted multi-user
+> deployments use the tenant-aware [SaaS control plane](saas.md), which adds
+> lifecycle controls, admin-approved Live activation and Trade-PIN-confirmed
+> manual long/short commands.
+
 xAuby includes a small browser dashboard for checking the bot from a desktop or
 phone. By default it is monitor-only. Manual buy/sell controls stay disabled
 unless a separate trade confirmation code is configured.

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.saas.example
 
 # Python cache & virtualenvs
 __pycache__/
@@ -53,6 +54,7 @@ tmp_ui_mobile_snapshots/
 *.egg-info/
 build/
 dist/
+release-artifacts/
 =0.50.0
 
 # IDE / editor

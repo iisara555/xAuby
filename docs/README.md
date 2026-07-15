@@ -20,6 +20,7 @@ English reference for operators and contributors. The root [README.md](../README
 | [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
 | [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
 | [webui.md](webui.md) | Read-only browser dashboard via SSH tunnel or Tailscale |
+| [saas.md](saas.md) | Hosted multi-tenant control plane, Owner workflow, live approval and manual trading |
 | [screenshots/](screenshots/) | TUI captures in SVG format |
 
 ## Regenerate TUI screenshots

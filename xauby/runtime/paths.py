@@ -111,6 +111,16 @@ def manual_order_request_path() -> str:
     return runtime_path("manual_order_request.json")
 
 
+def manual_order_queue_path() -> str:
+    """Durable tenant-local queue used by the SaaS control plane.
+
+    The legacy JSON request remains available for the local TUI.  SaaS orders
+    use SQLite so confirmation, idempotency and execution outcome survive
+    process restarts without sharing a queue across tenants.
+    """
+    return runtime_path("manual_orders.db")
+
+
 def sentiment_guard_state_path() -> str:
     return runtime_path("sentiment_guard_state.json")
 

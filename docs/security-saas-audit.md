@@ -88,14 +88,20 @@ No third-party systems, exchanges, or public targets were attacked.
 
 ## SaaS Residual Risks
 
-- xAuby is still a single-operator bot runtime, not a complete SaaS security
-  boundary. Real SaaS needs tenant identity, tenant authorization, RBAC, and
-  per-tenant audit logs outside the bot process.
+The pilot control plane described in [saas.md](saas.md) now supplies tenant
+identity/authorization, isolated runtime roots, Google sessions, CSRF-protected
+writes, Trade PIN step-up, live approval, durable idempotent manual commands and
+hash-chained audit events. The legacy single-operator WebUI remains unsuitable
+as a public multi-tenant boundary.
+
+- The engine remains single-tenant by design. SaaS isolation depends on the
+  systemd template and control-plane authorization; do not run multiple tenants
+  inside one engine process.
 - Do not expose the stdlib WebUI directly to the public internet. Put it behind
   TLS, a reverse proxy, and an identity-aware access layer.
-- Manual trading actions must remain local-only or be redesigned with explicit
-  authorization, CSRF protection, replay protection, and immutable audit logs
-  before any web write endpoints are added.
+- Legacy WebUI manual trading must remain operator-local. Hosted manual actions
+  must use the SaaS control-plane path, which adds tenant authorization, CSRF,
+  Trade PIN, expiring previews, idempotency and hash-chained audit events.
 - Per-tenant exchange credentials should move to a secret manager; local `.env`
   is acceptable for a VPS operator but weak for SaaS.
 - Use one OS user/process namespace per tenant, separate `XAUBY_HOME` and

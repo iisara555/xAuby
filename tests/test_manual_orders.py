@@ -1,16 +1,63 @@
-import json
 import os
 import tempfile
 import unittest
+from contextlib import closing
 from unittest import mock
 
 from xauby.runtime.manual_orders import (
     claim_manual_order_request,
+    claim_queued_manual_order,
+    complete_manual_order_command,
+    queue_manual_order_command,
     write_manual_order_request,
 )
 
 
 class ManualOrderIPCTests(unittest.TestCase):
+    def test_durable_queue_is_idempotent_and_claimed_once(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "manual.db")
+            first = queue_manual_order_command(
+                "xauusdt", "OPEN_LONG", idempotency_key="idem-12345678",
+                queue_path=path, now=100.0,
+            )
+            duplicate = queue_manual_order_command(
+                "XAUUSDT", "OPEN_LONG", idempotency_key="idem-12345678",
+                queue_path=path, now=101.0,
+            )
+            self.assertEqual(first["request_id"], duplicate["request_id"])
+            claimed = claim_queued_manual_order("XAUUSDT", queue_path=path, now=102.0)
+            self.assertEqual(claimed["intent"], "OPEN_LONG")
+            self.assertIsNone(claim_queued_manual_order("XAUUSDT", queue_path=path, now=103.0))
+            complete_manual_order_command(
+                claimed["request_id"], success=True, reason="filled", queue_path=path, now=104.0
+            )
+            import sqlite3
+            with closing(sqlite3.connect(path)) as conn:
+                status = conn.execute(
+                    "SELECT status FROM manual_order_commands WHERE request_id=?",
+                    (claimed["request_id"],),
+                ).fetchone()[0]
+            self.assertEqual(status, "executed")
+
+    def test_partial_close_requires_valid_fraction(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "manual.db")
+            with self.assertRaises(ValueError):
+                queue_manual_order_command(
+                    "XAUUSDT", "PARTIAL_CLOSE_LONG", fraction=1.0,
+                    idempotency_key="idem-12345678", queue_path=path,
+                )
+
+    def test_expired_durable_command_never_claims(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "manual.db")
+            queue_manual_order_command(
+                "XAUUSDT", "OPEN_SHORT", idempotency_key="idem-12345678",
+                queue_path=path, now=100.0, ttl_seconds=10,
+            )
+            self.assertIsNone(claim_queued_manual_order("XAUUSDT", queue_path=path, now=111.0))
+
     def test_matching_request_is_claimed_once(self):
         with tempfile.TemporaryDirectory() as root:
             request = write_manual_order_request("btcusdt", "buy", project_root=root)
@@ -77,6 +124,8 @@ class ManualOrderEngineTests(unittest.TestCase):
         engine.execute_buy = mock.Mock(return_value=True)
         engine.execute_sell = mock.Mock(return_value=True)
         engine.execute_close_short = mock.Mock(return_value=True)
+        engine.execute_open_short = mock.Mock(return_value=True)
+        engine.execute_partial_tp = mock.Mock(return_value=True)
         engine._is_buy_blocked_by_cooldown = mock.Mock(return_value=(False, ""))
         spec = mock.Mock(allowed_sides=("long",))
         engine._pair_registry = mock.Mock()
@@ -143,6 +192,51 @@ class ManualOrderEngineTests(unittest.TestCase):
             symbol="BTCUSDT",
             management_mode="manual",
         )
+
+    @mock.patch("xauby.runtime.telegram_control.trading_pause_reason", return_value=(False, ""))
+    @mock.patch("xauby.engine.loop.claim_manual_order_request")
+    def test_saas_open_short_uses_engine_execution(self, claim, _pause):
+        claim.return_value = {
+            "request_id": "req4", "symbol": "BTCUSDT", "action": "OPEN_SHORT",
+            "source": "saas",
+        }
+        engine = self._engine()
+        engine._pair_registry.get.return_value.allowed_sides = ("long", "short")
+        self.assertTrue(engine._process_manual_order_request(
+            {"state": "idle"}, 60000.0, 500.0, symbol="BTCUSDT"
+        ))
+        engine.execute_open_short.assert_called_once()
+
+    @mock.patch("xauby.engine.loop.claim_manual_order_request")
+    def test_saas_partial_close_does_not_consume_strategy_partial_tp(self, claim):
+        claim.return_value = {
+            "request_id": "req5", "symbol": "BTCUSDT", "action": "PARTIAL_CLOSE_LONG",
+            "source": "saas", "fraction": 0.25,
+        }
+        engine = self._engine()
+        state = {"state": "bought", "position_side": "LONG", "quantity": 0.01}
+        self.assertTrue(engine._process_manual_order_request(
+            state, 60000.0, 500.0, symbol="BTCUSDT"
+        ))
+        engine.execute_partial_tp.assert_called_once_with(
+            state, 60000.0, fraction=0.25, threshold_pct=0.0, symbol="BTCUSDT",
+            mark_partial_tp_taken=False,
+            trigger_reason_override="Manual partial close (25.0%)",
+        )
+
+    @mock.patch("xauby.engine.loop.claim_manual_order_request")
+    def test_saas_command_rejects_changed_position_after_preview(self, claim):
+        claim.return_value = {
+            "request_id": "req6", "symbol": "BTCUSDT", "action": "CLOSE_LONG",
+            "source": "saas", "expected_position_side": "LONG", "expected_quantity": 0.02,
+        }
+        engine = self._engine()
+        result = engine._process_manual_order_request(
+            {"state": "bought", "position_side": "LONG", "quantity": 0.01},
+            60000.0, 500.0, symbol="BTCUSDT",
+        )
+        self.assertFalse(result)
+        engine.execute_sell.assert_not_called()
 
 
 if __name__ == "__main__":

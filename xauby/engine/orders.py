@@ -513,6 +513,8 @@ class OrderMixin:
         fraction: float,
         threshold_pct: float,
         symbol: Optional[str] = None,
+        mark_partial_tp_taken: bool = True,
+        trigger_reason_override: Optional[str] = None,
     ) -> bool:
         """Bank ``fraction`` of an open position at the partial-TP threshold.
 
@@ -529,7 +531,7 @@ class OrderMixin:
         entry = float(state.get("entry_price") or 0.0)
         if (
             state.get("state") != "bought"
-            or bool(state.get("partial_tp_taken"))
+            or (mark_partial_tp_taken and bool(state.get("partial_tp_taken")))
             or qty_total <= 0
             or entry <= 0
             or ticker_price <= 0
@@ -558,14 +560,17 @@ class OrderMixin:
                 "legs (min %.8f). Marking as taken.",
                 sym, qty_total, min_tradeable,
             )
-            self._save_state_partial_taken(state, sym, qty_total)
+            if mark_partial_tp_taken:
+                self._save_state_partial_taken(state, sym, qty_total)
             return False
 
         if self._use_sim_broker(sym):
             ticker_price = self._sim_fill_price(sym, ticker_price)
         broker = self._broker_for_symbol(sym)
         funding_total = float(state.get("funding_paid") or 0.0)
-        trigger_reason = f"Partial TP +{float(threshold_pct):.1f}% (banked {float(fraction)*100:.0f}%)"
+        trigger_reason = trigger_reason_override or (
+            f"Partial TP +{float(threshold_pct):.1f}% (banked {float(fraction)*100:.0f}%)"
+        )
         self._emit_event(
             EventType.ORDER_SUBMITTED,
             side="BUY" if side == "SHORT" else "SELL",
@@ -642,7 +647,9 @@ class OrderMixin:
             liquidation_price=float(state.get("liquidation_price", 0.0) or 0.0),
             funding_paid=funding_total - funding_share,
             management_mode=str(state.get("management_mode") or "strategy"),
-            partial_tp_taken=True,
+            partial_tp_taken=(
+                True if mark_partial_tp_taken else bool(state.get("partial_tp_taken"))
+            ),
         )
 
         pnl_sign = (entry - fill_price) if side == "SHORT" else (fill_price - entry)

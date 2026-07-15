@@ -912,7 +912,15 @@ class BaseEngine:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # "a+" instead of "w": opening must not truncate — a losing contender
         # would wipe the holder's "pid ... cfg ..." info before flock fails.
-        fp = open(path, "a+")
+        # The hosted systemd units use different DynamicUser UIDs. Keep the
+        # shared lock group-writable so every engine can contend on the same
+        # inode instead of failing open with EACCES.
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o660)
+        try:
+            os.fchmod(fd, 0o660)
+        except OSError:
+            pass
+        fp = os.fdopen(fd, "a+")
         try:
             fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:

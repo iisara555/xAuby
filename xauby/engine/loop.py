@@ -13,7 +13,10 @@ from xauby.observability.replay import ContextBuilder
 from xauby.notifications.interface import AlertLevel
 from xauby.api.errors import ExchangeAPIError
 from xauby.runtime.paths import dashboard_focus_path, sentiment_guard_state_path
-from xauby.runtime.manual_orders import claim_manual_order_request
+from xauby.runtime.manual_orders import (
+    claim_manual_order_request,
+    complete_manual_order_command,
+)
 from xauby.engine.regime_policy import apply_regime_policy, regime_policy_enabled
 from xauby.runtime.candle_utils import candle_is_stale, drop_forming_bar, use_closed_candles
 from xauby.runtime.exits import minimal_roi_pct, resolve_minimal_roi, resolve_partial_tp
@@ -125,7 +128,7 @@ class LoopMixin:
         if request is None:
             return None
 
-        action = request["action"]
+        action = str(request["action"]).upper()
         management_mode = str(request.get("management_mode") or "strategy").lower()
         if management_mode not in {"strategy", "manual"}:
             management_mode = "strategy"
@@ -133,7 +136,28 @@ class LoopMixin:
         reason = ""
         success = False
 
-        if action == "BUY":
+        expected_side = str(request.get("expected_position_side") or "").upper()
+        expected_qty_raw = request.get("expected_quantity")
+        expected_mismatch = ""
+        if expected_side:
+            current_side = str(state.get("position_side") or "").upper()
+            if current_side != expected_side:
+                expected_mismatch = (
+                    f"position changed after preview (expected {expected_side}, current {current_side or 'FLAT'})"
+                )
+        if expected_qty_raw is not None and not expected_mismatch:
+            expected_qty = float(expected_qty_raw or 0.0)
+            current_qty = float(state.get("quantity") or 0.0)
+            tolerance = max(1e-9, abs(expected_qty) * 1e-6)
+            if abs(expected_qty - current_qty) > tolerance:
+                expected_mismatch = (
+                    f"position quantity changed after preview (expected {expected_qty:.12g}, current {current_qty:.12g})"
+                )
+
+        is_saas = str(request.get("source") or "").lower() == "saas"
+        if expected_mismatch:
+            reason = f"Manual order rejected: {expected_mismatch}"
+        elif action in {"BUY", "OPEN_LONG"}:
             spec = self._pair_registry.get(symbol)
             if state.get("state") != "idle":
                 reason = f"Manual BUY rejected: {symbol} already has an open position"
@@ -141,7 +165,7 @@ class LoopMixin:
                 reason = f"Manual BUY rejected: LONG is disabled for {symbol}"
             elif self._sc(symbol).feed_snapshot()["feed_degraded"]:
                 reason = f"Manual BUY rejected: market feed is degraded for {symbol}"
-            elif self._sc(symbol).blocks_new_entries():
+            elif self._sc(symbol).blocks_new_entries() and not is_saas:
                 reason = f"Manual BUY rejected: RegimeRouter {self._sc(symbol).no_trade_state}"
             else:
                 max_open = int(
@@ -157,7 +181,7 @@ class LoopMixin:
                 blocked, block_reason = self._is_buy_blocked_by_cooldown(symbol=symbol)
                 if open_count >= max_open:
                     reason = f"Manual BUY rejected: max open positions ({max_open})"
-                elif blocked:
+                elif blocked and not is_saas:
                     reason = f"Manual BUY rejected: {block_reason}"
                 else:
                     success = self.execute_buy(
@@ -168,16 +192,80 @@ class LoopMixin:
                     )
                     label = "strategy-managed" if management_mode == "strategy" else "manual-managed"
                     reason = f"Manual BUY submitted ({label})" if success else "Manual BUY execution failed"
+        elif action == "OPEN_SHORT":
+            from xauby.runtime.telegram_control import trading_pause_reason
+            from xauby.strategies.signal import open_short
+
+            spec = self._pair_registry.get(symbol)
+            paused, pause_reason = trading_pause_reason()
+            if state.get("state") != "idle":
+                reason = f"Manual SHORT rejected: {symbol} already has an open position"
+            elif not spec or "short" not in spec.allowed_sides:
+                reason = f"Manual SHORT rejected: SHORT is disabled for {symbol}"
+            elif paused:
+                reason = f"Manual SHORT rejected: trading paused ({pause_reason})"
+            elif self._sc(symbol).feed_snapshot()["feed_degraded"]:
+                reason = f"Manual SHORT rejected: market feed is degraded for {symbol}"
+            else:
+                max_open = int(
+                    self.config.get("trading", {}).get(
+                        "max_open_positions", len(self._pair_registry.active()) or 1
+                    )
+                )
+                open_count = sum(
+                    1
+                    for item in self._pair_registry.active()
+                    if self.db.get_trade_state(item.symbol).get("state") == "bought"
+                )
+                if open_count >= max_open:
+                    reason = f"Manual SHORT rejected: max open positions ({max_open})"
+                else:
+                    signal = open_short(
+                        "Manual SHORT (SaaS)",
+                        volatility=atr,
+                        stop_loss_distance=atr if atr > 0 else None,
+                    )
+                    success = self.execute_open_short(signal, ticker_price, symbol=symbol)
+                    reason = "Manual SHORT submitted" if success else "Manual SHORT execution failed"
         elif state.get("state") != "bought":
             reason = f"Manual SELL rejected: {symbol} has no tracked position"
+        elif action in {"PARTIAL_CLOSE_LONG", "PARTIAL_CLOSE_SHORT"}:
+            side = str(state.get("position_side") or "LONG").upper()
+            expected = "SHORT" if action.endswith("SHORT") else "LONG"
+            fraction = float(request.get("fraction") or 0.0)
+            if side != expected:
+                reason = f"Manual partial close rejected: tracked side is {side}, not {expected}"
+            elif not 0.0 < fraction < 1.0:
+                reason = "Manual partial close rejected: invalid fraction"
+            else:
+                success = self.execute_partial_tp(
+                    state,
+                    ticker_price,
+                    fraction=fraction,
+                    threshold_pct=0.0,
+                    symbol=symbol,
+                    mark_partial_tp_taken=False,
+                    trigger_reason_override=f"Manual partial close ({fraction * 100:.1f}%)",
+                )
+                reason = (
+                    f"Manual {side} partial close submitted"
+                    if success
+                    else f"Manual {side} partial close failed"
+                )
+        elif action == "CLOSE_LONG" and str(state.get("position_side") or "LONG").upper() != "LONG":
+            reason = "Manual LONG close rejected: tracked position is SHORT"
+        elif action == "CLOSE_SHORT" and str(state.get("position_side") or "LONG").upper() != "SHORT":
+            reason = "Manual SHORT close rejected: tracked position is LONG"
         elif str(state.get("position_side") or "LONG").upper() == "SHORT":
+            trigger_reason = "Manual close" if is_saas else "Manual SELL (TUI F8)"
             success = self.execute_close_short(
-                state, ticker_price, trigger_reason="Manual SELL (TUI F8)", symbol=symbol
+                state, ticker_price, trigger_reason=trigger_reason, symbol=symbol
             )
             reason = "Manual SHORT close submitted" if success else "Manual SHORT close failed"
         else:
+            trigger_reason = "Manual close" if is_saas else "Manual SELL (TUI F8)"
             success = self.execute_sell(
-                state, ticker_price, trigger_reason="Manual SELL (TUI F8)", symbol=symbol
+                state, ticker_price, trigger_reason=trigger_reason, symbol=symbol
             )
             reason = "Manual SELL submitted" if success else "Manual SELL execution failed"
 
@@ -193,6 +281,14 @@ class LoopMixin:
         if not success:
             logger.warning("%s (request_id=%s)", reason, request_id)
             self.send_telegram_alert(f"Manual order not executed: {reason}")
+        queue_path = request.get("_queue_db_path")
+        if queue_path:
+            complete_manual_order_command(
+                request_id,
+                success=success,
+                reason=reason,
+                queue_path=str(queue_path),
+            )
         return success
 
     def _apply_fixed_tp_exit(

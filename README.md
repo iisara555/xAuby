@@ -77,6 +77,10 @@ execution assumptions, and only then consider capital deployment.
 
 ## Promotional Website
 
+Hosted multi-user deployments use a separate SaaS control plane with one
+isolated engine per tenant, public Google sign-in, admin-approved Live mode and
+Trade-PIN-confirmed manual long/short orders. See [docs/saas.md](docs/saas.md).
+
 The promotional site is a standalone Next.js app in [`Website/`](Website/).
 It is deployed independently from the Python trading runtime, so it can safely
 be used to explain the product without exposing trading credentials or runtime

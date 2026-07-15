@@ -1,0 +1,16 @@
+[Unit]
+Description=Backup xAuby SaaS state
+
+[Service]
+Type=oneshot
+User=xauby-control
+Group=xauby-control
+EnvironmentFile=/etc/xauby/control.env
+WorkingDirectory=/opt/xauby/current
+ExecStart=/opt/xauby/current/venv/bin/python scripts/saas_backup.py --output /var/lib/xauby/backups --retention-days 7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/xauby
+UMask=0077

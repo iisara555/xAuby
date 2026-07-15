@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>xAuby Control Plane</title>
+  <link rel="stylesheet" href="/static/saas.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><span class="brand-mark small">XA</span><strong>xAuby</strong></div>
+    <div class="identity"><span id="identity">Loading...</span><button id="logout" class="link">Logout</button></div>
+  </header>
+  <nav class="tabs">
+    <button data-tab="my-bot" class="active">My Bot</button>
+    <button data-tab="trade">Manual Trade</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="admin" id="admin-tab" hidden>Admin</button>
+  </nav>
+  <main>
+    <section id="my-bot" class="view active">
+      <div class="hero-row">
+        <div><p class="eyebrow">TENANT</p><h1 id="tenant-name">—</h1></div>
+        <span id="bot-status" class="status">—</span>
+      </div>
+      <div class="grid">
+        <article><p>Mode</p><strong id="mode">—</strong></article>
+        <article><p>Exchange</p><strong id="exchange">—</strong></article>
+        <article><p>Live approval</p><strong id="live-status">—</strong></article>
+        <article><p>Position</p><strong id="position">—</strong></article>
+      </div>
+      <div class="actions"><button id="start" class="primary">Start engine</button><button id="stop">Stop engine</button><button id="request-live">Request Live</button></div>
+      <pre id="bot-message"></pre>
+    </section>
+
+    <section id="trade" class="view">
+      <h2>Manual Market Order</h2>
+      <p class="warning">Manual entries bypass strategy signals but never bypass account and risk guards.</p>
+      <form id="trade-form" class="form-grid">
+        <label>Symbol<input name="symbol" value="XAUUSDT" required></label>
+        <label>Intent<select name="intent"><option>OPEN_LONG</option><option>CLOSE_LONG</option><option>OPEN_SHORT</option><option>CLOSE_SHORT</option><option>PARTIAL_CLOSE_LONG</option><option>PARTIAL_CLOSE_SHORT</option></select></label>
+        <label>Fraction (partial only)<input name="fraction" type="number" min="0.01" max="0.99" step="0.01"></label>
+        <button class="primary" type="submit">Preview order</button>
+      </form>
+      <div id="challenge" class="challenge" hidden>
+        <pre id="preview"></pre>
+        <label>Trade PIN<input id="confirm-pin" type="password" inputmode="numeric" minlength="8" maxlength="12"></label>
+        <button id="confirm-order" class="danger">Confirm market order</button>
+      </div>
+      <h3>Recent commands</h3><div id="orders" class="rows"></div>
+    </section>
+
+    <section id="settings" class="view">
+      <h2>Security and Exchange</h2>
+      <form id="risk-form" class="form-grid">
+        <label>Risk fraction per trade<input name="risk_pct" type="number" min="0.001" max="0.02" step="0.001" required></label>
+        <label>Maximum allocation (%)<input name="max_position_per_trade_pct" type="number" min="1" max="25" step="0.5" required></label>
+        <label>Daily loss limit (%)<input name="max_daily_loss_pct" type="number" min="1" max="6" step="0.5" required></label>
+        <button>Save risk settings</button>
+      </form>
+      <form id="pin-form" class="form-grid"><label>Current PIN (when replacing)<input name="current_pin" type="password" inputmode="numeric" minlength="8" maxlength="12"></label><label>New Trade PIN<input name="pin" type="password" inputmode="numeric" minlength="8" maxlength="12" required></label><button>Set Trade PIN</button></form>
+      <form id="exchange-form" class="form-grid">
+        <label>CCXT exchange ID<input name="exchange_id" value="okx" required></label>
+        <label>Market<select name="market_type"><option value="swap">Swap</option><option value="spot">Spot</option></select></label>
+        <label>API key<input name="api_key" type="password" required></label>
+        <label>API secret<input name="api_secret" type="password" required></label>
+        <label>Passphrase<input name="passphrase" type="password"></label>
+        <label class="check"><input name="withdraw" type="checkbox" required> Withdraw permission is disabled</label>
+        <button>Store credentials</button><button id="test-exchange" type="button">Test connection</button>
+      </form>
+      <pre id="settings-message"></pre>
+    </section>
+
+    <section id="admin" class="view">
+      <div class="hero-row"><div><p class="eyebrow">PLATFORM</p><h2>Tenant Administration</h2></div><strong id="capacity">—</strong></div>
+      <div id="tenants" class="rows"></div>
+    </section>
+  </main>
+  <script src="/static/saas.js"></script>
+</body>
+</html>

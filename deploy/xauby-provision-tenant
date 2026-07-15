@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tenant="${1:-}"
+if [[ ! "$tenant" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
+  echo "invalid tenant slug" >&2
+  exit 2
+fi
+
+install -d -m 0700 "/etc/xauby/tenants/${tenant}"
+install -d -m 0700 "/var/lib/xauby/runtime/${tenant}"
+
+# The control plane must provision config/commands, while systemd DynamicUser
+# gives each running engine a distinct UID. ACLs do not grant access to other
+# tenant engines because each unit is confined to its own ReadWritePaths.
+setfacl -m u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
+setfacl -m u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"
+setfacl -d -m u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
+setfacl -d -m u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"

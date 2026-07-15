@@ -1,0 +1,6 @@
+[Unit]
+Description=xAuby tenant engines
+StopWhenUnneeded=no
+
+[Install]
+WantedBy=multi-user.target
