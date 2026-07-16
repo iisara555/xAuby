@@ -1,13 +1,16 @@
-import json
 import base64
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import yaml
 from fastapi.testclient import TestClient
 
 from xauby.saas.app import create_app
+from xauby.saas.security import totp_code
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
 from xauby.saas.supervisor import TenantSupervisor
@@ -213,6 +216,77 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(stopped.status_code, 200)
         self.assertFalse(ephemeral.exists())
 
+    def _create_password_user(self, email: str, password: str) -> dict:
+        user, _ = self.store.create_password_user(email, password)
+        with self.store.connection() as conn:
+            conn.execute(
+                "UPDATE users SET email_verified=1,account_status='active' WHERE id=?",
+                (user["id"],),
+            )
+        return self.store.user_by_id(user["id"])
+
+    def test_login_is_rate_limited_after_repeated_failures(self):
+        self._create_password_user("bruteforce@example.com", "Sup3rSecurePw!")
+        payload = {"email": "bruteforce@example.com", "password": "WrongPassword1"}
+        statuses = [
+            self.client.post("/auth/login", json=payload).status_code for _ in range(9)
+        ]
+        self.assertEqual(statuses[0], 401)
+        self.assertIn(429, statuses)
+        locked = self.client.post(
+            "/auth/login",
+            json={"email": "bruteforce@example.com", "password": "Sup3rSecurePw!"},
+        )
+        self.assertEqual(locked.status_code, 429)
+        self.assertIn("retry-after", {key.lower() for key in locked.headers})
+
+    def test_recovery_code_replaces_totp_and_is_single_use(self):
+        user = self._create_password_user("mfa-user@example.com", "Sup3rSecurePw!")
+        self.store.set_totp_secret(user["id"], "JBSWY3DPEHPK3PXP")
+        self.store.enable_totp(user["id"], ["AAAA111111", "BBBB222222"])
+        without_code = self.client.post(
+            "/auth/login",
+            json={"email": "mfa-user@example.com", "password": "Sup3rSecurePw!"},
+        )
+        self.assertEqual(without_code.status_code, 403)
+        with_recovery = self.client.post(
+            "/auth/login",
+            json={"email": "mfa-user@example.com", "password": "Sup3rSecurePw!",
+                  "totp_code": "AAAA111111"},
+        )
+        self.assertEqual(with_recovery.status_code, 200, with_recovery.text)
+        reused = self.client.post(
+            "/auth/login",
+            json={"email": "mfa-user@example.com", "password": "Sup3rSecurePw!",
+                  "totp_code": "AAAA111111"},
+        )
+        self.assertEqual(reused.status_code, 403)
+
+    def test_totp_reenroll_requires_current_code(self):
+        setup = self.client.post("/auth/totp/setup", headers=self.headers)
+        self.assertEqual(setup.status_code, 200)
+        secret = setup.json()["secret"]
+        enabled = self.client.post(
+            "/auth/totp/enable", headers=self.headers,
+            json={"code": totp_code(secret)},
+        )
+        self.assertEqual(enabled.status_code, 200, enabled.text)
+        denied = self.client.post("/auth/totp/setup", headers=self.headers)
+        self.assertEqual(denied.status_code, 403)
+        denied_wrong = self.client.post(
+            "/auth/totp/setup", headers=self.headers, json={"current_code": "000000"}
+        )
+        self.assertEqual(denied_wrong.status_code, 403)
+        allowed = self.client.post(
+            "/auth/totp/setup", headers=self.headers,
+            json={"current_code": totp_code(secret)},
+        )
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        stored = self.store.user_by_id(self.client.get("/api/v1/me").json()["id"])
+        self.assertTrue(stored["totp_enabled"])
+        self.assertEqual(stored["totp_secret"], secret)
+        self.assertEqual(stored["pending_totp_secret"], allowed.json()["secret"])
+
     def test_replacing_trade_pin_requires_current_pin(self):
         first = self.client.post(
             "/api/v1/trade-pin", headers=self.headers, json={"pin": "12345678"}
@@ -227,6 +301,70 @@ class SaaSControlPlaneTests(unittest.TestCase):
             json={"pin": "87654321", "current_pin": "12345678"},
         )
         self.assertEqual(replaced.status_code, 200)
+
+
+class GoogleOAuthAccountGateTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        project = Path(__file__).resolve().parents[1]
+        self.settings = SaaSSettings(
+            project_root=project,
+            data_root=root / "data",
+            tenant_config_root=root / "config",
+            tenant_runtime_root=root / "runtime",
+            database_path=root / "control.db",
+            public_base_url="http://testserver",
+            session_secret="test-session-secret-that-is-long-enough",
+            systemctl_bin="mock",
+            cookie_secure=False,
+            dev_login_enabled=True,
+            google_client_id="client-id-123",
+            google_client_secret="client-secret-456",
+        )
+        self.store = ControlPlaneStore(self.settings.database_path)
+        self.store.migrate()
+        self.store.bootstrap_owner("owner@example.com", "owner-itsara")
+        self.app = create_app(
+            self.settings, store=self.store, supervisor=TenantSupervisor(self.settings)
+        )
+        self.client = TestClient(self.app)
+
+    def tearDown(self):
+        self.client.close()
+        self.temp.cleanup()
+
+    def _callback(self, email: str, sub: str) -> int:
+        start = self.client.get("/auth/google/start", follow_redirects=False)
+        self.assertIn(start.status_code, {302, 307})
+        state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+        claims = {
+            "aud": "client-id-123", "iss": "accounts.google.com",
+            "email_verified": "true", "email": email, "sub": sub,
+        }
+        with patch("xauby.saas.app.requests.post") as post, \
+                patch("xauby.saas.app.requests.get") as get:
+            post.return_value.json.return_value = {"id_token": "id-token"}
+            post.return_value.raise_for_status.return_value = None
+            get.return_value.json.return_value = claims
+            get.return_value.raise_for_status.return_value = None
+            response = self.client.get(
+                "/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                follow_redirects=False,
+            )
+        return response.status_code
+
+    def test_suspended_account_cannot_sign_in_via_google(self):
+        user, _ = self.store.upsert_google_user("banned@example.com", "sub-banned")
+        self.store.set_account_status(user["id"], "suspended", user["id"])
+        self.assertEqual(self._callback("banned@example.com", "sub-banned"), 403)
+
+    def test_active_account_still_signs_in_via_google(self):
+        user, _ = self.store.upsert_google_user("ok@example.com", "sub-ok")
+        self.store.set_account_status(user["id"], "active", user["id"])
+        status = self._callback("ok@example.com", "sub-ok")
+        self.assertIn(status, {302, 307})
 
 
 if __name__ == "__main__":

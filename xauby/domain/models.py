@@ -121,6 +121,7 @@ class Position:
     liquidation_price: float = 0.0
     funding_paid: float = 0.0
     management_mode: str = "strategy"
+    exchange_position_id: Optional[str] = None
     # One-shot partial take-profit already banked for this position (persisted
     # so an engine restart cannot re-fire the partial exit).
     partial_tp_taken: bool = False
@@ -145,7 +146,7 @@ class Position:
             "highest_price_seen", "quantity", "opened_at", "last_transition_at",
             "stop_loss_order_id", "position_side", "leverage", "margin_mode",
             "liquidation_price", "funding_paid", "management_mode",
-            "partial_tp_taken",
+            "exchange_position_id", "partial_tp_taken",
         )
 
     def __contains__(self, key):

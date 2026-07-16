@@ -70,10 +70,17 @@ def _git_commit(project_root: Path) -> str:
 def _safe_extract(archive: tarfile.TarFile, destination: Path) -> None:
     root = destination.resolve()
     for member in archive.getmembers():
+        if member.issym() or member.islnk() or member.isdev():
+            raise RuntimeError("backup contains an unsafe entry type")
         target = (destination / member.name).resolve()
         if root != target and root not in target.parents:
             raise RuntimeError("backup contains an unsafe path")
-    archive.extractall(destination, filter="data")
+    try:
+        archive.extractall(destination, filter="data")
+    except TypeError:
+        # Python 3.10 has no extraction filter. The explicit entry/path checks
+        # above provide the equivalent safety policy for these backup bundles.
+        archive.extractall(destination)
 
 
 def verify_backup(path: Path) -> dict[str, object]:

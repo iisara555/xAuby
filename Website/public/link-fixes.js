@@ -55,6 +55,16 @@
         filter: none !important;
         transform: none !important;
       }
+      /* Keep the mobile hero copy in the first viewport instead of pinning it
+         to the bottom and leaving an oversized empty band above the headline. */
+      @media (max-width: 760px) {
+        .xn-hero-sticky { align-items: flex-start !important; }
+        .xn-hero-inner {
+          align-self: stretch !important;
+          padding-top: clamp(116px, 17vh, 168px) !important;
+          padding-bottom: 36px !important;
+        }
+      }
       .xauby-login-link {
         display: inline-flex !important;
         align-items: center;
@@ -87,7 +97,14 @@
         min-height: 38px;
         padding-inline: 15px !important;
       }
-      @media (max-width: 720px) {
+      header nav {
+        flex-wrap: nowrap;
+        min-width: 0;
+      }
+      /* The section nav needs ~1000px before every link fits next to the
+         wordmark; below that only the Sign in action stays, so it can never
+         be pushed past the right edge on phones or tablets. */
+      @media (max-width: 1023px) {
         header nav {
           flex: 0 0 auto;
           gap: 0 !important;
@@ -349,7 +366,12 @@
     });
   };
 
+  let disconnectTimer = 0;
+
   const apply = () => {
+    // The login/nav rules must exist even before the hero section streams in,
+    // otherwise a slow unpack leaves the header without the mobile fallback.
+    installHeroScrollFixStyles();
     applyRoundedSystem();
     applyHeroScrollFix();
     updateCurrentConfiguration();
@@ -359,10 +381,15 @@
       addRoadmapLink(nav);
       addLoginLink(nav);
     });
+    // Only start the shutdown countdown once the header actually carries the
+    // Sign in link — the bundled page can take longer than any fixed delay to
+    // unpack on a slow mobile connection.
+    if (!disconnectTimer && document.querySelector("header nav [data-xauby-login]")) {
+      disconnectTimer = window.setTimeout(() => observer.disconnect(), 15000);
+    }
   };
 
   const observer = new MutationObserver(apply);
   observer.observe(document, { childList: true, subtree: true });
   apply();
-  window.setTimeout(() => observer.disconnect(), 15000);
 })();

@@ -59,6 +59,9 @@ class _Engine(LoopMixin):
             "data": {
                 "candle_sync_max_interval_seconds": 900,
                 "candle_sync_max_workers": 3,
+                # This test pins the strategy timeframes only; the dashboard
+                # timeframe fan-out has its own expectations below.
+                "dashboard_timeframes": [],
             }
         }
         self.db = _DB()
@@ -101,6 +104,21 @@ class TestCandleSyncConcurrency(unittest.TestCase):
         self.assertEqual(engine._latency_metrics["candle_sync_skipped"], 0)
         self.assertEqual(engine._latency_metrics["candle_sync_failed"], 0)
         self.assertEqual(engine._latency_metrics["candle_sync_workers"], 3)
+
+    def test_dashboard_timeframes_fan_out_by_default(self):
+        engine = _Engine()
+        del engine.config["data"]["dashboard_timeframes"]
+
+        engine.sync_candles()
+
+        # AAAUSDT: 1h (primary) + 4h (regime) + 1d (dashboard);
+        # BBBUSDT: 1h (primary) + 4h + 1d (dashboard) = 6 unique jobs.
+        self.assertEqual(engine._latency_metrics["candle_sync_fetches"], 6)
+        self.assertEqual(
+            sorted({(sym, tf) for sym, tf, _ in engine.db.saved}),
+            [("AAAUSDT", "1d"), ("AAAUSDT", "1h"), ("AAAUSDT", "4h"),
+             ("BBBUSDT", "1d"), ("BBBUSDT", "1h"), ("BBBUSDT", "4h")],
+        )
 
 
 if __name__ == "__main__":

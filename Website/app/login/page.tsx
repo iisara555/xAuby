@@ -40,7 +40,7 @@ function LoginForm() {
       <form className="form-stack" onSubmit={submit}>
         <label>Email<input name="email" type="email" autoComplete="email" required placeholder="you@example.com" /></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
-        <label>Authenticator code <small>Only if enabled</small><input name="totp" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} /></label>
+        <label>Authenticator or recovery code <small>Only if enabled</small><input name="totp" autoComplete="one-time-code" pattern="[0-9]{6}|[A-Fa-f0-9]{10}" maxLength={10} /></label>
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="button-primary wide" disabled={busy}>{busy ? "Signing in…" : <>Sign in <ArrowRight size={18} /></>}</button>
       </form>

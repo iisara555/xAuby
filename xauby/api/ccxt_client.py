@@ -102,6 +102,9 @@ class CCXTExchangeClient(IExchangeGateway):
         self.capabilities = {
             "supports_stop_loss_limit": supports_sl,
             "positions": self.derivatives["market_type"] == "swap",
+            "position_history": bool(
+                (getattr(self.exchange, "has", None) or {}).get("fetchPositionsHistory")
+            ),
             "reduce_only": self.derivatives["market_type"] == "swap",
             "swap": self.derivatives["market_type"] == "swap",
             "market_data": ("ticker", "candle", "trades", "order_book"),
@@ -341,6 +344,9 @@ class CCXTExchangeClient(IExchangeGateway):
             contract_size = float(market.get("contractSize") or 1.0)
             result.append({
                 "symbol": self._from_ccxt_symbol(p.get("symbol")),
+                "exchange_position_id": str(
+                    p.get("id") or ((p.get("info") or {}).get("posId")) or ""
+                ) or None,
                 "position_side": side,
                 "quantity": contracts * contract_size,
                 "contracts": contracts,
@@ -353,6 +359,102 @@ class CCXTExchangeClient(IExchangeGateway):
                 "margin_mode": str(p.get("marginMode") or self.derivatives["margin_mode"]),
                 "raw": p,
             })
+        return result
+
+    def get_position_history(
+        self,
+        symbol: str,
+        since: Optional[int] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Return normalized, exchange-authoritative derivative close history.
+
+        OKX position history exposes cumulative realized PnL for a completed
+        position. Its ``posId`` can be reused across consecutive one-way
+        positions, so ``exchange_close_id`` also includes the update timestamp.
+        """
+        if self.derivatives["market_type"] != "swap":
+            return []
+        if not self.capabilities.get("position_history"):
+            raise CCXTAPIError(
+                "position_history_unsupported",
+                f"{self.exchange_id} does not expose fetchPositionsHistory",
+            )
+
+        native = self._to_ccxt_symbol(symbol)
+        params = {"instType": "SWAP"}
+        margin_mode = str(self.derivatives.get("margin_mode") or "").lower()
+        if margin_mode in {"cross", "isolated"}:
+            params["marginMode"] = margin_mode
+        rows = self._call(
+            "fetch_positions_history",
+            [native],
+            since,
+            max(1, min(int(limit), 100)),
+            params,
+        )
+        market = self._load_markets().get(native, {}) or {}
+        contract_size = float(market.get("contractSize") or 1.0)
+        result: List[Dict[str, Any]] = []
+        for position in rows or []:
+            raw = position.get("info") or {}
+            position_id = str(position.get("id") or raw.get("posId") or "")
+            closed_ms = int(
+                position.get("lastUpdateTimestamp") or raw.get("uTime") or 0
+            )
+            opened_ms = int(position.get("timestamp") or raw.get("cTime") or 0)
+            raw_side = str(raw.get("direction") or "").upper()
+            parsed_side = str(position.get("side") or "").upper()
+            side = raw_side if raw_side in {"LONG", "SHORT"} else parsed_side
+            if side not in {"LONG", "SHORT"}:
+                continue
+            contracts = float(raw.get("closeTotalPos") or position.get("contracts") or 0.0)
+            fee_signed = float(raw.get("fee") or 0.0)
+            funding_fee = float(raw.get("fundingFee") or 0.0)
+            realized_pnl = float(
+                position.get("realizedPnl")
+                if position.get("realizedPnl") is not None
+                else raw.get("realizedPnl") or 0.0
+            )
+            exchange_close_id = (
+                f"{self.exchange_id}:{position_id}:{closed_ms}"
+                if position_id and closed_ms
+                else f"{self.exchange_id}:{self._from_ccxt_symbol(native)}:{closed_ms}"
+            )
+            result.append(
+                {
+                    "exchange_close_id": exchange_close_id,
+                    "exchange_position_id": position_id or None,
+                    "exchange": self.exchange_id,
+                    "symbol": self._from_ccxt_symbol(
+                        position.get("symbol"), raw.get("instId") or symbol
+                    ),
+                    "position_side": side,
+                    "quantity": contracts * contract_size,
+                    "contracts": contracts,
+                    "contract_size": contract_size,
+                    "entry_price": float(
+                        position.get("entryPrice") or raw.get("openAvgPx") or 0.0
+                    ),
+                    "exit_price": float(
+                        position.get("lastPrice") or raw.get("closeAvgPx") or 0.0
+                    ),
+                    "realized_pnl": realized_pnl,
+                    "gross_pnl": float(raw.get("pnl") or 0.0),
+                    "fee": fee_signed,
+                    "fee_cost": -fee_signed,
+                    "funding_fee": funding_fee,
+                    "liquidation_penalty": float(raw.get("liqPenalty") or 0.0),
+                    "close_type": str(raw.get("type") or ""),
+                    "opened_timestamp": opened_ms,
+                    "closed_timestamp": closed_ms,
+                    "opened_at": self.exchange.iso8601(opened_ms) if opened_ms else None,
+                    "closed_at": self.exchange.iso8601(closed_ms) if closed_ms else None,
+                    "margin_mode": str(raw.get("mgnMode") or ""),
+                    "leverage": float(raw.get("lever") or 1.0),
+                    "raw": raw,
+                }
+            )
         return result
 
     def get_funding_rate(self, symbol: str) -> Dict[str, Any]:

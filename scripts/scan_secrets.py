@@ -69,7 +69,7 @@ ASSIGNMENT_RE = re.compile(
     r"[A-Z0-9_.-]*\b)"
     r"\s*[:=]\s*"
     r"(?P<quote>[\"']?)"
-    r"(?P<value>[^\"'\s#]+)"
+    r"(?P<value>[^\"'\s#,;]+)"
 )
 
 ENV_VAR_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,}$")
@@ -79,9 +79,10 @@ PLACEHOLDER_RE = re.compile(
     r"|none|null|nil|false|true|0|1"
     r"|x+|\*+|.*x{4,}.*"
     r"|<.*>|\{.*\}|\$\{?[A-Z0-9_]+\}?"
-    r"|your[_-]?.*|change[_-]?me|changeme|replace[_-]?me"
+    r"|your[_-]?.*|change[_-]?me|changeme|replace(?:[_-]?with)?[_-]?.*"
     r"|example|sample|dummy|fake|mock|test|testing|fresh.*|stale.*"
     r"|test[_-]?.*|fake[_-]?.*|dummy[_-]?.*|server[_-]only.*"
+    r"|client[_-]?secret(?:[_-]?\d+)?"
     r"|placeholder|redacted|masked|abc123|secret|token|password"
     r")$"
 )

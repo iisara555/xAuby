@@ -4,16 +4,15 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from xauby.engine.trading import LiteTradingEngine
-from xauby.domain.models import Position
-from xauby.runtime.config_error import ConfigError
 from tests.mocks import (
-    MockExchangeGateway,
     MockDatabaseRepository,
+    MockExchangeGateway,
     MockNotificationService,
     install_test_pair,
 )
-
+from xauby.domain.models import Position
+from xauby.engine.trading import LiteTradingEngine
+from xauby.runtime.config_error import ConfigError
 
 
 class TestTradingEngineDecoupling(unittest.TestCase):
@@ -292,6 +291,9 @@ class TestTradingEngineConcurrency(unittest.TestCase):
         errors = []
         calls = []
         calls_lock = threading.Lock()
+        # The refresh path intentionally no-ops for all-sim engines; force the
+        # live path so the shared-cache concurrency behaviour is exercised.
+        self.engine._all_symbols_sim = lambda: False
 
         def get_balances():
             with calls_lock:

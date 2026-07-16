@@ -159,6 +159,7 @@ class MockDatabaseRepository(IDatabaseRepository):
         liquidation_price: float = 0.0,
         funding_paid: float = 0.0,
         management_mode: str = "strategy",
+        exchange_position_id: Optional[str] = None,
         partial_tp_taken: bool = False,
         *,
         symbol: Optional[str] = None,
@@ -188,6 +189,7 @@ class MockDatabaseRepository(IDatabaseRepository):
             liquidation_price=liquidation_price,
             funding_paid=funding_paid,
             management_mode=management_mode,
+            exchange_position_id=exchange_position_id,
             partial_tp_taken=partial_tp_taken,
         )
 
@@ -279,6 +281,11 @@ class MockDatabaseRepository(IDatabaseRepository):
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
         execution_mode: Optional[str] = None,
+        exchange_close_id: Optional[str] = None,
+        exchange_position_id: Optional[str] = None,
+        pnl_source: str = "engine",
+        pnl_confirmed: bool = True,
+        funding_fee: float = 0.0,
     ) -> bool:
         self.closed_trades.append({
             "symbol": symbol,
@@ -300,6 +307,11 @@ class MockDatabaseRepository(IDatabaseRepository):
             "exit_regime": exit_regime,
             "strategy_name": strategy_name,
             "execution_mode": execution_mode,
+            "exchange_close_id": exchange_close_id,
+            "exchange_position_id": exchange_position_id,
+            "pnl_source": pnl_source,
+            "pnl_confirmed": pnl_confirmed,
+            "funding_fee": funding_fee,
         })
         self.trade_state = Position(
             symbol=symbol,

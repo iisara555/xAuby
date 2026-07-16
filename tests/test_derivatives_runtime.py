@@ -4,6 +4,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timezone
 
 from xauby.api.ccxt_client import CCXTExchangeClient
 from xauby.database.db import LiteDB, SCHEMA_VERSION
@@ -25,6 +26,7 @@ SWAP_CFG = {
 
 class FakeSwap:
     def __init__(self):
+        self.has = {"fetchPositionsHistory": True}
         self.markets = {
             "BTC/USDT:USDT": {
                 "id": "BTC-USDT-SWAP", "symbol": "BTC/USDT:USDT",
@@ -32,10 +34,18 @@ class FakeSwap:
                 "swap": True, "contract": True, "active": True,
                 "contractSize": 0.01, "precision": {"amount": 1, "price": 1},
                 "limits": {"amount": {"min": 1}, "cost": {"min": 1}},
-            }
+            },
+            "XAU/USDT:USDT": {
+                "id": "XAU-USDT-SWAP", "symbol": "XAU/USDT:USDT",
+                "base": "XAU", "quote": "USDT", "settle": "USDT",
+                "swap": True, "contract": True, "active": True,
+                "contractSize": 0.001, "precision": {"amount": 1, "price": 1},
+                "limits": {"amount": {"min": 1}, "cost": {"min": 1}},
+            },
         }
         self.markets_by_id = {"BTCUSDT": [self.markets["BTC/USDT:USDT"]]}
         self.created = None
+        self.history_args = None
 
     def load_markets(self): return self.markets
     def fetch_ticker(self, symbol): return {"symbol": symbol, "last": 50000}
@@ -43,9 +53,41 @@ class FakeSwap:
     def fetch_balance(self): return {"free": {"USDT": 1000}, "used": {}, "total": {"USDT": 1000}}
     def fetch_open_orders(self, symbol=None): return []
     def fetch_positions(self, symbols=None): return []
+    def fetch_positions_history(self, symbols, since, limit, params):
+        self.history_args = (symbols, since, limit, params)
+        return [{
+            "id": "3708019708102549504",
+            "symbol": "XAU/USDT:USDT",
+            "side": "short",
+            "contracts": 33,
+            "entryPrice": 4115.3,
+            "lastPrice": 4000.5,
+            "realizedPnl": 3.8292371028625467,
+            "timestamp": 1783475415777,
+            "lastUpdateTimestamp": 1784206521546,
+            "info": {
+                "posId": "3708019708102549504",
+                "instId": "XAU-USDT-SWAP",
+                "direction": "short",
+                "closeTotalPos": "33",
+                "openAvgPx": "4115.3",
+                "closeAvgPx": "4000.5",
+                "realizedPnl": "3.8292371028625467",
+                "pnl": "3.7884",
+                "fee": "-0.1339107",
+                "fundingFee": "0.1747478028625467",
+                "type": "2",
+                "cTime": "1783475415777",
+                "uTime": "1784206521546",
+                "mgnMode": "isolated",
+                "lever": "1",
+            },
+        }]
     def fetch_trades(self, symbol, limit=2): return []
     def fetch_order_book(self, symbol, limit=5): return {"bids": [[1, 1]], "asks": [[2, 1]]}
     def fetch_funding_rate(self, symbol): return {"symbol": symbol, "fundingRate": 0.0001}
+    def iso8601(self, timestamp):
+        return datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc).isoformat()
     def create_order(self, symbol, typ, side, amount, price, params):
         self.created = (symbol, typ, side, amount, params)
         return {"id": "1", "symbol": symbol, "type": typ, "side": side,
@@ -83,6 +125,28 @@ class TestDerivativesRuntime(unittest.TestCase):
             closed = broker.execute_close("BTCUSDT", "SHORT", 1, 90, 100, 100)
             self.assertTrue(closed.success)
             self.assertEqual(broker.get_usdt_balance(), 1010)
+
+    def test_okx_position_history_uses_authoritative_realized_pnl(self):
+        exchange = FakeSwap()
+        client = CCXTExchangeClient(config=SWAP_CFG, exchange_instance=exchange)
+
+        rows = client.get_position_history("XAUUSDT", since=1783470000000, limit=20)
+
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(
+            row["exchange_close_id"],
+            "okx:3708019708102549504:1784206521546",
+        )
+        self.assertEqual(row["position_side"], "SHORT")
+        self.assertAlmostEqual(row["quantity"], 0.033)
+        self.assertAlmostEqual(row["entry_price"], 4115.3)
+        self.assertAlmostEqual(row["exit_price"], 4000.5)
+        self.assertAlmostEqual(row["realized_pnl"], 3.8292371028625467)
+        self.assertAlmostEqual(row["fee_cost"], 0.1339107)
+        self.assertAlmostEqual(row["funding_fee"], 0.1747478028625467)
+        self.assertEqual(exchange.history_args[0], ["XAU/USDT:USDT"])
+        self.assertEqual(exchange.history_args[3]["marginMode"], "isolated")
 
     def test_schema_v9_position_fields(self):
         with tempfile.TemporaryDirectory() as tmp:

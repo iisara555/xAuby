@@ -28,6 +28,8 @@ class IExchangeGateway(ABC):
         - ``get_open_orders(symbol=None) -> list[dict]``
         - ``get_order(symbol, order_id) -> dict``
         - ``get_positions(symbols=None) -> list[dict]`` for derivatives
+        - ``get_position_history(symbol, since=None, limit=100) -> list[dict]``
+          when the derivatives venue exposes exchange-authoritative close data
         - ``get_recent_trades`` / ``get_order_book`` for full market-data parity
         - ``set_leverage`` / ``set_margin_mode`` for derivatives
         - ``check_clock_sync() -> bool`` (optional; feature-detected)

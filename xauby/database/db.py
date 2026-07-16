@@ -11,7 +11,7 @@ from xauby.runtime.paths import runtime_path
 
 logger = logging.getLogger("lite_db")
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 DEFAULT_DB_PATH = "core/xauby.db"
 
 
@@ -128,7 +128,13 @@ class LiteDB(IDatabaseRepository):
                         closed_at TEXT,
                         entry_regime TEXT,
                         exit_regime TEXT,
-                        strategy_name TEXT
+                        strategy_name TEXT,
+                        execution_mode TEXT,
+                        exchange_close_id TEXT,
+                        exchange_position_id TEXT,
+                        pnl_source TEXT NOT NULL DEFAULT 'engine',
+                        pnl_confirmed INTEGER NOT NULL DEFAULT 1,
+                        funding_fee REAL NOT NULL DEFAULT 0.0
                     )
                 """)
                 conn.execute(
@@ -154,6 +160,7 @@ class LiteDB(IDatabaseRepository):
                         ,liquidation_price REAL NOT NULL DEFAULT 0.0
                         ,funding_paid REAL NOT NULL DEFAULT 0.0
                         ,management_mode TEXT NOT NULL DEFAULT 'strategy'
+                        ,exchange_position_id TEXT
                         ,partial_tp_taken INTEGER NOT NULL DEFAULT 0
                     )
                 """)
@@ -183,6 +190,28 @@ class LiteDB(IDatabaseRepository):
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS ix_events_run_id "
                     "ON events(run_id, seq ASC)"
+                )
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS exchange_close_reconciliations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reconciliation_key TEXT NOT NULL UNIQUE,
+                        symbol TEXT NOT NULL,
+                        exchange_id TEXT NOT NULL,
+                        exchange_position_id TEXT,
+                        detected_at TEXT NOT NULL,
+                        state_json TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        last_error TEXT,
+                        exchange_close_id TEXT,
+                        closed_trade_id INTEGER,
+                        completed_at TEXT
+                    )
+                """)
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_exchange_close_reconcile_status "
+                    "ON exchange_close_reconciliations(status, symbol)"
                 )
 
                 conn.execute("""
@@ -344,6 +373,49 @@ class LiteDB(IDatabaseRepository):
                     except sqlite3.OperationalError:
                         pass
 
+                if user_version < 12:
+                    for sql in (
+                        "ALTER TABLE trade_states ADD COLUMN exchange_position_id TEXT",
+                        "ALTER TABLE closed_trades ADD COLUMN exchange_close_id TEXT",
+                        "ALTER TABLE closed_trades ADD COLUMN exchange_position_id TEXT",
+                        "ALTER TABLE closed_trades ADD COLUMN pnl_source "
+                        "TEXT NOT NULL DEFAULT 'engine'",
+                        "ALTER TABLE closed_trades ADD COLUMN pnl_confirmed "
+                        "INTEGER NOT NULL DEFAULT 1",
+                        "ALTER TABLE closed_trades ADD COLUMN funding_fee "
+                        "REAL NOT NULL DEFAULT 0.0",
+                    ):
+                        try:
+                            conn.execute(sql)
+                        except sqlite3.OperationalError:
+                            pass
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS exchange_close_reconciliations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            reconciliation_key TEXT NOT NULL UNIQUE,
+                            symbol TEXT NOT NULL,
+                            exchange_id TEXT NOT NULL,
+                            exchange_position_id TEXT,
+                            detected_at TEXT NOT NULL,
+                            state_json TEXT NOT NULL,
+                            status TEXT NOT NULL DEFAULT 'pending',
+                            attempts INTEGER NOT NULL DEFAULT 0,
+                            last_error TEXT,
+                            exchange_close_id TEXT,
+                            closed_trade_id INTEGER,
+                            completed_at TEXT
+                        )
+                    """)
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS ix_exchange_close_reconcile_status "
+                        "ON exchange_close_reconciliations(status, symbol)"
+                    )
+                    conn.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ux_closed_trades_exchange_close "
+                        "ON closed_trades(exchange_close_id) "
+                        "WHERE exchange_close_id IS NOT NULL"
+                    )
+
                 if user_version < SCHEMA_VERSION:
                     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
 
@@ -450,6 +522,7 @@ class LiteDB(IDatabaseRepository):
             "liquidation_price": 0.0,
             "funding_paid": 0.0,
             "management_mode": "strategy",
+            "exchange_position_id": None,
             "partial_tp_taken": 0,
         }
 
@@ -481,6 +554,7 @@ class LiteDB(IDatabaseRepository):
                 liquidation_price=float(d.get("liquidation_price", 0.0) or 0.0),
                 funding_paid=float(d.get("funding_paid", 0.0) or 0.0),
                 management_mode=str(d.get("management_mode") or "strategy").lower(),
+                exchange_position_id=d.get("exchange_position_id"),
                 partial_tp_taken=bool(d.get("partial_tp_taken", 0) or 0),
             )
         except Exception as e:
@@ -507,6 +581,7 @@ class LiteDB(IDatabaseRepository):
         liquidation_price: float = 0.0,
         funding_paid: float = 0.0,
         management_mode: str = "strategy",
+        exchange_position_id: Optional[str] = None,
         partial_tp_taken: bool = False,
         *,
         symbol: Optional[str] = None,
@@ -539,6 +614,7 @@ class LiteDB(IDatabaseRepository):
             liquidation_price = pos.liquidation_price
             funding_paid = pos.funding_paid
             management_mode = pos.management_mode
+            exchange_position_id = pos.exchange_position_id
             partial_tp_taken = pos.partial_tp_taken
         elif symbol_or_position is not None:
             symbol = symbol_or_position
@@ -551,15 +627,23 @@ class LiteDB(IDatabaseRepository):
         conn = self._get_connection()
         try:
             with conn:
+                if exchange_position_id is None and str(state or "").lower() == "bought":
+                    existing = conn.execute(
+                        "SELECT exchange_position_id FROM trade_states WHERE symbol=?",
+                        (sym,),
+                    ).fetchone()
+                    if existing:
+                        exchange_position_id = existing["exchange_position_id"]
                 conn.execute("""
                     INSERT INTO trade_states (
                         symbol, state, entry_price, stop_loss, take_profit,
                         highest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
                         liquidation_price, funding_paid, management_mode,
+                        exchange_position_id,
                         partial_tp_taken
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state=excluded.state,
                         entry_price=excluded.entry_price,
@@ -576,6 +660,7 @@ class LiteDB(IDatabaseRepository):
                         liquidation_price=excluded.liquidation_price,
                         funding_paid=excluded.funding_paid,
                         management_mode=excluded.management_mode,
+                        exchange_position_id=excluded.exchange_position_id,
                         partial_tp_taken=excluded.partial_tp_taken
                 """, (
                     sym, state, entry_price, stop_loss, take_profit,
@@ -584,6 +669,7 @@ class LiteDB(IDatabaseRepository):
                     float(leverage or 1.0), str(margin_mode or "spot"),
                     float(liquidation_price or 0.0), float(funding_paid or 0.0),
                     str(management_mode or "strategy").lower(),
+                    str(exchange_position_id) if exchange_position_id else None,
                     1 if partial_tp_taken else 0,
                 ))
         except Exception as e:
@@ -612,6 +698,11 @@ class LiteDB(IDatabaseRepository):
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
         execution_mode: Optional[str] = None,
+        exchange_close_id: Optional[str] = None,
+        exchange_position_id: Optional[str] = None,
+        pnl_source: str = "engine",
+        pnl_confirmed: bool = True,
+        funding_fee: float = 0.0,
     ) -> None:
         if isinstance(symbol_or_trade, dict):
             t = symbol_or_trade
@@ -634,6 +725,11 @@ class LiteDB(IDatabaseRepository):
             exit_regime = t.get("exit_regime")
             strategy_name = t.get("strategy_name")
             execution_mode = t.get("execution_mode")
+            exchange_close_id = t.get("exchange_close_id")
+            exchange_position_id = t.get("exchange_position_id")
+            pnl_source = t.get("pnl_source", "engine")
+            pnl_confirmed = bool(t.get("pnl_confirmed", True))
+            funding_fee = float(t.get("funding_fee", 0.0) or 0.0)
         else:
             symbol = symbol_or_trade
 
@@ -648,14 +744,17 @@ class LiteDB(IDatabaseRepository):
                         symbol, side, amount, entry_price, exit_price, entry_cost,
                         gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                         net_pnl_pct, trigger, opened_at, closed_at, entry_regime, exit_regime,
-                        strategy_name, execution_mode
+                        strategy_name, execution_mode, exchange_close_id,
+                        exchange_position_id, pnl_source, pnl_confirmed, funding_fee
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     sym, side, amount, entry_price, exit_price, entry_cost,
                     gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                     net_pnl_pct, trigger, opened_at, closed_str, entry_regime, exit_regime,
-                    strategy_name, mode,
+                    strategy_name, mode, exchange_close_id, exchange_position_id,
+                    str(pnl_source or "engine"), 1 if pnl_confirmed else 0,
+                    float(funding_fee or 0.0),
                 ))
         except Exception as e:
             logger.error(f"Error saving closed trade for {sym}: {e}")
@@ -684,6 +783,11 @@ class LiteDB(IDatabaseRepository):
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
         execution_mode: Optional[str] = None,
+        exchange_close_id: Optional[str] = None,
+        exchange_position_id: Optional[str] = None,
+        pnl_source: str = "engine",
+        pnl_confirmed: bool = True,
+        funding_fee: float = 0.0,
     ) -> bool:
         """Atomically record a closed trade and reset position state to idle."""
         sym = symbol.upper().replace("_", "")
@@ -698,14 +802,17 @@ class LiteDB(IDatabaseRepository):
                         symbol, side, amount, entry_price, exit_price, entry_cost,
                         gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                         net_pnl_pct, trigger, opened_at, closed_at, entry_regime, exit_regime,
-                        strategy_name, execution_mode
+                        strategy_name, execution_mode, exchange_close_id,
+                        exchange_position_id, pnl_source, pnl_confirmed, funding_fee
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     sym, side, amount, entry_price, exit_price, entry_cost,
                     gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                     net_pnl_pct, trigger, opened_at, closed_str, entry_regime, exit_regime,
-                    strategy_name, mode,
+                    strategy_name, mode, exchange_close_id, exchange_position_id,
+                    str(pnl_source or "engine"), 1 if pnl_confirmed else 0,
+                    float(funding_fee or 0.0),
                 ))
                 conn.execute("""
                     INSERT INTO trade_states (
@@ -713,9 +820,10 @@ class LiteDB(IDatabaseRepository):
                         highest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
                         liquidation_price, funding_paid, management_mode,
+                        exchange_position_id,
                         partial_tp_taken
                     )
-                    VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy', 0)
+                    VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state='idle',
                         entry_price=0,
@@ -728,12 +836,213 @@ class LiteDB(IDatabaseRepository):
                         stop_loss_order_id=NULL,
                         position_side='LONG', leverage=1.0, margin_mode='spot',
                         liquidation_price=0, funding_paid=0, management_mode='strategy',
+                        exchange_position_id=NULL,
                         partial_tp_taken=0
                 """, (sym, transition_str))
             return True
         except Exception as e:
             logger.error(f"Error in close_position_atomic for {sym}: {e}")
             return False
+        finally:
+            conn.close()
+
+    def queue_exchange_close_reconciliation(
+        self,
+        *,
+        reconciliation_key: str,
+        symbol: str,
+        exchange_id: str,
+        state_snapshot: Dict[str, Any],
+        exchange_position_id: Optional[str] = None,
+        reset_position: bool = True,
+    ) -> Dict[str, Any]:
+        """Persist a durable exchange-close job and optionally mark local state flat."""
+        sym = symbol.upper().replace("_", "")
+        detected_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        conn = self._get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO exchange_close_reconciliations (
+                        reconciliation_key, symbol, exchange_id, exchange_position_id,
+                        detected_at, state_json, status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'pending')
+                    ON CONFLICT(reconciliation_key) DO UPDATE SET
+                        exchange_position_id=COALESCE(
+                            excluded.exchange_position_id,
+                            exchange_close_reconciliations.exchange_position_id
+                        ),
+                        state_json=excluded.state_json,
+                        status=CASE
+                            WHEN exchange_close_reconciliations.status='completed'
+                            THEN 'completed' ELSE 'pending' END
+                    """,
+                    (
+                        reconciliation_key,
+                        sym,
+                        str(exchange_id or "unknown").lower(),
+                        str(exchange_position_id) if exchange_position_id else None,
+                        detected_at,
+                        json.dumps(state_snapshot, ensure_ascii=False, default=str),
+                    ),
+                )
+                if reset_position:
+                    conn.execute(
+                        """
+                        INSERT INTO trade_states (
+                            symbol, state, entry_price, stop_loss, take_profit,
+                            highest_price_seen, quantity, opened_at, last_transition_at,
+                            stop_loss_order_id, position_side, leverage, margin_mode,
+                            liquidation_price, funding_paid, management_mode,
+                            exchange_position_id, partial_tp_taken
+                        )
+                        VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL,
+                                'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0)
+                        ON CONFLICT(symbol) DO UPDATE SET
+                            state='idle', entry_price=0, stop_loss=0, take_profit=0,
+                            highest_price_seen=0, quantity=0, opened_at=NULL,
+                            last_transition_at=excluded.last_transition_at,
+                            stop_loss_order_id=NULL, position_side='LONG', leverage=1.0,
+                            margin_mode='spot', liquidation_price=0, funding_paid=0,
+                            management_mode='strategy', exchange_position_id=NULL,
+                            partial_tp_taken=0
+                        """,
+                        (sym, detected_at),
+                    )
+                row = conn.execute(
+                    "SELECT * FROM exchange_close_reconciliations "
+                    "WHERE reconciliation_key=?",
+                    (reconciliation_key,),
+                ).fetchone()
+                return dict(row) if row else {}
+        finally:
+            conn.close()
+
+    def get_pending_exchange_closures(
+        self, symbol: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        conn = self._get_connection()
+        try:
+            if symbol:
+                rows = conn.execute(
+                    "SELECT * FROM exchange_close_reconciliations "
+                    "WHERE status='pending' AND symbol=? ORDER BY id ASC",
+                    (symbol.upper().replace("_", ""),),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM exchange_close_reconciliations "
+                    "WHERE status='pending' ORDER BY id ASC"
+                ).fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                try:
+                    item["state_snapshot"] = json.loads(item.get("state_json") or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    item["state_snapshot"] = {}
+                result.append(item)
+            return result
+        finally:
+            conn.close()
+
+    def mark_exchange_close_reconciliation_error(
+        self, reconciliation_key: str, error: str
+    ) -> None:
+        conn = self._get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    UPDATE exchange_close_reconciliations
+                    SET attempts=attempts+1, last_error=?, status='pending'
+                    WHERE reconciliation_key=?
+                    """,
+                    (str(error)[:1000], reconciliation_key),
+                )
+        finally:
+            conn.close()
+
+    def complete_exchange_close_reconciliation(
+        self,
+        reconciliation_key: str,
+        trade: Dict[str, Any],
+    ) -> int:
+        """Insert one confirmed exchange close and complete its durable job."""
+        exchange_close_id = str(trade.get("exchange_close_id") or "")
+        if not exchange_close_id:
+            raise ValueError("exchange_close_id is required")
+        closed_at = trade.get("closed_at") or datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ).isoformat()
+        conn = self._get_connection()
+        try:
+            with conn:
+                existing = conn.execute(
+                    "SELECT id FROM closed_trades WHERE exchange_close_id=?",
+                    (exchange_close_id,),
+                ).fetchone()
+                if existing:
+                    trade_id = int(existing["id"])
+                else:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO closed_trades (
+                            symbol, side, amount, entry_price, exit_price, entry_cost,
+                            gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
+                            net_pnl_pct, trigger, opened_at, closed_at, entry_regime,
+                            exit_regime, strategy_name, execution_mode,
+                            exchange_close_id, exchange_position_id, pnl_source,
+                            pnl_confirmed, funding_fee
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            str(trade["symbol"]).upper().replace("_", ""),
+                            trade.get("side") or "BUY",
+                            float(trade.get("amount") or 0.0),
+                            float(trade.get("entry_price") or 0.0),
+                            float(trade.get("exit_price") or 0.0),
+                            float(trade.get("entry_cost") or 0.0),
+                            float(trade.get("gross_exit") or 0.0),
+                            float(trade.get("entry_fee") or 0.0),
+                            float(trade.get("exit_fee") or 0.0),
+                            float(trade.get("total_fees") or 0.0),
+                            float(trade.get("net_pnl") or 0.0),
+                            float(trade.get("net_pnl_pct") or 0.0),
+                            trade.get("trigger"),
+                            trade.get("opened_at"),
+                            closed_at,
+                            trade.get("entry_regime"),
+                            trade.get("exit_regime"),
+                            trade.get("strategy_name"),
+                            str(trade.get("execution_mode") or "live").lower(),
+                            exchange_close_id,
+                            trade.get("exchange_position_id"),
+                            str(trade.get("pnl_source") or "exchange"),
+                            1 if trade.get("pnl_confirmed", True) else 0,
+                            float(trade.get("funding_fee") or 0.0),
+                        ),
+                    )
+                    trade_id = int(cursor.lastrowid)
+                conn.execute(
+                    """
+                    UPDATE exchange_close_reconciliations
+                    SET status='completed', attempts=attempts+1, last_error=NULL,
+                        exchange_close_id=?, closed_trade_id=?, completed_at=?
+                    WHERE reconciliation_key=?
+                    """,
+                    (
+                        exchange_close_id,
+                        trade_id,
+                        datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                        reconciliation_key,
+                    ),
+                )
+                return trade_id
         finally:
             conn.close()
 

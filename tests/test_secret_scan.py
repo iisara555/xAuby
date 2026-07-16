@@ -45,6 +45,9 @@ def test_secret_scan_allows_env_names_and_placeholders():
             "api_secret_env: OKX_API_SECRET",
             "GITHUB_TOKEN=ghp_xxxxxxxx",
             "TELEGRAM_BOT_TOKEN=FRESH123456",
+            "XAUBY_SAAS_SESSION_SECRET=replace-with-at-least-32-random-bytes",
+            "google_client_secret=client-secret-456",
+            '"UPDATE users SET pending_totp_secret=NULL,totp_enabled=1 WHERE id=?"',
             "url = f'https://example.test?api_key={api_key}'",
         ]
     )
@@ -54,7 +57,7 @@ def test_secret_scan_allows_env_names_and_placeholders():
 
 def test_tracked_files_do_not_contain_potential_secrets():
     result = subprocess.run(
-        ["python3", str(SCAN_PATH), "--tracked"],
+        [sys.executable, str(SCAN_PATH), "--tracked"],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
