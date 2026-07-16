@@ -16,6 +16,7 @@ export type User = {
   csrf_token: string;
   tenant: Tenant | null;
   account_status: string;
+  password_configured: boolean;
   totp_enabled: boolean;
   mfa_verified: boolean;
   trade_pin_configured: boolean;
@@ -56,6 +57,9 @@ export type Preset = {
   primary_timeframe: string;
   confirm_timeframe: string;
   market_type: string;
+  cdc_pure_certified?: boolean;
+  stop_loss_required?: boolean;
+  execution_profile?: Record<string, unknown>;
   backtest?: {
     status: "validated" | "insufficient" | "pending";
     score_label: string;
@@ -99,7 +103,17 @@ export type OrderPreview = {
   challenge_id: string;
   expires_at: number;
   digest: string;
-  preview: { symbol: string; intent: string; side: string; mode: string; mark_price: number; estimated_quantity: number; estimated_notional: number };
+  preview: {
+    symbol: string;
+    intent: string;
+    side: string;
+    mode: string;
+    mark_price: number;
+    estimated_quantity: number;
+    estimated_notional: number;
+    sizing_mode?: "cdc_pure" | "risk_based" | "close_position";
+    allocation_pct?: number | null;
+  };
 };
 
 export type Catalog = {

@@ -82,8 +82,10 @@ class SaaSControlPlaneTests(unittest.TestCase):
             item["id"]: item for item in self.client.get("/api/v1/catalog").json()["presets"]
         }
         xau = presets["okx-xau-actionzone-v1"]["backtest"]
-        self.assertEqual(xau["score_label"], "PF 2.06")
+        self.assertEqual(xau["score_label"], "PF 2.00")
         self.assertEqual(xau["duration"], "5.9 years")
+        self.assertTrue(presets["okx-xau-actionzone-v1"]["cdc_pure_certified"])
+        self.assertFalse(presets["okx-xau-actionzone-v1"]["stop_loss_required"])
         self.assertEqual(presets["binance-btc-supertrend-v1"]["backtest"]["status"], "insufficient")
 
     def test_runtime_snapshot_is_tenant_scoped_and_fail_closed(self):
@@ -135,6 +137,12 @@ class SaaSControlPlaneTests(unittest.TestCase):
         )
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.json()["revision"], 1)
+        high_allocation = self.client.patch(
+            "/api/v1/bot/config", headers=self.headers,
+            json={"max_position_per_trade_pct": 95},
+        )
+        self.assertEqual(high_allocation.status_code, 200, high_allocation.text)
+        self.assertEqual(high_allocation.json()["config"]["max_position_per_trade_pct"], 95.0)
         denied = self.client.patch(
             "/api/v1/bot/config", headers=self.headers, json={"risk_pct": 0.5}
         )
@@ -215,6 +223,73 @@ class SaaSControlPlaneTests(unittest.TestCase):
         stopped = self.client.post("/api/v1/live/deactivate", headers=self.headers)
         self.assertEqual(stopped.status_code, 200)
         self.assertFalse(ephemeral.exists())
+
+    def test_saving_the_same_live_profile_is_idempotent(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        payload = {
+            "preset_ids": ["okx-xau-actionzone-v1"],
+            "active_preset_id": "okx-xau-actionzone-v1",
+            "risk": {},
+        }
+        first = self.client.put("/api/v1/profile", headers=self.headers, json=payload)
+        self.assertEqual(first.status_code, 200, first.text)
+
+        self.supervisor.set_live_mode(tenant["slug"], "okx", "swap")
+        self.store.update_tenant(tenant["id"], status="running", live_status="active")
+
+        with patch.object(self.supervisor, "stop") as stop, \
+                patch.object(self.supervisor, "apply_profile", wraps=self.supervisor.apply_profile) as apply:
+            saved = self.client.put("/api/v1/profile", headers=self.headers, json=payload)
+
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["mode"], "live")
+        self.assertFalse(saved.json()["live_reapproval_required"])
+        self.assertFalse(saved.json()["profile_changed"])
+        stop.assert_not_called()
+        apply.assert_not_called()
+
+        config = yaml.safe_load(
+            (self.supervisor.config_dir(tenant["slug"]) / "bot_config.yaml").read_text(encoding="utf-8")
+        )
+        self.assertFalse(config["simulate_only"])
+
+    def test_manual_order_preview_uses_saved_profile(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        profile = self.client.put(
+            "/api/v1/profile", headers=self.headers,
+            json={"preset_ids": ["okx-xau-actionzone-v1"],
+                  "active_preset_id": "okx-xau-actionzone-v1",
+                  "risk": {"max_position_per_trade_pct": 95}},
+        )
+        self.assertEqual(profile.status_code, 200, profile.text)
+        self.store.update_tenant(tenant["id"], status="running")
+
+        runtime = self.supervisor.runtime_dir(tenant["slug"]) / "logs"
+        runtime.mkdir(parents=True, exist_ok=True)
+        state_path = runtime / "xauby_bot_state.json"
+        state_path.write_text(
+            json.dumps({"focus_symbol": "XAUUSDT", "current_price": 4000.0,
+                        "total_equity_usdt": 10000.0,
+                        "position": {"state": "idle"}}),
+            encoding="utf-8",
+        )
+
+        object.__setattr__(self.settings, "manual_trading_enabled", True)
+        with patch.object(self.supervisor, "status", return_value="active"):
+            preview = self.client.post(
+                "/api/v1/orders/preview", headers=self.headers,
+                json={"symbol": "XAUUSDT", "intent": "OPEN_LONG"},
+            )
+
+        self.assertEqual(preview.status_code, 200, preview.text)
+        payload = preview.json()["preview"]
+        self.assertEqual(payload["mode"], "simulation")
+        self.assertEqual(payload["sizing_mode"], "cdc_pure")
+        self.assertAlmostEqual(payload["allocation_pct"], 95.0)
+        self.assertAlmostEqual(payload["estimated_notional"], 9500.0)
+        self.assertAlmostEqual(payload["estimated_quantity"], 2.375)
 
     def _create_password_user(self, email: str, password: str) -> dict:
         user, _ = self.store.create_password_user(email, password)
@@ -301,6 +376,55 @@ class SaaSControlPlaneTests(unittest.TestCase):
             json={"pin": "87654321", "current_pin": "12345678"},
         )
         self.assertEqual(replaced.status_code, 200)
+
+    def test_legacy_six_digit_current_pin_can_be_rotated_to_stronger_pin(self):
+        user = self.client.get("/api/v1/me").json()
+        first = self.client.post(
+            "/api/v1/trade-pin", headers=self.headers, json={"pin": "12345678"}
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        with patch.object(self.store, "check_trade_pin", return_value=(True, "")) as check:
+            replaced = self.client.post(
+                "/api/v1/trade-pin", headers=self.headers,
+                json={"pin": "87654321", "current_pin": "123456"},
+            )
+        self.assertEqual(replaced.status_code, 200, replaced.text)
+        check.assert_called_once_with(user["id"], "123456")
+
+    def test_legacy_alphanumeric_current_pin_can_be_rotated(self):
+        user = self.client.get("/api/v1/me").json()
+        first = self.client.post(
+            "/api/v1/trade-pin", headers=self.headers, json={"pin": "12345678"}
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        with patch.object(self.store, "check_trade_pin", return_value=(True, "")) as check:
+            replaced = self.client.post(
+                "/api/v1/trade-pin", headers=self.headers,
+                json={"pin": "87654321", "current_pin": "legacy@PinA"},
+            )
+        self.assertEqual(replaced.status_code, 200, replaced.text)
+        check.assert_called_once_with(user["id"], "legacy@PinA")
+
+    def test_forgot_trade_pin_reset_requires_step_up_and_sets_new_pin(self):
+        user = self.client.get("/api/v1/me").json()
+        with self.store.connection() as conn:
+            conn.execute(
+                "UPDATE users SET password_hash=?,totp_enabled=1,totp_secret=? WHERE id=?",
+                ("configured-password-hash", "configured-totp-secret", user["id"]),
+            )
+        denied = self.client.post(
+            "/api/v1/trade-pin/reset", headers=self.headers,
+            json={"new_pin": "87654321", "current_password": "wrong", "totp_code": "000000"},
+        )
+        self.assertEqual(denied.status_code, 403)
+        with patch("xauby.saas.app.verify_password", return_value=True), \
+                patch("xauby.saas.app.verify_totp", return_value=True):
+            reset = self.client.post(
+                "/api/v1/trade-pin/reset", headers=self.headers,
+                json={"new_pin": "87654321", "current_password": "current", "totp_code": "123456"},
+            )
+        self.assertEqual(reset.status_code, 200, reset.text)
+        self.assertTrue(self.store.check_trade_pin(user["id"], "87654321")[0])
 
 
 class GoogleOAuthAccountGateTests(unittest.TestCase):

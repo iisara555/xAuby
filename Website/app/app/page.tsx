@@ -10,13 +10,14 @@ import { PageHeading } from "@/components/page-heading";
 import { StatusPill } from "@/components/status-pill";
 import { useCurrentUser } from "@/components/app-shell";
 import { api, csrfHeaders, formatNumber, valueAt } from "@/lib/api";
-import { useBot, useCatalog, useSnapshot } from "@/lib/hooks";
+import { useBot, useCatalog, useProfile, useSnapshot } from "@/lib/hooks";
 
 export default function DashboardPage() {
   const user = useCurrentUser();
   const { data: bot, mutate: mutateBot } = useBot();
   const { data: snapshot } = useSnapshot();
   const { data: catalog } = useCatalog();
+  const { data: profile } = useProfile();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const running = bot?.tenant.status === "running";
@@ -69,7 +70,7 @@ export default function DashboardPage() {
       <PageHeading
         eyebrow="Pilot workspace"
         title={`Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, ${user.display_name || user.email.split("@")[0]}`}
-        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={bot?.tenant.live_status === "active"} shortLiveCertified={Boolean(target?.manual_short_live_certified)} /></div>}
+        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={bot?.tenant.live_status === "active"} shortLiveCertified={Boolean(target?.manual_short_live_certified)} engineRunning={running} profileReady={Boolean(profile?.profile)} /></div>}
       />
 
       {!bot?.exchange_connection && (

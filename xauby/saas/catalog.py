@@ -46,7 +46,7 @@ PRESETS = [
     {
         "id": "okx-xau-actionzone-v1",
         "target_id": "okx-swap",
-        "label": "XAU ActionZone",
+        "label": "XAU ActionZone · CDC Pure",
         "exchange_id": "okx",
         "market_type": "swap",
         "symbol": "XAUUSDT",
@@ -57,15 +57,32 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": True,
+        "cdc_pure_certified": True,
+        "stop_loss_required": False,
+        "execution_profile": {
+            "name": "cdc_pure",
+            "enable_short": False,
+            "use_d1_regime_filter": True,
+            "fresh_zone_window": 3,
+            "disable_stop_loss": True,
+            "breakeven_sl_enabled": False,
+            "minimal_roi": {"0": 8.0, "1440": 5.0, "4320": 3.0},
+            "ap_smoothing": 2,
+            "require_slow_slope": True,
+            "slow_slope_bars": 3,
+            "position_pct": 0.95,
+            "partial_tp_pct": 12.0,
+            "partial_tp_fraction": 0.5,
+        },
         "backtest": {
             "status": "validated",
-            "score_label": "PF 2.06",
+            "score_label": "PF 2.00",
             "period": "Aug 2020 – Jul 2026",
             "duration": "5.9 years",
-            "win_rate_pct": 41.3,
-            "max_drawdown_pct": 15.0,
+            "win_rate_pct": 46.0,
+            "max_drawdown_pct": 8.0,
             "trades": 104,
-            "source": "PAXGUSDT proxy · 4H + 1D",
+            "source": "CDC Pure certificate · PAXGUSDT proxy · 4H + 1D · walk-forward 4/5",
         },
     },
     {
@@ -126,7 +143,11 @@ CATALOG: dict[str, Any] = {
     "presets": PRESETS,
     "risk": {
         "risk_pct": {"default": 0.01, "min": 0.001, "max": 0.01},
-        "max_position_per_trade_pct": {"default": 10.0, "min": 1.0, "max": 10.0},
+        # Position allocation is capped at 95% so a configured position can
+        # leave a 5% quote-currency buffer.  The default remains 10%; high
+        # allocation is opt-in and still subject to the one-position,
+        # 1x-leverage and strategy-exit/circuit-breaker gates.
+        "max_position_per_trade_pct": {"default": 10.0, "min": 1.0, "max": 95.0},
         "max_daily_loss_pct": {"default": 3.0, "min": 1.0, "max": 3.0},
         "max_leverage": {"default": 1.0, "min": 1.0, "max": 1.0},
         "max_open_positions": {"default": 1, "min": 1, "max": 1},
@@ -178,10 +199,14 @@ def validate_profile(
     presets = [preset_by_id(item) for item in ids]
     if active_preset_id != ids[0]:
         raise ValueError("active preset must match the selected preset")
+    bounded_risk = safe_risk(risk)
+    # Only a catalog-certified CDC Pure preset may run without an exchange
+    # stop-loss. All other presets remain stop-loss protected.
+    bounded_risk["stop_loss_required"] = bool(presets[0].get("stop_loss_required", True))
     return {
         "preset_ids": ids,
         "active_preset_id": active_preset_id,
         "presets": presets,
         "target_id": presets[0]["target_id"],
-        "risk": safe_risk(risk),
+        "risk": bounded_risk,
     }

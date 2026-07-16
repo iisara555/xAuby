@@ -62,12 +62,29 @@ class TenantSupervisor:
         )
 
     @staticmethod
-    def _set_config_permissions(config_dir: Path) -> None:
+    def _restore_control_acl(path: Path, permissions: str) -> None:
+        try:
+            subprocess.run(
+                ["setfacl", "-m", f"u:xauby-control:{permissions}", str(path)],
+                capture_output=True, text=True, timeout=5, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    @classmethod
+    def _set_config_permissions(cls, config_dir: Path) -> None:
         for name in ("bot_config.yaml", "coin_whitelist.json"):
+            path = config_dir / name
             try:
-                os.chmod(config_dir / name, 0o640)
+                os.chmod(path, 0o640)
             except OSError:
                 pass
+            # Tenant files are owned by the isolated engine user.  chmod(640)
+            # tightens the ACL mask as well, which used to turn the control
+            # plane's provisioned rw ACL into read-only and made Live activation
+            # fail with EACCES.  Restore only the control-plane file ACL; the
+            # engine still receives read access through its owning user/group.
+            cls._restore_control_acl(path, "rw")
 
     @staticmethod
     def _environment_line(key: str, value: str) -> str:
@@ -122,6 +139,7 @@ class TenantSupervisor:
                 os.chmod(path, mode)
             except OSError:
                 pass
+            self._restore_control_acl(path, "rwx")
         self._set_config_permissions(config_dir)
 
     def _systemctl(self, action: str, slug: str) -> dict[str, Any]:
@@ -185,14 +203,25 @@ class TenantSupervisor:
         self.provision(slug)
         cfg = yaml.safe_load((self.config_dir(slug) / "bot_config.yaml").read_text(encoding="utf-8")) or {}
         whitelist = json.loads((self.config_dir(slug) / "coin_whitelist.json").read_text(encoding="utf-8"))
+        trading = cfg.get("trading") or {}
+        portfolio = cfg.get("portfolio") or {}
+        sizing = portfolio.get("position_sizing") or {}
+        symbol = str(trading.get("trading_pair") or "").upper().replace("_", "")
+        symbol_cfg = (portfolio.get("symbols") or {}).get(symbol) or {}
+        symbol_sizing = symbol_cfg.get("position_sizing") or {}
+        max_position = (
+            symbol_sizing.get("max_position_per_trade_pct")
+            if symbol_sizing.get("max_position_per_trade_pct") is not None
+            else sizing.get("max_position_per_trade_pct")
+            if sizing.get("max_position_per_trade_pct") is not None
+            else trading.get("max_position_per_trade_pct", 10.0)
+        )
         return {
             "simulate_only": bool(cfg.get("simulate_only", True)),
-            "max_open_positions": int((cfg.get("trading") or {}).get("max_open_positions", 1)),
-            "risk_pct": float((cfg.get("trading") or {}).get("risk_pct", 0.01)),
-            "max_position_per_trade_pct": float(
-                (cfg.get("trading") or {}).get("max_position_per_trade_pct", 10.0)
-            ),
-            "max_daily_loss_pct": float((cfg.get("trading") or {}).get("max_daily_loss_pct", 3.0)),
+            "max_open_positions": int(trading.get("max_open_positions", 1)),
+            "risk_pct": float(trading.get("risk_pct", 0.01)),
+            "max_position_per_trade_pct": float(max_position),
+            "max_daily_loss_pct": float(trading.get("max_daily_loss_pct", 3.0)),
             "assets": whitelist.get("assets") or [],
         }
 
@@ -200,13 +229,18 @@ class TenantSupervisor:
         self.provision(slug)
         allowed = {
             "risk_pct": (0.001, 0.01),
-            "max_position_per_trade_pct": (1.0, 10.0),
+            "max_position_per_trade_pct": (1.0, 95.0),
             "max_daily_loss_pct": (1.0, 3.0),
         }
         cfg_path = self.config_dir(slug) / "bot_config.yaml"
         cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         trading = cfg.setdefault("trading", {})
         risk = cfg.setdefault("risk", {})
+        portfolio = cfg.setdefault("portfolio", {})
+        sizing = portfolio.setdefault("position_sizing", {})
+        symbol = str(trading.get("trading_pair") or "").upper().replace("_", "")
+        symbol_cfg = (portfolio.setdefault("symbols", {})).setdefault(symbol, {}) if symbol else {}
+        symbol_sizing = symbol_cfg.setdefault("position_sizing", {}) if symbol else {}
         for key, (minimum, maximum) in allowed.items():
             if key not in changes:
                 continue
@@ -216,6 +250,10 @@ class TenantSupervisor:
             trading[key] = value
             if key in {"max_position_per_trade_pct", "max_daily_loss_pct"}:
                 risk[key] = value
+            if key == "max_position_per_trade_pct":
+                sizing[key] = value
+                if symbol:
+                    symbol_sizing[key] = value
         cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         self._set_config_permissions(self.config_dir(slug))
         return self.read_curated_config(slug)
@@ -226,6 +264,7 @@ class TenantSupervisor:
         profile = validate_profile(preset_ids, active_preset_id, risk_values)
         self.provision(slug)
         bounded = safe_risk(profile["risk"])
+        bounded["stop_loss_required"] = bool(profile["risk"].get("stop_loss_required", True))
         cfg_path = self.config_dir(slug) / "bot_config.yaml"
         cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         cfg["simulate_only"] = True
@@ -238,8 +277,19 @@ class TenantSupervisor:
         cfg.setdefault("risk", {}).update({
             "risk_pct": bounded["risk_pct"],
             "max_position_per_trade_pct": bounded["max_position_per_trade_pct"],
-            "max_daily_loss_pct": bounded["max_daily_loss_pct"], "stop_loss_pct": 2.0,
+            "max_daily_loss_pct": bounded["max_daily_loss_pct"],
+            "stop_loss_pct": 2.0,
+            "stop_loss_required": bounded["stop_loss_required"],
         })
+        portfolio = cfg.setdefault("portfolio", {})
+        sizing = portfolio.setdefault("position_sizing", {})
+        sizing["max_position_per_trade_pct"] = bounded["max_position_per_trade_pct"]
+        symbol = str((cfg.get("trading") or {}).get("trading_pair") or "").upper().replace("_", "")
+        if symbol:
+            symbol_cfg = portfolio.setdefault("symbols", {}).setdefault(symbol, {})
+            symbol_cfg.setdefault("position_sizing", {})[
+                "max_position_per_trade_pct"
+            ] = bounded["max_position_per_trade_pct"]
         cfg.setdefault("derivatives", {}).update({
             "default_leverage": bounded["max_leverage"],
             "max_leverage": bounded["max_leverage"],
@@ -249,17 +299,24 @@ class TenantSupervisor:
         assets = []
         for preset_id in profile["preset_ids"]:
             preset = preset_by_id(preset_id)
-            params: dict[str, Any] = {"disable_stop_loss": False, "position_pct": 0.1}
+            execution_profile = dict(preset.get("execution_profile") or {})
+            cdc_pure = bool(preset.get("cdc_pure_certified"))
+            params: dict[str, Any] = {
+                "disable_stop_loss": bool(execution_profile.get("disable_stop_loss", False)),
+                "position_pct": float(execution_profile.get("position_pct", 0.1) or 0.1),
+            }
             if preset["strategy"] == "xauby_actionzone":
                 params.update({
                     "backtest_data_proxy": "PAXGUSDT", "enable_short": False,
                     "ap_smoothing": 2, "sl_atr_mult": 2.0, "trailing_atr_mult": 1.8,
                 })
+            params.update(execution_profile)
             assets.append({
                 "symbol": preset["asset"], "enabled": preset_id == active_preset_id,
                 "primary_timeframe": preset["primary_timeframe"],
                 "confirm_timeframe": preset["confirm_timeframe"],
                 "strategy": preset["strategy"], "strategy_params": params,
+                "cdc_pure_certified": cdc_pure,
                 "mode": "sim", "allowed_sides": ["long"], "leverage": 1.0,
                 "manual_allowed_sides": ["long", "short"]
                 if preset["market_type"] == "swap" else ["long"],
@@ -372,18 +429,32 @@ class TenantSupervisor:
         cfg.setdefault("derivatives", {})["default_leverage"] = 1
         cfg["derivatives"]["max_leverage"] = 1
         cfg.setdefault("trading", {})["max_open_positions"] = 1
-        cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+        cdc_pure = False
         wl_path = self.config_dir(slug) / "coin_whitelist.json"
         whitelist = json.loads(wl_path.read_text(encoding="utf-8"))
         for asset in whitelist.get("assets") or []:
             params = asset.setdefault("strategy_params", {})
-            if bool(params.get("disable_stop_loss")):
+            cdc_pure = bool(
+                asset.get("cdc_pure_certified")
+                and asset.get("symbol") == "XAU"
+                and asset.get("strategy") == "xauby_actionzone"
+            )
+            if bool(params.get("disable_stop_loss")) and not cdc_pure:
                 raise ValueError("live activation requires a stop loss")
-            params["disable_stop_loss"] = False
-            params["position_pct"] = min(float(params.get("position_pct", 0.1) or 0.1), 0.1)
+            if cdc_pure:
+                params["disable_stop_loss"] = True
+                params["position_pct"] = 0.95
+                params["enable_short"] = False
+                asset["allowed_sides"] = ["long"]
+            else:
+                params["disable_stop_loss"] = False
+                params["position_pct"] = min(float(params.get("position_pct", 0.1) or 0.1), 0.1)
             asset["mode"] = "live" if asset.get("enabled", True) else "sim"
             asset["leverage"] = 1.0
-            asset["short_live_enabled"] = "short" in (asset.get("allowed_sides") or [])
+            asset["short_live_enabled"] = False if cdc_pure else "short" in (asset.get("allowed_sides") or [])
+        cfg.setdefault("risk", {})["stop_loss_required"] = not cdc_pure
+        cfg.setdefault("execution", {})["live_strategy_mode"] = "cdc_pure" if cdc_pure else "stop_loss"
+        cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         atomic_json_write(str(wl_path), whitelist, indent=2)
         self._set_config_permissions(self.config_dir(slug))
 

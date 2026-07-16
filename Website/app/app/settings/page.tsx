@@ -22,6 +22,19 @@ const PENDING_BACKTEST = {
   source: "Certified backtest evidence is not available yet",
 };
 
+function cleanPin(value: FormDataEntryValue | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function validatePin(value: string, minimumLength = 8, label = "Trade PIN", digitsOnly = true, maximumLength = 12): string {
+  if (!value || (digitsOnly && !/^[0-9]+$/.test(value)) || value.length < minimumLength || value.length > maximumLength) {
+    return digitsOnly
+      ? `${label} must contain 8–12 digits. Do not use the 6-digit Authenticator code.`
+      : `${label} must be the previous value, 1–128 characters.`;
+  }
+  return "";
+}
+
 export default function SettingsPage() {
   const user = useCurrentUser();
   const { data: catalog } = useCatalog();
@@ -32,27 +45,65 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [liveOpen, setLiveOpen] = useState(false);
+  const [liveError, setLiveError] = useState("");
+  const [nowSeconds, setNowSeconds] = useState<number | null>(null);
   const selectedTarget = useMemo(() => catalog?.targets.find((item) => item.id === targetId), [catalog, targetId]);
   const selectedPreset = useMemo(() => catalog?.presets.find((item) => item.target_id === targetId), [catalog, targetId]);
+  const maxPositionPct = Number(profile?.profile?.risk?.max_position_per_trade_pct ?? 10);
+  const cdcPure = Boolean(selectedPreset?.cdc_pure_certified);
+  const exchangeTestFresh = bot?.exchange_connection?.status === "tested"
+    && (nowSeconds === null || (bot.exchange_connection.tested_at != null && nowSeconds - bot.exchange_connection.tested_at < 1800));
+  const exchangeTestExpired = bot?.exchange_connection?.status === "tested" && nowSeconds !== null && !exchangeTestFresh;
 
   useEffect(() => {
     if (targetId || !catalog) return;
     setTargetId(profile?.profile?.target_id ?? bot?.exchange_connection?.target_id ?? catalog.targets[0]?.id ?? "");
   }, [bot?.exchange_connection?.target_id, catalog, profile?.profile?.target_id, targetId]);
 
-  function begin() { setBusy(true); setError(""); setMessage(""); }
+  useEffect(() => {
+    const updateClock = () => setNowSeconds(Math.floor(Date.now() / 1000));
+    updateClock();
+    const timer = window.setInterval(updateClock, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  function begin() { setBusy(true); setError(""); setMessage(""); setLiveError(""); }
   function fail(reason: unknown) { setError(reason instanceof Error ? reason.message : "Action failed"); setBusy(false); }
+
+  function openLiveDialog() {
+    setLiveError("");
+    setError("");
+    setMessage("");
+    setLiveOpen(true);
+  }
 
   async function saveProfile() {
     if (!selectedPreset) return;
+    const liveProfileChange = bot?.tenant.live_status === "active"
+      && profile?.profile?.active_preset_id !== selectedPreset.id;
+    if (liveProfileChange && !window.confirm("Changing the active preset will stop Live mode and require Live approval again. Continue?")) return;
     begin();
     try {
-      await api("/api/v1/profile", {
+      const result = await api<{
+        mode: "live" | "simulation";
+        live_reapproval_required: boolean;
+        profile_changed: boolean;
+      }>("/api/v1/profile", {
         method: "PUT", headers: csrfHeaders(user),
-        body: JSON.stringify({ preset_ids: [selectedPreset.id], active_preset_id: selectedPreset.id, risk: {} }),
+        body: JSON.stringify({
+          preset_ids: [selectedPreset.id],
+          active_preset_id: selectedPreset.id,
+          risk: profile?.profile?.risk ?? {},
+        }),
       });
-      await mutateProfile();
-      setMessage("Preset saved. Simulation mode remains active.");
+      await Promise.all([mutateProfile(), mutate()]);
+      if (!result.profile_changed && result.mode === "live") {
+        setMessage("Preset is unchanged. Live mode remains active.");
+      } else if (result.live_reapproval_required) {
+        setMessage("Preset changed. Live mode was stopped; review and activate Live again when ready.");
+      } else {
+        setMessage("Preset saved. The current Simulation/Live mode was kept.");
+      }
       setBusy(false);
     } catch (reason) { fail(reason); }
   }
@@ -82,6 +133,7 @@ export default function SettingsPage() {
     try {
       await api("/api/v1/exchange/test", { method: "POST", headers: csrfHeaders(user) });
       await mutate();
+      setNowSeconds(Math.floor(Date.now() / 1000));
       setMessage("Connection test passed. Live activation is available for 30 minutes.");
       setBusy(false);
     } catch (reason) { fail(reason); }
@@ -91,16 +143,30 @@ export default function SettingsPage() {
     event.preventDefault();
     begin();
     const data = new FormData(event.currentTarget);
+    const tradePin = cleanPin(data.get("tradePin"));
+    const validationError = validatePin(tradePin);
+    if (validationError) {
+      setLiveError(validationError);
+      setBusy(false);
+      return;
+    }
     try {
       await api("/api/v1/live/activate", {
         method: "POST", headers: csrfHeaders(user),
-        body: JSON.stringify({ trade_pin: data.get("tradePin"), risk_acknowledged: true }),
+        body: JSON.stringify({ trade_pin: tradePin, risk_acknowledged: true }),
       });
       await mutate();
       setLiveOpen(false);
+      setLiveError("");
       setMessage("Live mode activated. The 1× and stop-loss gates remain enforced.");
       setBusy(false);
-    } catch (reason) { fail(reason); }
+    } catch (reason) {
+      const detail = reason instanceof Error ? reason.message : "Live activation failed";
+      setLiveError(detail.toLowerCase().includes("test the exchange connection again")
+        ? "The exchange connection test has expired. Close this window, tap “Test connection”, then review and activate Live again."
+        : detail);
+      setBusy(false);
+    }
   }
 
   async function deactivateLive() {
@@ -159,7 +225,7 @@ export default function SettingsPage() {
             })}
           </div>
           <div className="risk-summary">
-            <div><span>Strategy</span><strong>{selectedPreset?.market_type === "swap" ? "Long certified" : "Spot long"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Stop loss</span><strong>Required</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
+            <div><span>Strategy</span><strong>{cdcPure ? "CDC Pure · long only" : selectedPreset?.market_type === "swap" ? "Long certified" : "Spot long"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{cdcPure ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
           </div>
           <button className="button-primary" onClick={saveProfile} disabled={busy || !selectedPreset}>Save preset</button>
         </Tabs.Content>
@@ -176,15 +242,16 @@ export default function SettingsPage() {
             <button className="button-secondary" type="button" onClick={testConnection} disabled={busy || !bot?.exchange_connection}>Test connection</button>
           </form>
           <div className="live-zone">
-            <div><ShieldAlert size={21} /><span><strong>Live execution</strong><small>Requires a test from the last 30 minutes, TOTP and your Trade PIN.</small></span></div>
-            {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={() => setLiveOpen(true)} disabled={bot?.exchange_connection?.status !== "tested"}>Review & activate</button>}
+            <div><ShieldAlert size={21} /><span><strong>Live execution</strong><small>Requires a test from the last 30 minutes, TOTP and your Trade PIN. {cdcPure ? "CDC Pure exits by signal/ROI; no exchange stop-loss." : "Stop-loss protection is required."}</small></span></div>
+            {exchangeTestExpired && <p className="form-error" role="status">The last exchange test expired. Tap “Test connection” before activating Live.</p>}
+            {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={openLiveDialog} disabled={busy || !exchangeTestFresh}>Review & activate</button>}
           </div>
         </Tabs.Content>
 
         <Tabs.Content value="security" className="settings-panel card">
           <div className="section-heading"><div><span>Account protection</span><h2>Security gates</h2></div></div>
           <div className="security-list">
-            <div><span><KeyRound size={19} /><span><strong>Trade PIN</strong><small>8–12 digits, required for Live activation.</small></span></span><StatusPill label={user.trade_pin_configured ? "Configured" : "Required"} tone={user.trade_pin_configured ? "good" : "warn"} /></div>
+            <div><span><KeyRound size={19} /><span><strong>Trade PIN</strong><small>New PIN: 8–12 digits. Legacy current values can be rotated once.</small></span></span><StatusPill label={user.trade_pin_configured ? "Configured" : "Required"} tone={user.trade_pin_configured ? "good" : "warn"} /></div>
             <div><span><ShieldAlert size={19} /><span><strong>Authenticator</strong><small>Time-based one-time codes protect sensitive actions.</small></span></span><StatusPill label={user.totp_enabled ? "Enabled" : "Required for Live"} tone={user.totp_enabled ? "good" : "warn"} /></div>
           </div>
           <TradePinForm />
@@ -199,9 +266,10 @@ export default function SettingsPage() {
           <AlertDialog.Overlay className="dialog-overlay" />
           <AlertDialog.Content className="dialog-content">
             <AlertDialog.Title>Activate Live execution?</AlertDialog.Title>
-            <AlertDialog.Description>Orders may be sent to {selectedTarget?.label}. xAuby enforces long-only, 1× leverage, one position and a stop loss, but trading can still lose money.</AlertDialog.Description>
-            <form className="form-stack" onSubmit={activateLive}>
-              <label>Trade PIN<input name="tradePin" type="password" inputMode="numeric" pattern="[0-9]{8,12}" required autoComplete="off" /></label>
+            <AlertDialog.Description>Orders may be sent to {selectedTarget?.label}. Maximum position allocation is {maxPositionPct}% of equity, leaving a 5% buffer. {cdcPure ? "CDC Pure exits by its certified signal and ROI schedule; no exchange stop-loss is placed." : "xAuby enforces a stop-loss exit."} Live trading can still lose money.</AlertDialog.Description>
+            <form className="form-stack" onSubmit={activateLive} noValidate>
+              {liveError && <p className="form-error" role="alert">{liveError}</p>}
+              <label>Trade PIN (8–12 digits)<input name="tradePin" type="password" inputMode="numeric" minLength={8} maxLength={12} required autoComplete="off" /></label>
               <label className="checkbox-field"><input type="checkbox" required /><span>I understand the risk and want to activate Live execution.</span></label>
               <div className="dialog-actions"><AlertDialog.Cancel className="button-secondary" type="button">Cancel</AlertDialog.Cancel><button className="button-danger" disabled={busy}>Activate Live</button></div>
             </form>
@@ -215,23 +283,90 @@ export default function SettingsPage() {
 function TradePinForm() {
   const user = useCurrentUser();
   const [status, setStatus] = useState("");
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const currentPin = cleanPin(data.get("current"));
+    const newPin = cleanPin(data.get("pin"));
+    if (user.trade_pin_configured) {
+      const currentError = validatePin(currentPin, 1, "Current PIN", false, 128);
+      if (currentError) { setStatus(currentError); return; }
+    }
+    const newError = validatePin(newPin, 8, "New Trade PIN");
+    if (newError) { setStatus(newError); return; }
     try {
-      await api("/api/v1/trade-pin", { method: "POST", headers: csrfHeaders(user), body: JSON.stringify({ pin: data.get("pin"), current_pin: data.get("current") || null }) });
+      await api("/api/v1/trade-pin", { method: "POST", headers: csrfHeaders(user), body: JSON.stringify({ pin: newPin, current_pin: currentPin || null }) });
       setStatus("Trade PIN saved. Refresh to see the updated gate.");
       form.reset();
     } catch (reason) { setStatus(reason instanceof Error ? reason.message : "Could not save PIN"); }
   }
+
+  async function reset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const currentPassword = typeof data.get("currentPassword") === "string" ? String(data.get("currentPassword")) : "";
+    const totpCode = cleanPin(data.get("totpCode"));
+    const newPin = cleanPin(data.get("resetPin"));
+    const confirmPin = cleanPin(data.get("confirmPin"));
+    if (user.password_configured && !currentPassword) {
+      setStatus("Current account password is required.");
+      return;
+    }
+    if (!user.totp_enabled || !totpCode) {
+      setStatus("A current Authenticator or recovery code is required.");
+      return;
+    }
+    const newError = validatePin(newPin, 8, "New Trade PIN");
+    if (newError) { setStatus(newError); return; }
+    if (newPin !== confirmPin) {
+      setStatus("New PIN and confirmation do not match.");
+      return;
+    }
+    setResetBusy(true);
+    try {
+      await api("/api/v1/trade-pin/reset", {
+        method: "POST", headers: csrfHeaders(user),
+        body: JSON.stringify({ new_pin: newPin, current_password: currentPassword, totp_code: totpCode }),
+      });
+      setStatus("Trade PIN reset. Use the new 8–12 digit PIN for Live activation.");
+      setResetOpen(false);
+      form.reset();
+    } catch (reason) {
+      setStatus(reason instanceof Error ? reason.message : "Could not reset Trade PIN");
+    } finally { setResetBusy(false); }
+  }
+
   return (
-    <form className="form-stack inline-security-form" onSubmit={submit}>
-      {user.trade_pin_configured && <label>Current PIN<input name="current" type="password" inputMode="numeric" pattern="[0-9]{8,12}" required /></label>}
-      <label>{user.trade_pin_configured ? "New PIN" : "Create Trade PIN"}<input name="pin" type="password" inputMode="numeric" pattern="[0-9]{8,12}" required /></label>
-      <button className="button-secondary">Save Trade PIN</button>
-      {status && <p className="field-help">{status}</p>}
-    </form>
+    <>
+      <form className="form-stack inline-security-form" onSubmit={submit} noValidate>
+        {user.trade_pin_configured && <label>Current PIN (legacy value)<input name="current" type="password" minLength={1} maxLength={128} required autoComplete="off" /></label>}
+        <label>{user.trade_pin_configured ? "New PIN (8–12 digits)" : "Create Trade PIN (8–12 digits)"}<input name="pin" type="password" inputMode="numeric" minLength={8} maxLength={12} required autoComplete="new-password" /></label>
+        <button className="button-secondary">Save Trade PIN</button>
+        {user.trade_pin_configured && <button type="button" className="button-secondary" onClick={() => setResetOpen(true)} disabled={!user.totp_enabled}>Forgot Trade PIN?</button>}
+        {!user.totp_enabled && <p className="field-help">Enable Authenticator before using PIN reset.</p>}
+        {status && <p className="field-help">{status}</p>}
+      </form>
+      <AlertDialog.Root open={resetOpen} onOpenChange={setResetOpen}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="dialog-overlay" />
+          <AlertDialog.Content className="dialog-content">
+            <AlertDialog.Title>Reset forgotten Trade PIN?</AlertDialog.Title>
+            <AlertDialog.Description>Confirm your account password and a fresh Authenticator or recovery code. This only changes the PIN; it does not activate Live.</AlertDialog.Description>
+            <form className="form-stack" onSubmit={reset} noValidate>
+              {user.password_configured && <label>Current account password<input name="currentPassword" type="password" required autoComplete="current-password" /></label>}
+              <label>Authenticator or recovery code<input name="totpCode" type="password" required autoComplete="one-time-code" /></label>
+              <label>New Trade PIN (8–12 digits)<input name="resetPin" type="password" inputMode="numeric" minLength={8} maxLength={12} required autoComplete="new-password" /></label>
+              <label>Confirm new PIN<input name="confirmPin" type="password" inputMode="numeric" minLength={8} maxLength={12} required autoComplete="new-password" /></label>
+              <div className="dialog-actions"><AlertDialog.Cancel className="button-secondary" type="button">Cancel</AlertDialog.Cancel><button className="button-primary" disabled={resetBusy}>{resetBusy ? "Resetting…" : "Reset Trade PIN"}</button></div>
+            </form>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </>
   );
 }
 

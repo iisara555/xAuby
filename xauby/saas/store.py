@@ -825,21 +825,34 @@ class ControlPlaneStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def request_live(self, tenant_id: str, user_id: str) -> dict[str, Any]:
+    def request_live(
+        self, tenant_id: str, user_id: str, *, risk: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         approval_id = uuid.uuid4().hex
         now = time.time()
-        risk = {"max_leverage": 1, "max_open_positions": 1,
-                "max_allocation_pct": 10, "max_daily_loss_pct": 3,
-                "risk_pct": 0.01, "stop_loss_required": True}
+        supplied = risk or {}
+        approval_risk = {
+            "max_leverage": float(supplied.get("max_leverage", 1)),
+            "max_open_positions": int(supplied.get("max_open_positions", 1)),
+            "max_allocation_pct": float(
+                supplied.get("max_position_per_trade_pct", 10)
+            ),
+            "max_daily_loss_pct": float(supplied.get("max_daily_loss_pct", 3)),
+            "risk_pct": float(supplied.get("risk_pct", 0.01)),
+            "stop_loss_required": bool(supplied.get("stop_loss_required", True)),
+            "execution_mode": "cdc_pure"
+            if not bool(supplied.get("stop_loss_required", True))
+            else "stop_loss",
+        }
         with self.connection() as conn:
             conn.execute(
                 "INSERT INTO live_approvals (id,tenant_id,requested_by,status,risk_json,requested_at) "
                 "VALUES (?,?,?,'requested',?,?)",
-                (approval_id, tenant_id, user_id, json.dumps(risk), now),
+                (approval_id, tenant_id, user_id, json.dumps(approval_risk), now),
             )
             conn.execute("UPDATE tenants SET live_status='requested' WHERE id=?", (tenant_id,))
-        self.audit("live_requested", tenant_id=tenant_id, user_id=user_id, payload=risk)
-        return {"id": approval_id, "status": "requested", "risk": risk}
+        self.audit("live_requested", tenant_id=tenant_id, user_id=user_id, payload=approval_risk)
+        return {"id": approval_id, "status": "requested", "risk": approval_risk}
 
     def reset_live_approval(self, tenant_id: str, user_id: str, reason: str) -> None:
         with self.connection() as conn:

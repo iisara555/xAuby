@@ -87,8 +87,9 @@ class SaaSAuthAndBackupTests(unittest.TestCase):
             (self.settings.tenant_config_root / slug / "coin_whitelist.json").read_text()
         )
         params = whitelist["assets"][0]["strategy_params"]
-        self.assertFalse(params["disable_stop_loss"])
-        self.assertLessEqual(params["position_pct"], 0.1)
+        self.assertTrue(params["disable_stop_loss"])
+        self.assertAlmostEqual(params["position_pct"], 0.95)
+        self.assertTrue(whitelist["assets"][0]["cdc_pure_certified"])
 
     def test_public_signup_is_disabled(self):
         response = self.client.post(

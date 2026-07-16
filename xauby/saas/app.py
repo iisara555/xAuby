@@ -36,6 +36,10 @@ from xauby.utils.atomic_io import atomic_bytes_write
 
 SESSION_COOKIE = "xauby_saas_session"
 OAUTH_STATE_COOKIE = "xauby_saas_oauth_state"
+TRADE_PIN_PATTERN = r"^[0-9]{8,12}$"
+# Legacy consoles accepted a broader secret for the old/current value. Accept
+# it only during rotation; every newly saved PIN and sensitive action keeps the
+# stronger 8-12 digit requirement.
 
 
 class ExchangeConnectBody(BaseModel):
@@ -56,13 +60,19 @@ class InviteAcceptBody(BaseModel):
 
 
 class LiveActivateBody(BaseModel):
-    trade_pin: str = Field(pattern=r"^[0-9]{8,12}$")
+    trade_pin: str = Field(pattern=TRADE_PIN_PATTERN)
     risk_acknowledged: bool
 
 
 class TradePinBody(BaseModel):
-    pin: str = Field(pattern=r"^[0-9]{8,12}$")
-    current_pin: str | None = Field(default=None, pattern=r"^[0-9]{8,12}$")
+    pin: str = Field(pattern=TRADE_PIN_PATTERN)
+    current_pin: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class TradePinResetBody(BaseModel):
+    new_pin: str = Field(pattern=TRADE_PIN_PATTERN)
+    current_password: str = Field(default="", max_length=128)
+    totp_code: str = Field(min_length=1, max_length=128)
 
 
 class ProfileAppearanceBody(BaseModel):
@@ -77,7 +87,7 @@ class OrderPreviewBody(BaseModel):
 
 
 class OrderConfirmBody(BaseModel):
-    trade_pin: str = Field(pattern=r"^[0-9]{8,12}$")
+    trade_pin: str = Field(pattern=TRADE_PIN_PATTERN)
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
@@ -175,6 +185,7 @@ def create_app(
     runtime = runtime or RuntimeGateway(settings, supervisor)
     login_throttle = AttemptThrottle(max_attempts=8, window_seconds=300, lockout_seconds=900)
     email_throttle = AttemptThrottle(max_attempts=5, window_seconds=900, lockout_seconds=900)
+    trade_pin_reset_throttle = AttemptThrottle(max_attempts=5, window_seconds=300, lockout_seconds=900)
     app = FastAPI(title="xAuby SaaS Control Plane", version="0.1.0")
     app.state.settings = settings
     app.state.store = store
@@ -252,7 +263,8 @@ def create_app(
         snapshot = runtime.snapshot(tenant["slug"])
         if not snapshot.get("ok") or snapshot.get("read_only") or snapshot.get("stale"):
             raise HTTPException(status_code=409, detail="fresh tenant-engine data is required")
-        if float(snapshot.get("age_sec") or 999) > 30:
+        snapshot_age = snapshot.get("age_sec")
+        if snapshot_age is None or float(snapshot_age) > 30:
             raise HTTPException(status_code=409, detail="market snapshot is too old")
         state = snapshot.get("state") if isinstance(snapshot.get("state"), dict) else {}
         clean_symbol = RuntimeGateway._symbol(symbol)
@@ -610,6 +622,7 @@ def create_app(
             "csrf_token": user["csrf_token"], "tenant": tenant,
             "account_status": user.get("account_status"),
             "email_verified": bool(user.get("email_verified")),
+            "password_configured": bool(user.get("password_hash")),
             "totp_enabled": bool(user.get("totp_enabled")),
             "mfa_verified": bool(user.get("mfa_verified")),
             "trade_pin_configured": bool(user.get("trade_pin_hash")),
@@ -699,7 +712,26 @@ def create_app(
         tenant = own_tenant(user)
         try:
             profile = validate_profile(body.preset_ids, body.active_preset_id, body.risk)
-            if tenant["live_status"] in {"requested", "approved", "active"}:
+            existing = store.trading_profile(tenant["id"])
+            profile_changed = existing != profile
+            live_was_enabled = tenant["live_status"] in {"requested", "approved", "active"}
+
+            # Saving the already-active preset is an idempotent action.  The old
+            # path rebuilt the tenant files and unconditionally called
+            # ``set_sim_mode`` even when nothing had changed.  That made a
+            # harmless second click stop a Live engine and silently downgrade it
+            # to paper trading.  Actual profile changes still take the existing
+            # fail-closed re-approval path below.
+            if not profile_changed:
+                return {
+                    "ok": True,
+                    "profile": existing,
+                    "mode": "live" if tenant["live_status"] == "active" else "simulation",
+                    "live_reapproval_required": False,
+                    "profile_changed": False,
+                }
+
+            if live_was_enabled:
                 supervisor.stop(tenant["slug"])
                 store.update_tenant(tenant["id"], status="stopped")
                 store.reset_live_approval(tenant["id"], user["id"], "trading profile changed")
@@ -714,7 +746,13 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return {"ok": True, "profile": compiled, "mode": "sim", "live_reapproval_required": True}
+        return {
+            "ok": True,
+            "profile": compiled,
+            "mode": "simulation",
+            "live_reapproval_required": live_was_enabled,
+            "profile_changed": True,
+        }
 
     @app.get("/api/v1/bot")
     def bot(user: dict[str, Any] = Depends(current_user)):
@@ -823,6 +861,41 @@ def create_app(
         store.set_trade_pin(user["id"], body.pin)
         return {"ok": True}
 
+    @app.post("/api/v1/trade-pin/reset")
+    def trade_pin_reset(
+        body: TradePinResetBody,
+        request: Request,
+        user: dict[str, Any] = Depends(csrf_user),
+    ):
+        """Reset a forgotten Trade PIN only after a fresh step-up check."""
+        client = request.client.host if request.client else "unknown"
+        throttle_key = f"{client}|{user['id']}"
+        require_not_throttled(trade_pin_reset_throttle, throttle_key)
+
+        if user.get("password_hash"):
+            if not body.current_password or not verify_password(
+                str(user["password_hash"]), body.current_password
+            ):
+                trade_pin_reset_throttle.record_failure(throttle_key)
+                raise HTTPException(status_code=403, detail="current password is incorrect")
+
+        if not user.get("totp_enabled"):
+            trade_pin_reset_throttle.record_failure(throttle_key)
+            raise HTTPException(status_code=403, detail="Authenticator must be enabled before resetting Trade PIN")
+
+        supplied = str(body.totp_code or "").strip()
+        mfa_ok = verify_totp(str(user.get("totp_secret") or ""), supplied)
+        if not mfa_ok and supplied:
+            mfa_ok = store.use_recovery_code(user["id"], supplied)
+        if not mfa_ok:
+            trade_pin_reset_throttle.record_failure(throttle_key)
+            raise HTTPException(status_code=403, detail="valid Authenticator or recovery code is required")
+
+        store.set_trade_pin(user["id"], body.new_pin)
+        store.audit("trade_pin_reset", user_id=user["id"])
+        trade_pin_reset_throttle.clear(throttle_key)
+        return {"ok": True}
+
     @app.post("/api/v1/exchange/connect")
     def exchange_connect(body: ExchangeConnectBody, user: dict[str, Any] = Depends(csrf_user)):
         if not body.withdraw_disabled_attested:
@@ -906,7 +979,7 @@ def create_app(
         )
         if not active or not active.get("live_certified"):
             raise HTTPException(status_code=409, detail="active preset is not live certified")
-        return store.request_live(tenant["id"], user["id"])
+        return store.request_live(tenant["id"], user["id"], risk=profile.get("risk"))
 
     @app.post("/api/v1/live/activate")
     def live_activate(body: LiveActivateBody, user: dict[str, Any] = Depends(csrf_user)):
@@ -932,13 +1005,20 @@ def create_app(
         if not profile or profile.get("target_id") != connection.get("target_id"):
             raise HTTPException(status_code=409, detail="profile and exchange target must match")
         active = profile["presets"][0]
-        if not active.get("live_certified") or not profile["risk"].get("stop_loss_required"):
-            raise HTTPException(status_code=409, detail="a stop-loss certified profile is required")
+        cdc_pure = bool(
+            active.get("cdc_pure_certified")
+            and active.get("symbol") == "XAUUSDT"
+            and active.get("strategy") == "xauby_actionzone"
+        )
+        if not active.get("live_certified") or (
+            not profile["risk"].get("stop_loss_required") and not cdc_pure
+        ):
+            raise HTTPException(status_code=409, detail="a certified stop-loss or CDC Pure profile is required")
         if not store.reserve_engine_slot(tenant["id"], settings.max_active_engines):
             raise HTTPException(status_code=409, detail="engine capacity is full; tenant queued")
         try:
             if tenant["live_status"] != "requested":
-                store.request_live(tenant["id"], user["id"])
+                store.request_live(tenant["id"], user["id"], risk=profile.get("risk"))
             store.approve_live(tenant["id"], user["id"])
             supervisor.set_live_mode(
                 tenant["slug"], tenant["exchange_id"], tenant["market_type"]
@@ -980,6 +1060,8 @@ def create_app(
             quantity = float(position.get("quantity") or 0.0)
             side = str(position.get("position_side") or "LONG").upper()
             estimated_notional = quantity * mark
+            sizing_mode = "close_position"
+            allocation_pct = None
         else:
             config = supervisor.read_curated_config(tenant["slug"])
             focus = context["focus"]
@@ -987,11 +1069,34 @@ def create_app(
             equity = float(focus.get("total_equity_usdt") or breakdown.get("portfolio_total_usdt") or 0.0)
             if equity <= 0:
                 raise HTTPException(status_code=409, detail="portfolio equity is unavailable")
-            risk_fraction = float(config.get("risk_pct") or 0.01)
             max_allocation = float(config.get("max_position_per_trade_pct") or 10.0) / 100.0
-            stop_distance = mark * 0.02
-            risk_sized = (equity * risk_fraction / stop_distance) * mark
-            estimated_notional = min(risk_sized, equity * max_allocation)
+            preset = context["preset"]
+            execution_profile = preset.get("execution_profile") or {}
+            cdc_pure = bool(
+                preset.get("cdc_pure_certified")
+                and str(preset.get("symbol") or "").upper() == "XAUUSDT"
+                and preset.get("strategy") == "xauby_actionzone"
+            )
+            if cdc_pure:
+                # CDC Pure has no exchange stop loss.  Its certified sizing is
+                # a fixed fraction of equity, so the manual preview must use
+                # the same position_pct as the engine instead of inventing an
+                # SL distance and applying the generic risk formula.
+                position_pct = max(
+                    0.0,
+                    min(float(execution_profile.get("position_pct", 0.95) or 0.95), 1.0),
+                )
+                effective_pct = min(position_pct, max(0.0, max_allocation))
+                estimated_notional = equity * effective_pct
+                allocation_pct = effective_pct * 100.0
+                sizing_mode = "cdc_pure"
+            else:
+                risk_fraction = float(config.get("risk_pct") or 0.01)
+                stop_distance = mark * 0.02
+                risk_sized = (equity * risk_fraction / stop_distance) * mark
+                estimated_notional = min(risk_sized, equity * max_allocation)
+                allocation_pct = (estimated_notional / equity) * 100.0
+                sizing_mode = "risk_based"
             quantity = estimated_notional / mark
             side = "SHORT" if body.intent == "OPEN_SHORT" else "LONG"
         payload = {
@@ -1003,6 +1108,8 @@ def create_app(
             "mark_price": mark,
             "estimated_quantity": quantity,
             "estimated_notional": estimated_notional,
+            "sizing_mode": sizing_mode,
+            "allocation_pct": allocation_pct,
             "preset_id": context["preset"]["id"],
             "target_id": context["target"]["id"],
         }
