@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import base64
 import binascii
-import json
 import hashlib
+import json
 import re
 import secrets
 import time
@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from xauby.saas.catalog import public_catalog, target_by_id, validate_profile
 from xauby.saas.credentials import CredentialCipher
 from xauby.saas.mailer import Mailer
+from xauby.saas.runtime import RuntimeGateway
 from xauby.saas.security import (
     AttemptThrottle,
     new_totp_secret,
@@ -31,7 +32,6 @@ from xauby.saas.security import (
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
 from xauby.saas.supervisor import TenantSupervisor
-from xauby.saas.runtime import RuntimeGateway
 from xauby.utils.atomic_io import atomic_bytes_write
 
 SESSION_COOKIE = "xauby_saas_session"
@@ -468,10 +468,14 @@ def create_app(
     @app.post("/auth/totp/enable")
     def totp_enable(body: TotpBody, request: Request,
                     user: dict[str, Any] = Depends(csrf_user)):
-        if not user.get("totp_secret") or not verify_totp(user["totp_secret"], body.code):
+        pending_secret = str(user.get("pending_totp_secret") or "")
+        if not pending_secret or not verify_totp(pending_secret, body.code):
             raise HTTPException(status_code=400, detail="TOTP code is invalid")
         codes = [secrets.token_hex(5).upper() for _ in range(8)]
-        store.enable_totp(user["id"], codes)
+        try:
+            store.enable_totp(user["id"], codes)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         store.mark_session_mfa(request.cookies.get(SESSION_COOKIE, ""))
         return {"ok": True, "recovery_codes": codes}
 
@@ -1024,7 +1028,7 @@ def create_app(
         if not ok:
             raise HTTPException(status_code=403, detail=reason)
         command_id = hashlib.sha256(
-            f"{tenant['id']}:{challenge_id}:{body.idempotency_key}".encode("utf-8")
+            f"{tenant['id']}:{challenge_id}:{body.idempotency_key}".encode()
         ).hexdigest()[:32]
         draft = store.challenge(challenge_id, tenant["id"], user["id"])
         if draft is None:

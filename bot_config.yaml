@@ -38,7 +38,7 @@ trading:
   trading_pair: XAUUSDT
   startup_order_reconcile: true
   runtime_order_reconcile: true
-  runtime_reconcile_interval_minutes: 5
+  runtime_reconcile_interval_minutes: 1
   interval_seconds: 60
   timeframe: 4h
   mode: full_auto

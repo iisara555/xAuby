@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger("lite_bot")
 
@@ -138,15 +139,51 @@ class ReconcileMixin:
     def _reconcile_derivative_position(self, sym: str, state):
         """Reconcile against exchange positions, never spot balances."""
         positions = self.client.get_positions([sym])
-        live = next((p for p in positions if str(p.get("symbol", "")).upper() == sym), None)
+        live = next(
+            (
+                position
+                for position in positions
+                if str(position.get("symbol", ""))
+                .split(":", 1)[0]
+                .upper()
+                .replace("/", "")
+                .replace("_", "")
+                == sym
+            ),
+            None,
+        )
         local_open = state.get("state") == "bought"
         if live and not local_open:
-            msg = f"ORPHAN DERIVATIVE POSITION {sym} {live.get('position_side')}; trading blocked until reconciled"
-            logger.error(msg)
-            sc = self._sc(sym)
-            sc.set_feed_degraded(True, msg)
-            # Durable halt: a WS reconnect must not silently clear this.
-            sc.set_trading_halted(True, msg)
+            live_side = str(live.get("position_side") or "").upper()
+            live_qty = abs(float(live.get("quantity") or 0.0))
+            entry_price = float(live.get("entry_price") or live.get("mark_price") or 0.0)
+            if live_side not in {"LONG", "SHORT"} or live_qty <= 0:
+                logger.error("[%s] Ignoring malformed derivative position: %r", sym, live)
+                return
+            now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+            self.db.save_trade_state(
+                symbol=sym,
+                state="bought",
+                entry_price=entry_price,
+                stop_loss=0.0,
+                take_profit=0.0,
+                highest_price_seen=entry_price,
+                quantity=live_qty,
+                opened_at=now_iso,
+                last_transition_at=now_iso,
+                position_side=live_side,
+                leverage=float(live.get("leverage") or 1.0),
+                margin_mode=str(live.get("margin_mode") or "isolated"),
+                liquidation_price=float(live.get("liquidation_price") or 0.0),
+                funding_paid=0.0,
+                management_mode="manual",
+                partial_tp_taken=False,
+            )
+            msg = (
+                f"MANUAL DERIVATIVE POSITION DETECTED {sym} {live_side} "
+                f"qty={live_qty:.8f}; adopted as manual-managed"
+            )
+            logger.warning(msg)
             self.send_telegram_alert(msg)
             return
         if local_open and not live:
@@ -160,13 +197,31 @@ class ReconcileMixin:
         live_side = str(live.get("position_side") or "").upper()
         local_side = str(state.get("position_side") or "LONG").upper()
         if live_side != local_side:
-            msg = f"POSITION SIDE MISMATCH {sym}: local={local_side} exchange={live_side}"
-            logger.error(msg)
-            sc = self._sc(sym)
-            sc.set_feed_degraded(True, msg)
-            sc.set_trading_halted(True, msg)
-            self.send_telegram_alert(msg)
-            return
+            if str(state.get("management_mode") or "strategy").lower() == "manual":
+                logger.warning(
+                    "[%s] Manual derivative side changed on exchange: %s -> %s",
+                    sym,
+                    local_side,
+                    live_side,
+                )
+                state = dict(state)
+                state["entry_price"] = float(
+                    live.get("entry_price")
+                    or live.get("mark_price")
+                    or state.get("entry_price")
+                    or 0.0
+                )
+                state["opened_at"] = (
+                    datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+                )
+            else:
+                msg = f"POSITION SIDE MISMATCH {sym}: local={local_side} exchange={live_side}"
+                logger.error(msg)
+                sc = self._sc(sym)
+                sc.set_feed_degraded(True, msg)
+                sc.set_trading_halted(True, msg)
+                self.send_telegram_alert(msg)
+                return
         self.db.save_trade_state(
             symbol=sym, state="bought",
             entry_price=float(live.get("entry_price") or state.get("entry_price") or 0.0),
@@ -179,6 +234,8 @@ class ReconcileMixin:
             margin_mode=str(live.get("margin_mode") or "isolated"),
             liquidation_price=float(live.get("liquidation_price") or 0.0),
             funding_paid=float(state.get("funding_paid") or 0.0),
+            management_mode=str(state.get("management_mode") or "strategy"),
+            partial_tp_taken=bool(state.get("partial_tp_taken")),
         )
 
     def reconcile_startup_state(self):

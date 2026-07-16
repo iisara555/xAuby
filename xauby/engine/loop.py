@@ -2517,7 +2517,7 @@ class LoopMixin:
             self.config.get("trading", {}).get("runtime_order_reconcile", True)
         )
         reconcile_interval = int(
-            self.config.get("trading", {}).get("runtime_reconcile_interval_minutes", 5)
+            self.config.get("trading", {}).get("runtime_reconcile_interval_minutes", 1)
         ) * 60
         self.last_reconcile_time = time.time()
 

@@ -1,5 +1,5 @@
-import json
 import base64
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -282,6 +282,10 @@ class SaaSControlPlaneTests(unittest.TestCase):
             json={"current_code": totp_code(secret)},
         )
         self.assertEqual(allowed.status_code, 200, allowed.text)
+        stored = self.store.user_by_id(self.client.get("/api/v1/me").json()["id"])
+        self.assertTrue(stored["totp_enabled"])
+        self.assertEqual(stored["totp_secret"], secret)
+        self.assertEqual(stored["pending_totp_secret"], allowed.json()["secret"])
 
     def test_replacing_trade_pin_requires_current_pin(self):
         first = self.client.post(

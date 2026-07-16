@@ -4,16 +4,15 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from xauby.engine.trading import LiteTradingEngine
-from xauby.domain.models import Position
-from xauby.runtime.config_error import ConfigError
 from tests.mocks import (
-    MockExchangeGateway,
     MockDatabaseRepository,
+    MockExchangeGateway,
     MockNotificationService,
     install_test_pair,
 )
-
+from xauby.domain.models import Position
+from xauby.engine.trading import LiteTradingEngine
+from xauby.runtime.config_error import ConfigError
 
 
 class TestTradingEngineDecoupling(unittest.TestCase):

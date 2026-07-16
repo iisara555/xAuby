@@ -54,6 +54,7 @@ class ControlPlaneStore:
                     password_hash TEXT, email_verified INTEGER NOT NULL DEFAULT 0,
                     account_status TEXT NOT NULL DEFAULT 'pending_approval',
                     totp_secret TEXT, totp_enabled INTEGER NOT NULL DEFAULT 0,
+                    pending_totp_secret TEXT,
                     pending_email TEXT,
                     trade_pin_hash TEXT, pin_failures INTEGER NOT NULL DEFAULT 0,
                     pin_locked_until REAL NOT NULL DEFAULT 0, created_at REAL NOT NULL
@@ -137,6 +138,7 @@ class ControlPlaneStore:
                 "totp_enabled": "INTEGER NOT NULL DEFAULT 0", "pending_email": "TEXT",
                 "display_name": "TEXT", "avatar_ext": "TEXT",
                 "avatar_version": "INTEGER NOT NULL DEFAULT 0",
+                "pending_totp_secret": "TEXT",
             }
             for name, declaration in additions.items():
                 if name not in columns:
@@ -470,11 +472,24 @@ class ControlPlaneStore:
 
     def set_totp_secret(self, user_id: str, secret: str) -> None:
         with self.connection() as conn:
-            conn.execute("UPDATE users SET totp_secret=?,totp_enabled=0 WHERE id=?", (secret, user_id))
+            conn.execute(
+                "UPDATE users SET pending_totp_secret=? WHERE id=?",
+                (secret, user_id),
+            )
 
     def enable_totp(self, user_id: str, recovery_codes: list[str]) -> None:
         with self.connection() as conn:
-            conn.execute("UPDATE users SET totp_enabled=1 WHERE id=?", (user_id,))
+            row = conn.execute(
+                "SELECT pending_totp_secret FROM users WHERE id=?",
+                (user_id,),
+            ).fetchone()
+            if row is None or not row["pending_totp_secret"]:
+                raise ValueError("TOTP setup is not pending")
+            conn.execute(
+                "UPDATE users SET totp_secret=pending_totp_secret,"
+                "pending_totp_secret=NULL,totp_enabled=1 WHERE id=?",
+                (user_id,),
+            )
             conn.execute("DELETE FROM recovery_codes WHERE user_id=?", (user_id,))
             now = time.time()
             conn.executemany(
