@@ -19,7 +19,13 @@ class TestSchemaV8Migration(unittest.TestCase):
                 cols = [r[1] for r in conn.execute("PRAGMA table_info(closed_trades)").fetchall()]
                 state_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_states)").fetchall()]
                 self.assertIn("execution_mode", cols)
+                self.assertIn("exchange_close_id", cols)
+                self.assertIn("exchange_position_id", cols)
+                self.assertIn("pnl_source", cols)
+                self.assertIn("pnl_confirmed", cols)
+                self.assertIn("funding_fee", cols)
                 self.assertIn("management_mode", state_cols)
+                self.assertIn("exchange_position_id", state_cols)
                 conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='regime_history'"
                 )
@@ -31,6 +37,12 @@ class TestSchemaV8Migration(unittest.TestCase):
                 self.assertIsNotNone(
                     conn.execute(
                         "SELECT name FROM sqlite_master WHERE type='table' AND name='strategy_handoffs'"
+                    ).fetchone()
+                )
+                self.assertIsNotNone(
+                    conn.execute(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type='table' AND name='exchange_close_reconciliations'"
                     ).fetchone()
                 )
             finally:

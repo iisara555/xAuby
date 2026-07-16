@@ -112,7 +112,12 @@ class IDatabaseRepository(ABC):
         entry_regime: Optional[str] = None,
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
+        execution_mode: Optional[str] = None,
+        exchange_close_id: Optional[str] = None,
+        exchange_position_id: Optional[str] = None,
+        pnl_source: str = "engine",
+        pnl_confirmed: bool = True,
+        funding_fee: float = 0.0,
     ) -> bool:
         """Atomically record a closed trade and reset position state to idle."""
-
 

@@ -1002,6 +1002,7 @@ class LoopMixin:
                 "liquidation_price": state.get("liquidation_price", 0.0),
                 "funding_paid": state.get("funding_paid", 0.0),
                 "management_mode": state.get("management_mode", "strategy"),
+                "exchange_position_id": state.get("exchange_position_id"),
                 "partial_tp_taken": bool(state.get("partial_tp_taken", False)),
                 "partial_tp_pct": partial_tp_pct,
                 "partial_tp_fraction": partial_tp_fraction,
@@ -1051,6 +1052,11 @@ class LoopMixin:
         snap["last_candle_timestamp"] = candle_status["last_candle_timestamp"]
         snap["equity_breakdown"] = equity_breakdown
         snap["total_equity_usdt"] = portfolio_total
+        try:
+            closed = self.db.get_closed_trades(sym, limit=1)
+            snap["last_closed_trade"] = closed[0] if closed else None
+        except Exception:
+            snap["last_closed_trade"] = None
 
         exec_mode = self._execution_mode(sym)
         snap["execution_mode"] = exec_mode
@@ -1880,6 +1886,25 @@ class LoopMixin:
             elif signal_intent == "CLOSE":
                 action = "SELL"
 
+        if sc.consume_exchange_reconcile_wait():
+            feed = sc.feed_snapshot()
+            reason = (
+                feed.get("exchange_reconcile_reason")
+                or "Exchange close reconciled; waiting one engine cycle"
+            )
+            action = "HOLD"
+            sc.last_signal_meta.update(
+                {
+                    "action": "HOLD",
+                    "intent": "HOLD",
+                    "position_side": None,
+                    "reason": reason,
+                    "status_summary": reason,
+                }
+            )
+            if sym == self.focus_symbol:
+                self.last_signal_meta = sc.last_signal_meta
+
         self._emit_event(
             EventType.SIGNAL_EVALUATED,
             action=action,
@@ -2523,6 +2548,12 @@ class LoopMixin:
 
         while True:
             try:
+                now = time.time()
+                if runtime_reconcile_enabled and reconcile_interval > 0:
+                    if now - self.last_reconcile_time >= reconcile_interval:
+                        self.reconcile_startup_state()
+                        self.last_reconcile_time = now
+
                 self.tick()
 
                 self._maybe_start_balance_refresh()
@@ -2537,11 +2568,6 @@ class LoopMixin:
                         self.db.wal_checkpoint()
                         self.last_wal_checkpoint_time = now
 
-                if runtime_reconcile_enabled and reconcile_interval > 0:
-                    if now - self.last_reconcile_time >= reconcile_interval:
-                        self.reconcile_startup_state()
-                        self.last_reconcile_time = now
-                
                 if heartbeat_interval > 0:
                     if now - self.last_heartbeat_time >= heartbeat_interval:
                         self.send_heartbeat()

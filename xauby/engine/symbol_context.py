@@ -28,6 +28,9 @@ class SymbolContext:
     # to verify the exchange state, so new entries stay blocked until then.
     trading_halted: bool = False
     halt_reason: str = ""
+    exchange_reconcile_pending: bool = False
+    exchange_reconcile_reason: str = ""
+    _exchange_reconcile_wait_cycles: int = 0
     # Set each tick when the newest closed candle is too old (REST candle sync
     # failing while ticks still flow). Blocks new entries until candles refresh;
     # re-evaluated every tick so it self-clears — no manual reset needed.
@@ -117,6 +120,8 @@ class SymbolContext:
                 "degrade_reason": self.degrade_reason,
                 "trading_halted": bool(self.trading_halted),
                 "halt_reason": self.halt_reason,
+                "exchange_reconcile_pending": bool(self.exchange_reconcile_pending),
+                "exchange_reconcile_reason": self.exchange_reconcile_reason,
                 "candle_stale": bool(self.candle_stale),
             }
 
@@ -143,6 +148,37 @@ class SymbolContext:
         with self._state_lock:
             self.trading_halted = bool(halted)
             self.halt_reason = str(reason or "")
+
+    def set_exchange_reconcile_pending(self, pending: bool, reason: str = "") -> None:
+        with self._state_lock:
+            previous_reason = self.exchange_reconcile_reason
+            self.exchange_reconcile_pending = bool(pending)
+            self.exchange_reconcile_reason = str(reason or "")
+            if pending:
+                self.trading_halted = True
+                self.halt_reason = self.exchange_reconcile_reason
+            elif (
+                self.halt_reason == previous_reason
+                or self.halt_reason.startswith("Exchange close reconciliation")
+                or self.halt_reason.startswith("Exchange position is flat")
+            ):
+                self.trading_halted = False
+                self.halt_reason = ""
+
+    def schedule_exchange_reconcile_wait(self, cycles: int = 1) -> None:
+        with self._state_lock:
+            self._exchange_reconcile_wait_cycles = max(
+                self._exchange_reconcile_wait_cycles, int(cycles)
+            )
+
+    def consume_exchange_reconcile_wait(self) -> bool:
+        with self._state_lock:
+            if self.exchange_reconcile_pending:
+                return True
+            if self._exchange_reconcile_wait_cycles <= 0:
+                return False
+            self._exchange_reconcile_wait_cycles -= 1
+            return True
 
     def has_semi_auto_pending(self) -> bool:
         with self._state_lock:
@@ -189,7 +225,11 @@ class SymbolContext:
 
     def blocks_new_entries(self) -> bool:
         """True when RegimeRouter forbids new BUY orders."""
-        return self.no_trade_state in ("NO_TRADE_PENDING", "NO_TRADE", "HANDOFF")
+        return self.exchange_reconcile_pending or self.no_trade_state in (
+            "NO_TRADE_PENDING",
+            "NO_TRADE",
+            "HANDOFF",
+        )
 
     @property
     def timeframe_regime(self) -> Optional[str]:
