@@ -24,3 +24,6 @@ httpx>=0.28.0
 optuna>=3.0.0
 pandas-ta @ git+https://github.com/MerlinR/Pandas-ta-fork.git
 textual>=1.0.0
+
+# Test tooling (several tests/test_*.py modules import pytest fixtures)
+pytest>=8.0.0

@@ -13,6 +13,60 @@ from typing import Any
 TENANT_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$")
 
 
+class AttemptThrottle:
+    """In-process sliding-window throttle for credential-guessing endpoints.
+
+    The control plane runs as a single uvicorn process, so process-local
+    state is authoritative. Keys should combine the target identity and the
+    client address so one attacker cannot lock out other clients globally.
+    """
+
+    def __init__(self, *, max_attempts: int = 8, window_seconds: float = 300.0,
+                 lockout_seconds: float = 900.0, max_keys: int = 50_000):
+        import threading
+
+        self.max_attempts = int(max_attempts)
+        self.window_seconds = float(window_seconds)
+        self.lockout_seconds = float(lockout_seconds)
+        self.max_keys = int(max_keys)
+        self._lock = threading.Lock()
+        self._attempts: dict[str, list[float]] = {}
+        self._locked_until: dict[str, float] = {}
+
+    def _prune(self, now: float) -> None:
+        if len(self._attempts) > self.max_keys:
+            cutoff = now - self.window_seconds
+            self._attempts = {
+                key: stamps for key, stamps in self._attempts.items()
+                if stamps and stamps[-1] >= cutoff
+            }
+        self._locked_until = {
+            key: until for key, until in self._locked_until.items() if until > now
+        }
+
+    def retry_after(self, key: str) -> int:
+        """Seconds until the key may try again; 0 when not locked."""
+        now = time.time()
+        with self._lock:
+            until = self._locked_until.get(key, 0.0)
+            return max(0, int(until - now)) if until > now else 0
+
+    def record_failure(self, key: str) -> None:
+        now = time.time()
+        with self._lock:
+            self._prune(now)
+            stamps = [s for s in self._attempts.get(key, []) if s >= now - self.window_seconds]
+            stamps.append(now)
+            self._attempts[key] = stamps
+            if len(stamps) >= self.max_attempts:
+                self._locked_until[key] = now + self.lockout_seconds
+
+    def clear(self, key: str) -> None:
+        with self._lock:
+            self._attempts.pop(key, None)
+            self._locked_until.pop(key, None)
+
+
 def validate_tenant_slug(value: str) -> str:
     slug = str(value or "").strip().lower()
     if not TENANT_SLUG_RE.fullmatch(slug):

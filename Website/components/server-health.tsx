@@ -30,7 +30,7 @@ export function ServerHealth({ compact = false }: { compact?: boolean }) {
   const engineOnline = bot?.service_status === "active" && bot?.tenant.status === "running";
   const items = [
     { label: "Engine", short: "E", value: engineOnline ? "Online" : bot?.tenant.status ?? "—", tone: engineOnline ? "good" as Tone : "bad" as Tone },
-    { label: "WebSocket", short: "WS", value: compactMs(wsAge), tone: metricTone(wsAge, 5000, 15000) },
+    { label: "WS", short: "WS", value: compactMs(wsAge), tone: metricTone(wsAge, 5000, 15000) },
     { label: "REST", short: "R", value: compactMs(restLatency), tone: metricTone(restLatency, 500, 1200) },
     { label: "Tick", short: "T", value: compactMs(tickDuration), tone: metricTone(tickDuration, 2000, 10000) },
   ];

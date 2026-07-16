@@ -292,6 +292,9 @@ class TestTradingEngineConcurrency(unittest.TestCase):
         errors = []
         calls = []
         calls_lock = threading.Lock()
+        # The refresh path intentionally no-ops for all-sim engines; force the
+        # live path so the shared-cache concurrency behaviour is exercised.
+        self.engine._all_symbols_sim = lambda: False
 
         def get_balances():
             with calls_lock:

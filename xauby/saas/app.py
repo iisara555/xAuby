@@ -21,6 +21,7 @@ from xauby.saas.catalog import public_catalog, target_by_id, validate_profile
 from xauby.saas.credentials import CredentialCipher
 from xauby.saas.mailer import Mailer
 from xauby.saas.security import (
+    AttemptThrottle,
     new_totp_secret,
     sign_state,
     verify_password,
@@ -118,6 +119,10 @@ class TotpBody(BaseModel):
     code: str = Field(pattern=r"^[0-9]{6}$")
 
 
+class TotpSetupBody(BaseModel):
+    current_code: str = Field(default="", max_length=12)
+
+
 class TradingProfileBody(BaseModel):
     preset_ids: list[str] = Field(min_length=1, max_length=3)
     active_preset_id: str
@@ -168,6 +173,8 @@ def create_app(
     supervisor.set_credential_loader(load_credentials)
     mailer = mailer or Mailer(settings)
     runtime = runtime or RuntimeGateway(settings, supervisor)
+    login_throttle = AttemptThrottle(max_attempts=8, window_seconds=300, lockout_seconds=900)
+    email_throttle = AttemptThrottle(max_attempts=5, window_seconds=900, lockout_seconds=900)
     app = FastAPI(title="xAuby SaaS Control Plane", version="0.1.0")
     app.state.settings = settings
     app.state.store = store
@@ -339,10 +346,26 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"ok": True, "status": user["account_status"]}
 
+    def throttle_key(request: Request, email: str) -> str:
+        client = request.client.host if request.client else "unknown"
+        return f"{client}|{str(email or '').strip().lower()}"
+
+    def require_not_throttled(throttle: AttemptThrottle, key: str) -> None:
+        retry_after = throttle.retry_after(key)
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="too many attempts; try again later",
+                headers={"Retry-After": str(retry_after)},
+            )
+
     @app.post("/auth/login")
-    def password_login(body: LoginBody, response: Response):
+    def password_login(body: LoginBody, request: Request, response: Response):
+        key = throttle_key(request, body.email)
+        require_not_throttled(login_throttle, key)
         user = store.authenticate_password(body.email, body.password)
         if not user:
+            login_throttle.record_failure(key)
             raise HTTPException(status_code=401, detail="email or password is incorrect")
         if not user.get("email_verified"):
             raise HTTPException(status_code=403, detail="email verification is required")
@@ -351,15 +374,24 @@ def create_app(
         mfa_ok = not bool(user.get("totp_enabled"))
         if user.get("totp_enabled"):
             mfa_ok = verify_totp(str(user.get("totp_secret") or ""), body.totp_code)
+            if not mfa_ok and body.totp_code:
+                # A lost authenticator is recovered with one of the single-use
+                # codes issued at enrolment; each match is consumed atomically.
+                mfa_ok = store.use_recovery_code(user["id"], body.totp_code)
             if not mfa_ok:
-                raise HTTPException(status_code=403, detail="valid TOTP code is required")
+                login_throttle.record_failure(key)
+                raise HTTPException(status_code=403, detail="valid TOTP or recovery code is required")
+        login_throttle.clear(key)
         token, csrf = store.create_session(user["id"], mfa_verified=mfa_ok)
         set_session_cookie(response, token)
         store.audit("login", user_id=user["id"])
         return {"ok": True, "csrf_token": csrf, "status": user["account_status"]}
 
     @app.post("/auth/forgot-password")
-    def forgot_password(body: EmailBody):
+    def forgot_password(body: EmailBody, request: Request):
+        key = throttle_key(request, body.email)
+        require_not_throttled(email_throttle, key)
+        email_throttle.record_failure(key)
         user = store.user_by_email(body.email)
         if user and user.get("password_hash"):
             token = store.create_auth_token(user["id"], "password_reset", ttl_seconds=1800)
@@ -414,7 +446,20 @@ def create_app(
         return {"ok": True, "reauthentication_required": True}
 
     @app.post("/auth/totp/setup")
-    def totp_setup(user: dict[str, Any] = Depends(csrf_user)):
+    def totp_setup(body: TotpSetupBody | None = None,
+                   user: dict[str, Any] = Depends(csrf_user)):
+        if user.get("totp_enabled"):
+            # Re-enrolment silently disables the existing factor, so a stolen
+            # session must not be enough to rotate it.
+            supplied = str(body.current_code if body else "").strip()
+            code_ok = verify_totp(str(user.get("totp_secret") or ""), supplied)
+            if not code_ok and supplied:
+                code_ok = store.use_recovery_code(str(user["id"]), supplied)
+            if not code_ok:
+                raise HTTPException(
+                    status_code=403,
+                    detail="current TOTP or recovery code is required to reset the authenticator",
+                )
         secret = new_totp_secret()
         store.set_totp_secret(user["id"], secret)
         label = quote(f"xAuby:{user['email']}")
@@ -513,6 +558,10 @@ def create_app(
                 supervisor.provision(tenant["slug"])
         else:
             user, _ = store.upsert_google_user(email, str(claims.get("sub") or ""))
+        if user.get("account_status") in {"rejected", "suspended"}:
+            # Password login enforces this; the OAuth path must not become a
+            # side door for disabled accounts.
+            raise HTTPException(status_code=403, detail=f"account is {user['account_status']}")
         tenant = store.tenant_for_user(str(user["id"]))
         token, _ = store.create_session(str(user["id"]), mfa_verified=not bool(user.get("totp_enabled")))
         store.audit("login", tenant_id=tenant["id"] if tenant else None, user_id=user["id"])

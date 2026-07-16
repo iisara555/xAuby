@@ -483,6 +483,28 @@ class ControlPlaneStore:
             )
         self.audit("totp_enabled", user_id=user_id)
 
+    def use_recovery_code(self, user_id: str, code: str) -> bool:
+        """Consume one unused TOTP recovery code; returns True when it matched."""
+        normalized = str(code or "").strip().upper().replace("-", "").replace(" ", "")
+        if not normalized:
+            return False
+        now = time.time()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT code_hash FROM recovery_codes "
+                "WHERE user_id=? AND code_hash=? AND used_at IS NULL",
+                (user_id, token_hash(normalized)),
+            ).fetchone()
+            if row is None:
+                return False
+            conn.execute(
+                "UPDATE recovery_codes SET used_at=? WHERE code_hash=?",
+                (now, row["code_hash"]),
+            )
+        self.audit("recovery_code_used", user_id=user_id)
+        return True
+
     def save_trading_profile(self, tenant_id: str, user_id: str, profile: dict[str, Any]) -> None:
         with self.connection() as conn:
             conn.execute(

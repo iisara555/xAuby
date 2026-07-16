@@ -60,7 +60,8 @@ export default function SettingsPage() {
   async function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     begin();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     try {
       await api("/api/v1/exchange/connect", {
         method: "POST", headers: csrfHeaders(user),
@@ -72,7 +73,7 @@ export default function SettingsPage() {
       await mutate();
       setMessage("Credentials encrypted and saved. Run a connection test next.");
       setBusy(false);
-      event.currentTarget.reset();
+      form.reset();
     } catch (reason) { fail(reason); }
   }
 
@@ -216,11 +217,12 @@ function TradePinForm() {
   const [status, setStatus] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     try {
       await api("/api/v1/trade-pin", { method: "POST", headers: csrfHeaders(user), body: JSON.stringify({ pin: data.get("pin"), current_pin: data.get("current") || null }) });
       setStatus("Trade PIN saved. Refresh to see the updated gate.");
-      event.currentTarget.reset();
+      form.reset();
     } catch (reason) { setStatus(reason instanceof Error ? reason.message : "Could not save PIN"); }
   }
   return (

@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Check, Copy, KeyRound, MailPlus, UsersRound } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 import { PageHeading } from "@/components/page-heading";
 import { StatusPill } from "@/components/status-pill";
@@ -22,6 +23,7 @@ type InviteResult = {
 
 export default function AdminPage() {
   const user = useCurrentUser();
+  const router = useRouter();
   const { mutate: mutateGlobal } = useSWRConfig();
   const adminReady = user.role === "platform_admin" && user.totp_enabled && user.mfa_verified;
   const { data, error: usersError, mutate } = useSWR<Users>(
@@ -89,6 +91,10 @@ export default function AdminPage() {
       setStatus("Could not access the clipboard. Select and copy the link manually.");
     }
   }
+
+  useEffect(() => {
+    if (user.role !== "platform_admin") router.replace("/app");
+  }, [router, user.role]);
 
   if (user.role !== "platform_admin") return null;
 
