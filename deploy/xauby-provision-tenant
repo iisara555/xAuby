@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tenant="${1:-}"
+if [[ ! "$tenant" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
+  echo "invalid tenant slug" >&2
+  exit 2
+fi
+
+engine_user="xauby-${tenant}"
+if (( ${#engine_user} > 31 )); then
+  echo "tenant slug is too long for the isolated OS user" >&2
+  exit 2
+fi
+if ! getent group xauby-engines >/dev/null; then
+  groupadd --system xauby-engines
+fi
+if ! id "$engine_user" >/dev/null 2>&1; then
+  useradd --system --user-group --groups xauby-engines \
+    --home-dir "/var/lib/xauby/runtime/${tenant}" --shell /usr/sbin/nologin \
+    "$engine_user"
+fi
+
+setfacl -m g:xauby-engines:--x /etc/xauby/tenants /var/lib/xauby/runtime
+install -d -o "$engine_user" -g "$engine_user" -m 0700 "/etc/xauby/tenants/${tenant}"
+install -d -o "$engine_user" -g "$engine_user" -m 0700 "/var/lib/xauby/runtime/${tenant}"
+
+# The control plane can provision and read this tenant, while each engine runs
+# under a stable tenant-specific OS user. Other tenant users receive no ACL.
+setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
+setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"
+setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
+setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"

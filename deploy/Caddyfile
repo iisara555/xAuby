@@ -1,0 +1,8 @@
+188.166.253.203.sslip.io {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8790
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        -Server
+    }
+}

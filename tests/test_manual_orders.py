@@ -63,6 +63,18 @@ class ManualOrderIPCTests(unittest.TestCase):
                     "BTCUSDT", "BUY", management_mode="robot", project_root=root
                 )
 
+    def test_versioned_short_intent_round_trips(self):
+        with tempfile.TemporaryDirectory() as root:
+            request = write_manual_order_request(
+                "XAUUSDT", "OPEN_SHORT", request_id="command-1", project_root=root
+            )
+            claimed = claim_manual_order_request(
+                "XAUUSDT", project_root=root, now=request["created_at"] + 1
+            )
+            self.assertEqual(claimed["version"], 2)
+            self.assertEqual(claimed["intent"], "OPEN_SHORT")
+            self.assertEqual(claimed["position_side"], "SHORT")
+
 
 class ManualOrderEngineTests(unittest.TestCase):
     def _engine(self):

@@ -57,6 +57,13 @@ def _pair_fields_from_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         side for side in (str(v).strip().lower() for v in raw_sides or [])
         if side in ("long", "short")
     ) or ("long",)
+    raw_manual_sides = entry.get("manual_allowed_sides", allowed_sides)
+    if isinstance(raw_manual_sides, str):
+        raw_manual_sides = [raw_manual_sides]
+    manual_allowed_sides = tuple(
+        side for side in (str(v).strip().lower() for v in raw_manual_sides or [])
+        if side in ("long", "short")
+    ) or allowed_sides
     try:
         leverage = float(entry.get("leverage", 1.0) or 1.0)
     except (TypeError, ValueError):
@@ -67,8 +74,12 @@ def _pair_fields_from_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         "regime_router_live_confirmed": _parse_bool_field(entry, "regime_router_live_confirmed"),
         "sim_fee_pct": _parse_sim_fee(entry),
         "allowed_sides": allowed_sides,
+        "manual_allowed_sides": manual_allowed_sides,
         "leverage": leverage,
         "short_live_enabled": _parse_bool_field(entry, "short_live_enabled"),
+        "manual_short_live_enabled": _parse_bool_field(
+            entry, "manual_short_live_enabled"
+        ),
     }
 
 
@@ -87,8 +98,10 @@ class PairSpec:
     regime_router_live_confirmed: bool = False
     sim_fee_pct: Optional[float] = None
     allowed_sides: tuple[str, ...] = ("long",)
+    manual_allowed_sides: tuple[str, ...] = ("long",)
     leverage: float = 1.0
     short_live_enabled: bool = False
+    manual_short_live_enabled: bool = False
 
     @property
     def regime_timeframe(self) -> Optional[str]:

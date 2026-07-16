@@ -81,7 +81,7 @@ PLACEHOLDER_RE = re.compile(
     r"|<.*>|\{.*\}|\$\{?[A-Z0-9_]+\}?"
     r"|your[_-]?.*|change[_-]?me|changeme|replace[_-]?me"
     r"|example|sample|dummy|fake|mock|test|testing|fresh.*|stale.*"
-    r"|test[_-]?.*|fake[_-]?.*|dummy[_-]?.*"
+    r"|test[_-]?.*|fake[_-]?.*|dummy[_-]?.*|server[_-]only.*"
     r"|placeholder|redacted|masked|abc123|secret|token|password"
     r")$"
 )
@@ -153,6 +153,8 @@ def is_placeholder(value: str) -> bool:
     if PLACEHOLDER_RE.fullmatch(normalized):
         return True
     if normalized.startswith(("os.environ", "getenv(", "env(", "settings.", "`", "${", "<")):
+        return True
+    if normalized.startswith(("?", "/usr/", "/bin/", "/sbin/")):
         return True
     if normalized.endswith((">`", "`")):
         return True

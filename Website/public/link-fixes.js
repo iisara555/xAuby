@@ -19,6 +19,191 @@
     });
   };
 
+  const supportsOverflowClip = () =>
+    typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("overflow-x", "clip");
+
+  const setStyle = (element, prop, value) => {
+    if (element.style[prop] !== value) element.style[prop] = value;
+  };
+
+  const installHeroScrollFixStyles = () => {
+    if (document.getElementById("xauby-hero-scroll-fix")) return;
+    const style = document.createElement("style");
+    style.id = "xauby-hero-scroll-fix";
+    style.textContent = `
+      .xn-hero-scrub {
+        isolation: isolate;
+        min-height: 100svh !important;
+        --hero-blur: 0px !important;
+        --hero-copy-blur: 0px !important;
+        --hero-copy-opacity: 1 !important;
+        --hero-copy-y: 0px !important;
+      }
+      .xn-hero-sticky { z-index: 1; }
+      .xauby-hero-gradient {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background:
+          radial-gradient(circle at 76% 18%, rgba(255,67,26,.22), transparent 31%),
+          radial-gradient(circle at 22% 78%, rgba(111,32,75,.16), transparent 38%),
+          linear-gradient(145deg, #16050d 0%, #060006 52%, #0c0508 100%);
+      }
+      .xn-hero-content {
+        opacity: 1 !important;
+        filter: none !important;
+        transform: none !important;
+      }
+      .xauby-login-link {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 0 18px !important;
+        border: 1px solid #ff431a !important;
+        border-radius: 999px !important;
+        background: #ff431a !important;
+        color: #fff !important;
+        font-size: 12.5px !important;
+        font-weight: 650 !important;
+        letter-spacing: .02em !important;
+        line-height: 1 !important;
+        text-decoration: none !important;
+        white-space: nowrap;
+        box-shadow: 0 8px 28px rgba(255,67,26,.2);
+        transition: transform .18s ease, background .18s ease, border-color .18s ease;
+      }
+      .xauby-login-link:hover {
+        transform: translateY(-1px);
+        border-color: #ff6a3c !important;
+        background: #ff6a3c !important;
+      }
+      .xauby-login-link:focus-visible {
+        outline: 2px solid #ece9e2;
+        outline-offset: 3px;
+      }
+      footer .xauby-login-link {
+        min-height: 38px;
+        padding-inline: 15px !important;
+      }
+      @media (max-width: 720px) {
+        header nav {
+          flex: 0 0 auto;
+          gap: 0 !important;
+        }
+        header nav > :not(.xauby-login-link) {
+          display: none !important;
+        }
+        header .xauby-login-link {
+          min-height: 40px;
+          padding-inline: 15px !important;
+        }
+      }
+      .xn-hero-sticky.xauby-hero-pinned {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100vw !important;
+      }
+      .xn-hero-sticky.xauby-hero-after {
+        position: absolute !important;
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+      }
+    `;
+    (document.head || document.documentElement).append(style);
+  };
+
+  let heroPinCleanup = null;
+  let heroPinTarget = null;
+
+  const ensureHeroGradient = (heroSection) => {
+    heroSection.querySelectorAll("video").forEach((video) => video.remove());
+    if (heroSection.querySelector(".xauby-hero-gradient")) return;
+    const heroSticky = heroSection.querySelector(".xn-hero-sticky");
+    if (!heroSticky) return;
+    const gradient = document.createElement("div");
+    gradient.className = "xauby-hero-gradient";
+    gradient.setAttribute("aria-hidden", "true");
+    heroSticky.prepend(gradient);
+  };
+
+  const setupHeroPinFallback = (heroSection, heroSticky) => {
+    if (heroPinTarget === heroSticky) return;
+    if (heroPinCleanup) heroPinCleanup();
+
+    heroPinTarget = heroSticky;
+    let raf = 0;
+
+    const update = () => {
+      raf = 0;
+      if (!document.contains(heroSection) || !document.contains(heroSticky)) return;
+
+      const rect = heroSection.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
+      const stickyHeight = Math.min(heroSticky.offsetHeight || viewportHeight, viewportHeight);
+      const shouldPin = rect.top <= 0 && rect.bottom > stickyHeight;
+      const shouldDock = rect.top <= 0 && rect.bottom <= stickyHeight;
+
+      heroSticky.classList.toggle("xauby-hero-pinned", shouldPin);
+      heroSticky.classList.toggle("xauby-hero-after", shouldDock);
+    };
+
+    const request = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+
+    window.addEventListener("scroll", request, { passive: true });
+    window.addEventListener("resize", request);
+    request();
+
+    heroPinCleanup = () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", request);
+      window.removeEventListener("resize", request);
+      heroSticky.classList.remove("xauby-hero-pinned", "xauby-hero-after");
+      heroPinTarget = null;
+      heroPinCleanup = null;
+    };
+  };
+
+  const applyHeroScrollFix = () => {
+    const heroSection = document.querySelector("[data-hero-scrub]");
+    if (!heroSection) return;
+
+    installHeroScrollFixStyles();
+    heroSection.style.setProperty("--hero-blur", "0px", "important");
+    heroSection.style.setProperty("--hero-copy-blur", "0px", "important");
+    heroSection.style.setProperty("--hero-copy-opacity", "1", "important");
+    heroSection.style.setProperty("--hero-copy-y", "0px", "important");
+    heroSection.style.setProperty("min-height", "100svh", "important");
+    ensureHeroGradient(heroSection);
+
+    const overflowX = supportsOverflowClip() ? "clip" : "visible";
+    setStyle(document.documentElement, "overflowX", overflowX);
+    if (document.body) setStyle(document.body, "overflowX", overflowX);
+
+    let node = heroSection.parentElement;
+    while (node && node !== document.documentElement) {
+      const inlineStyle = node.getAttribute("style") || "";
+      const computed = window.getComputedStyle(node);
+      if (inlineStyle.includes("overflow-x: hidden") || computed.overflowX === "hidden") {
+        setStyle(node, "overflowX", overflowX);
+        if (!["auto", "scroll", "hidden"].includes(computed.overflowY)) {
+          setStyle(node, "overflowY", "visible");
+        }
+      }
+      node = node.parentElement;
+    }
+
+    const heroSticky = heroSection.querySelector(".xn-hero-sticky");
+    if (heroSticky) setupHeroPinFallback(heroSection, heroSticky);
+  };
+
   const addRoadmapLink = (nav) => {
     if (!nav || nav.querySelector("a[href='#roadmap']")) return;
     const link = document.createElement("a");
@@ -28,6 +213,17 @@
       "display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:12.5px;font-weight:600;letter-spacing:.02em;color:#ff7a4d;";
     rounded(link, "10px");
     nav.prepend(link);
+  };
+
+  const addLoginLink = (nav) => {
+    if (!nav || nav.querySelector("[data-xauby-login]")) return;
+    const link = document.createElement("a");
+    link.href = "/login";
+    link.textContent = "Sign in";
+    link.className = "xauby-login-link";
+    link.dataset.xaubyLogin = "true";
+    link.setAttribute("aria-label", "Sign in to xAuby");
+    nav.append(link);
   };
 
   const updateCurrentConfiguration = () => {
@@ -48,41 +244,6 @@
           "Today the operator uses the dashboard, terminal, and Telegram alerts. Phase 1 of the roadmap moves normal operations to the webapp without bypassing engine safeguards.";
       }
     });
-  };
-
-  const removeHeroVideo = () => {
-    const hero = document.querySelector("[data-hero-scrub]");
-    if (!hero) return;
-
-    hero.removeAttribute("data-hero-scrub");
-    hero.style.minHeight = "auto";
-
-    const video = hero.querySelector("video");
-    if (video) {
-      video.pause();
-      video.querySelectorAll("source").forEach((source) => source.remove());
-      video.removeAttribute("src");
-      video.removeAttribute("poster");
-      video.remove();
-    }
-
-    const frame = hero.querySelector(".xn-hero-sticky");
-    if (frame) {
-      frame.style.position = "relative";
-      frame.style.height = "auto";
-      frame.style.minHeight = "min(680px, 100svh)";
-      frame.style.background = "radial-gradient(circle at 82% 22%, rgba(255,67,26,.18), transparent 32%), linear-gradient(135deg, #161614 0%, #060006 68%)";
-    }
-
-    const shade = hero.querySelector(".xn-hero-shade");
-    if (shade) shade.style.background = "linear-gradient(90deg, rgba(6,0,6,.22), rgba(6,0,6,0))";
-
-    const content = hero.querySelector(".xn-hero-content");
-    if (content) {
-      content.style.opacity = "1";
-      content.style.filter = "none";
-      content.style.transform = "none";
-    }
   };
 
   const addResearchUpdate = (section) => {
@@ -189,16 +350,19 @@
   };
 
   const apply = () => {
-    removeHeroVideo();
     applyRoundedSystem();
+    applyHeroScrollFix();
     updateCurrentConfiguration();
     addRoadmap();
     updateLinks();
-    document.querySelectorAll("header nav, footer nav").forEach(addRoadmapLink);
+    document.querySelectorAll("header nav, footer nav").forEach((nav) => {
+      addRoadmapLink(nav);
+      addLoginLink(nav);
+    });
   };
 
   const observer = new MutationObserver(apply);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document, { childList: true, subtree: true });
   apply();
   window.setTimeout(() => observer.disconnect(), 15000);
 })();

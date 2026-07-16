@@ -3,6 +3,7 @@ import time
 import json
 import logging
 import threading
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import pandas as pd
@@ -126,6 +127,7 @@ class LoopMixin:
             return None
 
         action = request["action"]
+        intent = str(request.get("intent") or ("OPEN_LONG" if action == "BUY" else "CLOSE_POSITION"))
         management_mode = str(request.get("management_mode") or "strategy").lower()
         if management_mode not in {"strategy", "manual"}:
             management_mode = "strategy"
@@ -133,16 +135,19 @@ class LoopMixin:
         reason = ""
         success = False
 
-        if action == "BUY":
+        if intent in {"OPEN_LONG", "OPEN_SHORT"}:
             spec = self._pair_registry.get(symbol)
+            manual_sides = getattr(spec, "manual_allowed_sides", None)
+            if not isinstance(manual_sides, (list, tuple, set)):
+                manual_sides = getattr(spec, "allowed_sides", ())
             if state.get("state") != "idle":
-                reason = f"Manual BUY rejected: {symbol} already has an open position"
-            elif not spec or "long" not in spec.allowed_sides:
-                reason = f"Manual BUY rejected: LONG is disabled for {symbol}"
+                reason = f"Manual order rejected: {symbol} already has an open position"
+            elif not spec or intent.removeprefix("OPEN_").lower() not in manual_sides:
+                reason = f"Manual order rejected: {intent.removeprefix('OPEN_')} is disabled for {symbol}"
             elif self._sc(symbol).feed_snapshot()["feed_degraded"]:
-                reason = f"Manual BUY rejected: market feed is degraded for {symbol}"
+                reason = f"Manual order rejected: market feed is degraded for {symbol}"
             elif self._sc(symbol).blocks_new_entries():
-                reason = f"Manual BUY rejected: RegimeRouter {self._sc(symbol).no_trade_state}"
+                reason = f"Manual order rejected: RegimeRouter {self._sc(symbol).no_trade_state}"
             else:
                 max_open = int(
                     self.config.get("trading", {}).get(
@@ -156,9 +161,18 @@ class LoopMixin:
                 )
                 blocked, block_reason = self._is_buy_blocked_by_cooldown(symbol=symbol)
                 if open_count >= max_open:
-                    reason = f"Manual BUY rejected: max open positions ({max_open})"
+                    reason = f"Manual order rejected: max open positions ({max_open})"
                 elif blocked:
-                    reason = f"Manual BUY rejected: {block_reason}"
+                    reason = f"Manual order rejected: {block_reason}"
+                elif intent == "OPEN_SHORT":
+                    signal = SimpleNamespace(
+                        stop_loss_distance=max(float(atr or 0.0), ticker_price * 0.02),
+                        stop_loss_price=0.0,
+                    )
+                    success = self.execute_open_short(
+                        signal, ticker_price, symbol=symbol, manual=True
+                    )
+                    reason = "Manual SHORT submitted" if success else "Manual SHORT execution failed"
                 else:
                     success = self.execute_buy(
                         ticker_price,
@@ -169,7 +183,7 @@ class LoopMixin:
                     label = "strategy-managed" if management_mode == "strategy" else "manual-managed"
                     reason = f"Manual BUY submitted ({label})" if success else "Manual BUY execution failed"
         elif state.get("state") != "bought":
-            reason = f"Manual SELL rejected: {symbol} has no tracked position"
+            reason = f"Manual close rejected: {symbol} has no tracked position"
         elif str(state.get("position_side") or "LONG").upper() == "SHORT":
             success = self.execute_close_short(
                 state, ticker_price, trigger_reason="Manual SELL (TUI F8)", symbol=symbol
@@ -186,6 +200,7 @@ class LoopMixin:
             "manual_order_executed" if success else "manual_order_rejected",
             symbol=symbol,
             action=action,
+            intent=intent,
             management_mode=management_mode,
             request_id=request_id,
             reason=reason,
@@ -700,6 +715,11 @@ class LoopMixin:
             now_ms = int(time.time() * 1000)
             now_sec = now_ms // 1000
             data_cfg = self.config.get("data", {}) or {}
+            dashboard_timeframes = data_cfg.get(
+                "dashboard_timeframes", ["1h", "4h", "1d"]
+            )
+            if not isinstance(dashboard_timeframes, (list, tuple)):
+                dashboard_timeframes = ["1h", "4h", "1d"]
             max_sync_interval = float(
                 data_cfg.get("candle_sync_max_interval_seconds", 900)
             )
@@ -772,6 +792,10 @@ class LoopMixin:
                 tf_r = sc.timeframe_regime
                 if tf_r and tf_r != tf_p:
                     _queue_timeframe(spec.symbol, tf_r)
+                for dashboard_tf in dashboard_timeframes:
+                    tf_ui = str(dashboard_tf or "").strip().lower()
+                    if tf_ui in {"1h", "4h", "1d"}:
+                        _queue_timeframe(spec.symbol, tf_ui)
 
             try:
                 max_workers = int(max_workers_cfg)

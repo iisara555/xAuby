@@ -12,6 +12,7 @@ from xauby.runtime.paths import manual_order_request_path
 from xauby.utils.atomic_io import atomic_json_write
 
 VALID_MANUAL_ACTIONS = {"BUY", "SELL"}
+VALID_MANUAL_INTENTS = {"OPEN_LONG", "OPEN_SHORT", "CLOSE_POSITION"}
 VALID_MANAGEMENT_MODES = {"strategy", "manual"}
 MANUAL_ORDER_MAX_AGE_SECONDS = 120.0
 
@@ -23,10 +24,18 @@ def write_manual_order_request(
     management_mode: str = "strategy",
     source: str = "textual_tui",
     project_root: str = ".",
+    request_id: str | None = None,
+    request_path: str | None = None,
 ) -> Dict[str, Any]:
     """Atomically queue one short-lived manual request for the engine."""
     sym = str(symbol or "").upper().replace("_", "")
-    act = str(action or "").upper()
+    supplied = str(action or "").upper()
+    if supplied in VALID_MANUAL_INTENTS:
+        intent = supplied
+        act = "BUY" if intent == "OPEN_LONG" else "SELL"
+    else:
+        act = supplied
+        intent = "OPEN_LONG" if act == "BUY" else "CLOSE_POSITION"
     if not sym:
         raise ValueError("manual order symbol is required")
     if act not in VALID_MANUAL_ACTIONS:
@@ -37,14 +46,20 @@ def write_manual_order_request(
             f"manual management mode must be one of {sorted(VALID_MANAGEMENT_MODES)}"
         )
     payload = {
-        "request_id": uuid.uuid4().hex,
+        "version": 2,
+        "request_id": str(request_id or uuid.uuid4().hex),
         "symbol": sym,
         "action": act,
+        "intent": intent,
+        "position_side": (
+            "SHORT" if intent == "OPEN_SHORT"
+            else "LONG" if intent == "OPEN_LONG" else None
+        ),
         "management_mode": mode,
         "source": str(source or "local"),
         "created_at": time.time(),
     }
-    path = os.path.join(project_root, manual_order_request_path())
+    path = request_path or os.path.join(project_root, manual_order_request_path())
     atomic_json_write(path, payload, indent=2)
     try:
         os.chmod(path, 0o600)
@@ -88,17 +103,27 @@ def claim_manual_order_request(
         return None
 
     action = str(payload.get("action") or "").upper()
+    intent = str(payload.get("intent") or "").upper()
+    if not intent:
+        intent = "OPEN_LONG" if action == "BUY" else "CLOSE_POSITION"
     try:
         created_at = float(payload.get("created_at") or 0.0)
     except (TypeError, ValueError):
         created_at = 0.0
     age = float(time.time() if now is None else now) - created_at
-    if action not in VALID_MANUAL_ACTIONS or created_at <= 0 or age < -5 or age > MANUAL_ORDER_MAX_AGE_SECONDS:
+    if (
+        action not in VALID_MANUAL_ACTIONS
+        or intent not in VALID_MANUAL_INTENTS
+        or created_at <= 0
+        or age < -5
+        or age > MANUAL_ORDER_MAX_AGE_SECONDS
+    ):
         return None
     mode = str(payload.get("management_mode") or "strategy").lower()
     if mode not in VALID_MANAGEMENT_MODES:
         mode = "strategy"
     payload["action"] = action
+    payload["intent"] = intent
     payload["symbol"] = requested_symbol
     payload["management_mode"] = mode
     return payload

@@ -89,4 +89,4 @@ class StateExporter:
 
     def write(self, snapshot: Dict[str, Any]) -> None:
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        atomic_json_write(self.path, snapshot, indent=self.indent)
+        atomic_json_write(self.path, snapshot, indent=self.indent, mode=0o660)

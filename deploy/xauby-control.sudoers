@@ -1,0 +1,2 @@
+xauby-control ALL=(root) NOPASSWD: /usr/local/libexec/xauby-provision-tenant *
+xauby-control ALL=(root) NOPASSWD: /usr/local/libexec/xauby-service-control *

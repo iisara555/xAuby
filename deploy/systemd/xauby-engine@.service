@@ -1,0 +1,47 @@
+[Unit]
+Description=xAuby isolated tenant engine (%i)
+After=network-online.target xauby-control.service
+Wants=network-online.target xauby-control.service
+PartOf=xauby.target
+
+[Service]
+Type=simple
+User=xauby-%i
+Group=xauby-%i
+SupplementaryGroups=xauby-engines
+WorkingDirectory=/opt/xauby/current
+ConfigurationDirectory=xauby/tenants/%i
+ConfigurationDirectoryMode=0770
+StateDirectory=xauby/runtime/%i
+StateDirectoryMode=0770
+Environment=XAUBY_CONFIG_DIR=/etc/xauby/tenants/%i
+Environment=XAUBY_HOME=/var/lib/xauby/runtime
+Environment=XAUBY_INSTANCE_ID=%i
+Environment=XAUBY_ACCOUNT_LOCK_DIR=/var/lib/xauby/account_locks
+EnvironmentFile=-/run/xauby/credentials/%i.env
+ExecStartPre=+/usr/local/libexec/xauby-materialize-credentials %i
+ExecStart=/opt/xauby/current/venv/bin/python run_xauby.py --config bot_config.yaml
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=2 100
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/xauby/runtime/%i /var/lib/xauby/account_locks
+MemoryHigh=330M
+MemoryMax=420M
+CPUQuota=30%
+TasksMax=128
+UMask=0077
+TimeoutStopSec=45
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=xauby.target

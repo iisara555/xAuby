@@ -154,11 +154,19 @@ class OrderMixin:
         except Exception:
             return 1.0
 
-    def execute_open_short(self, signal: Any, ticker_price: float, symbol: Optional[str] = None) -> bool:
+    def execute_open_short(
+        self,
+        signal: Any,
+        ticker_price: float,
+        symbol: Optional[str] = None,
+        *,
+        manual: bool = False,
+    ) -> bool:
         """Open an isolated one-way SHORT; live mode is explicit and fail-closed."""
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         spec = self._pair_registry.get(sym)
-        if not spec or "short" not in spec.allowed_sides:
+        allowed_sides = spec.manual_allowed_sides if spec and manual else spec.allowed_sides if spec else []
+        if not spec or "short" not in allowed_sides:
             logger.warning("SHORT blocked for %s: not present in allowed_sides", sym)
             return False
         feed_status = self._sc(sym).feed_snapshot()
@@ -172,8 +180,9 @@ class OrderMixin:
             logger.warning("SHORT blocked for %s: market feed degraded", sym)
             return False
         live = self._execution_mode(sym) == "live"
-        if live and not spec.short_live_enabled:
-            logger.warning("SHORT live blocked for %s: short_live_enabled=false", sym)
+        live_short_enabled = spec.manual_short_live_enabled if manual else spec.short_live_enabled
+        if live and not live_short_enabled:
+            logger.warning("SHORT live blocked for %s: live certification is disabled", sym)
             return False
         leverage = max(1.0, min(float(spec.leverage or 1.0), 3.0))
         equity = max(0.0, float(self.get_equity(symbol=sym)))

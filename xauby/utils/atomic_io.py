@@ -15,7 +15,9 @@ from typing import Optional
 logger = logging.getLogger("lite_io")
 
 
-def atomic_json_write(filepath: str, data, indent: Optional[int] = 2) -> None:
+def atomic_json_write(
+    filepath: str, data, indent: Optional[int] = 2, *, mode: Optional[int] = None
+) -> None:
     """Write JSON data to *filepath* atomically.
 
     Strategy:
@@ -35,6 +37,11 @@ def atomic_json_write(filepath: str, data, indent: Optional[int] = 2) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=indent)
+        if mode is not None:
+            # mkstemp intentionally starts at 0600. Selected shared runtime
+            # files may widen only the group/ACL mask so the control plane can
+            # read them; named ACL entries still decide which user gets access.
+            os.chmod(tmp_path, mode)
         os.replace(tmp_path, filepath)  # Atomic on POSIX
     except Exception:
         # Clean up the temp file on failure

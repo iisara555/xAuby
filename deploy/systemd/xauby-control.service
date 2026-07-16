@@ -1,0 +1,29 @@
+[Unit]
+Description=xAuby SaaS Control Plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xauby-control
+Group=xauby-control
+WorkingDirectory=/opt/xauby/current
+EnvironmentFile=/etc/xauby/control.env
+ExecStart=/opt/xauby/current/venv/bin/python -m xauby.saas --host 127.0.0.1 --port 8790
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/xauby/control /var/lib/xauby/runtime /etc/xauby/tenants
+MemoryHigh=220M
+MemoryMax=280M
+CPUQuota=25%
+TasksMax=96
+UMask=0077
+RuntimeDirectory=xauby/credentials
+RuntimeDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target
