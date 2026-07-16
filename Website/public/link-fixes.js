@@ -55,6 +55,16 @@
         filter: none !important;
         transform: none !important;
       }
+      /* Keep the mobile hero copy in the first viewport instead of pinning it
+         to the bottom and leaving an oversized empty band above the headline. */
+      @media (max-width: 760px) {
+        .xn-hero-sticky { align-items: flex-start !important; }
+        .xn-hero-inner {
+          align-self: stretch !important;
+          padding-top: clamp(116px, 17vh, 168px) !important;
+          padding-bottom: 36px !important;
+        }
+      }
       .xauby-login-link {
         display: inline-flex !important;
         align-items: center;
