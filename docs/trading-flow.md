@@ -1,125 +1,59 @@
 # Trading flow
 
-This document describes one **tick** of `LiteTradingEngine` for a single symbol. The outer `tick()` loops all active pairs from `PairRegistry`.
-
-## Tick sequence per symbol
+แต่ละ symbol ทำงานตามลำดับนี้ในทุก engine cycle:
 
 ```mermaid
 flowchart TD
-  A["tick: for each active pair"] --> B["sync_candles REST"]
-  B --> C{"WS price stale?"}
-  C -->|yes| D["REST ticker fallback"]
-  C -->|no| E["Use WS snapshot"]
-  D --> F["get_trade_state"]
-  E --> F
-  F --> G["Resolve strategy + portfolio config"]
-  G --> H{"RegimeRouter active for this pair?"}
-  H -->|yes| I["Classify regime + debounce + route"]
-  H -->|no| J["Use configured pair strategy"]
-  I --> K{"NO_TRADE?"}
-  K -->|yes| L["Block new BUY + tighten protection"]
-  K -->|no| M["StrategyRunner.evaluate"]
-  J --> M
-  L --> N["Manage existing position / recovery / force close"]
-  M --> O{"Macro guard on BUY?"}
-  O -->|block| P["HOLD + guard alert"]
-  O -->|pass| Q{"action + state machine"}
-  Q -->|idle + BUY| R["execute_buy / semi_auto queue"]
-  Q -->|bought + SELL| S["execute_sell"]
-  Q -->|bought + HOLD| T["Partial TP / trailing SL / breakeven"]
-  R --> U["save_trade_state + events"]
-  S --> U
-  T --> U
-  N --> U
-  U --> V["update_state_json for TUI"]
+  A["Load candles/ticker"] --> B["Reconcile OKX position"]
+  B --> C{"Pending or just closed?"}
+  C -->|yes| D["Persist FLAT/WAIT; block entry"]
+  C -->|no| E{"Local state matches exchange?"}
+  E -->|no| F["Repair state / alert"]
+  E -->|yes| G["Evaluate strategy + risk gates"]
+  G --> H{"Action"}
+  H -->|entry| I["Place order"]
+  H -->|exit| J["Close or partial TP"]
+  H -->|hold| K["Manage SL/trailing"]
+  I --> L["Persist state/events/snapshot"]
+  J --> L
+  K --> L
+  D --> L
+  F --> L
 ```
 
-## Entry path
+## OKX close reconciliation
 
-1. Protection checks daily trade count, daily loss %, consecutive losses, and max open positions.
-2. PreTradeGate checks min notional and slippage vs signal price.
-3. Sizing resolves portfolio config for the symbol and applies global deploy caps.
-4. Order path uses live executor or SimBroker depending on per-symbol mode.
-5. Stop-loss is placed on exchange for live mode or monitored locally/simulated for sim mode.
-6. Telegram reports filled or simulated trade with symbol tag and mode.
+เมื่อ local มี position แต่ `fetch_positions` ของ OKX ไม่พบ position แล้ว ระบบ
+จะไม่คำนวณ PnL จาก ticker หรือราคาล่าสุด ระบบจะค้นหา Positions History แล้ว
+จับคู่ด้วย symbol, side, quantity, เวลา และ position ID จากนั้นบันทึก closed
+trade เพียงครั้งเดียวด้วยยอด `realizedPnl` ของ OKX ซึ่งรวม fee และ funding แล้ว
 
-## Exit path
+- close ที่ยืนยันแล้ว: state เป็น `idle`, quantity/entry เป็นศูนย์, action `WAIT`
+- partial TP: หักยอดที่บันทึกไปแล้วก่อนบันทึก final close เพื่อป้องกันนับซ้ำ
+- history unavailable/ambiguous: `pending`, `FLAT/WAIT`, block entry และ retry
+- หลัง close ที่ยืนยันแล้ว ระบบบังคับ WAIT อย่างน้อยหนึ่ง cycle ก่อนประเมิน entry
 
-Triggers include:
+ใช้ recovery tool เมื่อต้องตรวจรายการที่เกิดก่อน deploy:
 
-- Strategy SELL signal
-- One-shot partial take-profit (`partial_tp_pct` / `partial_tp_fraction`) banks
-  part of the position, records a partial closed trade, and keeps the remainder
-  open for the normal strategy exit
-- Local SL confirmed over `sl_confirm_ticks`
-- Exchange SL fill detection
-- RegimeRouter NO_TRADE force close after configured candles
-- `max_hold_hours` / minimal ROI tables when configured
+```bash
+python scripts/reconcile_exchange_close.py --db /path/to/tenant.sqlite --dry-run
+python scripts/reconcile_exchange_close.py --db /path/to/tenant.sqlite \
+  --exchange-close-id 'okx:<position-id>:<close-ms>' --apply
+```
 
-Failed sells attempt SL restoration; a critical Telegram alert is sent if restore fails.
+`--apply` ต้องระบุ close ID แบบ exact match เสมอ; dry-run ไม่แก้ database
 
-## Partial take-profit path
+## Position lifecycle
 
-Partial TP runs only after the full-exit pipeline has had a chance to sell. If
-the same tick also produces a full exit, the full exit wins. Otherwise, for a
-`bought` state with `partial_tp_taken=false`, the engine compares mark price to
-the configured threshold from entry:
+1. Entry ผ่าน strategy, risk, leverage และ stop-loss gates แล้วจึงส่ง order
+2. Fill ถูกเก็บพร้อม exchange position ID
+3. Strategy exit, stop-loss หรือ TP อาจปิดทั้งหมด/บางส่วนบน OKX
+4. ทุก cycle ตรวจ open position และ history ก่อน strategy tick
+5. Dashboard ใช้ snapshot ล่าสุด: มี position แสดงรายละเอียด, ไม่มี positionแสดง `FLAT` และ realized PnL ล่าสุด
 
-- LONG: `mark >= entry * (1 + partial_tp_pct / 100)`
-- SHORT: `mark <= entry * (1 - partial_tp_pct / 100)`
+## Short
 
-When hit, `execute_partial_tp()` closes the configured fraction through the
-broker abstraction, resizes any exchange-side stop to the remaining quantity,
-sets `partial_tp_taken=true`, emits `partial_tp_executed`, and leaves the
-remaining quantity under the existing strategy/CDC exit.
+บน OKX swap การเปิด short ใช้ SELL และการปิด short ใช้ reduce-only BUY
+การตรวจสอบใช้ exchange positions ไม่ใช่ spot balance จึงตรวจพบ short ที่ปิดด้วย
+TP ได้เหมือน long และไม่สร้าง position ค้างใน local state
 
-## Strategy handoff
-
-When RegimeRouter changes strategy while a position is open:
-
-- The open position keeps its original strategy owner.
-- New entries are blocked or deferred until handoff completes.
-- Handoff completes only after the position closes.
-- The engine emits handoff events for observability.
-
-This prevents a new strategy from managing exits for a position it did not open.
-
-## NO_TRADE handling
-
-For regimes mapped to `None`:
-
-- New BUY entries are blocked.
-- Existing stop protection remains active.
-- Trailing stop tightens to 1x ATR when available.
-- Recovery requires `regime_router.recovery_candles` tradeable candles.
-- Force close can trigger after `regime_router.force_close_candles` NO_TRADE candles.
-
-Current NO_TRADE regimes are `PANIC_SELL`, `BEAR_BREAKDOWN`, and `BEAR_TREND_STRONG`.
-
-## Multi-pair concurrency
-
-| Setting | Effect |
-|---------|--------|
-| `trading.max_open_positions` | Counts `bought` states across all symbols when configured |
-| `risk_pct` | Per-entry deploy fraction; engine caps by deploy slots |
-| Independent `SymbolContext` | BTC and XAUT do not share signal state |
-| Per-symbol `mode` | BTC can sim soak while XAUT remains live |
-| Portfolio config | Capital allocation remains shared by design |
-
-## Modes
-
-| `trading.mode` | BUY behavior |
-|----------------|--------------|
-| `full_auto` | Execute when signal + guards pass |
-| `semi_auto` | Telegram inline confirm; timeout skips the trade |
-
-See [telegram.md](telegram.md) for operator commands and alert types.
-
-## Short execution
-
-Short-capable strategies emit `OPEN SHORT` and `CLOSE SHORT` rather than
-overloading BUY/SELL. On USDT perpetual, open maps to SELL and close maps to a
-reduce-only BUY. Stop loss is above entry and fixed take profit is below entry.
-Position reconciliation uses the exchange position endpoint (not spot balances)
-and blocks trading on orphan or side-mismatched positions. Existing BUY/SELL
-strategies continue to map to long open/close for backward compatibility.

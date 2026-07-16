@@ -40,7 +40,7 @@ used everywhere so live, sim, backtest, and replay stay in parity:
 
 | Key | Resolver | Notes |
 |-----|----------|-------|
-| `provider` | `resolve_provider(cfg)` | `binance` (native client) or `ccxt` (generic adapter). Drives `create_exchange_client()`. |
+| `provider` | `resolve_provider(cfg)` | `ccxt` is the production path; `create_exchange_client()` builds the configured adapter. |
 | `quote_asset` | `resolve_quote_asset(cfg)` | Default quote currency (e.g. `USDT`, `THB`). Whitelist/portfolio `quote_asset` still win when set. The live engine reads cash balances and sizes orders against this asset (`_quote_asset()` / `LiveBroker.get_quote_balance`). Note: internal state/dashboard labels are still literally `USDT`; the displayed value is correct but the label is cosmetic pending a UI pass. |
 | `fee_pct` | `resolve_fee_pct(cfg)` | Taker fee fraction (`0.001` = 0.1%). Precedence: `exchange.fee_pct` → `backtest.fee_pct` → `trading.fee_pct` → `0.001`. Per-symbol `sim_fee_pct` (whitelist) overrides for that pair. |
 | `api_key_env` / `api_secret_env` / `base_url_env` | `resolve_exchange_credentials(cfg)` | Names of the env vars holding the credentials. Default to `<PREFIX>_API_KEY` etc. where `<PREFIX>` derives from `ccxt_id`/`provider`/`name` (so `binance`→`BINANCE_*`, `kraken`→`KRAKEN_*`). The engine, health probe, and gateway factory all read through this one resolver instead of hardcoding `BINANCE_*`. |
@@ -52,8 +52,9 @@ so a backtest result cannot diverge from live.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BINANCE_API_KEY` | - | Binance.th REST / WS auth |
-| `BINANCE_API_SECRET` | - | HMAC secret |
+| `OKX_API_KEY` | - | OKX REST auth |
+| `OKX_API_SECRET` | - | OKX HMAC secret |
+| `OKX_API_PASSPHRASE` | - | OKX API passphrase |
 | `LIVE_TRADING` | `false` | Additional gate for real orders |
 | `SIMULATE_ONLY` | from YAML | CLI `--live` / `--simulate` override |
 | `BOT_READ_ONLY` | `false` | Skip order placement |
@@ -61,10 +62,10 @@ so a backtest result cannot diverge from live.
 | `TELEGRAM_BOT_TOKEN` | - | Bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | - | Authorized chat for commands |
 | `DEFAULT_SYMBOL` | - | Optional single-pair override |
-| `XAUBY_DEFAULT_SYMBOL` | `XAUTUSDT` | Last-resort dashboard symbol when the whitelist is empty/unreadable (asset-neutral) |
+| `XAUBY_DEFAULT_SYMBOL` | `XAUUSDT` | Last-resort dashboard symbol when the whitelist is empty/unreadable |
 | `XAUBY_HOME` | `core` | Base directory for runtime data (DB, lock, sim balances). Relocate to run instances side by side |
 | `XAUBY_INSTANCE_ID` | - | Optional sub-namespace under the runtime root (e.g. a tenant/account id) for multi-instance isolation |
-| `BINANCE_WS_URL` | auto | WS endpoint override; see YAML header |
+| `OKX_BASE_URL` | auto | Optional OKX REST endpoint override |
 
 ### Regime macro weights
 
@@ -83,8 +84,7 @@ macro_sentiment_guard:
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Router | Notes |
 |--------|------|----------|------------|------------|--------|-------|
-| `XAUTUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | Off | `PAXGUSDT` backtest proxy |
-| `BTCUSDT` | `sim` | `supertrend_ema200` | `1h` | none | On, not live-confirmed | Auto-regime soak |
+| `XAUUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | Off | OKX swap |
 
 `risk_pct` is intentionally kept at `0.45` in both trading and portfolio sizing.
 

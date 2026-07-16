@@ -1,42 +1,29 @@
-# xAuby Documentation
+# xAuby documentation
 
-English reference for operators and contributors. The root [README.md](../README.md) is the main entry point.
+เอกสารนี้เป็นจุดเริ่มต้นสำหรับผู้ดูแลระบบและผู้พัฒนา xAuby ระบบปัจจุบันใช้
+OKX USDT-settled perpetual ผ่าน CCXT โดย exchange เป็น source of truth สำหรับ
+สถานะ position และ realized PnL
 
-## Current baseline
+## เอกสารหลัก
 
-| Symbol | Mode | Strategy | Router |
-|--------|------|----------|--------|
-| `XAUTUSDT` | `live` | `cdc_action_zone` | Off |
-| `BTCUSDT` | `sim` | `supertrend_ema200` | Auto-regime sim soak |
+| เอกสาร | ใช้สำหรับ |
+| --- | --- |
+| [architecture.md](architecture.md) | โครงสร้างระบบ, tenant isolation และ data flow |
+| [trading-flow.md](trading-flow.md) | ลำดับการทำงานต่อ engine tick และ short/long |
+| [exchange-close-reconciliation.md](exchange-close-reconciliation.md) | การตรวจพบ TP/SL ที่ปิดบน OKX และการยืนยัน PnL |
+| [configuration.md](configuration.md) | YAML, whitelist และ environment variables |
+| [multi-exchange-ccxt.md](multi-exchange-ccxt.md) | adapter และข้อจำกัดของ CCXT |
+| [webui.md](webui.md) | dashboard/activity แบบ read-only |
+| [tui.md](tui.md) | Textual TUI |
+| [telegram.md](telegram.md) | alert และคำสั่ง operator |
+| [security-saas-audit.md](security-saas-audit.md) | security controls และ deployment hardening |
 
-## Documents
+## สถานะที่ผู้ใช้ควรเห็น
 
-| Document | Description |
-|----------|-------------|
-| [architecture.md](architecture.md) | System layers, feature flags, pair isolation, router gates |
-| [trading-flow.md](trading-flow.md) | Per-tick engine loop, entries, exits, NO_TRADE, handoff |
-| [configuration.md](configuration.md) | `bot_config.yaml`, whitelist, source of truth, RegimeRouter mapping |
-| [multi-exchange-ccxt.md](multi-exchange-ccxt.md) | CCXT REST adapter setup and current multi-exchange limitations |
-| [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
-| [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
-| [webui.md](webui.md) | Read-only browser dashboard via SSH tunnel or Tailscale |
-| [screenshots/](screenshots/) | TUI captures in SVG format |
+- มี position: แสดง side, entry, quantity และ leverage จาก state ที่ตรวจสอบแล้ว
+- ไม่มี position: แสดง `FLAT`, Current action เป็น `WAIT` และค่าของ position เป็น `—`
+- ปิดโดย OKX แล้ว: แสดง `Last realized PnL — OKX verified` และ source badge ใน Activity
+- ประวัติ OKX ดึงไม่ได้หรือจับคู่ไม่ได้: คง `FLAT/WAIT`, block entry และ retry ต่อไป
 
-## Regenerate TUI screenshots
+เริ่มจาก [README.md](../README.md) สำหรับ quick start และ safety checklist
 
-Requires a running or sample `core/logs/xauby_bot_state.json` for rich dashboard content:
-
-```bash
-./venv/bin/python scripts/capture_tui_screenshots.py
-```
-
-Outputs stable filenames:
-
-- `docs/screenshots/dashboard-wide.svg`
-- `docs/screenshots/tradelog.svg`
-- `docs/screenshots/incidents.svg`
-- `docs/screenshots/menu.svg`
-
-## Observability deep dive
-
-See [xauby/observability/README.md](../xauby/observability/README.md) for events, replay, and incident tooling.

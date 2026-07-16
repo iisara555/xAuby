@@ -58,8 +58,7 @@ When multiple pairs are active, messages show portfolio totals first and then pe
 ```text
 xAuby Status - 2 active pair(s)
 Equity: 85.00 USDT | Global: LIVE
-- XAUTUSDT 4h | LIVE | cdc_action_zone | 4496.84 | IDLE | HOLD
-- BTCUSDT 1h | SIM | supertrend_ema200 | 72650.16 | IDLE | HOLD
+- XAUUSDT 4h | LIVE | cdc_action_zone | 4000.50 | FLAT | WAIT
 ```
 
 `/pnl` shows a portfolio block first, then `SYMBOL: trades | net` per pair.

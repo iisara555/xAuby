@@ -13,9 +13,9 @@ RegimeRouter support, exchange stop-losses, Textual TUI, and Telegram operations
 [![Exchange](https://img.shields.io/badge/Exchange-OKX%20via%20CCXT-111827)](https://www.okx.com/)
 [![UI](https://img.shields.io/badge/TUI-Textual-5c2dee)](https://textual.textualize.io/)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-blue)](docs/README.md)
-[![Website](https://img.shields.io/badge/Website-Live%20on%20Vercel-000000?logo=vercel)](https://x-auby.vercel.app/)
+[![Website](https://img.shields.io/badge/Website-Live%20on%20Vercel-000000?logo=vercel)](https://xauby.vercel.app/)
 
-[Live Website](https://x-auby.vercel.app/) | [Quick Start](#quick-start) | [Screens](#screens) | [Configuration](#configuration-essentials) | [Current Runtime State](#current-runtime-state) | [Backtest](#backtest-and-optimization) | [TUI](docs/tui.md) | [WebUI](docs/webui.md) | [Telegram](docs/telegram.md)
+[Live Website](https://xauby.vercel.app/) | [Quick Start](#quick-start) | [Configuration](#configuration-essentials) | [OKX reconciliation](docs/exchange-close-reconciliation.md) | [TUI](docs/tui.md) | [WebUI](docs/webui.md) | [Telegram](docs/telegram.md)
 
 </div>
 
@@ -59,7 +59,7 @@ current committed runtime is focused on **XAUUSDT** on **OKX USDT-settled swap**
 via CCXT, with both long and short execution enabled at 1x leverage.
 
 The public-facing research platform is live at
-[x-auby.vercel.app](https://x-auby.vercel.app/).
+[xauby.vercel.app](https://xauby.vercel.app/).
 It presents xAuby's research-first approach: validate ideas, document risk and
 execution assumptions, and only then consider capital deployment.
 
@@ -70,6 +70,9 @@ execution assumptions, and only then consider capital deployment.
 5. Place exchange orders, or simulated trades, with ATR stop-loss, trailing, and breakeven logic.
 6. Persist trades and telemetry to SQLite plus JSONL for replay, incidents, and dashboard state.
 7. Operate through Textual TUI, launcher, scripts, and Telegram.
+8. Reconcile exchange-side TP/SL closes before every strategy tick. A flat
+   exchange position is shown as `FLAT` with `WAIT`; confirmed realized PnL is
+   labeled `OKX verified`.
 
 > Start in simulation first. Enable live only after risk limits, alerts, replay validation, and per-pair router gates are checked.
 
@@ -84,7 +87,7 @@ state.
 
 | Task | Command / location |
 |------|--------------------|
-| Visit the live site | [Open xAuby Research Platform](https://x-auby.vercel.app/) |
+| Visit the live site | [Open xAuby Research Platform](https://xauby.vercel.app/) |
 | Preview locally | `cd Website && npm install && npm run dev` |
 | Production build | `cd Website && npm run build` |
 | Page source | `Website/public/research-platform.html` |
@@ -152,6 +155,7 @@ What it does not do:
 | Observability | `run_id`, `tick_id`, JSONL events, replay validation, health JSON |
 | UI/Ops | Textual dashboard, pair switching, strategy-aware chart legend, Telegram commands, emergency pause |
 | Concurrency safety | Per-symbol feed/candle/semi-auto locks, protected balance cache refresh, thread-safe event emitter, defensive UI cache copies |
+| Reconciliation | Exchange position/history source of truth, idempotent close IDs, partial-TP de-duplication, fail-closed pending gate |
 
 ---
 
