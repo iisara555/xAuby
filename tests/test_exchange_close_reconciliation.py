@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 from xauby.database.db import LiteDB
 from xauby.engine.exchange_close import build_confirmed_trade, match_position_history
 from xauby.engine.reconcile import ReconcileMixin
 from xauby.engine.symbol_context import SymbolContext
+from scripts import reconcile_exchange_close
 
 
 OPENED_AT = "2026-07-08T01:50:15.777000+00:00"
@@ -107,6 +109,33 @@ def _open_state(db: LiteDB, *, quantity: float = 0.033) -> None:
 
 
 class ExchangeCloseReconciliationTests(unittest.TestCase):
+    def test_recovery_dry_run_does_not_open_tenant_database(self):
+        client = MagicMock()
+        client.get_position_history.return_value = [HISTORY_ROW]
+        with (
+            patch.object(
+                reconcile_exchange_close,
+                "load_bot_config",
+                return_value={"exchange": {"market_type": "swap"}},
+            ),
+            patch.object(
+                reconcile_exchange_close,
+                "resolve_exchange_credentials",
+                return_value=("key", "secret", None),
+            ),
+            patch.object(
+                reconcile_exchange_close,
+                "create_exchange_client",
+                return_value=client,
+            ),
+            patch.object(reconcile_exchange_close, "LiteDB") as db_class,
+        ):
+            result = reconcile_exchange_close.main(["--symbol", "XAUUSDT"])
+
+        self.assertEqual(result, 0)
+        db_class.assert_not_called()
+        client.close.assert_called_once()
+
     def test_exchange_flat_closes_local_state_with_verified_pnl_and_wait(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = LiteDB(os.path.join(tmp, "tenant.db"))

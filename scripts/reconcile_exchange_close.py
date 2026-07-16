@@ -88,7 +88,6 @@ def main(argv: list[str] | None = None) -> int:
     symbol = str(args.symbol).upper().replace("_", "")
     api_key, api_secret, base_url = resolve_exchange_credentials(config)
     client = create_exchange_client(config, api_key, api_secret, base_url)
-    db = LiteDB(args.db_path)
     try:
         history = client.get_position_history(symbol, limit=args.limit)
         print(json.dumps([_public_history(row) for row in history], indent=2, sort_keys=True))
@@ -107,6 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if selected is None:
             raise SystemExit(error)
+        db = LiteDB(args.db_path)
         current = db.get_trade_state(symbol).to_dict()
         state = current if current.get("state") == "bought" else {
             "symbol": symbol,
