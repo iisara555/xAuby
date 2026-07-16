@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -10,6 +11,8 @@ from typing import Any, Dict, Optional
 
 from xauby.runtime.paths import manual_order_request_path
 from xauby.utils.atomic_io import atomic_json_write
+
+logger = logging.getLogger(__name__)
 
 VALID_MANUAL_ACTIONS = {"BUY", "SELL"}
 VALID_MANUAL_INTENTS = {"OPEN_LONG", "OPEN_SHORT", "CLOSE_POSITION"}
@@ -60,11 +63,11 @@ def write_manual_order_request(
         "created_at": time.time(),
     }
     path = request_path or os.path.join(project_root, manual_order_request_path())
-    atomic_json_write(path, payload, indent=2)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    # Hosted control and engine services run as separate OS users. Tenant
+    # runtime directories provide a named ACL for the isolated engine user;
+    # mode 0640 keeps the file private while opening the ACL mask so that user
+    # can claim it. The payload contains order intent only, never credentials.
+    atomic_json_write(path, payload, indent=2, mode=0o640)
     return payload
 
 
@@ -85,7 +88,12 @@ def claim_manual_order_request(
             payload = json.load(handle)
     except FileNotFoundError:
         return None
-    except Exception:
+    except Exception as exc:
+        logger.error(
+            "Discarding unreadable manual order request at %s: %s",
+            path,
+            exc,
+        )
         try:
             os.unlink(path)
         except OSError:

@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 import tempfile
 import unittest
 from unittest import mock
@@ -11,6 +12,12 @@ from xauby.runtime.manual_orders import (
 
 
 class ManualOrderIPCTests(unittest.TestCase):
+    def test_request_opens_acl_read_mask_for_isolated_engine(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_manual_order_request("BTCUSDT", "BUY", project_root=root)
+            path = os.path.join(root, "core", "manual_order_request.json")
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o640)
+
     def test_matching_request_is_claimed_once(self):
         with tempfile.TemporaryDirectory() as root:
             request = write_manual_order_request("btcusdt", "buy", project_root=root)
@@ -74,6 +81,18 @@ class ManualOrderIPCTests(unittest.TestCase):
             self.assertEqual(claimed["version"], 2)
             self.assertEqual(claimed["intent"], "OPEN_SHORT")
             self.assertEqual(claimed["position_side"], "SHORT")
+
+    def test_unreadable_request_is_discarded_with_an_error_log(self):
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch("builtins.open", side_effect=PermissionError("denied")), \
+                mock.patch("xauby.runtime.manual_orders.os.unlink") as unlink, \
+                self.assertLogs("xauby.runtime.manual_orders", level="ERROR") as logs:
+            self.assertIsNone(
+                claim_manual_order_request("BTCUSDT", project_root=root)
+            )
+
+        unlink.assert_called_once()
+        self.assertIn("Discarding unreadable manual order request", logs.output[0])
 
 
 class ManualOrderEngineTests(unittest.TestCase):

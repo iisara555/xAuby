@@ -69,7 +69,7 @@ export function TradeDrawer({
         method: "POST", headers: csrfHeaders(user),
         body: JSON.stringify({ trade_pin: tradePin, idempotency_key: crypto.randomUUID() }),
       });
-      setMessage("Order accepted by the tenant engine.");
+      setMessage("Order queued for the tenant engine. Check Activity for the execution result.");
       setPreview(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Confirmation failed");
