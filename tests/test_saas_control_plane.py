@@ -1,4 +1,5 @@
 import json
+import base64
 import tempfile
 import unittest
 from pathlib import Path
@@ -52,6 +53,35 @@ class SaaSControlPlaneTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["role"], "platform_admin")
         self.assertEqual(payload["tenant"]["slug"], "owner-itsara")
+
+    def test_profile_appearance_updates_name_and_private_avatar(self):
+        png = base64.b64encode(
+            b"\x89PNG\r\n\x1a\n" + b"profile-image"
+        ).decode("ascii")
+        updated = self.client.patch(
+            "/api/v1/profile/appearance",
+            headers=self.headers,
+            json={
+                "display_name": "Itsara Pilot",
+                "avatar_data_url": f"data:image/png;base64,{png}",
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        me = self.client.get("/api/v1/me").json()
+        self.assertEqual(me["display_name"], "Itsara Pilot")
+        self.assertTrue(me["avatar_url"].startswith("/api/v1/profile/avatar?v="))
+        avatar = self.client.get(me["avatar_url"])
+        self.assertEqual(avatar.status_code, 200)
+        self.assertEqual(avatar.headers["content-type"], "image/png")
+
+    def test_catalog_exposes_backtest_evidence_without_inventing_missing_scores(self):
+        presets = {
+            item["id"]: item for item in self.client.get("/api/v1/catalog").json()["presets"]
+        }
+        xau = presets["okx-xau-actionzone-v1"]["backtest"]
+        self.assertEqual(xau["score_label"], "PF 2.06")
+        self.assertEqual(xau["duration"], "5.9 years")
+        self.assertEqual(presets["binance-btc-supertrend-v1"]["backtest"]["status"], "insufficient")
 
     def test_runtime_snapshot_is_tenant_scoped_and_fail_closed(self):
         response = self.client.get("/api/v1/runtime/snapshot")

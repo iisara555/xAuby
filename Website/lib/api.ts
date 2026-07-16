@@ -10,6 +10,8 @@ export type Tenant = {
 export type User = {
   id: string;
   email: string;
+  display_name: string;
+  avatar_url: string | null;
   role: "user" | "platform_admin";
   csrf_token: string;
   tenant: Tenant | null;
@@ -54,6 +56,16 @@ export type Preset = {
   primary_timeframe: string;
   confirm_timeframe: string;
   market_type: string;
+  backtest?: {
+    status: "validated" | "insufficient" | "pending";
+    score_label: string;
+    period: string;
+    duration: string;
+    win_rate_pct: number | null;
+    max_drawdown_pct: number | null;
+    trades: number | null;
+    source: string;
+  };
 };
 
 export type Target = {

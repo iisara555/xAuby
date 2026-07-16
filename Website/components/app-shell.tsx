@@ -2,7 +2,6 @@
 
 import {
   Activity,
-  CircleUserRound,
   Gauge,
   LogOut,
   Settings,
@@ -13,6 +12,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect } from "react";
 import { api, csrfHeaders, User } from "@/lib/api";
 import { useMe } from "@/lib/hooks";
+import { ProfileAvatar } from "@/components/profile-avatar";
+import { ServerHealth } from "@/components/server-health";
 
 const UserContext = createContext<User | null>(null);
 
@@ -73,13 +74,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
+          <ServerHealth />
           <div className="rail-account">
-            <CircleUserRound size={20} />
-            <div><strong>{user.email.split("@")[0]}</strong><span>{user.role === "platform_admin" ? "Owner" : "Pilot"}</span></div>
+            <ProfileAvatar name={user.display_name} email={user.email} src={user.avatar_url} size={30} />
+            <div><strong>{user.display_name || user.email.split("@")[0]}</strong><span>{user.role === "platform_admin" ? "Owner" : "Pilot"}</span></div>
             <button onClick={logout} aria-label="Sign out"><LogOut size={17} /></button>
           </div>
         </aside>
         <main className="console-main">{children}</main>
+        <div className="mobile-health-strip"><ServerHealth compact /></div>
         <nav className="mobile-nav" aria-label="Mobile navigation">
           {items.map(({ href, label, icon: Icon }) => {
             const active = href === "/app" ? pathname === href : pathname.startsWith(href);

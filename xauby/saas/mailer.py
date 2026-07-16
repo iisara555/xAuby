@@ -18,12 +18,17 @@ class Mailer:
                 self.outbox.append(item)
                 return
             raise RuntimeError("transactional email is not configured")
+        if not self.settings.smtp_username or not self.settings.smtp_password:
+            raise RuntimeError("transactional email credentials are not configured")
         message = EmailMessage()
         message["From"] = self.settings.smtp_from or self.settings.smtp_username
         message["To"] = recipient
         message["Subject"] = subject
         message.set_content(text)
-        with smtplib.SMTP(self.settings.smtp_host, self.settings.smtp_port, timeout=15) as smtp:
-            smtp.starttls()
-            smtp.login(self.settings.smtp_username, self.settings.smtp_password)
-            smtp.send_message(message)
+        try:
+            with smtplib.SMTP(self.settings.smtp_host, self.settings.smtp_port, timeout=15) as smtp:
+                smtp.starttls()
+                smtp.login(self.settings.smtp_username, self.settings.smtp_password)
+                smtp.send_message(message)
+        except (OSError, smtplib.SMTPException) as exc:
+            raise RuntimeError("transactional email delivery is unavailable") from exc

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import hashlib
 import re
@@ -29,6 +31,7 @@ from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
 from xauby.saas.supervisor import TenantSupervisor
 from xauby.saas.runtime import RuntimeGateway
+from xauby.utils.atomic_io import atomic_bytes_write
 
 SESSION_COOKIE = "xauby_saas_session"
 OAUTH_STATE_COOKIE = "xauby_saas_oauth_state"
@@ -59,6 +62,12 @@ class LiveActivateBody(BaseModel):
 class TradePinBody(BaseModel):
     pin: str = Field(pattern=r"^[0-9]{8,12}$")
     current_pin: str | None = Field(default=None, pattern=r"^[0-9]{8,12}$")
+
+
+class ProfileAppearanceBody(BaseModel):
+    display_name: str = Field(min_length=1, max_length=40)
+    avatar_data_url: str | None = Field(default=None, max_length=1_500_000)
+    remove_avatar: bool = False
 
 
 class OrderPreviewBody(BaseModel):
@@ -165,6 +174,8 @@ def create_app(
     app.state.supervisor = supervisor
     app.state.mailer = mailer
     app.state.runtime = runtime
+    avatar_root = settings.data_root / "avatars"
+    avatar_root.mkdir(parents=True, exist_ok=True)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -535,8 +546,14 @@ def create_app(
     @app.get("/api/v1/me")
     def me(user: dict[str, Any] = Depends(current_user)):
         tenant = store.tenant_for_user(str(user["id"]))
+        avatar_version = int(user.get("avatar_version") or 0)
         return {
             "id": user["id"], "email": user["email"], "role": user["role"],
+            "display_name": user.get("display_name") or "",
+            "avatar_url": (
+                f"/api/v1/profile/avatar?v={avatar_version}"
+                if user.get("avatar_ext") else None
+            ),
             "csrf_token": user["csrf_token"], "tenant": tenant,
             "account_status": user.get("account_status"),
             "email_verified": bool(user.get("email_verified")),
@@ -544,6 +561,73 @@ def create_app(
             "mfa_verified": bool(user.get("mfa_verified")),
             "trade_pin_configured": bool(user.get("trade_pin_hash")),
         }
+
+    @app.patch("/api/v1/profile/appearance")
+    def profile_appearance(
+        body: ProfileAppearanceBody,
+        user: dict[str, Any] = Depends(csrf_user),
+    ):
+        display_name = re.sub(r"\s+", " ", body.display_name).strip()
+        if not display_name:
+            raise HTTPException(status_code=422, detail="display name is required")
+        current_ext = str(user.get("avatar_ext") or "") or None
+        avatar_ext = current_ext
+        avatar_changed = False
+        if body.remove_avatar:
+            avatar_ext = None
+            avatar_changed = current_ext is not None
+            for ext in ("png", "jpg", "webp"):
+                (avatar_root / f"{user['id']}.{ext}").unlink(missing_ok=True)
+        elif body.avatar_data_url:
+            try:
+                header, encoded = body.avatar_data_url.split(",", 1)
+                media_type = header.removeprefix("data:").split(";", 1)[0].lower()
+                ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[media_type]
+                image = base64.b64decode(encoded, validate=True)
+            except (ValueError, KeyError, binascii.Error) as exc:
+                raise HTTPException(status_code=422, detail="avatar must be PNG, JPEG or WebP") from exc
+            if not 1 <= len(image) <= 1_000_000:
+                raise HTTPException(status_code=422, detail="avatar must be 1 MB or smaller")
+            valid_magic = (
+                (ext == "png" and image.startswith(b"\x89PNG\r\n\x1a\n"))
+                or (ext == "jpg" and image.startswith(b"\xff\xd8\xff"))
+                or (ext == "webp" and image.startswith(b"RIFF") and image[8:12] == b"WEBP")
+            )
+            if not valid_magic:
+                raise HTTPException(status_code=422, detail="avatar file signature is invalid")
+            atomic_bytes_write(str(avatar_root / f"{user['id']}.{ext}"), image)
+            for old_ext in ("png", "jpg", "webp"):
+                if old_ext != ext:
+                    (avatar_root / f"{user['id']}.{old_ext}").unlink(missing_ok=True)
+            avatar_ext = ext
+            avatar_changed = True
+        updated = store.update_user_appearance(
+            user["id"],
+            display_name=display_name,
+            avatar_ext=avatar_ext,
+            avatar_changed=avatar_changed,
+        )
+        return {
+            "ok": True,
+            "display_name": updated.get("display_name") or "",
+            "avatar_url": (
+                f"/api/v1/profile/avatar?v={int(updated.get('avatar_version') or 0)}"
+                if updated.get("avatar_ext") else None
+            ),
+        }
+
+    @app.get("/api/v1/profile/avatar")
+    def profile_avatar(user: dict[str, Any] = Depends(current_user)):
+        ext = str(user.get("avatar_ext") or "")
+        media_type = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}.get(ext)
+        path = avatar_root / f"{user['id']}.{ext}"
+        if not media_type or not path.is_file():
+            raise HTTPException(status_code=404, detail="profile image is not configured")
+        return Response(
+            content=path.read_bytes(),
+            media_type=media_type,
+            headers={"Cache-Control": "private, max-age=300", "Content-Disposition": "inline"},
+        )
 
     @app.get("/api/v1/catalog")
     def catalog(user: dict[str, Any] = Depends(current_user)):
@@ -958,15 +1042,31 @@ def create_app(
         try:
             invite, token = store.create_invite(body.email, user["id"])
             url = f"{settings.public_base_url}/invite/{quote(token)}"
-            mailer.send(
-                invite["email"], "Your xAuby pilot invitation",
-                f"You have been invited to xAuby. This link is valid for 7 days:\n{url}",
-            )
+            delivery = "sent"
+            delivery_detail = ""
+            try:
+                mailer.send(
+                    invite["email"], "Your xAuby pilot invitation",
+                    f"You have been invited to xAuby. This link is valid for 7 days:\n{url}",
+                )
+            except RuntimeError as exc:
+                delivery = "manual"
+                delivery_detail = str(exc)
+                store.audit(
+                    "invite_delivery_failed",
+                    user_id=user["id"],
+                    payload={"email": invite["email"], "reason": delivery_detail},
+                )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return {"ok": True, "email": invite["email"], "expires_at": invite["expires_at"]}
+        return {
+            "ok": True,
+            "email": invite["email"],
+            "expires_at": invite["expires_at"],
+            "invite_url": url,
+            "delivery": delivery,
+            "delivery_detail": delivery_detail,
+        }
 
     @app.post("/api/v1/admin/users/{user_id}/status")
     def admin_account_status(user_id: str, body: AccountStatusBody,

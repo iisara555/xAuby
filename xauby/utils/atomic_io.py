@@ -50,3 +50,21 @@ def atomic_json_write(
         except OSError:
             pass
         raise
+
+
+def atomic_bytes_write(filepath: str, data: bytes, *, mode: int = 0o600) -> None:
+    """Atomically replace a binary file without exposing a partial write."""
+    dir_name = os.path.dirname(filepath) or "."
+    os.makedirs(dir_name, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as file:
+            file.write(data)
+        os.chmod(tmp_path, mode)
+        os.replace(tmp_path, filepath)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise

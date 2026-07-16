@@ -2,13 +2,25 @@
 
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Check, KeyRound, Radio, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { Check, KeyRound, Radio, ShieldAlert, SlidersHorizontal, UserRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { PageHeading } from "@/components/page-heading";
 import { StatusPill } from "@/components/status-pill";
 import { useCurrentUser } from "@/components/app-shell";
 import { api, csrfHeaders } from "@/lib/api";
 import { useBot, useCatalog, useProfile } from "@/lib/hooks";
+import { ProfileSettings } from "@/components/profile-settings";
+
+const PENDING_BACKTEST = {
+  status: "pending" as const,
+  score_label: "Pending",
+  period: "Not published",
+  duration: "—",
+  win_rate_pct: null,
+  max_drawdown_pct: null,
+  trades: null,
+  source: "Certified backtest evidence is not available yet",
+};
 
 export default function SettingsPage() {
   const user = useCurrentUser();
@@ -105,10 +117,16 @@ export default function SettingsPage() {
       <PageHeading eyebrow="Workspace" title="Settings" aside={<StatusPill label={bot?.tenant.live_status === "active" ? "Live" : "Simulation"} tone={bot?.tenant.live_status === "active" ? "warn" : "neutral"} />} />
       <Tabs.Root className="settings-tabs" defaultValue="trading">
         <Tabs.List className="tab-list" aria-label="Settings sections">
+          <Tabs.Trigger value="profile"><UserRound size={17} />Profile</Tabs.Trigger>
           <Tabs.Trigger value="trading"><SlidersHorizontal size={17} />Trading</Tabs.Trigger>
           <Tabs.Trigger value="exchange"><Radio size={17} />Exchange</Tabs.Trigger>
           <Tabs.Trigger value="security"><KeyRound size={17} />Security</Tabs.Trigger>
         </Tabs.List>
+
+        <Tabs.Content value="profile" className="settings-panel card">
+          <div className="section-heading"><div><span>Personal workspace</span><h2>Name and profile image</h2></div></div>
+          <ProfileSettings />
+        </Tabs.Content>
 
         <Tabs.Content value="trading" className="settings-panel card">
           <div className="section-heading"><div><span>Certified preset</span><h2>Choose one focused strategy</h2></div><StatusPill label="1 active pair" /></div>
@@ -116,11 +134,25 @@ export default function SettingsPage() {
             {catalog?.targets.map((target) => {
               const preset = catalog.presets.find((item) => item.target_id === target.id);
               if (!preset) return null;
+              const backtest = preset.backtest ?? PENDING_BACKTEST;
               return (
-                <button className={targetId === target.id ? "preset-option selected" : "preset-option"} onClick={() => setTargetId(target.id)} key={target.id}>
-                  <span className="radio-dot">{targetId === target.id && <Check size={13} />}</span>
-                  <span><strong>{preset.label}</strong><small>{target.label} · {preset.symbol}</small></span>
-                  <em>{preset.primary_timeframe}</em>
+                <button type="button" className={targetId === target.id ? "preset-option selected" : "preset-option"} onClick={() => setTargetId(target.id)} key={target.id}>
+                  <span className="preset-option-head">
+                    <span className="radio-dot">{targetId === target.id && <Check size={13} />}</span>
+                    <span className="preset-copy"><strong>{preset.label}</strong><small>{target.label} · {preset.symbol} · {preset.strategy.replaceAll("_", " ")}</small></span>
+                    <em>{preset.primary_timeframe} / {preset.confirm_timeframe}</em>
+                  </span>
+                  <span className="preset-backtest">
+                    <span><small>Backtest score</small><strong className={`backtest-${backtest.status}`}>{backtest.score_label}</strong></span>
+                    <span><small>Tested period</small><strong>{backtest.duration}</strong></span>
+                    <span><small>Data window</small><strong>{backtest.period}</strong></span>
+                  </span>
+                  <span className="preset-evidence">
+                    <span>{backtest.win_rate_pct == null ? "WR —" : `WR ${backtest.win_rate_pct}%`}</span>
+                    <span>{backtest.max_drawdown_pct == null ? "Max DD —" : `Max DD ${backtest.max_drawdown_pct}%`}</span>
+                    <span>{backtest.trades == null ? "Trades —" : `${backtest.trades} trades`}</span>
+                    <small>{backtest.source}</small>
+                  </span>
                 </button>
               );
             })}

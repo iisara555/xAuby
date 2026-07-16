@@ -49,6 +49,8 @@ class ControlPlaneStore:
                 CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE,
                     google_sub TEXT UNIQUE, role TEXT NOT NULL DEFAULT 'user',
+                    display_name TEXT, avatar_ext TEXT,
+                    avatar_version INTEGER NOT NULL DEFAULT 0,
                     password_hash TEXT, email_verified INTEGER NOT NULL DEFAULT 0,
                     account_status TEXT NOT NULL DEFAULT 'pending_approval',
                     totp_secret TEXT, totp_enabled INTEGER NOT NULL DEFAULT 0,
@@ -133,6 +135,8 @@ class ControlPlaneStore:
                 "password_hash": "TEXT", "email_verified": "INTEGER NOT NULL DEFAULT 0",
                 "account_status": "TEXT NOT NULL DEFAULT 'active'", "totp_secret": "TEXT",
                 "totp_enabled": "INTEGER NOT NULL DEFAULT 0", "pending_email": "TEXT",
+                "display_name": "TEXT", "avatar_ext": "TEXT",
+                "avatar_version": "INTEGER NOT NULL DEFAULT 0",
             }
             for name, declaration in additions.items():
                 if name not in columns:
@@ -251,6 +255,36 @@ class ControlPlaneStore:
     def user_count(self) -> int:
         with self.connection() as conn:
             return int(conn.execute("SELECT count(*) FROM users").fetchone()[0])
+
+    def update_user_appearance(
+        self,
+        user_id: str,
+        *,
+        display_name: str,
+        avatar_ext: str | None,
+        avatar_changed: bool,
+    ) -> dict[str, Any]:
+        with self.connection() as conn:
+            if avatar_changed:
+                conn.execute(
+                    "UPDATE users SET display_name=?,avatar_ext=?,"
+                    "avatar_version=avatar_version+1 WHERE id=?",
+                    (display_name, avatar_ext, user_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE users SET display_name=? WHERE id=?",
+                    (display_name, user_id),
+                )
+            row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if row is None:
+            raise KeyError("user not found")
+        self.audit(
+            "profile_appearance_updated",
+            user_id=user_id,
+            payload={"avatar_changed": avatar_changed},
+        )
+        return dict(row)
 
     def create_invite(
         self, email: str, invited_by: str, *, ttl_seconds: int = 604800

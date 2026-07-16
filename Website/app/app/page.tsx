@@ -65,7 +65,7 @@ export default function DashboardPage() {
     <div className="page-wrap">
       <PageHeading
         eyebrow="Pilot workspace"
-        title={`Good ${new Date().getHours() < 12 ? "morning" : "evening"}, ${user.email.split("@")[0]}`}
+        title={`Good ${new Date().getHours() < 12 ? "morning" : "evening"}, ${user.display_name || user.email.split("@")[0]}`}
         aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={bot?.tenant.live_status === "active"} shortLiveCertified={Boolean(target?.manual_short_live_certified)} /></div>}
       />
 

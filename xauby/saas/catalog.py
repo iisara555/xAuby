@@ -57,6 +57,16 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": True,
+        "backtest": {
+            "status": "validated",
+            "score_label": "PF 2.06",
+            "period": "Aug 2020 – Jul 2026",
+            "duration": "5.9 years",
+            "win_rate_pct": 41.3,
+            "max_drawdown_pct": 15.0,
+            "trades": 104,
+            "source": "PAXGUSDT proxy · 4H + 1D",
+        },
     },
     {
         "id": "binance-btc-supertrend-v1",
@@ -72,6 +82,16 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": True,
+        "backtest": {
+            "status": "insufficient",
+            "score_label": "Insufficient",
+            "period": "Jun 2023 – Jun 2026",
+            "duration": "3 years",
+            "win_rate_pct": None,
+            "max_drawdown_pct": None,
+            "trades": 1,
+            "source": "Regime-specific OOS · sample too small",
+        },
     },
     {
         "id": "binance-th-btc-supertrend-v1",
@@ -87,6 +107,16 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": True,
+        "backtest": {
+            "status": "pending",
+            "score_label": "Pending",
+            "period": "Mar 2026 – Jun 2026",
+            "duration": "3.5 months data",
+            "win_rate_pct": None,
+            "max_drawdown_pct": None,
+            "trades": None,
+            "source": "BTCTHB certified run not published",
+        },
     },
 ]
 

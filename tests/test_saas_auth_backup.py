@@ -19,6 +19,11 @@ from xauby.saas.store import ControlPlaneStore
 from xauby.saas.supervisor import TenantSupervisor
 
 
+class UnavailableMailer:
+    def send(self, recipient: str, subject: str, text: str) -> None:
+        raise RuntimeError("transactional email delivery is unavailable")
+
+
 class SaaSAuthAndBackupTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -90,6 +95,33 @@ class SaaSAuthAndBackupTests(unittest.TestCase):
             "/auth/signup", json={"email": "public@example.com", "password": "StrongPassword123"}
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_invite_returns_manual_link_when_email_delivery_is_unavailable(self):
+        app = create_app(
+            self.settings,
+            store=self.store,
+            supervisor=self.supervisor,
+            mailer=UnavailableMailer(),
+        )
+        with TestClient(app) as client:
+            owner_login = client.post(
+                "/auth/dev-login", params={"email": "iisara555@gmail.com"}
+            )
+            response = client.post(
+                "/api/v1/admin/invites",
+                headers={"X-CSRF-Token": owner_login.json()["csrf_token"]},
+                json={"email": "manual@example.com"},
+            )
+            self.assertEqual(response.status_code, 201, response.text)
+            payload = response.json()
+            self.assertEqual(payload["delivery"], "manual")
+            self.assertEqual(payload["delivery_detail"], "transactional email delivery is unavailable")
+            self.assertTrue(payload["invite_url"].startswith("http://testserver/invite/"))
+            token = urlparse(payload["invite_url"]).path.rsplit("/", 1)[-1]
+            self.assertEqual(
+                client.get("/auth/invite", params={"token": token}).json()["email"],
+                "manual@example.com",
+            )
 
     def test_password_reset_is_single_use_and_revokes_sessions(self):
         user_client, _ = self._invite_and_accept("reset@example.com")
