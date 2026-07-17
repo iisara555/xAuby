@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { api, formatNumber } from "@/lib/api";
+import { api, formatNumber, RuntimePrice } from "@/lib/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Candle = {
@@ -38,11 +38,13 @@ function ema(values: number[], period: number): number[] {
   });
 }
 
-function formatCandleTime(timestamp: unknown): string {
+function formatCandleTime(timestamp: unknown, timeframe: (typeof TIMEFRAMES)[number]): string {
   const value = number(timestamp);
   if (value == null) return "—";
   const date = new Date(value < 1e12 ? value * 1000 : value);
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en", timeframe === "1d"
+    ? { month: "short", day: "numeric" }
+    : { month: "short", day: "numeric", hour: "2-digit" }).format(date);
 }
 
 export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; currentPrice: unknown; zone: string }) {
@@ -55,6 +57,16 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
     refreshInterval: () => (typeof document === "undefined" || document.visibilityState === "visible" ? 15000 : 0),
     revalidateOnFocus: false,
   });
+  const { data: priceData } = useSWR<RuntimePrice>(
+    `/api/v1/runtime/price?symbol=${encodeURIComponent(symbol)}`,
+    api,
+    {
+      refreshInterval: () => (typeof document === "undefined" || document.visibilityState === "visible" ? 1000 : 0),
+      dedupingInterval: 750,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+    },
+  );
 
   useEffect(() => {
     const node = chartRef.current;
@@ -65,18 +77,19 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
   }, []);
 
   const allCandles = Array.isArray(data?.candles) ? data.candles : [];
-  const visibleCount = containerWidth < 480 ? 28 : containerWidth < 760 ? 42 : 64;
+  const visibleCount = containerWidth < 360 ? 18 : containerWidth < 480 ? 24 : containerWidth < 760 ? 42 : 64;
   const candles = allCandles.slice(-visibleCount);
+  const livePrice = number(priceData?.price) ?? number(currentPrice);
   const chart = useMemo(() => {
-    const width = Math.max(320, Math.round(containerWidth));
-    const height = width < 480 ? 230 : 290;
-    const plot = { left: 14, right: 62, top: 18, bottom: 30 };
+    const width = Math.max(240, Math.round(containerWidth));
+    const height = width < 480 ? 280 : 290;
+    const plot = { left: 14, right: 76, top: 18, bottom: 34 };
     const plotWidth = width - plot.left - plot.right;
     const plotHeight = height - plot.top - plot.bottom;
     const lows = candles.map((item) => number(item.low)).filter((value): value is number => value != null);
     const highs = candles.map((item) => number(item.high)).filter((value): value is number => value != null);
     if (!lows.length || !highs.length) return null;
-    const last = number(currentPrice);
+    const last = livePrice;
     const min = Math.min(...lows, ...(last == null ? [] : [last]));
     const max = Math.max(...highs, ...(last == null ? [] : [last]));
     const padding = Math.max((max - min) * 0.08, max * 0.0008);
@@ -89,10 +102,10 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
     const slow = ema(closes, 26);
     const labels = [0, 1, 2, 3].map((index) => {
       const candle = candles[Math.min(candles.length - 1, Math.round((candles.length - 1) * (index / 3)))];
-      return { x: plot.left + plotWidth * (index / 3), label: formatCandleTime(candle?.timestamp) };
+      return { x: plot.left + plotWidth * (index / 3), label: formatCandleTime(candle?.timestamp, timeframe) };
     });
     return { width, height, plot, plotWidth, plotHeight, y, x, fast, slow, labels, floor, ceiling };
-  }, [candles, currentPrice]);
+  }, [candles, containerWidth, livePrice, timeframe]);
 
   const lastCandle = candles[candles.length - 1];
   const lastClose = number(lastCandle?.close);
@@ -104,7 +117,7 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
       <div className="chart-toolbar">
         <div>
           <div className="card-kicker"><span>Market structure</span><span>{zone || "—"}</span></div>
-          <div className="chart-title-row"><h2>{symbol}</h2><span className="chart-price">{lastClose == null ? "—" : formatNumber(lastClose, 2)}</span></div>
+          <div className="chart-title-row"><h2>{symbol}</h2><span className="chart-price">{livePrice == null ? "—" : formatNumber(livePrice, 2)}</span></div>
           <p className="chart-subtitle">Candles · EMA12 / EMA26 · {timeframe.toUpperCase()}</p>
         </div>
         <div className="chart-timeframes" aria-label="Candle timeframe">
@@ -142,12 +155,21 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
           })}
           <polyline points={chart.fast.map((value, index) => `${chart.x(index)},${chart.y(value)}`).join(" ")} className="ema-line fast" />
           <polyline points={chart.slow.map((value, index) => `${chart.x(index)},${chart.y(value)}`).join(" ")} className="ema-line slow" />
-          {number(currentPrice) != null && <g><line x1={chart.plot.left} x2={chart.width - chart.plot.right} y1={chart.y(number(currentPrice) as number)} y2={chart.y(number(currentPrice) as number)} className="current-price-line" /><text x={chart.width - chart.plot.right + 8} y={chart.y(number(currentPrice) as number) - 5} className="current-price-label">LIVE</text></g>}
+          {livePrice != null && (() => {
+            const lineY = chart.y(livePrice);
+            const labelY = Math.max(chart.plot.top + 10, Math.min(chart.height - chart.plot.bottom - 10, lineY));
+            const labelX = chart.width - chart.plot.right + 5;
+            return <g className={priceData?.stale ? "current-price stale" : "current-price"}>
+              <line x1={chart.plot.left} x2={chart.width - chart.plot.right} y1={lineY} y2={lineY} className="current-price-line" />
+              <rect x={labelX} y={labelY - 10} width={chart.plot.right - 10} height="20" rx="4" className="current-price-badge" />
+              <text x={labelX + (chart.plot.right - 10) / 2} y={labelY + 4} textAnchor="middle" className="current-price-label">{formatNumber(livePrice, 2)}</text>
+            </g>;
+          })()}
         </svg>
       )}
       </div>
       {selectedIndex != null && candles[selectedIndex] && <div className="candle-readout" aria-live="polite">
-        <strong>{formatCandleTime(candles[selectedIndex].timestamp)}</strong>
+        <strong>{formatCandleTime(candles[selectedIndex].timestamp, timeframe)}</strong>
         <span>O {formatNumber(candles[selectedIndex].open)}</span><span>H {formatNumber(candles[selectedIndex].high)}</span><span>L {formatNumber(candles[selectedIndex].low)}</span><span>C {formatNumber(candles[selectedIndex].close)}</span>
       </div>}
     </article>

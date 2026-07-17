@@ -1,4 +1,4 @@
-export function PageHeading({ eyebrow, title, description, aside }: { eyebrow: string; title: string; description?: React.ReactNode; aside?: React.ReactNode }) {
+export function PageHeading({ eyebrow, title, description, aside }: { eyebrow: string; title: React.ReactNode; description?: React.ReactNode; aside?: React.ReactNode }) {
   return (
     <header className="page-heading">
       <div>

@@ -33,6 +33,19 @@ export type RuntimeSnapshot = {
   currency: Record<string, unknown>;
 };
 
+export type RuntimePrice = {
+  ok: boolean;
+  stale: boolean;
+  source: string;
+  read_only: boolean;
+  symbol: string;
+  price: number | null;
+  bid?: number | null;
+  ask?: number | null;
+  timestamp?: string | null;
+  age_sec?: number | null;
+};
+
 export type ExchangeConnection = {
   exchange_id: string;
   target_id: string;
