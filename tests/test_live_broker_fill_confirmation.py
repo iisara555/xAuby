@@ -26,6 +26,32 @@ def _order_without_raw_payload(status, order_id="ord-1", price=100.0, amount=1.0
     )
 
 
+def _contract_order(status, order_id="ord-contract", price=3991.1):
+    contracts = 43.0 if status == "FILLED" else 0.0
+    return Order(
+        order_id=order_id, client_id="", symbol="XAUUSDT", side="SELL",
+        order_type="MARKET", price=price, amount=43.0, status=status,
+        raw_payload={
+            "executedQty": contracts,
+            "filled": contracts,
+            "cost": contracts * 0.001 * price,
+        },
+    )
+
+
+def _partial_contract_order(status, order_id="ord-partial", price=3991.1):
+    contracts = 20.0
+    return Order(
+        order_id=order_id, client_id="", symbol="XAUUSDT", side="SELL",
+        order_type="MARKET", price=price, amount=43.0, status=status,
+        raw_payload={
+            "executedQty": contracts,
+            "filled": contracts,
+            "cost": contracts * 0.001 * price,
+        },
+    )
+
+
 class _FakeClient:
     def __init__(self, place_status, poll_statuses=None, order_factory=_order):
         self._place_status = place_status
@@ -90,6 +116,33 @@ class TestLiveBrokerFillConfirmation(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.qty, 1.0)
         self.assertEqual(client.get_order_calls, 0)
+
+    def test_swap_close_converts_contract_fill_to_base_quantity(self):
+        client = _FakeClient(place_status="FILLED", order_factory=_contract_order)
+        result = _broker(client).execute_close(
+            "XAUUSDT", "LONG", 0.043, 3991.1, 3989.8, 171.5614
+        )
+        self.assertTrue(result.success)
+        self.assertAlmostEqual(result.qty, 0.043)
+        self.assertAlmostEqual(result.price, 3991.1)
+
+    def test_swap_open_converts_contract_fill_to_base_quantity(self):
+        client = _FakeClient(place_status="FILLED", order_factory=_contract_order)
+        result = _broker(client).execute_open(
+            "XAUUSDT", "SHORT", 0.043, 3991.1, 171.6173
+        )
+        self.assertTrue(result.success)
+        self.assertAlmostEqual(result.qty, 0.043)
+        self.assertAlmostEqual(result.price, 3991.1)
+
+    def test_canceled_partial_swap_close_preserves_fill_fraction(self):
+        client = _FakeClient(place_status="CANCELED", order_factory=_partial_contract_order)
+        result = _broker(client).execute_close(
+            "XAUUSDT", "LONG", 0.043, 3991.1, 3989.8, 171.5614
+        )
+        self.assertTrue(result.success)
+        self.assertAlmostEqual(result.qty, 0.020)
+        self.assertAlmostEqual(result.price, 3991.1)
 
 
 if __name__ == "__main__":

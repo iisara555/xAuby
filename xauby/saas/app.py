@@ -769,6 +769,17 @@ def create_app(
         tenant = own_tenant(user)
         return runtime.snapshot(tenant["slug"])
 
+    @app.get("/api/v1/runtime/price")
+    def runtime_price(
+        symbol: str,
+        user: dict[str, Any] = Depends(current_user),
+    ):
+        tenant = own_tenant(user)
+        try:
+            return runtime.price(tenant["slug"], symbol=symbol)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.get("/api/v1/runtime/candles")
     def runtime_candles(
         symbol: str,
@@ -1104,6 +1115,11 @@ def create_app(
             "symbol": context["symbol"],
             "intent": body.intent,
             "side": side,
+            "management_mode": (
+                "strategy_handoff"
+                if body.intent in {"OPEN_LONG", "OPEN_SHORT"}
+                else "strategy"
+            ),
             "mode": "live" if context["live"] else "simulation",
             "mark_price": mark,
             "estimated_quantity": quantity,
@@ -1158,6 +1174,7 @@ def create_app(
                 supervisor.queue_manual_order(
                     tenant["slug"], symbol=payload["symbol"],
                     intent=payload["intent"], request_id=command_id,
+                    management_mode=str(payload.get("management_mode") or "strategy_handoff"),
                 )
             except (OSError, RuntimeError, ValueError) as exc:
                 raise HTTPException(status_code=503, detail="could not queue manual order") from exc
@@ -1182,6 +1199,7 @@ def create_app(
                 "expires_at": row["expires_at"], "command_id": row.get("command_id"),
                 "symbol": payload.get("symbol"), "intent": payload.get("intent"),
                 "side": payload.get("side"), "mode": payload.get("mode"),
+                "management_mode": payload.get("management_mode"),
                 "estimated_quantity": payload.get("estimated_quantity"),
                 "estimated_notional": payload.get("estimated_notional"),
             })

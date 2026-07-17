@@ -87,8 +87,13 @@ class RuntimeGatewayTests(unittest.TestCase):
         self.assertFalse(payload["read_only"])
 
     def test_native_snapshot_exposes_portfolio_currency(self):
-        runtime = self.supervisor.runtime_dir("customer-one") / "logs"
+        tenant_runtime = self.supervisor.runtime_dir("customer-one")
+        runtime = tenant_runtime / "logs"
         runtime.mkdir(parents=True)
+        (tenant_runtime / "usd_thb_rate.json").write_text(json.dumps({
+            "rate": 33.4,
+            "source": "test-cache",
+        }))
         (runtime / "xauby_bot_state.json").write_text(json.dumps({
             "focus_symbol": "XAUUSDT",
             "total_equity_usdt": 180.31,
@@ -107,6 +112,10 @@ class RuntimeGatewayTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["currency"]["equity_usdt"], 180.31)
         self.assertEqual(payload["currency"]["symbol_exposure_usdt"], 2.39)
+        self.assertEqual(payload["currency"]["usd_thb_rate"], 33.4)
+        self.assertEqual(payload["currency"]["rate_source"], "tenant_cache")
+        self.assertAlmostEqual(payload["currency"]["equity_thb"], 6022.354)
+        self.assertAlmostEqual(payload["currency"]["unrealized_pnl_thb"], 79.826)
 
     def test_native_trade_log_defaults_to_all_symbols_and_summarizes(self):
         path = self.supervisor.runtime_dir("customer-one") / "xauby.db"

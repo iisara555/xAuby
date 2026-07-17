@@ -161,9 +161,13 @@ class OrderMixin:
         symbol: Optional[str] = None,
         *,
         manual: bool = False,
+        management_mode: str = "strategy",
     ) -> bool:
         """Open an isolated one-way SHORT; live mode is explicit and fail-closed."""
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        position_management_mode = str(management_mode or "strategy").lower()
+        if position_management_mode not in {"strategy", "strategy_handoff", "manual"}:
+            position_management_mode = "strategy"
         spec = self._pair_registry.get(sym)
         allowed_sides = spec.manual_allowed_sides if spec and manual else spec.allowed_sides if spec else []
         if not spec or "short" not in allowed_sides:
@@ -258,6 +262,7 @@ class OrderMixin:
             highest_price_seen=fill_price, quantity=fill_qty, opened_at=now_iso,
             position_side="SHORT", leverage=leverage, margin_mode="isolated",
             funding_paid=0.0,
+            management_mode=position_management_mode,
             partial_tp_taken=False,
         )
         self._emit_event(EventType.POSITION_OPENED, symbol=sym, position_side="SHORT",
@@ -1310,7 +1315,7 @@ class OrderMixin:
         """
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         position_management_mode = str(management_mode or "strategy").lower()
-        if position_management_mode not in {"strategy", "manual"}:
+        if position_management_mode not in {"strategy", "strategy_handoff", "manual"}:
             position_management_mode = "strategy"
         manual_management = position_management_mode == "manual"
         from xauby.runtime.telegram_control import trading_pause_reason

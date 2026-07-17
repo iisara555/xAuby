@@ -52,10 +52,12 @@ class TenantSupervisor:
         symbol: str,
         intent: str,
         request_id: str,
+        management_mode: str = "strategy_handoff",
     ) -> dict[str, Any]:
         return write_manual_order_request(
             symbol,
             intent,
+            management_mode=management_mode,
             source="saas_control",
             request_id=request_id,
             request_path=str(self.manual_order_path(slug)),

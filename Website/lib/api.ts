@@ -120,6 +120,7 @@ export type OrderPreview = {
     symbol: string;
     intent: string;
     side: string;
+    management_mode?: "strategy" | "strategy_handoff" | "manual";
     mode: string;
     mark_price: number;
     estimated_quantity: number;

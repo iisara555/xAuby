@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 VALID_MANUAL_ACTIONS = {"BUY", "SELL"}
 VALID_MANUAL_INTENTS = {"OPEN_LONG", "OPEN_SHORT", "CLOSE_POSITION"}
-VALID_MANAGEMENT_MODES = {"strategy", "manual"}
+VALID_MANAGEMENT_MODES = {"strategy", "strategy_handoff", "manual"}
 MANUAL_ORDER_MAX_AGE_SECONDS = 120.0
 
 

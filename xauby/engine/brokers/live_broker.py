@@ -43,6 +43,34 @@ def _avg_fill_price(order: Any, filled_qty: float, fallback: float) -> float:
     return float(_order_attr(order, "price", fallback) or fallback)
 
 
+def _filled_base_quantity(
+    order: Any,
+    requested_base_qty: float,
+    filled_order_qty: float,
+) -> float:
+    """Convert a native order fill back to the requested base-asset unit.
+
+    CCXT derivative orders are submitted in contracts after the adapter
+    converts ``amount_in_base=True``. Consequently ``executedQty``/``filled``
+    are native contracts, while engine state and PnL use base quantity. Derive
+    the fill fraction from the submitted native amount so this also handles
+    partial fills without hard-coding a market's contract size.
+    """
+    requested = max(0.0, float(requested_base_qty or 0.0))
+    filled = max(0.0, float(filled_order_qty or 0.0))
+    if requested <= 0 or filled <= 0:
+        return 0.0
+    try:
+        submitted_order_qty = float(_order_attr(order, "amount", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        submitted_order_qty = 0.0
+    if submitted_order_qty > 0:
+        fill_fraction = min(1.0, filled / submitted_order_qty)
+        return requested * fill_fraction
+    # Gateways without an original amount are assumed to report base units.
+    return min(requested, filled)
+
+
 class LiveBroker:
     mode = "live"
 
@@ -129,7 +157,7 @@ class LiveBroker:
             # populate Order.amount on a terminal status — treat that as fully
             # filled rather than misreading "no raw payload" as "not filled".
             filled = float(_order_attr(order, "amount", 0.0) or 0.0)
-        elif status != "FILLED":
+        elif status not in {"FILLED", "CANCELED"}:
             filled = 0.0
         order_id = _order_attr(order, "order_id", "")
         if status in _ORDER_DONE_STATUSES or not order_id:
@@ -157,14 +185,15 @@ class LiveBroker:
             symbol, side, "MARKET", qty, position_side=position_side,
             reduce_only=False, amount_in_base=True,
         )
-        status, filled_qty = self._confirm_fill(symbol, order)
-        if status != "FILLED" or filled_qty <= 0:
+        status, filled_order_qty = self._confirm_fill(symbol, order)
+        filled_base_qty = _filled_base_quantity(order, qty, filled_order_qty)
+        if status != "FILLED" or filled_base_qty <= 0:
             return FillResult(
                 success=False,
                 order_id=_order_attr(order, "order_id", ""),
                 error=f"open order not confirmed filled (status={status or 'unknown'})",
             )
-        return FillResult(True, qty=filled_qty, price=_avg_fill_price(order, filled_qty, price),
+        return FillResult(True, qty=filled_base_qty, price=_avg_fill_price(order, filled_base_qty, price),
                           order_type=_order_attr(order, "order_type", "MARKET"),
                           order_id=_order_attr(order, "order_id", ""))
 
@@ -174,13 +203,14 @@ class LiveBroker:
             symbol, side, "MARKET", qty, position_side=position_side,
             reduce_only=True, amount_in_base=True,
         )
-        status, filled_qty = self._confirm_fill(symbol, order)
-        if filled_qty <= 0 or status not in {"FILLED", "CANCELED"}:
+        status, filled_order_qty = self._confirm_fill(symbol, order)
+        filled_base_qty = _filled_base_quantity(order, qty, filled_order_qty)
+        if filled_base_qty <= 0 or status not in {"FILLED", "CANCELED"}:
             return FillResult(
                 success=False,
                 order_id=_order_attr(order, "order_id", ""),
                 error=f"close order not confirmed filled (status={status or 'unknown'})",
             )
-        return FillResult(True, qty=filled_qty, price=_avg_fill_price(order, filled_qty, price),
+        return FillResult(True, qty=filled_base_qty, price=_avg_fill_price(order, filled_base_qty, price),
                           order_type=_order_attr(order, "order_type", "MARKET"),
                           order_id=_order_attr(order, "order_id", ""))

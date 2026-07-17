@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from xauby.engine.trading import LiteTradingEngine
-from xauby.strategies.signal import close_short, open_short, sell
+from xauby.strategies.signal import close_short, hold, open_short, sell
 from tests.mocks import MockExchangeGateway, MockDatabaseRepository, MockNotificationService
 
 
@@ -126,6 +126,57 @@ class TestShortDispatch(unittest.TestCase):
         calls.close_short.assert_called_once()
         calls.sell.assert_not_called()
         calls.buy.assert_not_called()
+
+    def test_manual_long_handoff_waits_for_green_then_exits_on_later_red(self):
+        state = {
+            "state": "bought", "position_side": "LONG", "entry_price": 100.0,
+            "stop_loss": 0.0, "take_profit": 0.0, "highest_price_seen": 100.0,
+            "quantity": 1.0, "opened_at": "2026-07-17T00:00:00",
+            "management_mode": "strategy_handoff",
+        }
+        engine, sym = self._engine(state=state)
+
+        blocked = self._run_tick(
+            engine, sym, sell("red close", indicators={"cdc_zone_4h": "RED"})
+        )
+        blocked.sell.assert_not_called()
+        self.assertEqual(engine.db.trade_state["management_mode"], "strategy_handoff")
+
+        aligned = self._run_tick(
+            engine, sym, hold("green hold", indicators={"cdc_zone_4h": "GREEN"})
+        )
+        aligned.sell.assert_not_called()
+        self.assertEqual(engine.db.trade_state["management_mode"], "strategy")
+
+        exited = self._run_tick(
+            engine, sym, sell("next red close", indicators={"cdc_zone_4h": "RED"})
+        )
+        exited.sell.assert_called_once()
+
+    def test_manual_short_handoff_waits_for_red_then_exits_on_later_green(self):
+        state = {
+            "state": "bought", "position_side": "SHORT", "entry_price": 100.0,
+            "stop_loss": 0.0, "take_profit": 0.0, "highest_price_seen": 100.0,
+            "quantity": 1.0, "opened_at": "2026-07-17T00:00:00",
+            "management_mode": "strategy_handoff",
+        }
+        engine, sym = self._engine(state=state)
+
+        blocked = self._run_tick(
+            engine, sym, close_short("green close", indicators={"cdc_zone_4h": "GREEN"})
+        )
+        blocked.close_short.assert_not_called()
+
+        aligned = self._run_tick(
+            engine, sym, hold("red hold", indicators={"cdc_zone_4h": "RED"})
+        )
+        aligned.close_short.assert_not_called()
+        self.assertEqual(engine.db.trade_state["management_mode"], "strategy")
+
+        exited = self._run_tick(
+            engine, sym, close_short("next green close", indicators={"cdc_zone_4h": "GREEN"})
+        )
+        exited.close_short.assert_called_once()
 
     def test_long_close_then_reverse_opens_short_after_successful_close(self):
         long_state = {

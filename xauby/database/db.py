@@ -677,6 +677,31 @@ class LiteDB(IDatabaseRepository):
         finally:
             conn.close()
 
+    def transition_management_mode(
+        self,
+        symbol: str,
+        *,
+        expected: str,
+        target: str,
+    ) -> bool:
+        """Atomically arm strategy management for an existing open position."""
+        sym = symbol.upper().replace("_", "")
+        now_str = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        conn = self._get_connection()
+        try:
+            with conn:
+                cursor = conn.execute(
+                    "UPDATE trade_states SET management_mode=?, last_transition_at=? "
+                    "WHERE symbol=? AND state='bought' AND management_mode=?",
+                    (str(target).lower(), now_str, sym, str(expected).lower()),
+                )
+            return cursor.rowcount == 1
+        except Exception as e:
+            logger.error("Failed to transition management mode for %s: %s", sym, e)
+            return False
+        finally:
+            conn.close()
+
     def save_closed_trade(
         self,
         symbol_or_trade: Any,

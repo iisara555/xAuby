@@ -12,6 +12,7 @@ import requests
 
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.supervisor import TenantSupervisor
+from xauby.runtime.paths import usd_thb_rate_path
 
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,24}$")
 _TIMEFRAMES = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"}
@@ -127,29 +128,151 @@ class RuntimeGateway:
                 "age_sec": round(age, 1),
                 "stale": age > 120,
                 "state": state,
-                "currency": self._currency_from_state(state),
+                "currency": self._currency_from_state(
+                    state,
+                    runtime_dir=self.supervisor.runtime_dir(slug),
+                ),
                 "detail": {},
             }
         except (OSError, ValueError, json.JSONDecodeError):
             return self._unavailable("tenant_engine", read_only=False)
 
+    def price(self, slug: str, *, symbol: str) -> dict[str, Any]:
+        """Return a small, tenant-scoped live-price payload for dashboard polling."""
+        clean_symbol = self._symbol(symbol)
+        if self.uses_legacy(slug):
+            try:
+                payload = self._legacy_get("/api/state")
+                state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+                age = float(payload.get("age_sec") or 0.0)
+                return self._price_from_state(
+                    state,
+                    clean_symbol,
+                    source="legacy_webui",
+                    read_only=True,
+                    age_sec=age,
+                    stale=bool(payload.get("stale")) or age > 5.0,
+                )
+            except (OSError, ValueError, RuntimeError, requests.RequestException, json.JSONDecodeError):
+                return {
+                    **self._unavailable("legacy_webui", read_only=True),
+                    "symbol": clean_symbol,
+                    "price": None,
+                    "bid": None,
+                    "ask": None,
+                }
+
+        path = self.supervisor.runtime_dir(slug) / "logs" / "xauby_bot_state.json"
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(state, dict):
+                raise ValueError("runtime state is not an object")
+            age = max(0.0, time.time() - path.stat().st_mtime)
+            return self._price_from_state(
+                state,
+                clean_symbol,
+                source="tenant_engine",
+                read_only=False,
+                age_sec=age,
+                stale=age > 5.0,
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            return {
+                **self._unavailable("tenant_engine", read_only=False),
+                "symbol": clean_symbol,
+                "price": None,
+                "bid": None,
+                "ask": None,
+            }
+
     @classmethod
-    def _currency_from_state(cls, state: dict[str, Any]) -> dict[str, Any]:
+    def _price_from_state(
+        cls,
+        state: dict[str, Any],
+        symbol: str,
+        *,
+        source: str,
+        read_only: bool,
+        age_sec: float,
+        stale: bool,
+    ) -> dict[str, Any]:
+        focus = cls._focus_state(state, symbol)
+        price = focus.get("current_price") or (focus.get("position") or {}).get("mark_price")
+        return {
+            "ok": price is not None,
+            "source": source,
+            "read_only": read_only,
+            "as_of": time.time(),
+            "age_sec": round(max(0.0, age_sec), 1),
+            "stale": bool(stale),
+            "symbol": symbol,
+            "price": price,
+            "bid": focus.get("bid"),
+            "ask": focus.get("ask"),
+            "timestamp": focus.get("timestamp") or state.get("timestamp"),
+        }
+
+    def _currency_from_state(
+        self,
+        state: dict[str, Any],
+        *,
+        runtime_dir: Path | None = None,
+    ) -> dict[str, Any]:
         focus_symbol = str(state.get("focus_symbol") or state.get("symbol") or "")
-        focus = cls._focus_state(state, focus_symbol)
+        focus = self._focus_state(state, focus_symbol)
         breakdown = focus.get("equity_breakdown") if isinstance(focus.get("equity_breakdown"), dict) else {}
         portfolio = focus.get("portfolio") if isinstance(focus.get("portfolio"), dict) else {}
         equity = breakdown.get("portfolio_total_usdt") or focus.get("total_equity_usdt") or state.get("total_equity_usdt")
         cash = breakdown.get("usdt_balance_usdt") or portfolio.get("USDT") or portfolio.get("USD")
+        stored_currency = state.get("currency") if isinstance(state.get("currency"), dict) else {}
+        rate = stored_currency.get("usd_thb_rate")
+        rate_source = "state" if rate else ""
+        if not rate:
+            rate_paths: list[Path] = []
+            if runtime_dir is not None:
+                rate_paths.append(runtime_dir / "usd_thb_rate.json")
+            fallback_path = Path(usd_thb_rate_path())
+            if not fallback_path.is_absolute():
+                fallback_path = self.settings.project_root / fallback_path
+            if fallback_path not in rate_paths:
+                rate_paths.append(fallback_path)
+            for rate_path in rate_paths:
+                try:
+                    cached = json.loads(rate_path.read_text(encoding="utf-8"))
+                    rate = cached.get("rate")
+                    if rate:
+                        rate_source = "tenant_cache" if runtime_dir and rate_path.parent == runtime_dir else "cache"
+                        break
+                except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                    continue
+        try:
+            rate_value = float(rate) if rate is not None else None
+        except (TypeError, ValueError):
+            rate_value = None
+
+        def convert(value: Any) -> float | None:
+            try:
+                amount = float(value)
+            except (TypeError, ValueError):
+                return None
+            return amount * rate_value if rate_value and rate_value > 0 else None
+
+        pnl = breakdown.get("unrealized_pnl_usdt")
+        exposure = breakdown.get("symbol_exposure_usdt")
         return {
             "equity_usdt": equity,
-            "equity_thb": None,
+            "equity_thb": convert(equity),
+            "usd_thb_rate": rate_value,
+            "rate_source": rate_source,
             "usdt_balance_usdt": cash,
+            "usdt_balance_thb": convert(cash),
             "base_asset": breakdown.get("base_asset") or "",
             "base_quantity": breakdown.get("base_quantity"),
             "base_value_usdt": breakdown.get("base_value_usdt"),
-            "unrealized_pnl_usdt": breakdown.get("unrealized_pnl_usdt"),
-            "symbol_exposure_usdt": breakdown.get("symbol_exposure_usdt"),
+            "unrealized_pnl_usdt": pnl,
+            "unrealized_pnl_thb": convert(pnl),
+            "symbol_exposure_usdt": exposure,
+            "symbol_exposure_thb": convert(exposure),
         }
 
     def candles(self, slug: str, *, symbol: str, timeframe: str, limit: int) -> dict[str, Any]:

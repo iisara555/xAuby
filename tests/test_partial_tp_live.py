@@ -13,7 +13,9 @@ import unittest
 from unittest.mock import MagicMock
 
 from xauby.database.db import LiteDB
+from xauby.domain.models import Order
 from xauby.engine.brokers.base import FillResult
+from xauby.engine.brokers.live_broker import LiveBroker
 from xauby.engine.brokers.sim_broker import SimBroker
 from xauby.engine.loop import LoopMixin
 from xauby.engine.orders import OrderMixin
@@ -35,6 +37,22 @@ class _FakeBroker:
         if self.fail:
             return FillResult(False, error="broker down")
         return FillResult(True, qty=self.fill_qty or qty, price=self.fill_price or price, fees=self.fees)
+
+
+class _ContractCloseClient:
+    capabilities = {"swap": True}
+
+    def place_order(self, *args, **kwargs):
+        return Order(
+            order_id="contract-close", client_id="", symbol="XAUUSDT",
+            side="SELL", order_type="MARKET", price=3991.1,
+            amount=43.0, status="FILLED",
+            raw_payload={
+                "executedQty": 43.0,
+                "filled": 43.0,
+                "cost": 0.043 * 3991.1,
+            },
+        )
 
 
 class _Engine(OrderMixin):
@@ -301,6 +319,24 @@ class TestSwapLongClose(unittest.TestCase):
         self.assertEqual(trade["trigger"], "4H zone turned RED")
         self.assertAlmostEqual(trade["exit_price"], 2240.0)
         self.assertEqual(self.db.get_trade_state("XAUUSDT").state, "idle")
+
+    def test_contract_fill_records_base_quantity_and_usdt_pnl(self):
+        broker = LiveBroker(_ContractCloseClient(), lambda *a, **k: None)
+        engine = _Engine(self.db, broker)
+        state = _bought_state(
+            self.db, side="LONG", qty=0.043, entry=3989.8, funding=0.0
+        )
+
+        ok = engine.execute_sell(
+            state, 3991.1, "4H zone turned RED", symbol="XAUUSDT"
+        )
+
+        self.assertTrue(ok)
+        trade = self.db.get_closed_trades("XAUUSDT", limit=1)[0]
+        self.assertAlmostEqual(trade["amount"], 0.043)
+        self.assertAlmostEqual(trade["entry_cost"], 171.5614)
+        self.assertAlmostEqual(trade["gross_exit"], 171.6173)
+        self.assertLess(abs(trade["net_pnl"]), 1.0)
 
 
 class TestSimBrokerPartialShort(unittest.TestCase):

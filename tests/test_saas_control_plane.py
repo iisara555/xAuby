@@ -108,6 +108,35 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertTrue(fresh.json()["ok"])
         self.assertEqual(fresh.json()["state"]["focus_symbol"], "XAUUSDT")
 
+    def test_runtime_price_is_tenant_scoped_and_lightweight(self):
+        runtime = self.supervisor.runtime_dir("owner-itsara") / "logs"
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / "xauby_bot_state.json").write_text(
+            json.dumps({
+                "focus_symbol": "XAUUSDT",
+                "by_symbol": {
+                    "XAUUSDT": {
+                        "current_price": 3991.25,
+                        "bid": 3991.2,
+                        "ask": 3991.3,
+                        "timestamp": "2026-07-17T00:00:00",
+                    }
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        response = self.client.get(
+            "/api/v1/runtime/price", params={"symbol": "XAUUSDT"}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["symbol"], "XAUUSDT")
+        self.assertEqual(payload["price"], 3991.25)
+        self.assertNotIn("state", payload)
+        self.assertNotIn("currency", payload)
+
     def test_runtime_queries_validate_public_inputs(self):
         bad_symbol = self.client.get(
             "/api/v1/runtime/candles", params={"symbol": "../secret", "timeframe": "4h"}
@@ -117,6 +146,10 @@ class SaaSControlPlaneTests(unittest.TestCase):
             "/api/v1/runtime/candles", params={"symbol": "XAUUSDT", "timeframe": "99h"}
         )
         self.assertEqual(bad_timeframe.status_code, 422)
+        bad_price_symbol = self.client.get(
+            "/api/v1/runtime/price", params={"symbol": "../secret"}
+        )
+        self.assertEqual(bad_price_symbol.status_code, 422)
 
     def test_backend_root_exposes_service_metadata_only(self):
         response = self.client.get("/")
@@ -286,6 +319,7 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(preview.status_code, 200, preview.text)
         payload = preview.json()["preview"]
         self.assertEqual(payload["mode"], "simulation")
+        self.assertEqual(payload["management_mode"], "strategy_handoff")
         self.assertEqual(payload["sizing_mode"], "cdc_pure")
         self.assertAlmostEqual(payload["allocation_pct"], 95.0)
         self.assertAlmostEqual(payload["estimated_notional"], 9500.0)

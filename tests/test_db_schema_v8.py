@@ -84,6 +84,29 @@ class TestSchemaV8Migration(unittest.TestCase):
             state = db.get_trade_state("BTCUSDT")
             self.assertEqual(state.management_mode, "manual")
 
+    def test_strategy_handoff_transition_is_conditional_and_persistent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = LiteDB(os.path.join(tmp, "test.db"))
+            db.save_trade_state(
+                symbol="XAUUSDT",
+                state="bought",
+                entry_price=4000.0,
+                quantity=0.04,
+                management_mode="strategy_handoff",
+            )
+
+            self.assertTrue(
+                db.transition_management_mode(
+                    "XAUUSDT", expected="strategy_handoff", target="strategy"
+                )
+            )
+            self.assertEqual(db.get_trade_state("XAUUSDT").management_mode, "strategy")
+            self.assertFalse(
+                db.transition_management_mode(
+                    "XAUUSDT", expected="strategy_handoff", target="strategy"
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -193,6 +193,25 @@ class MockDatabaseRepository(IDatabaseRepository):
             partial_tp_taken=partial_tp_taken,
         )
 
+    def transition_management_mode(
+        self,
+        symbol: str,
+        *,
+        expected: str,
+        target: str,
+    ) -> bool:
+        state = self.trade_state
+        if state is None or str(state.get("state") or "") != "bought":
+            return False
+        if str(state.get("management_mode") or "strategy").lower() != expected.lower():
+            return False
+        if isinstance(state, Position):
+            from dataclasses import replace
+            self.trade_state = replace(state, management_mode=target.lower())
+        else:
+            self.trade_state = {**state, "management_mode": target.lower()}
+        return True
+
     def save_closed_trade(self, trade: Dict[str, Any] = None, **kwargs) -> None:
         self.closed_trades.append(dict(trade or kwargs))
 

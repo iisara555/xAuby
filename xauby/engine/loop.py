@@ -129,7 +129,7 @@ class LoopMixin:
         action = request["action"]
         intent = str(request.get("intent") or ("OPEN_LONG" if action == "BUY" else "CLOSE_POSITION"))
         management_mode = str(request.get("management_mode") or "strategy").lower()
-        if management_mode not in {"strategy", "manual"}:
+        if management_mode not in {"strategy", "strategy_handoff", "manual"}:
             management_mode = "strategy"
         request_id = str(request.get("request_id") or "")
         reason = ""
@@ -170,7 +170,11 @@ class LoopMixin:
                         stop_loss_price=0.0,
                     )
                     success = self.execute_open_short(
-                        signal, ticker_price, symbol=symbol, manual=True
+                        signal,
+                        ticker_price,
+                        symbol=symbol,
+                        manual=True,
+                        management_mode=management_mode,
                     )
                     reason = "Manual SHORT submitted" if success else "Manual SHORT execution failed"
                 else:
@@ -180,7 +184,11 @@ class LoopMixin:
                         symbol=symbol,
                         management_mode=management_mode,
                     )
-                    label = "strategy-managed" if management_mode == "strategy" else "manual-managed"
+                    label = {
+                        "strategy": "strategy-managed",
+                        "strategy_handoff": "waiting for strategy alignment",
+                        "manual": "manual-managed",
+                    }[management_mode]
                     reason = f"Manual BUY submitted ({label})" if success else "Manual BUY execution failed"
         elif state.get("state") != "bought":
             reason = f"Manual close rejected: {symbol} has no tracked position"
@@ -1860,7 +1868,8 @@ class LoopMixin:
                 if (
                     route.force_close
                     and has_pos
-                    and str(state_for_pos.get("management_mode") or "strategy").lower() != "manual"
+                    and str(state_for_pos.get("management_mode") or "strategy").lower()
+                    not in {"manual", "strategy_handoff"}
                 ):
                     if str(state_for_pos.get("position_side") or "LONG").upper() == "SHORT":
                         self.execute_close_short(state_for_pos, ticker_price,
@@ -1917,6 +1926,43 @@ class LoopMixin:
             and str(state.get("management_mode") or "strategy").lower() == "manual"
         ):
             self.last_log_message = "Manual-managed position: waiting for Manual SELL"
+            self.update_state_json(state, indicators, symbol=sym)
+            return
+
+        if (
+            state["state"] == "bought"
+            and str(state.get("management_mode") or "strategy").lower()
+            == "strategy_handoff"
+        ):
+            side = str(state.get("position_side") or "LONG").upper()
+            expected_zone = "RED" if side == "SHORT" else "GREEN"
+            observed_zone = str(indicators.get("cdc_zone_4h") or "UNKNOWN").upper()
+            if observed_zone == expected_zone:
+                armed = self.db.transition_management_mode(
+                    sym,
+                    expected="strategy_handoff",
+                    target="strategy",
+                )
+                if armed:
+                    self.last_log_message = (
+                        f"Manual {side} aligned with CDC {observed_zone}; "
+                        "strategy management starts next tick"
+                    )
+                    self._emit_event(
+                        "manual_strategy_handoff_armed",
+                        symbol=sym,
+                        position_side=side,
+                        zone=observed_zone,
+                    )
+                    state = self.db.get_trade_state(sym)
+                else:
+                    self.last_log_message = (
+                        f"Manual {side} alignment detected; handoff transition pending"
+                    )
+            else:
+                self.last_log_message = (
+                    f"Manual {side} waiting for CDC {expected_zone} before strategy handoff"
+                )
             self.update_state_json(state, indicators, symbol=sym)
             return
 
