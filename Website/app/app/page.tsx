@@ -12,6 +12,26 @@ import { useCurrentUser } from "@/components/app-shell";
 import { api, csrfHeaders, formatNumber, valueAt } from "@/lib/api";
 import { useBot, useCatalog, useProfile, useSnapshot } from "@/lib/hooks";
 
+function marketSummary(zone: string, stale: boolean, loading: boolean) {
+  if (loading) return "Reading the market…";
+  if (stale) return "Market data delayed.";
+
+  switch (zone.toUpperCase()) {
+    case "GREEN":
+      return "Bullish momentum.";
+    case "BLUE":
+    case "LBLUE":
+      return "Recovery forming.";
+    case "YELLOW":
+    case "ORANGE":
+      return "Momentum fading.";
+    case "RED":
+      return "Bearish pressure.";
+    default:
+      return "Reading the market…";
+  }
+}
+
 export default function DashboardPage() {
   const user = useCurrentUser();
   const { data: bot, mutate: mutateBot } = useBot();
@@ -70,6 +90,7 @@ export default function DashboardPage() {
       <PageHeading
         eyebrow="Pilot workspace"
         title={`Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, ${user.display_name || user.email.split("@")[0]}`}
+        description={marketSummary(zone, Boolean(snapshot?.stale), !snapshot)}
         aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={bot?.tenant.live_status === "active"} shortLiveCertified={Boolean(target?.manual_short_live_certified)} engineRunning={running} profileReady={Boolean(profile?.profile)} /></div>}
       />
 
