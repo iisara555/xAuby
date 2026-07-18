@@ -49,6 +49,10 @@ export default function SettingsPage() {
   const [nowSeconds, setNowSeconds] = useState<number | null>(null);
   const selectedTarget = useMemo(() => catalog?.targets.find((item) => item.id === targetId), [catalog, targetId]);
   const selectedPreset = useMemo(() => catalog?.presets.find((item) => item.target_id === targetId), [catalog, targetId]);
+  const activePresetId = profile?.profile?.active_preset_id ?? null;
+  const activePreset = useMemo(() => catalog?.presets.find((item) => item.id === activePresetId), [catalog, activePresetId]);
+  const selectionIsActive = Boolean(selectedPreset && activePresetId && selectedPreset.id === activePresetId);
+  const selectionPending = Boolean(selectedPreset && activePresetId && selectedPreset.id !== activePresetId);
   const maxPositionPct = Number(profile?.profile?.risk?.max_position_per_trade_pct ?? 10);
   const cdcPure = Boolean(selectedPreset?.cdc_pure_certified);
   const exchangeTestFresh = bot?.exchange_connection?.status === "tested"
@@ -196,7 +200,8 @@ export default function SettingsPage() {
         </Tabs.Content>
 
         <Tabs.Content value="trading" className="settings-panel card">
-          <div className="section-heading"><div><span>Certified preset</span><h2>Choose one focused strategy</h2></div><StatusPill label="1 active pair" /></div>
+          <div className="section-heading"><div><span>Certified preset</span><h2>Choose one focused strategy</h2></div><StatusPill label={activePreset ? `Active: ${activePreset.label}` : "No preset saved yet"} tone={activePreset ? "good" : "warn"} /></div>
+          <p className="section-copy">The card marked <strong>Active</strong> is the strategy your engine runs right now. Select a different card and save to switch — switching while Live is on stops Live mode until you approve it again.</p>
           <div className="preset-grid">
             {catalog?.targets.map((target) => {
               const preset = catalog.presets.find((item) => item.target_id === target.id);
@@ -207,6 +212,8 @@ export default function SettingsPage() {
                   <span className="preset-option-head">
                     <span className="radio-dot">{targetId === target.id && <Check size={13} />}</span>
                     <span className="preset-copy"><strong>{preset.label}</strong><small>{target.label} · {preset.symbol} · {preset.strategy.replaceAll("_", " ")}</small></span>
+                    {preset.id === activePresetId && <StatusPill label="Active" tone="good" />}
+                    {targetId === target.id && preset.id !== activePresetId && activePresetId != null && <StatusPill label="Selected · not saved" tone="warn" />}
                     <em>{preset.primary_timeframe} / {preset.confirm_timeframe}</em>
                   </span>
                   <span className="preset-backtest">
@@ -227,7 +234,10 @@ export default function SettingsPage() {
           <div className="risk-summary">
             <div><span>Strategy</span><strong>{cdcPure ? "CDC Pure · long only" : selectedPreset?.market_type === "swap" ? "Long certified" : "Spot long"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{cdcPure ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
           </div>
-          <button className="button-primary" onClick={saveProfile} disabled={busy || !selectedPreset}>Save preset</button>
+          {selectionPending && <p className="field-help preset-switch-hint" role="status">You selected <strong>{selectedPreset?.label}</strong>. It is not active until you press the button below{bot?.tenant.live_status === "active" ? " — this will stop Live mode until you re-approve it" : ""}.</p>}
+          <button className="button-primary" onClick={saveProfile} disabled={busy || !selectedPreset || selectionIsActive}>
+            {selectionIsActive ? "This preset is already active" : selectionPending ? `Switch to ${selectedPreset?.label}` : "Save preset"}
+          </button>
         </Tabs.Content>
 
         <Tabs.Content value="exchange" className="settings-panel card">

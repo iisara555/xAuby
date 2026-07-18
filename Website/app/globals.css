@@ -307,7 +307,10 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .profile-save-row { display: flex; align-items: center; gap: 14px; }.profile-save-row .field-help { margin: 0; }
 
 .preset-option { display: block; padding: 16px; }
-.preset-option-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; text-align: left; }
+.preset-option-head { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; text-align: left; }
+.preset-option-head .status-pill { justify-self: end; }
+.preset-switch-hint { margin: 14px 0 10px; color: #d6b96f; font-size: 12px; line-height: 1.5; }
+.settings-panel .section-copy { margin: 2px 0 18px; max-width: 70ch; }
 .preset-copy { min-width: 0; display: grid; gap: 4px; }.preset-copy strong { font-size: 13px; }.preset-copy small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; text-transform: capitalize; white-space: nowrap; }
 .preset-backtest { margin-top: 15px; display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 1px !important; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--line); }.preset-backtest > span { min-height: 58px; padding: 9px; display: grid; align-content: space-between; background: #11110f; }.preset-option.selected .preset-backtest > span { background: rgba(12,10,9,.48); }.preset-backtest small { color: var(--muted); font-size: 8px; letter-spacing: .04em; text-transform: uppercase; }.preset-backtest strong { font-size: 11px; font-variant-numeric: tabular-nums; }.preset-backtest .backtest-validated { color: var(--good); }.preset-backtest .backtest-insufficient { color: var(--warn); }.preset-backtest .backtest-pending { color: var(--muted); }
 .preset-evidence { margin-top: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); text-align: left; }.preset-evidence > span { padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; font-size: 8px; font-variant-numeric: tabular-nums; }.preset-evidence > small { margin-left: auto; color: #706d67; font-size: 8px; }
@@ -322,7 +325,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
   .mobile-health-strip .server-health { padding: 5px 10px; border: 0; }.mobile-health-strip .server-health-grid { grid-template-columns: repeat(4, 1fr); gap: 5px; }.mobile-health-strip .server-health-item { min-height: 41px; padding: 5px 8px; grid-template-columns: auto auto 1fr; gap: 5px; }.mobile-health-strip .server-health-item small { color: currentColor; font-size: 9px; }.mobile-health-strip .server-health-item strong { grid-column: auto; text-align: right; font-size: 10px; }
   .profile-photo-editor { align-items: flex-start; }.profile-fields { grid-template-columns: 1fr; }.profile-save-row { align-items: flex-start; flex-direction: column; }
   .preset-backtest { grid-template-columns: 1fr; }.preset-backtest > span { min-height: 48px; }.preset-evidence > small { width: 100%; margin-left: 0; }
-  .preset-option-head { grid-template-columns: auto 1fr; }.preset-option-head > em { grid-column: 2; justify-self: start; }
+  .preset-option-head { grid-template-columns: auto 1fr auto; }.preset-option-head > em { grid-column: 2; justify-self: start; }.preset-option-head .status-pill { grid-row: 1; grid-column: 3; }
 }
 
 /* Shared cut-corner language for rectangular controls and detail surfaces. */
