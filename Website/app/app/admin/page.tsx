@@ -156,7 +156,7 @@ export default function AdminPage() {
             </div>
           )}
         </article>
-        <article className="card users-card"><div className="section-heading"><div><span>Capacity</span><h2>Users</h2></div><UsersRound size={22} /></div><div className="user-list">{data?.items.map((pilot) => <div key={pilot.id}><span className="avatar">{pilot.email[0].toUpperCase()}</span><span><strong>{pilot.email}</strong><small>{pilot.role === "platform_admin" ? "Owner" : "Pilot"}</small></span><StatusPill label={pilot.account_status} tone={pilot.account_status === "active" ? "good" : "warn"} /></div>)}</div></article>
+        <article className="card users-card"><div className="section-heading"><div><span>Capacity</span><h2>Users</h2></div><UsersRound size={22} /></div><div className="user-list">{data?.items.map((pilot) => <div key={pilot.id}><span className="avatar">{(pilot.email?.[0] ?? "?").toUpperCase()}</span><span><strong>{pilot.email}</strong><small>{pilot.role === "platform_admin" ? "Owner" : "Pilot"}</small></span><StatusPill label={pilot.account_status} tone={pilot.account_status === "active" ? "good" : "warn"} /></div>)}</div></article>
       </section>
     </div>
   );

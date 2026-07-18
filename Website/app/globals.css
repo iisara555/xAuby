@@ -149,7 +149,6 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .hero-card .hero-value small { color: var(--cream-muted); }
 .metric-change { margin-top: 12px; font-size: 12px; }.metric-change.positive { color: #90b99a; }.metric-change.negative { color: #e07a6d; }
 .hero-card .metric-change.positive { color: #3f6f4d; }.hero-card .metric-change.negative { color: #9d3f33; }
-.spark-chart { width: 100%; height: 112px; margin: 20px 0 7px; overflow: visible; }
 .hero-foot { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid rgba(22,22,20,.14); }
 .hero-foot > div { padding-top: 12px; display: grid; gap: 4px; }.hero-foot > div + div { padding-left: 20px; border-left: 1px solid var(--line); }
 .hero-foot span, .metric-list dt { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }.hero-foot strong { font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -383,6 +382,85 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
   }
 
   :is(.chart-timeframes button, .tab-list button, .activity-tabs button) { border-radius: 0; }
+
+  /* clip-path trims the 1px border along the cut diagonals; redraw those two
+     segments so bordered surfaces keep a continuous outline. */
+  :where(
+    .card,
+    .setup-banner,
+    .rail-link,
+    .chart-timeframes,
+    .tab-list,
+    .preset-option,
+    .risk-summary,
+    .inline-security-form,
+    .dialog-content,
+    .invite-result,
+    .position-pnl,
+    .position-protection,
+    .portfolio-stat-grid,
+    .strategy-mini-grid,
+    .market-levels,
+    .context-facts,
+    .signal-facts,
+    .compact-checklist li,
+    .signal-protection,
+    .order-intents button,
+    .preview-grid,
+    .activity-tabs,
+    .trade-summary,
+    .server-health-item,
+    .profile-photo-editor,
+    .preset-backtest,
+    .button-secondary
+  ) {
+    position: relative;
+    --cut-line: var(--line);
+    --cut-size: var(--detail-cut);
+  }
+  .card { --cut-size: var(--card-cut); }
+  .button-secondary { --cut-size: var(--control-cut); --cut-line: var(--line-strong); }
+  .setup-banner { --cut-line: rgba(255,67,26,.28); }
+  .position-pnl { --cut-line: rgba(255,67,26,.25); }
+  .hero-card, .metric-list { --cut-line: transparent; }
+  :is(
+    .card,
+    .setup-banner,
+    .rail-link,
+    .chart-timeframes,
+    .tab-list,
+    .preset-option,
+    .risk-summary,
+    .inline-security-form,
+    .dialog-content,
+    .invite-result,
+    .position-pnl,
+    .position-protection,
+    .portfolio-stat-grid,
+    .strategy-mini-grid,
+    .market-levels,
+    .context-facts,
+    .signal-facts,
+    .compact-checklist li,
+    .signal-protection,
+    .order-intents button,
+    .preview-grid,
+    .activity-tabs,
+    .trade-summary,
+    .server-health-item,
+    .profile-photo-editor,
+    .preset-backtest,
+    .button-secondary
+  )::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background:
+      linear-gradient(135deg, transparent calc(50% - 1px), var(--cut-line) calc(50% - 1px), var(--cut-line) calc(50% + 1px), transparent calc(50% + 1px)) no-repeat left top / var(--cut-size) var(--cut-size),
+      linear-gradient(135deg, transparent calc(50% - 1px), var(--cut-line) calc(50% - 1px), var(--cut-line) calc(50% + 1px), transparent calc(50% + 1px)) no-repeat right bottom / var(--cut-size) var(--cut-size);
+  }
 
   @media (max-width: 640px) {
     .trade-drawer {

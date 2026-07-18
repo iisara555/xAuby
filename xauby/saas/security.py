@@ -210,9 +210,11 @@ def verify_trade_pin(encoded: str, pin: str) -> bool:
     try:
         from argon2 import PasswordHasher
         from argon2.exceptions import InvalidHashError, VerifyMismatchError
-
+    except ImportError:
+        return False
+    try:
         return PasswordHasher().verify(encoded, pin)
-    except (VerifyMismatchError, InvalidHashError, ValueError, TypeError, ImportError, OSError):
+    except (VerifyMismatchError, InvalidHashError, ValueError, TypeError, OSError):
         return False
 
 

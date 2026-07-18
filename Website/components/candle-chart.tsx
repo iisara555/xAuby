@@ -132,7 +132,28 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
       </div>
       <div className="chart-stage" ref={chartRef}>
       {isLoading && !chart ? <div className="chart-empty">Loading market data…</div> : error || !chart ? <div className="chart-empty">Market data is temporarily unavailable.</div> : (
-        <svg className="candle-chart-svg" viewBox={`0 0 ${chart.width} ${chart.height}`} role="img" aria-label={`${symbol} ${timeframe} candlestick chart`}>
+        <svg
+          className="candle-chart-svg"
+          viewBox={`0 0 ${chart.width} ${chart.height}`}
+          role="img"
+          aria-label={`${symbol} ${timeframe} candlestick chart. Use arrow keys to inspect candles.`}
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (!candles.length) return;
+            const last = candles.length - 1;
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+              event.preventDefault();
+              const step = event.key === "ArrowLeft" ? -1 : 1;
+              setSelectedIndex((current) => Math.min(last, Math.max(0, (current ?? last) + step)));
+            } else if (event.key === "Home") {
+              event.preventDefault(); setSelectedIndex(0);
+            } else if (event.key === "End") {
+              event.preventDefault(); setSelectedIndex(last);
+            } else if (event.key === "Escape") {
+              setSelectedIndex(null);
+            }
+          }}
+        >
           {[0, 1, 2, 3, 4].map((step) => {
             const value = chart.ceiling - ((chart.ceiling - chart.floor) * step) / 4;
             return <g key={step}><line x1={chart.plot.left} x2={chart.width - chart.plot.right} y1={chart.y(value)} y2={chart.y(value)} className="chart-grid-line" /><text x={chart.width - chart.plot.right + 8} y={chart.y(value) + 4} className="chart-axis-label">{formatNumber(value, 0)}</text></g>;

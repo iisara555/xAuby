@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, X } from "lucide-react";
 import { api, csrfHeaders, formatNumber, OrderPreview, User } from "@/lib/api";
 
@@ -34,6 +34,16 @@ export function TradeDrawer({
   const [preview, setPreview] = useState<OrderPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!preview) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [preview]);
+
+  const secondsLeft = preview ? Math.max(0, Math.round(preview.expires_at - now / 1000)) : 0;
 
   const selectedIntent: Intent = positionOpen
     ? "CLOSE_POSITION"
@@ -93,10 +103,10 @@ export function TradeDrawer({
           {profileReady && !engineRunning && <p className="form-error" role="status">Start the engine before reviewing a manual order.</p>}
           <button className="button-primary wide" disabled={busy || !canReview} onClick={createPreview}>{busy ? "Calculating…" : "Review order"}</button>
         </> : <form className="form-stack order-confirm" onSubmit={confirm} noValidate>
-          <div className="preview-grid"><span>Intent<strong>{preview.preview.intent.replaceAll("_", " ")}</strong></span><span>Mode<strong>{preview.preview.mode}</strong></span><span>Management<strong>{preview.preview.management_mode === "strategy_handoff" ? "Strategy handoff" : preview.preview.management_mode ?? "Strategy"}</strong></span><span>Mark price<strong>{formatNumber(preview.preview.mark_price)}</strong></span><span>Quantity<strong>{formatNumber(preview.preview.estimated_quantity, 6)}</strong></span><span>Est. notional<strong>{formatNumber(preview.preview.estimated_notional)} USDT</strong></span><span>Sizing<strong>{preview.preview.sizing_mode === "cdc_pure" ? `${formatNumber(preview.preview.allocation_pct ?? 0, 0)}% equity` : preview.preview.sizing_mode === "risk_based" ? "Risk-based" : "Position"}</strong></span><span>Expires<strong>60 seconds</strong></span></div>
+          <div className="preview-grid"><span>Intent<strong>{preview.preview.intent.replaceAll("_", " ")}</strong></span><span>Mode<strong>{preview.preview.mode}</strong></span><span>Management<strong>{preview.preview.management_mode === "strategy_handoff" ? "Strategy handoff" : preview.preview.management_mode ?? "Strategy"}</strong></span><span>Mark price<strong>{formatNumber(preview.preview.mark_price)}</strong></span><span>Quantity<strong>{formatNumber(preview.preview.estimated_quantity, 6)}</strong></span><span>Est. notional<strong>{formatNumber(preview.preview.estimated_notional)} USDT</strong></span><span>Sizing<strong>{preview.preview.sizing_mode === "cdc_pure" ? `${formatNumber(preview.preview.allocation_pct ?? 0, 0)}% equity` : preview.preview.sizing_mode === "risk_based" ? "Risk-based" : "Position"}</strong></span><span>Expires<strong>{secondsLeft > 0 ? `${secondsLeft} seconds` : "Expired"}</strong></span></div>
           {preview.preview.management_mode === "strategy_handoff" && <p className="drawer-note">The position waits for CDC to align with its side before strategy exits are enabled.</p>}
           <label>Trade PIN (8–12 digits)<input name="tradePin" inputMode="numeric" minLength={8} maxLength={12} type="password" required autoComplete="off" /></label>
-          <div className="dialog-actions"><button type="button" className="button-secondary" onClick={() => setPreview(null)}>Back</button><button className="button-primary" disabled={busy}>{busy ? "Queuing…" : "Confirm order"}</button></div>
+          <div className="dialog-actions"><button type="button" className="button-secondary" onClick={() => setPreview(null)}>Back</button><button className="button-primary" disabled={busy || secondsLeft <= 0}>{busy ? "Queuing…" : secondsLeft <= 0 ? "Preview expired" : "Confirm order"}</button></div>
         </form>}
         {message && <p className="form-error" role="status">{message}</p>}
       </aside>
