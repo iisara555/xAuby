@@ -31,21 +31,34 @@ function number(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function ema(values: number[], period: number): Array<number | null> {
+function ema(values: Array<number | null>, period: number): Array<number | null> {
   const series: Array<number | null> = Array(values.length).fill(null);
   if (period <= 0 || values.length < period) return series;
-  let previous = values.slice(0, period).reduce((sum, value) => sum + value, 0) / period;
+  const seed = values.slice(0, period).filter((value): value is number => value != null);
+  if (!seed.length) return series;
+  let previous = seed.reduce((sum, value) => sum + value, 0) / seed.length;
   series[period - 1] = previous;
   const multiplier = 2 / (period + 1);
   for (let index = period; index < values.length; index += 1) {
-    previous = (values[index] - previous) * multiplier + previous;
+    const value = values[index];
+    if (value == null) continue;
+    previous = (value - previous) * multiplier + previous;
     series[index] = previous;
   }
   return series;
 }
 
-function indicatorSeries(candles: Candle[], key: "ema12" | "ema26", period: number): Array<number | null> {
-  const fallback = ema(candles.map((item) => number(item.close) ?? 0), period);
+function indicatorSeries(
+  candles: Candle[],
+  key: "ema12" | "ema26",
+  period: number,
+  apSmoothing: number,
+): Array<number | null> {
+  const closes = candles.map((item) => number(item.close));
+  // CDC Action Zone V3 calculates both EMAs from AP = EMA(close, apSmoothing).
+  // Use the live strategy setting so 1D and mobile render the same values as the engine.
+  const source = apSmoothing >= 2 ? ema(closes, apSmoothing) : closes;
+  const fallback = ema(source, period);
   return candles.map((item, index) => number(item[key]) ?? fallback[index]);
 }
 
@@ -58,11 +71,12 @@ function formatCandleTime(timestamp: unknown, timeframe: (typeof TIMEFRAMES)[num
     : { month: "short", day: "numeric", hour: "2-digit" }).format(date);
 }
 
-export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; currentPrice: unknown; zone: string }) {
+export function CandleChart({ symbol, currentPrice, zone, apSmoothing }: { symbol: string; currentPrice: unknown; zone: string; apSmoothing?: unknown }) {
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("4h");
   const [containerWidth, setContainerWidth] = useState(760);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
+  const indicatorSmoothing = Math.max(1, Math.min(50, Math.trunc(number(apSmoothing) ?? 1)));
   const key = `/api/v1/runtime/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=${EMA_WARMUP_CANDLES}`;
   const { data, error, isLoading } = useSWR<CandleResponse>(key, api, {
     refreshInterval: () => (typeof document === "undefined" || document.visibilityState === "visible" ? 15000 : 0),
@@ -95,10 +109,10 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
       candles: allCandles.slice(visibleStart),
       // Keep the warm-up history out of view, but use it for stable indicators.
       // Otherwise mobile widths re-seed both EMAs from a different first candle.
-      fast: indicatorSeries(allCandles, "ema12", 12).slice(visibleStart),
-      slow: indicatorSeries(allCandles, "ema26", 26).slice(visibleStart),
+      fast: indicatorSeries(allCandles, "ema12", 12, indicatorSmoothing).slice(visibleStart),
+      slow: indicatorSeries(allCandles, "ema26", 26, indicatorSmoothing).slice(visibleStart),
     };
-  }, [allCandles, visibleCount]);
+  }, [allCandles, indicatorSmoothing, visibleCount]);
   const latestFast = fast[fast.length - 1];
   const latestSlow = slow[slow.length - 1];
   const livePrice = number(priceData?.price) ?? number(currentPrice);
@@ -164,6 +178,7 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
           viewBox={`0 0 ${chart.width} ${chart.height}`}
           data-ema12={latestFast ?? undefined}
           data-ema26={latestSlow ?? undefined}
+          data-ap-smoothing={indicatorSmoothing}
           role="img"
           aria-label={`${symbol} ${timeframe} candlestick chart. Use arrow keys to inspect candles.`}
           tabIndex={0}

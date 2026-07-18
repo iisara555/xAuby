@@ -102,6 +102,9 @@ export default function DashboardPage() {
   const reason = String(valueAt(focus, "signal_meta", "reason") ?? "Waiting for the next confirmed strategy state.");
   const regime = String(valueAt(focus, "regime", "regime") ?? "UNKNOWN");
   const zone = String(valueAt(focus, "indicators", "cdc_zone_4h") ?? "—");
+  const apSmoothing = valueAt(focus, "indicators", "ap_smoothing")
+    ?? valueAt(focus, "risk", "ap_smoothing")
+    ?? valueAt(state, "risk", "ap_smoothing");
   const price = valueAt(focus, "current_price") ?? valueAt(position, "mark_price");
   const pct24h = Number(valueAt(focus, "price_change_24h_pct") ?? valueAt(focus, "percent_change_24h") ?? 0);
   const riskState = String(valueAt(focus, "regime", "risk_state") ?? "—");
@@ -205,7 +208,7 @@ export default function DashboardPage() {
           </div>
         </article>
 
-        <CandleChart symbol={symbol} currentPrice={price} zone={zone} />
+        <CandleChart symbol={symbol} currentPrice={price} zone={zone} apSmoothing={apSmoothing} />
 
         <SignalDetail state={focus} stale={snapshot?.stale} />
 
