@@ -19,14 +19,12 @@ through a CLI, a Textual TUI, and Telegram.
 Package name: `xauby`. Python `>=3.10` (pyproject), README targets 3.12+; the dev
 container currently runs 3.11.
 
-Product identity ("xAuby : Alternative Store of Value Trading System",
-`xauby/meta.py`) is documented in [PRODUCT.md](PRODUCT.md) / [DESIGN.md](DESIGN.md).
-Both are personalized to the single operator (name/tagline are configurable via
-`bot_config.yaml -> cli_ui`, not hardcoded strings to templatize). Note: those
-two files still describe the legacy read-only WebUI (`xauby/webui`), which has
-been removed from the repo along with the `saas-web/` SPA — the web surface is
-now the Next.js Pilot Workspace in `Website/` backed by `xauby/saas`. Same
-doc-drift caveat as below.
+Product identity ("xAuby : Alternative Store of Value Trading System") lives in
+`xauby/meta.py`; the operator display name is configurable via
+`bot_config.yaml -> cli_ui`, not a hardcoded string to templatize. The legacy
+read-only WebUI (`xauby/webui`), the `saas-web/` SPA, and their design docs
+(PRODUCT.md / DESIGN.md) have been removed — the web surface is the Next.js
+Pilot Workspace in `Website/` backed by `xauby/saas`.
 
 ## Entry points
 

@@ -34,10 +34,6 @@ class SaaSSettings:
     service_helper: str = ""
     cookie_secure: bool = True
     dev_login_enabled: bool = False
-    legacy_owner_slug: str = ""
-    legacy_webui_url: str = ""
-    legacy_webui_token: str = ""
-    legacy_webui_timeout_seconds: float = 3.0
 
     @classmethod
     def from_env(cls, project_root: str | None = None) -> SaaSSettings:
@@ -98,12 +94,6 @@ class SaaSSettings:
             cookie_secure=os.environ.get("XAUBY_SAAS_COOKIE_SECURE", "1").lower()
             not in {"0", "false", "no"},
             dev_login_enabled=dev,
-            legacy_owner_slug=os.environ.get("XAUBY_LEGACY_OWNER_SLUG", "").strip(),
-            legacy_webui_url=os.environ.get("XAUBY_LEGACY_WEBUI_URL", "").strip().rstrip("/"),
-            legacy_webui_token=os.environ.get("XAUBY_LEGACY_WEBUI_TOKEN", "").strip(),
-            legacy_webui_timeout_seconds=max(
-                0.5, min(10.0, float(os.environ.get("XAUBY_LEGACY_WEBUI_TIMEOUT", "3")))
-            ),
         )
 
     def ensure_directories(self) -> None:
