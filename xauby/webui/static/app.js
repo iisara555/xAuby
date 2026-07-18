@@ -422,8 +422,11 @@ function drawChart(values, referencePrice = latestMarketPrice) {
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
-  const cssWidth = Math.max(280, rect.width);
-  const cssHeight = Math.max(170, rect.height || 184);
+  // Match the backing store to the rendered box. Clamping either dimension
+  // makes browsers rescale the bitmap on small phones (the <=380px layout is
+  // intentionally 158px tall), which distorts the chart and EMA overlays.
+  const cssWidth = rect.width > 0 ? rect.width : 280;
+  const cssHeight = rect.height > 0 ? rect.height : 184;
   canvas.width = Math.floor(cssWidth * ratio);
   canvas.height = Math.floor(cssHeight * ratio);
   const ctx = canvas.getContext("2d");

@@ -585,11 +585,19 @@ class WebUIServerTest(unittest.TestCase):
     def test_static_dashboard_modules_are_served(self):
         base = self.serve()
 
+        with urlopen(f"{base}/app.js", timeout=3) as response:
+            app_source = response.read().decode("utf-8")
         with urlopen(f"{base}/dashboard-client.js", timeout=3) as response:
             client_source = response.read().decode("utf-8")
         with urlopen(f"{base}/refresh-scheduler.js", timeout=3) as response:
             scheduler_source = response.read().decode("utf-8")
 
+        # A minimum backing-store size stretches the canvas when the responsive
+        # CSS box is smaller (notably the 158px-tall small-phone chart).
+        self.assertIn("rect.width > 0 ? rect.width : 280", app_source)
+        self.assertIn("rect.height > 0 ? rect.height : 184", app_source)
+        self.assertNotIn("Math.max(280, rect.width)", app_source)
+        self.assertNotIn("Math.max(170, rect.height", app_source)
         self.assertIn("createDashboardClient", client_source)
         self.assertIn("createRefreshScheduler", scheduler_source)
 

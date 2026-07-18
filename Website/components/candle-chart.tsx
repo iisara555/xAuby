@@ -11,6 +11,8 @@ type Candle = {
   low: number;
   close: number;
   volume?: number;
+  ema12?: number | null;
+  ema26?: number | null;
 };
 
 type CandleResponse = {
@@ -21,21 +23,30 @@ type CandleResponse = {
 };
 
 const TIMEFRAMES = ["1h", "4h", "1d"] as const;
+const EMA_WARMUP_CANDLES = 120;
 
 function number(value: unknown): number | null {
+  if (value == null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function ema(values: number[], period: number): number[] {
-  if (!values.length) return [];
+function ema(values: number[], period: number): Array<number | null> {
+  const series: Array<number | null> = Array(values.length).fill(null);
+  if (period <= 0 || values.length < period) return series;
+  let previous = values.slice(0, period).reduce((sum, value) => sum + value, 0) / period;
+  series[period - 1] = previous;
   const multiplier = 2 / (period + 1);
-  let previous = values[0];
-  return values.map((value, index) => {
-    if (index === 0) return previous;
-    previous = (value - previous) * multiplier + previous;
-    return previous;
-  });
+  for (let index = period; index < values.length; index += 1) {
+    previous = (values[index] - previous) * multiplier + previous;
+    series[index] = previous;
+  }
+  return series;
+}
+
+function indicatorSeries(candles: Candle[], key: "ema12" | "ema26", period: number): Array<number | null> {
+  const fallback = ema(candles.map((item) => number(item.close) ?? 0), period);
+  return candles.map((item, index) => number(item[key]) ?? fallback[index]);
 }
 
 function formatCandleTime(timestamp: unknown, timeframe: (typeof TIMEFRAMES)[number]): string {
@@ -52,7 +63,7 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
   const [containerWidth, setContainerWidth] = useState(760);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
-  const key = `/api/v1/runtime/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=64`;
+  const key = `/api/v1/runtime/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=${EMA_WARMUP_CANDLES}`;
   const { data, error, isLoading } = useSWR<CandleResponse>(key, api, {
     refreshInterval: () => (typeof document === "undefined" || document.visibilityState === "visible" ? 15000 : 0),
     revalidateOnFocus: false,
@@ -76,9 +87,20 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
     return () => observer.disconnect();
   }, []);
 
-  const allCandles = Array.isArray(data?.candles) ? data.candles : [];
+  const allCandles = useMemo(() => Array.isArray(data?.candles) ? data.candles : [], [data?.candles]);
   const visibleCount = containerWidth < 360 ? 18 : containerWidth < 480 ? 24 : containerWidth < 760 ? 42 : 64;
-  const candles = allCandles.slice(-visibleCount);
+  const { candles, fast, slow } = useMemo(() => {
+    const visibleStart = Math.max(0, allCandles.length - visibleCount);
+    return {
+      candles: allCandles.slice(visibleStart),
+      // Keep the warm-up history out of view, but use it for stable indicators.
+      // Otherwise mobile widths re-seed both EMAs from a different first candle.
+      fast: indicatorSeries(allCandles, "ema12", 12).slice(visibleStart),
+      slow: indicatorSeries(allCandles, "ema26", 26).slice(visibleStart),
+    };
+  }, [allCandles, visibleCount]);
+  const latestFast = fast[fast.length - 1];
+  const latestSlow = slow[slow.length - 1];
   const livePrice = number(priceData?.price) ?? number(currentPrice);
   const chart = useMemo(() => {
     const width = Math.max(240, Math.round(containerWidth));
@@ -88,24 +110,29 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
     const plotHeight = height - plot.top - plot.bottom;
     const lows = candles.map((item) => number(item.low)).filter((value): value is number => value != null);
     const highs = candles.map((item) => number(item.high)).filter((value): value is number => value != null);
+    const indicators = [...fast, ...slow].filter((value): value is number => value != null);
     if (!lows.length || !highs.length) return null;
     const last = livePrice;
-    const min = Math.min(...lows, ...(last == null ? [] : [last]));
-    const max = Math.max(...highs, ...(last == null ? [] : [last]));
+    const min = Math.min(...lows, ...indicators, ...(last == null ? [] : [last]));
+    const max = Math.max(...highs, ...indicators, ...(last == null ? [] : [last]));
     const padding = Math.max((max - min) * 0.08, max * 0.0008);
     const floor = min - padding;
     const ceiling = max + padding;
     const y = (value: number) => plot.top + ((ceiling - value) / (ceiling - floor)) * plotHeight;
     const x = (index: number) => plot.left + (index + 0.5) * (plotWidth / candles.length);
-    const closes = candles.map((item) => number(item.close) ?? 0);
-    const fast = ema(closes, 12);
-    const slow = ema(closes, 26);
     const labels = [0, 1, 2, 3].map((index) => {
       const candle = candles[Math.min(candles.length - 1, Math.round((candles.length - 1) * (index / 3)))];
       return { x: plot.left + plotWidth * (index / 3), label: formatCandleTime(candle?.timestamp, timeframe) };
     });
-    return { width, height, plot, plotWidth, plotHeight, y, x, fast, slow, labels, floor, ceiling };
-  }, [candles, containerWidth, livePrice, timeframe]);
+    const points = (series: Array<number | null>) => series
+      .map((value, index) => value == null ? null : `${x(index)},${y(value)}`)
+      .filter((value): value is string => value != null)
+      .join(" ");
+    return {
+      width, height, plot, plotWidth, plotHeight, y, x,
+      fastPoints: points(fast), slowPoints: points(slow), labels, floor, ceiling,
+    };
+  }, [candles, containerWidth, fast, livePrice, slow, timeframe]);
 
   const lastCandle = candles[candles.length - 1];
   const lastClose = number(lastCandle?.close);
@@ -135,6 +162,8 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
         <svg
           className="candle-chart-svg"
           viewBox={`0 0 ${chart.width} ${chart.height}`}
+          data-ema12={latestFast ?? undefined}
+          data-ema26={latestSlow ?? undefined}
           role="img"
           aria-label={`${symbol} ${timeframe} candlestick chart. Use arrow keys to inspect candles.`}
           tabIndex={0}
@@ -174,8 +203,8 @@ export function CandleChart({ symbol, currentPrice, zone }: { symbol: string; cu
               <rect x={chart.x(index) - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={bodyHeight} rx="1" className={positive ? "candle-body up" : "candle-body down"} />
             </g>;
           })}
-          <polyline points={chart.fast.map((value, index) => `${chart.x(index)},${chart.y(value)}`).join(" ")} className="ema-line fast" />
-          <polyline points={chart.slow.map((value, index) => `${chart.x(index)},${chart.y(value)}`).join(" ")} className="ema-line slow" />
+          <polyline points={chart.fastPoints} className="ema-line fast" />
+          <polyline points={chart.slowPoints} className="ema-line slow" />
           {livePrice != null && (() => {
             const lineY = chart.y(livePrice);
             const labelY = Math.max(chart.plot.top + 10, Math.min(chart.height - chart.plot.bottom - 10, lineY));
