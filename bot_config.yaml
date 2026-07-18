@@ -203,7 +203,9 @@ strategy:
       # fresh RED opens SHORT, opposite zone exits.
       enable_short: true
       require_fresh_zone: true
-      fresh_zone_window: 1
+      # fresh_zone_window 3 confirmed by 2024-2026 walk-forward (chosen 24/25
+      # windows, PAXGUSDT proxy) — keep in sync with coin_whitelist.json.
+      fresh_zone_window: 3
       disable_stop_loss: true
       position_pct: 0.95         # keep futures margin buffer so OKX max-size checks pass
       rsi_min: 0.0
@@ -400,7 +402,7 @@ strategies:
     enabled: true
     use_d1_regime_filter: false
     require_fresh_zone: true
-    fresh_zone_window: 1
+    fresh_zone_window: 3
     disable_stop_loss: true
     position_pct: 0.95
     ap_smoothing: 2

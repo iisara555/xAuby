@@ -221,11 +221,11 @@
     if (heroSticky) setupHeroPinFallback(heroSection, heroSticky);
   };
 
-  const addRoadmapLink = (nav) => {
-    if (!nav || nav.querySelector("a[href='#roadmap']")) return;
+  const addResearchLink = (nav) => {
+    if (!nav || nav.querySelector("a[href='#research-report']")) return;
     const link = document.createElement("a");
-    link.href = "#roadmap";
-    link.textContent = "Roadmap";
+    link.href = "#research-report";
+    link.textContent = "Research report";
     link.style.cssText =
       "display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:12.5px;font-weight:600;letter-spacing:.02em;color:#ff7a4d;";
     rounded(link, "10px");
@@ -245,7 +245,8 @@
 
   const updateCurrentConfiguration = () => {
     replaceExactText("span", "LIVE: cdc_action_zone", "LIVE: xauby_actionzone");
-    replaceExactText("span", "RUNNING: 1 pair", "LIVE: XAU · long only");
+    replaceExactText("span", "RUNNING: 1 pair", "LIVE: XAU · long + short");
+    replaceExactText("span", "LIVE: XAU · long only", "LIVE: XAU · long + short");
     replaceExactText("span", "RUNNING: OKX only", "OKX swap · isolated · 1×");
     replaceExactText("h3", "Strategy plugins", "Current live strategy");
     replaceExactText("p", "Current live configuration", "Operating controls");
@@ -254,96 +255,77 @@
       const text = paragraph.textContent?.trim();
       if (text === "Orders go to the exchange with a stop-loss attached before entry — protection lives on the exchange, not in the bot's memory.") {
         paragraph.textContent =
-          "Orders are evaluated under the configured risk gates. The current XAU profile is long-only; its regime router is disabled and protection settings must be reviewed before any live change.";
+          "Orders are evaluated under the configured risk gates. The current XAU profile trades long and short as a stop-and-reverse; its regime router is disabled and protection settings must be reviewed before any live change.";
       }
       if (text === "The owner monitors from a terminal, a phone dashboard, and Telegram alerts. He watches; the system trades.") {
         paragraph.textContent =
-          "Today the operator uses the dashboard, terminal, and Telegram alerts. Phase 1 of the roadmap moves normal operations to the webapp without bypassing engine safeguards.";
+          "The operator monitors from the web dashboard, a terminal, and Telegram alerts — every control passes through the engine's own safeguards.";
       }
     });
   };
 
-  const addResearchUpdate = (section) => {
-    if (!section || section.querySelector("[data-report-update]")) return;
-    const milestones = section.querySelector("ol");
-    if (!milestones) return;
-
-    const update = document.createElement("div");
-    update.dataset.reportUpdate = "2026-07-14";
-    update.style.cssText = "margin:0 0 16px;";
-    update.innerHTML = `
-      <div style="padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;margin-bottom:16px;">
-        <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">Latest research-backed configuration</p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">XAU / XAUUSDT</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">PAXGUSDT research proxy · 4h / 1d</span></div>
-          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Long only</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">D1 regime filter · fresh zone window 3</span></div>
-          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Strict ROI</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">8% now · 5% after 1d · 3% after 3d</span></div>
-          <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">BTC: SIM ONLY</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">At least 8 trades · PF > 1.3 · MDD <= 12%</span></div>
-        </div>
-        <p style="margin:14px 0 0;font-size:11px;line-height:1.55;color:rgba(236,233,226,.48);">Short execution, ATR stop, trailing stop, and breakeven are disabled. The XAU profile retains the slope filter and takes 50% partial profit at +12%. This research information is not a return promise.</p>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;">
-        <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">BACKTEST</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">PF 2.00</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">46% win rate · 8% max drawdown</span></div>
-        <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">WALK-FORWARD</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">4 / 5</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Profitable folds in the reported result</span></div>
-        <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">PLANNING RANGE</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">PF 1.3-1.7</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Use this range, not PF 2.00, for planning</span></div>
-      </div>
-      <div style="padding:18px 20px;border:1px solid rgba(255,122,77,.62);background:rgba(255,122,77,.08);margin-bottom:16px;"><strong style="font-size:13px;">Validation note</strong><p style="margin:7px 0 0;max-width:80ch;font-size:12px;line-height:1.6;color:rgba(236,233,226,.74);">The report flags a walk-forward discrepancy around folds 1-2. Confirm raw fold results and replay validation before considering the ROI profile deploy-ready. The earlier Efficient Frontier allocation used an older XAU configuration and must be recalculated before capital is assigned.</p></div>`;
-    milestones.before(update);
-    applyRoundedSystem();
-  };
-
-  const addRoadmap = () => {
-    if (document.getElementById("roadmap")) return;
+  const addResearchReport = () => {
+    if (document.getElementById("research-report")) return;
     const footer = document.querySelector("footer");
     if (!footer) return;
 
     const section = document.createElement("section");
-    section.id = "roadmap";
-    section.setAttribute("aria-labelledby", "roadmap-heading");
+    section.id = "research-report";
+    section.setAttribute("aria-labelledby", "research-report-heading");
     section.style.cssText =
       "margin:0 auto;padding:0 0 clamp(64px,9vw,112px);scroll-margin-top:76px;";
     section.innerHTML = `
       <div style="border-top:1px solid rgba(236,233,226,.25);padding-top:clamp(40px,7vw,80px);">
-        <p style="margin:0 0 14px;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#ff7a4d;">Product roadmap · 2026</p>
-        <div style="display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:18px;margin-bottom:28px;">
-          <div style="max-width:720px;">
-            <h2 id="roadmap-heading" style="margin:0;font-size:clamp(30px,4.5vw,56px);font-weight:600;line-height:1;letter-spacing:-.03em;">Webapp first.<br>SaaS when ready<span style="color:#ff431a;">.</span></h2>
-            <p style="margin:18px 0 0;max-width:62ch;font-size:15px;line-height:1.65;color:rgba(236,233,226,.7);">xAuby is moving from a single-operator trading system to a web-controlled, multi-instance platform. Each phase protects the same principle: the UI never bypasses the engine’s risk and execution safeguards.</p>
-          </div>
-          <span style="padding:9px 13px;border:1px solid rgba(236,233,226,.3);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#ece9e2;">Measured growth · not feature rush</span>
+        <p style="margin:0 0 14px;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#ff7a4d;">Research report · July 2026</p>
+        <div style="max-width:760px;margin-bottom:28px;">
+          <h2 id="research-report-heading" style="margin:0;font-size:clamp(30px,4.5vw,56px);font-weight:600;line-height:1;letter-spacing:-.03em;">Both sides of gold<span style="color:#ff431a;">.</span></h2>
+          <p style="margin:18px 0 0;max-width:66ch;font-size:15px;line-height:1.65;color:rgba(236,233,226,.7);">CDC ActionZone was re-validated across a full market cycle — the 2024–2025 gold rally (+114%) and the 2026 correction (−7.8%) — to answer two questions: does the daily-timeframe filter earn its keep, and should the live system trade shorts. The result changed the live configuration.</p>
         </div>
 
         <div style="padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;margin-bottom:16px;">
-          <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">Current live configuration</p>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">XAU / XAUUSDT</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Single enabled market · PAXGUSDT research proxy</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">xauby_actionzone</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">4h primary · 1d confirmation · long only</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">OKX swap · 1×</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">CCXT adapter · isolated margin</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">1% / 10% / 3%</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Risk per trade · allocation cap · daily loss cap</span></div>
-          </div>
-          <p style="margin:14px 0 0;font-size:11px;line-height:1.55;color:rgba(236,233,226,.48);">Config source: bot_config.yaml and coin_whitelist.json. Current profile: one open position maximum, 50% partial take-profit at +12%, D1 regime filter and fresh-zone window of 3. Regime router and live short execution are disabled.</p>
+          <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">Method</p>
+          <p style="margin:0;max-width:80ch;font-size:13px;line-height:1.65;color:rgba(236,233,226,.72);">PAXGUSDT research proxy (deep history for XAU), 4h primary / 1d confirmation, engine-parity replay with the production strategy plugin. Every figure is net of costs: 0.05% taker fee per side, 2 bps slippage, and perpetual funding of 0.004% per 8h charged to longs and credited to shorts. Sizing mirrors live CDC-pure: 95% of equity, no exchange stop, exits on zone flips, 50% partial take-profit at +12%.</p>
         </div>
 
-        <ol style="list-style:none;margin:0;padding:0;display:grid;gap:10px;">
-          <li style="display:grid;grid-template-columns:minmax(58px,92px) minmax(0,1fr);gap:18px;padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.22);background:rgba(236,233,226,.03);">
-            <span style="font-size:13px;font-weight:600;letter-spacing:.12em;color:#ff6a3c;">PHASE 0</span><div><h3 style="margin:0;font-size:20px;">Harden the seams</h3><p style="margin:8px 0 0;max-width:70ch;font-size:14px;line-height:1.6;color:rgba(236,233,226,.68);">Make config writers instance-aware, freeze the state contract, consolidate File-IPC into a signed command queue, add systemd units, and measure real RSS before scaling.</p></div>
-          </li>
-          <li style="display:grid;grid-template-columns:minmax(58px,92px) minmax(0,1fr);gap:18px;padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.22);background:rgba(236,233,226,.03);">
-            <span style="font-size:13px;font-weight:600;letter-spacing:.12em;color:#ff6a3c;">PHASE 1</span><div><h3 style="margin:0;font-size:20px;">100% webapp, one operator</h3><p style="margin:8px 0 0;max-width:70ch;font-size:14px;line-height:1.6;color:rgba(236,233,226,.68);">Add authenticated write APIs, command feedback, SSE updates, pair management, guarded sim/live controls, and a config editor — all through queue or config-mutator paths.</p></div>
-          </li>
-          <li style="display:grid;grid-template-columns:minmax(58px,92px) minmax(0,1fr);gap:18px;padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.03);">
-            <span style="font-size:13px;font-weight:600;letter-spacing:.12em;color:#ff6a3c;">PHASE 2</span><div><h3 style="margin:0;font-size:20px;">Multiple instances, one host</h3><p style="margin:8px 0 0;max-width:70ch;font-size:14px;line-height:1.6;color:rgba(236,233,226,.68);">Use systemd as the process manager, introduce an instance registry and switcher, share public market data safely, and expose account-lock health.</p></div>
-          </li>
-          <li style="display:grid;grid-template-columns:minmax(58px,92px) minmax(0,1fr);gap:18px;padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.22);background:rgba(236,233,226,.03);">
-            <span style="font-size:13px;font-weight:600;letter-spacing:.12em;color:#ff6a3c;">PHASE 3</span><div><h3 style="margin:0;font-size:20px;">SaaS with guarded tenancy</h3><p style="margin:8px 0 0;max-width:70ch;font-size:14px;line-height:1.6;color:rgba(236,233,226,.68);">Add encrypted exchange credentials, tenant isolation, plans, simulation-first onboarding, billing, backups, and a security review before opening paid live trading.</p></div>
-          </li>
-          <li style="display:grid;grid-template-columns:minmax(58px,92px) minmax(0,1fr);gap:18px;padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.22);background:rgba(236,233,226,.03);">
-            <span style="font-size:13px;font-weight:600;letter-spacing:.12em;color:#8a877f;">PHASE 4</span><div><h3 style="margin:0;font-size:20px;">Scale out deliberately</h3><p style="margin:8px 0 0;max-width:70ch;font-size:14px;line-height:1.6;color:rgba(236,233,226,.68);">When live tenants exceed a single host’s measured capacity, use a control-plane node, worker nodes, tenant-local SQLite data, and private node networking.</p></div>
-          </li>
-        </ol>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:16px;">
+          <div style="padding:clamp(18px,2.5vw,26px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;">
+            <span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">RALLY 2024–2025 (+114%)</span>
+            <div style="margin-top:12px;display:grid;gap:8px;font-size:12px;line-height:1.5;color:rgba(236,233,226,.72);">
+              <div><strong style="color:#ece9e2;">Long only · D1 on</strong> — 57 trades · WR 56% · PF 2.82 · <strong style="color:#ece9e2;">+64.9%</strong> · DD 5.6%</div>
+              <div><strong style="color:#ece9e2;">Long+short · D1 off</strong> — 126 trades · WR 44% · PF 1.70 · +59.5% · DD 8.4%</div>
+              <div style="color:rgba(236,233,226,.5);">In a one-way rally, shorts only pay whipsaw. Long-only wins this regime outright.</div>
+            </div>
+          </div>
+          <div style="padding:clamp(18px,2.5vw,26px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;">
+            <span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">CORRECTION 2026 (−7.8%)</span>
+            <div style="margin-top:12px;display:grid;gap:8px;font-size:12px;line-height:1.5;color:rgba(236,233,226,.72);">
+              <div><strong style="color:#ece9e2;">Long only · D1 on</strong> — 11 trades · WR 55% · PF 1.84 · +8.2% · DD 5.3%</div>
+              <div><strong style="color:#ece9e2;">Long+short · D1 off</strong> — 40 trades (22 short) · WR 48% · PF 1.90 · <strong style="color:#ece9e2;">+28.4%</strong> · DD 7.6%</div>
+              <div style="color:rgba(236,233,226,.5);">Shorts earn 3.5× the long-only result in the down leg. The D1 filter drags here and does not reduce drawdown.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;">
+          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">FULL CYCLE · LONG+SHORT</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">+105%</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">vs +78% long-only · max DD 8.4% at 1×</span></div>
+          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">WALK-FORWARD</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">18 / 25</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Profitable out-of-sample months · 6m optimize → 1m test, slid monthly</span></div>
+          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">PARAMETER STABILITY</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">24 / 25</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Windows choosing fresh-zone 3 · slope filter kept in 22/25</span></div>
+        </div>
+
+        <div style="padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;margin-bottom:16px;">
+          <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">Live configuration · updated 2026-07-18</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Long + short</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Stop-and-reverse · D1 filter off</span></div>
+            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">4h · fresh zone 3</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Slope filter on (3 bars)</span></div>
+            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">PTP 50% @ +12%</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Remainder exits on zone flip</span></div>
+            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">OKX swap · 1×</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Isolated margin · one position</span></div>
+          </div>
+          <p style="margin:14px 0 0;font-size:11px;line-height:1.55;color:rgba(236,233,226,.48);">Config source: bot_config.yaml and coin_whitelist.json. Changed by this study: short execution enabled, D1 regime filter disabled. Unchanged: slope filter, partial take-profit, fresh-zone window, 1× leverage.</p>
+        </div>
+
+        <div style="padding:18px 20px;border:1px solid rgba(255,122,77,.62);background:rgba(255,122,77,.08);"><strong style="font-size:13px;">Honest caveats</strong><p style="margin:7px 0 0;max-width:80ch;font-size:12px;line-height:1.6;color:rgba(236,233,226,.74);">PAXGUSDT is a proxy, not the traded XAUUSDT perpetual. Funding uses a flat 0.004%/8h approximation, not exchange funding history. Drawdown is measured on closed-trade equity; intra-trade excursions run deeper. Past performance is research evidence, not a promise of returns.</p></div>
       </div>`;
     footer.before(section);
-    addResearchUpdate(section);
     applyRoundedSystem();
   };
 
@@ -375,10 +357,10 @@
     applyRoundedSystem();
     applyHeroScrollFix();
     updateCurrentConfiguration();
-    addRoadmap();
+    addResearchReport();
     updateLinks();
     document.querySelectorAll("header nav, footer nav").forEach((nav) => {
-      addRoadmapLink(nav);
+      addResearchLink(nav);
       addLoginLink(nav);
     });
     // Only start the shutdown countdown once the header actually carries the
