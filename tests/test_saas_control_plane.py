@@ -82,8 +82,9 @@ class SaaSControlPlaneTests(unittest.TestCase):
             item["id"]: item for item in self.client.get("/api/v1/catalog").json()["presets"]
         }
         xau = presets["okx-xau-actionzone-v1"]["backtest"]
-        self.assertEqual(xau["score_label"], "PF 2.00")
-        self.assertEqual(xau["duration"], "5.9 years")
+        self.assertEqual(xau["score_label"], "PF 1.7")
+        self.assertEqual(xau["duration"], "2.6 years · full cycle")
+        self.assertEqual(presets["okx-xau-actionzone-v1"]["allowed_sides"], ["long", "short"])
         self.assertTrue(presets["okx-xau-actionzone-v1"]["cdc_pure_certified"])
         self.assertFalse(presets["okx-xau-actionzone-v1"]["stop_loss_required"])
         self.assertEqual(presets["binance-btc-supertrend-v1"]["backtest"]["status"], "insufficient")

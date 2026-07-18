@@ -227,12 +227,17 @@ export default function SettingsPage() {
                     <span>{backtest.trades == null ? "Trades —" : `${backtest.trades} trades`}</span>
                     <small>{backtest.source}</small>
                   </span>
+                  {preset.strategy_traits && preset.strategy_traits.length > 0 && (
+                    <span className="preset-traits">
+                      {preset.strategy_traits.map((trait) => <span key={trait}>{trait}</span>)}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
           <div className="risk-summary">
-            <div><span>Strategy</span><strong>{cdcPure ? "CDC Pure · long only" : selectedPreset?.market_type === "swap" ? "Long certified" : "Spot long"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{cdcPure ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
+            <div><span>Strategy sides</span><strong>{cdcPure ? `CDC Pure · ${(selectedPreset?.allowed_sides ?? ["long"]).join(" + ")}` : selectedPreset?.market_type === "swap" ? "Long certified" : "Spot long"}</strong></div><div><span>D1 filter</span><strong>{selectedPreset?.execution_profile?.use_d1_regime_filter === true ? "On" : selectedPreset?.execution_profile?.use_d1_regime_filter === false ? "Off" : "—"}</strong></div><div><span>Partial TP</span><strong>{typeof selectedPreset?.execution_profile?.partial_tp_pct === "number" && Number(selectedPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(selectedPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${selectedPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{cdcPure ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
           </div>
           {selectionPending && <p className="field-help preset-switch-hint" role="status">You selected <strong>{selectedPreset?.label}</strong>. It is not active until you press the button below{bot?.tenant.live_status === "active" ? " — this will stop Live mode until you re-approve it" : ""}.</p>}
           <button className="button-primary" onClick={saveProfile} disabled={busy || !selectedPreset || selectionIsActive}>

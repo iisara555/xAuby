@@ -70,9 +70,11 @@ export type Preset = {
   primary_timeframe: string;
   confirm_timeframe: string;
   market_type: string;
+  allowed_sides?: Array<"long" | "short">;
   cdc_pure_certified?: boolean;
   stop_loss_required?: boolean;
   execution_profile?: Record<string, unknown>;
+  strategy_traits?: string[];
   backtest?: {
     status: "validated" | "insufficient" | "pending";
     score_label: string;

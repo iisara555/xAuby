@@ -444,16 +444,20 @@ class TenantSupervisor:
             if bool(params.get("disable_stop_loss")) and not cdc_pure:
                 raise ValueError("live activation requires a stop loss")
             if cdc_pure:
+                # CDC ActionZone stop-and-reverse: long + short, D1 filter off
+                # (July 2026 PAXGUSDT study: full-cycle +105% vs +78% long-only,
+                # max DD 8.4% at 1x, net of fee/slippage/funding).
                 params["disable_stop_loss"] = True
                 params["position_pct"] = 0.95
-                params["enable_short"] = False
-                asset["allowed_sides"] = ["long"]
+                params["enable_short"] = True
+                params["use_d1_regime_filter"] = False
+                asset["allowed_sides"] = ["long", "short"]
             else:
                 params["disable_stop_loss"] = False
                 params["position_pct"] = min(float(params.get("position_pct", 0.1) or 0.1), 0.1)
             asset["mode"] = "live" if asset.get("enabled", True) else "sim"
             asset["leverage"] = 1.0
-            asset["short_live_enabled"] = False if cdc_pure else "short" in (asset.get("allowed_sides") or [])
+            asset["short_live_enabled"] = "short" in (asset.get("allowed_sides") or [])
         cfg.setdefault("risk", {})["stop_loss_required"] = not cdc_pure
         cfg.setdefault("execution", {})["live_strategy_mode"] = "cdc_pure" if cdc_pure else "stop_loss"
         cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
