@@ -11,21 +11,23 @@ full observability, and Telegram/TUI fallbacks.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Exchange](https://img.shields.io/badge/Exchange-OKX%20via%20CCXT-111827)](https://www.okx.com/)
-[![Console](https://img.shields.io/badge/Console-xAuby%20Pilot%20(Web)-f5a623)](saas-web/README.md)
+[![Console](https://img.shields.io/badge/Console-xAuby%20Pilot%20(Web)-e8451c)](https://xauby.vercel.app/)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-blue)](docs/README.md)
-[![Website](https://img.shields.io/badge/Website-Live%20on%20Vercel-000000?logo=vercel)](https://x-auby.vercel.app/)
+[![Research](https://img.shields.io/badge/Research-Live%20on%20Vercel-000000?logo=vercel)](https://x-auby.vercel.app/)
 
-[Live Website](https://x-auby.vercel.app/) | [Web Console](#xauby-pilot--the-web-console) | [Quick Start](#quick-start) | [Runtime Baseline](#current-runtime-baseline) | [Configuration](#configuration) | [Backtest](#backtest-optimization-and-rd) | [Deploy](#deployment)
+[Pilot Console](https://xauby.vercel.app/) | [Web Console](#xauby-pilot--the-web-console) | [Quick Start](#quick-start) | [Runtime Baseline](#current-runtime-baseline) | [Configuration](#configuration) | [Backtest](#backtest-optimization-and-rd) | [Deploy](#deployment)
 
 </div>
 
 ---
 
-![xAuby Pilot Console — overview](docs/screenshots/saas-pilot-overview.png)
+<p align="center">
+  <img src="docs/screenshots/pilot-workspace-mobile.png" alt="xAuby Pilot Workspace on mobile" width="360">
+</p>
 
-> The xAuby Pilot Console: engine status, exchange connection, position, and
-> execution mode at a glance, with every control action recorded in the audit
-> trail.
+> The xAuby Pilot Workspace (mobile): dynamic market greeting, live portfolio
+> equity with THB conversion, capital allocation, engine/WS/REST/tick latency
+> chips, and one-tap access to Trade, Activity, Settings, and Admin.
 
 ## Overview
 
@@ -52,15 +54,21 @@ The engine loop:
 
 ## xAuby Pilot — the Web Console
 
-The primary operating surface is a web SaaS stack:
+The primary operating surface is a web SaaS stack, live at
+[xauby.vercel.app](https://xauby.vercel.app/):
 
 - **Control plane** — `xauby/saas`: a FastAPI app (`python -m xauby.saas`,
   default port `8790`) that manages users, tenants, encrypted exchange
   credentials, engine supervision, and an audit trail.
-- **Pilot SPA** — [`saas-web/`](saas-web/README.md): a Vite + React console
-  that talks to the control plane and deploys independently (e.g. Vercel).
+- **Pilot Workspace** — [`Website/`](Website/): the Next.js front-end
+  (login, Home, Activity, Settings, Admin, trade drawer, live candle chart)
+  that rewrites `/api/v1/*` and `/auth/*` to the control plane
+  (`XAUBY_API_ORIGIN`) and deploys independently on Vercel. Its
+  `public/research-platform.html` page also serves the public research site.
+- [`saas-web/`](saas-web/README.md) holds the previous-generation Vite SPA
+  console, kept for reference; the Next.js Pilot Workspace supersedes it.
 
-![xAuby Pilot Console — trading settings](docs/screenshots/saas-pilot-settings.png)
+![xAuby Pilot Workspace — trading settings with certified presets](docs/screenshots/pilot-settings.png)
 
 What the console gives an operator:
 
@@ -68,10 +76,11 @@ What the console gives an operator:
 |------|----------|
 | Onboarding | Email/password or Google sign-in; new accounts wait for Owner approval (pilot capacity is capped, 3 accounts by default) |
 | Exchange connection | OKX Perpetual API key + secret + passphrase, stored encrypted; requires an explicit "withdraw permission disabled" attestation and a connection test |
-| Strategy presets | Curated pair/strategy presets (e.g. **XAU ActionZone · CDC Pure**, live-certified); up to 3 selected, 1 active |
+| Certified presets | One focused strategy per tenant, chosen from preset cards that carry their backtest evidence (PF, win rate, max DD, trades, tested period); the active card is what the engine runs — e.g. **XAU ActionZone · CDC Pure** |
 | Risk controls | Per-tenant risk/trade, allocation %, daily loss %, and leverage, bounded to conservative pilot limits |
-| Engine control | Start/stop the tenant engine in guarded SIM mode; Live activation is a separate approval flow |
-| Manual trade | Order ticket with preview + **Trade PIN** confirmation; manual orders bypass signals but never risk gates, SL, or execution locks |
+| Live dashboard | Portfolio equity with THB conversion, capital allocation, active position, 24h market move, live candle chart, and engine/WS/REST/tick latency chips |
+| Engine control | Start/stop the tenant engine in guarded SIM mode; Live activation is a separate approval flow, and switching presets while Live stops Live until re-approved |
+| Manual trade | Trade drawer with preview + **Trade PIN** confirmation; manual orders bypass signals but never risk gates, SL, or execution locks |
 | Security | TOTP two-factor (required before Live and Owner admin), recovery codes, trade PIN management |
 | Owner admin | User approval queue and live-request review |
 
@@ -81,15 +90,15 @@ Run it locally for development:
 # Backend (dev-login mode, no secrets needed)
 XAUBY_SAAS_DEV_LOGIN=1 python -m xauby.saas          # http://127.0.0.1:8790
 
-# Frontend
-cd saas-web && npm install && npm run dev            # http://localhost:5173
+# Frontend (Pilot Workspace)
+cd Website && npm install && npm run dev             # http://localhost:3000
 ```
 
 For production, `xauby.saas.admin` provides `migrate`, `bootstrap-owner`, and
-`password-reset-link` commands; `saas-web/vercel.json` rewrites `/api/*` and
-`/auth/*` to your backend origin (edit it for your deployment — see
-[saas-web/README.md](saas-web/README.md)). Security posture and audit notes
-live in [docs/security-saas-audit.md](docs/security-saas-audit.md).
+`password-reset-link` commands, and the Workspace build reads
+`XAUBY_API_ORIGIN` for its `/api` + `/auth` rewrites (`Website/next.config.ts`).
+Security posture and audit notes live in
+[docs/security-saas-audit.md](docs/security-saas-audit.md).
 
 ---
 
@@ -263,9 +272,9 @@ OKX auth needs `OKX_API_KEY`, `OKX_API_SECRET`, and one of
 - **Telegram** — alerts plus operator commands (`/status`, `/pnl`, `/regime`,
   `/last`, `/health`, `/pause`, `/resume`) with inline confirmation buttons.
   See [docs/telegram.md](docs/telegram.md).
-- **Promotional website** — standalone Next.js app in [`Website/`](Website/),
-  deployed separately at [x-auby.vercel.app](https://x-auby.vercel.app/); it
-  never touches trading credentials or runtime state.
+- **Public research page** — `Website/public/research-platform.html`, served
+  by the same Next.js app (also at [x-auby.vercel.app](https://x-auby.vercel.app/));
+  it presents the research-first approach without exposing runtime state.
 - **Book** — long-form EN/TH documentation builds in [`docs/book/`](docs/book/).
 
 ---
@@ -401,8 +410,8 @@ xAuby/
 |-- docs/                  # operator/contributor docs + book/ + screenshots/
 |-- scripts/               # ops + R&D scripts (backtest, optimize, deploy, replay)
 |-- tests/                 # unittest modules
-|-- saas-web/              # xAuby Pilot web console (Vite + React SPA)
-|-- Website/               # promotional site (Next.js, deployed on Vercel)
+|-- Website/               # xAuby Pilot Workspace (Next.js) + public research page
+|-- saas-web/              # previous-generation Pilot SPA (Vite + React, legacy)
 `-- xauby/
     |-- engine/            # LiteTradingEngine mixins, brokers, risk, orders
     |-- strategies/        # strategy plugins + indicators/ + registries
