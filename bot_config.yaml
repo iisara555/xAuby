@@ -681,10 +681,6 @@ cli_ui:
   refresh_interval_seconds: 2.0
   price_flush_interval_seconds: 2.0
   bot_name: 'xAuby : Alternative Store of Value Trading System'
-  # Optional: path served by the WebUI for the header avatar (e.g.
-  # "/profile-itsara.jpg"). Unset uses the bundled generic icon
-  # (xauby/webui/static/avatar-default.svg).
-  webui_avatar: /profile-itsara.jpg
   command_listener_enabled: true
   chart_enabled: true
   chart_candle_cols: 2

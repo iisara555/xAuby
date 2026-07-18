@@ -19,7 +19,6 @@ English reference for operators and contributors. The root [README.md](../README
 | [multi-exchange-ccxt.md](multi-exchange-ccxt.md) | CCXT REST adapter setup and current multi-exchange limitations |
 | [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
 | [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
-| [webui.md](webui.md) | Read-only browser dashboard via SSH tunnel or Tailscale |
 | [screenshots/](screenshots/) | TUI captures in SVG format |
 
 ## Regenerate TUI screenshots

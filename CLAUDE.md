@@ -20,12 +20,13 @@ Package name: `xauby`. Python `>=3.10` (pyproject), README targets 3.12+; the de
 container currently runs 3.11.
 
 Product identity ("xAuby : Alternative Store of Value Trading System",
-`xauby/meta.py`) and the WebUI's visual system (`xauby/webui/static/`) are
-documented in [PRODUCT.md](PRODUCT.md) / [DESIGN.md](DESIGN.md). Both are
-personalized to the single operator (name/photo/tagline are configurable via
-`bot_config.yaml -> cli_ui`, not hardcoded strings to templatize) — verify
-those two files still match `index.html`/`style.css` before trusting them,
-same doc-drift caveat as below.
+`xauby/meta.py`) is documented in [PRODUCT.md](PRODUCT.md) / [DESIGN.md](DESIGN.md).
+Both are personalized to the single operator (name/tagline are configurable via
+`bot_config.yaml -> cli_ui`, not hardcoded strings to templatize). Note: those
+two files still describe the legacy read-only WebUI (`xauby/webui`), which has
+been removed from the repo along with the `saas-web/` SPA — the web surface is
+now the Next.js Pilot Workspace in `Website/` backed by `xauby/saas`. Same
+doc-drift caveat as below.
 
 ## Entry points
 
@@ -59,7 +60,7 @@ docs/               Operator/contributor docs (architecture, trading-flow, confi
 weekly_reviews/     Generated weekly review markdown
 xauby/
   cli.py            CLI argument handling + restart/update logic
-  meta.py           Product identity (PRODUCT_NAME/TAGLINE, bot_config.yaml cli_ui.bot_name / webui_avatar resolution) — read by CLI, TUI, Telegram, engine alerts, and the WebUI
+  meta.py           Product identity (PRODUCT_NAME/TAGLINE, bot_config.yaml cli_ui.bot_name resolution) — read by CLI, TUI, Telegram, and engine alerts
   launcher/         Interactive launcher package: config_io, process, maintenance, quick_config (menus)
   engine/           LiteTradingEngine (composed of mixins), brokers, risk, orders, regime routing
   strategies/       Strategy plugins + indicators/ indicator plugins + registries
@@ -241,8 +242,8 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
   mutates trades.
 - Exactly one engine instance; `core/.engine.lock` guards against doubles.
 - Engine stays strategy-agnostic; signal/exit logic belongs to plugins/config.
-- TUI/WebUI surface partial TP as `PTP` / `Partial TP` with `pending` or
-  `banked` state from the exported position.
+- The TUI and the Pilot Workspace surface partial TP as `PTP` / `Partial TP`
+  with `pending` or `banked` state from the exported position.
 - Strategy + indicator plugins ship together.
 
 ## Conventions

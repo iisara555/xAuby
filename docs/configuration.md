@@ -29,8 +29,8 @@ returns a read-only snapshot with `exchange_id`, `quote_asset`, `simulate_only`,
 `read_only`, per-symbol strategy config, and per-symbol portfolio config.
 
 The live engine still uses `resolve_trading_config()` internally; the canonical
-view is additive and intended for WebUI, marketplace validation, and config
-inspection.
+view is additive and intended for the web console, marketplace validation, and
+config inspection.
 
 ### Exchange block
 

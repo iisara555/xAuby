@@ -65,8 +65,6 @@ The primary operating surface is a web SaaS stack, live at
   that rewrites `/api/v1/*` and `/auth/*` to the control plane
   (`XAUBY_API_ORIGIN`) and deploys independently on Vercel. Its
   `public/research-platform.html` page also serves the public research site.
-- [`saas-web/`](saas-web/README.md) holds the previous-generation Vite SPA
-  console, kept for reference; the Next.js Pilot Workspace supersedes it.
 
 ![xAuby Pilot Workspace — trading settings with certified presets](docs/screenshots/pilot-settings.png)
 
@@ -188,7 +186,6 @@ Entry points:
 | `xauby restart [--live]` | Controlled restart; live path runs preflight checks |
 | `xauby update` | Deploy `origin/main` (`scripts/deploy_from_github.sh`) then restart |
 | `python -m xauby.saas` | Web SaaS control plane (port 8790) |
-| `./scripts/start_webui.sh` | Read-only mobile WebUI |
 | `python -m xauby.ui.textual_tui.app` | Textual TUI standalone |
 | `python health_check.py` | Standalone health check |
 
@@ -265,10 +262,6 @@ OKX auth needs `OKX_API_KEY`, `OKX_API_SECRET`, and one of
   strategy-aware chart legends, trade log, incident explorer, and confirmed
   manual orders (`F7` BUY with bot-managed/manual-managed modes, `F8` SELL).
   See [docs/tui.md](docs/tui.md).
-- **Mobile WebUI** — read-only browser dashboard (`./scripts/start_webui.sh`)
-  showing runtime state, recent candles, ActionZone summary, EMA overlays, and
-  partial-TP status; reach it over an SSH tunnel or Tailscale. See
-  [docs/webui.md](docs/webui.md).
 - **Telegram** — alerts plus operator commands (`/status`, `/pnl`, `/regime`,
   `/last`, `/health`, `/pause`, `/resume`) with inline confirmation buttons.
   See [docs/telegram.md](docs/telegram.md).
@@ -411,7 +404,6 @@ xAuby/
 |-- scripts/               # ops + R&D scripts (backtest, optimize, deploy, replay)
 |-- tests/                 # unittest modules
 |-- Website/               # xAuby Pilot Workspace (Next.js) + public research page
-|-- saas-web/              # previous-generation Pilot SPA (Vite + React, legacy)
 `-- xauby/
     |-- engine/            # LiteTradingEngine mixins, brokers, risk, orders
     |-- strategies/        # strategy plugins + indicators/ + registries
@@ -420,7 +412,6 @@ xAuby/
     |-- backtest/          # replay engine, optimizer, metrics, data fetch
     |-- observability/     # events, JSONL store, replay validation, incidents
     |-- saas/              # web SaaS control plane (FastAPI)
-    |-- webui/             # read-only mobile WebUI
     |-- ui/                # terminal chart + Textual TUI
     |-- api/               # CCXT adapter (OKX) REST + WebSocket
     `-- notifications/     # Telegram bot, command poller, schedulers

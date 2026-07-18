@@ -8,7 +8,6 @@ Usage:
     xauby --config     # Open quick config editor
     xauby restart      # Restart engine + TUI and clear cache
     xauby update       # Pull origin/main from GitHub + controlled restart
-    xauby webui        # Start read-only browser dashboard
 """
 
 from __future__ import annotations
@@ -169,8 +168,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["restart", "update", "webui"],
-        help="Command: restart, update, or webui",
+        choices=["restart", "update"],
+        help="Command: restart or update",
     )
     parser.add_argument(
         "--live",
@@ -204,11 +203,6 @@ def main(argv: list[str] | None = None) -> int:
     # Update shortcut
     if args.command == "update":
         return _do_update()
-
-    if args.command == "webui":
-        from xauby.webui.server import main as webui_main
-
-        return webui_main([])
 
     # Restart shortcut
     if args.command == "restart":

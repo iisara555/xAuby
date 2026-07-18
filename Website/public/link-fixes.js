@@ -338,7 +338,7 @@
       } else if (label.includes("View source")) {
         link.href = "#system";
         link.textContent = "Explore the system →";
-      } else if (label.includes("WebUI")) {
+      } else if (label.includes("dashboard")) {
         link.href = "#dashboard";
         link.textContent = "Explore the dashboard";
       } else {
