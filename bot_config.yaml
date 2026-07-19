@@ -569,20 +569,20 @@ portfolio:
     min_order_amount: 10.0
   symbols:
     XAUUSDT:
-      allocation_pct: 70.0
+      allocation_pct: 65.0
       position_sizing:
         risk_pct: 0.02
         max_position_per_trade_pct: 25.0
         min_order_amount: 10.0
     BTCUSDT:
-      allocation_pct: 25.0
+      allocation_pct: 30.0
       position_sizing:
         risk_pct: 0.02
         max_position_per_trade_pct: 25.0
         min_order_amount: 10.0
   # Two live pairs (XAU + BTC). allocation_pct caps are the reliably-enforced
-  # budget ceilings (orders.py _symbol_allocation_remaining_usdt): XAU 70 +
-  # BTC 25 = 95%, leaving a 5% unallocated cash buffer. Slot for 3 so a manual
+  # budget ceilings (orders.py _symbol_allocation_remaining_usdt): XAU 65 +
+  # BTC 30 = 95%, leaving a 5% unallocated cash buffer. Slot for 3 so a manual
   # add never blocks on the cap.
   max_open_positions: 3
   max_daily_trades: 3
