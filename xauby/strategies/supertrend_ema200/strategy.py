@@ -281,9 +281,19 @@ class SuperTrendEMA200Strategy(Strategy):
             "vol_ratio": vol_ratio,
             "body_atr": body_atr,
         }
+        candidate_short = enable_short and not st_now
+        ema_check = ema_short_ok if candidate_short else ema_ok
+        timing_check = short_timing_ok if candidate_short else entry_timing_ok
+        comparison = "<" if candidate_short else ">"
+        expected_flip = "bear" if candidate_short else "bull"
         checklist = [
-            {"label": "EMA200", "value": f"{current_close:.2f}>{ema_now:.2f}", "ok": ema_ok},
-            {"label": "SuperTrend", "value": "Bull" if st_now else "Bear", "ok": entry_timing_ok},
+            {"label": "EMA200", "value": f"{current_close:.2f}{comparison}{ema_now:.2f}", "ok": ema_check},
+            {
+                "label": "SuperTrend",
+                "value": "Bear" if candidate_short else "Bull",
+                "ok": timing_check,
+                "hint": f"Fresh {expected_flip} flip required" if entry_on_flip_only else "Trend confirmed",
+            },
             {"label": "RSI", "value": f"{rsi_now:.1f}", "ok": rsi_ok, "hint": f"{rsi_min:.0f}-{rsi_max:.0f}"},
             {"label": "Volume", "value": f"{vol_ratio:.2f}x", "ok": vol_ok, "hint": f">={vol_min_ratio:.2f}x"},
         ]
@@ -334,4 +344,10 @@ class SuperTrendEMA200Strategy(Strategy):
                 timeframe=ctx.timeframe_primary,
             )
 
-        return hold("Waiting for SuperTrend bull above EMA200", confidence=0.35, volatility=current_atr if current_atr > 0 else None, indicators=indicators, checklist=checklist, status_summary="Waiting ST+EMA200", strategy_name=self.name, timeframe=ctx.timeframe_primary)
+        if entry_on_flip_only and ema_check:
+            hold_reason = f"SuperTrend {'bearish below' if candidate_short else 'bullish above'} EMA200; waiting for a fresh {expected_flip} flip"
+            status_summary = "Waiting for fresh ST flip"
+        else:
+            hold_reason = "Waiting for SuperTrend and EMA200 alignment"
+            status_summary = "Waiting ST+EMA200"
+        return hold(hold_reason, confidence=0.35, volatility=current_atr if current_atr > 0 else None, indicators=indicators, checklist=checklist, status_summary=status_summary, strategy_name=self.name, timeframe=ctx.timeframe_primary)

@@ -98,6 +98,28 @@ class TestSuperTrendEMA200Short(unittest.TestCase):
         self.assertEqual(signal.action, "BUY")
         self.assertFalse(signal.is_short)
 
+    def test_flip_only_hold_explains_the_current_side_and_freshness_gate(self):
+        strategy = SuperTrendEMA200Strategy({
+            "enable_short": True,
+            "vol_min_ratio": 0.0,
+            "entry_on_flip_only": True,
+        })
+        frame = _uptrend_df()
+
+        signal = strategy.analyze(MarketContext(
+            symbol="BTCUSDT",
+            timeframe_primary="4h",
+            df_primary=frame,
+            current_price=float(frame["close"].iloc[-1]),
+        ))
+
+        self.assertEqual(signal.action, "HOLD")
+        self.assertIn("bullish above EMA200", signal.reason)
+        self.assertIn("fresh bull flip", signal.reason)
+        supertrend = next(item for item in signal.checklist if item["label"] == "SuperTrend")
+        self.assertFalse(supertrend["ok"])
+        self.assertEqual(supertrend["hint"], "Fresh bull flip required")
+
 
 if __name__ == "__main__":
     unittest.main()

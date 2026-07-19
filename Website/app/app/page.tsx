@@ -14,26 +14,7 @@ import { useWorkspacePair } from "@/components/workspace-pair";
 import { api, csrfHeaders, formatNumber, valueAt } from "@/lib/api";
 import { useBot, useCatalog, useSnapshot } from "@/lib/hooks";
 import { runtimePairState } from "@/lib/runtime-pair-state";
-
-function marketSummary(zone: string, stale: boolean, loading: boolean) {
-  if (loading) return "Reading the market…";
-  if (stale) return "Market data delayed.";
-
-  switch (zone.toUpperCase()) {
-    case "GREEN":
-      return "Bullish momentum.";
-    case "BLUE":
-    case "LBLUE":
-      return "Recovery forming.";
-    case "YELLOW":
-    case "ORANGE":
-      return "Momentum fading.";
-    case "RED":
-      return "Bearish pressure.";
-    default:
-      return "Reading the market…";
-  }
-}
+import { marketSummary, strategyFacts, strategyMarker, strategyName } from "@/lib/strategy-presentation";
 
 function numberOrNull(value: unknown): number | null {
   const parsed = Number(value);
@@ -78,7 +59,7 @@ export default function DashboardPage() {
   const { data: bot, mutate: mutateBot } = useBot();
   const { data: snapshot } = useSnapshot();
   const { data: catalog } = useCatalog();
-  const { pairs, selectedSymbol: symbol } = useWorkspacePair();
+  const { pairs, selectedPair, selectedSymbol: symbol } = useWorkspacePair();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const running = bot?.tenant.status === "running";
@@ -103,9 +84,10 @@ export default function DashboardPage() {
   const displaySignal = !positionOpen && signal.toUpperCase() === "HOLD" ? "WAIT" : signal;
   const reason = String(valueAt(focus, "signal_meta", "reason") ?? "Waiting for the next confirmed strategy state.");
   const regime = String(valueAt(focus, "regime", "regime") ?? "UNKNOWN");
-  const zone = String(valueAt(focus, "indicators", "cdc_zone_4h") ?? "—");
-  const apSmoothing = valueAt(focus, "indicators", "ap_smoothing")
-    ?? valueAt(focus, "risk", "ap_smoothing");
+  const activeStrategy = strategyName(focus) || selectedPair?.strategy || "";
+  const strategyIndicatorFacts = strategyFacts(focus);
+  const marketMarker = strategyMarker(focus);
+  const pairPreset = catalog?.presets.find((item) => item.id === selectedPair?.id);
   const price = valueAt(focus, "current_price") ?? valueAt(position, "mark_price");
   const pct24h = Number(valueAt(focus, "price_change_24h_pct") ?? valueAt(focus, "percent_change_24h") ?? 0);
   const riskState = String(valueAt(focus, "regime", "risk_state") ?? "—");
@@ -157,8 +139,8 @@ export default function DashboardPage() {
     <div className="page-wrap">
       <PageHeading
         eyebrow="Pilot workspace"
-        title={<>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {user.display_name || user.email.split("@")[0]}. <span className="page-heading-market">{marketSummary(zone, Boolean(snapshot?.stale), !snapshot)}</span></>}
-        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={live} shortAvailable={shortAvailable} marketZone={zone} engineRunning={running} profileReady={pairs.length > 0} /></div>}
+        title={<>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {user.display_name || user.email.split("@")[0]}. <span className="page-heading-market">{marketSummary(focus, Boolean(snapshot?.stale), !snapshot)}</span></>}
+        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={live} shortAvailable={shortAvailable} marketZone={marketMarker} engineRunning={running} profileReady={pairs.length > 0} /></div>}
       />
 
       {!bot?.exchange_connection && (
@@ -205,7 +187,7 @@ export default function DashboardPage() {
             <div><span>{positionOpen ? "Unrealized PnL" : "No open position"}</span><strong>{positionOpen ? `${formatSigned(pnl)} USDT` : "FLAT"}</strong><small>{positionOpen ? formatApproxBaht(pnlThb, true, 2) : "— THB"}</small></div>
             <div className="position-return"><span>Return</span><b>{positionOpen ? formatSignedPercent(pnlPct) : "—"}</b></div>
           </div>
-          {positionOpen && managementMode === "strategy_handoff" && <p className="position-management-note">Waiting for CDC alignment before strategy exits are enabled.</p>}
+          {positionOpen && managementMode === "strategy_handoff" && <p className="position-management-note">Waiting for the active strategy to align before strategy exits are enabled.</p>}
           <dl className="metric-list">
             <div><dt>Entry</dt><dd>{positionOpen ? formatNumber(valueAt(position, "entry_price")) : "—"}</dd></div>
             <div><dt>Mark</dt><dd>{positionOpen ? formatNumber(valueAt(position, "mark_price")) : "—"}</dd></div>
@@ -220,7 +202,14 @@ export default function DashboardPage() {
           </div>
         </article>
 
-        <CandleChart symbol={symbol} currentPrice={price} zone={zone} apSmoothing={apSmoothing} />
+        <CandleChart
+          symbol={symbol}
+          currentPrice={price}
+          strategyName={activeStrategy}
+          primaryTimeframe={pairPreset?.primary_timeframe ?? String(valueAt(focus, "primary_timeframe") ?? "4h")}
+          confirmTimeframe={pairPreset?.confirm_timeframe ?? String(valueAt(focus, "confirm_timeframe") ?? "")}
+          marketMarker={marketMarker}
+        />
 
         <SignalDetail state={focus} stale={snapshot?.stale} />
 
@@ -246,7 +235,10 @@ export default function DashboardPage() {
           <div className="card-kicker"><span><BotIcon size={15} /> Strategy pulse</span><span>{symbol}</span></div>
           <div className="signal-orb"><BotIcon size={28} /><span>{displaySignal}</span></div>
           <p>{reason}</p>
-          <div className="strategy-mini-grid"><span><small>4H zone</small><strong>{zone}</strong></span><span><small>Regime</small><strong>{regime.replaceAll("_", " ")}</strong></span><span><small>Risk</small><strong>{riskState.replaceAll("_", " ")}</strong></span></div>
+          <div className="strategy-mini-grid">{strategyIndicatorFacts.length
+            ? strategyIndicatorFacts.map((fact) => <span key={fact.label}><small>{fact.label}</small><strong>{fact.value}</strong></span>)
+            : <><span><small>Regime</small><strong>{regime.replaceAll("_", " ")}</strong></span><span><small>Risk</small><strong>{riskState.replaceAll("_", " ")}</strong></span></>}
+          </div>
           <a href="#signal">Open signal detail <ArrowRight size={16} /></a>
         </article>
 
@@ -269,7 +261,7 @@ export default function DashboardPage() {
 
         <article className="card recent-card">
           <div className="card-kicker"><span><ActivityIcon size={15} /> Recent activity</span><Link href="/app/activity">View all <ArrowRight size={14} /></Link></div>
-          <div className="recent-list">{events.slice(-4).reverse().map((item, index) => <div key={String(item.tick_id ?? item.timestamp ?? index)}><i /><span><strong>{String(item.event ?? item.event_type ?? "Engine update").replaceAll("_", " ")}</strong><small>{String(item.action ?? item.reason ?? "Strategy state refreshed")}</small></span></div>)}</div>
+          <div className="recent-list">{events.slice(-4).reverse().map((item, index) => <div key={`${String(item.tick_id ?? "tick")}-${String(item.timestamp ?? "time")}-${String(item.event ?? item.event_type ?? "event")}-${index}`}><i /><span><strong>{String(item.event ?? item.event_type ?? "Engine update").replaceAll("_", " ")}</strong><small>{String(item.action ?? item.reason ?? "Strategy state refreshed")}</small></span></div>)}</div>
           {!events.length && <p className="section-copy">Events will appear as the tenant engine evaluates the market.</p>}
         </article>
       </section>

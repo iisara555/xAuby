@@ -194,7 +194,9 @@ class RuntimeGateway:
     def candles(self, slug: str, *, symbol: str, timeframe: str, limit: int) -> dict[str, Any]:
         clean_symbol = self._symbol(symbol)
         clean_timeframe = self._timeframe(timeframe)
-        clean_limit = self._limit(limit, default=48, maximum=120)
+        # Strategy charts need enough warm-up history for their longest
+        # indicator (the certified BTC preset uses EMA200 over up to 420 bars).
+        clean_limit = self._limit(limit, default=48, maximum=500)
         return self._native_candles(slug, clean_symbol, clean_timeframe, clean_limit)
 
     def activity(self, slug: str, *, symbol: str, limit: int) -> dict[str, Any]:
@@ -263,23 +265,118 @@ class RuntimeGateway:
             conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
             try:
+                # Compute indicators with the engine's normal 420-bar window,
+                # then return only the number of candles the caller requested.
+                history_limit = max(limit, 420)
                 rows = conn.execute(
                     "SELECT timestamp,open,high,low,close,volume FROM prices "
                     "WHERE symbol=? AND timeframe=? ORDER BY timestamp DESC LIMIT ?",
-                    (symbol, timeframe, limit),
+                    (symbol, timeframe, history_limit),
                 ).fetchall()
             finally:
                 conn.close()
+            candles = [dict(row) for row in reversed(rows)]
+            strategy_name, chart, candles = self._strategy_chart_payload(
+                slug, symbol, candles
+            )
+            candles = candles[-limit:]
             return {
                 "ok": True,
                 "source": "tenant_engine",
                 "read_only": False,
                 "symbol": symbol,
                 "timeframe": timeframe,
-                "candles": [dict(row) for row in reversed(rows)],
+                "strategy_name": strategy_name,
+                "chart": chart,
+                "candles": candles,
             }
         except sqlite3.Error:
             return {**self._unavailable("tenant_engine", read_only=False), "candles": []}
+
+    def _strategy_chart_payload(
+        self,
+        slug: str,
+        symbol: str,
+        candles: list[dict[str, Any]],
+    ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        """Enrich candle rows using the same indicator registry as the engine."""
+        if not candles:
+            return "", {}, candles
+        try:
+            import math
+
+            import pandas as pd
+            import yaml
+
+            from xauby.runtime.trading_config import strategy_name_for_symbol
+            from xauby.ui.chart_registry import chart_display_metadata, compute_chart_dataframe
+
+            config_path = self.supervisor.config_dir(slug) / "bot_config.yaml"
+            cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            if not isinstance(cfg, dict):
+                cfg = {}
+
+            strategy_name = ""
+            state_path = self.supervisor.runtime_dir(slug) / "logs" / "xauby_bot_state.json"
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                focus = self._focus_state(state if isinstance(state, dict) else {}, symbol)
+                signal_meta = focus.get("signal_meta") if isinstance(focus.get("signal_meta"), dict) else {}
+                strategy_name = str(
+                    signal_meta.get("strategy_name") or focus.get("strategy_name") or ""
+                )
+            except (OSError, ValueError, json.JSONDecodeError):
+                pass
+            if not strategy_name:
+                strategy_name = strategy_name_for_symbol(cfg, symbol)
+
+            frame = compute_chart_dataframe(
+                pd.DataFrame(candles),
+                symbol,
+                strategy_name=strategy_name,
+                config=cfg,
+            )
+            metadata = chart_display_metadata(strategy_name, cfg)
+            line_keys = [
+                str(item.get("key"))
+                for item in metadata.get("lines") or []
+                if isinstance(item, dict) and item.get("key")
+            ]
+            zone_key = str(metadata.get("zone_column") or "")
+            export_keys = set(line_keys)
+            if zone_key:
+                export_keys.add(zone_key)
+
+            def json_value(value: Any) -> Any:
+                if value is None or value is pd.NA:
+                    return None
+                if hasattr(value, "item"):
+                    value = value.item()
+                if isinstance(value, float) and not math.isfinite(value):
+                    return None
+                return value
+
+            enriched: list[dict[str, Any]] = []
+            for index, candle in enumerate(candles):
+                item = dict(candle)
+                for key in export_keys:
+                    if key in frame.columns:
+                        item[key] = json_value(frame.iloc[index][key])
+                enriched.append(item)
+
+            # Tuples are valid JSON through FastAPI, but lists make the payload
+            # explicit and simpler for non-FastAPI callers and tests.
+            for group in ("zones", "lines"):
+                for item in metadata.get(group) or []:
+                    if isinstance(item, dict) and isinstance(item.get("color"), tuple):
+                        item["color"] = list(item["color"])
+                    if isinstance(item, dict) and isinstance(item.get("bg_color"), tuple):
+                        item["bg_color"] = list(item["bg_color"])
+            return strategy_name, metadata, enriched
+        except Exception:
+            # Chart decoration is read-only presentation. Raw candles remain
+            # available if a plugin or a tenant config is temporarily invalid.
+            return "", {}, candles
 
     def _native_trades(self, slug: str, symbol: str, limit: int) -> list[dict[str, Any]]:
         path = self._native_db(slug)
