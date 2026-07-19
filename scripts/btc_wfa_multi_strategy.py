@@ -21,6 +21,8 @@ Usage:
   python scripts/btc_wfa_multi_strategy.py run      # walk-forward, all strategies
   python scripts/btc_wfa_multi_strategy.py run --strategy supertrend_ema200
   python scripts/btc_wfa_multi_strategy.py report   # aggregate OOS by phase
+  python scripts/btc_wfa_multi_strategy.py grid     # wide PF grid, 70/30 IS/OOS
+  python scripts/btc_wfa_multi_strategy.py gridreport --top 5
 
 Data comes from data.binance.vision (public archive). Results append to JSONL
 checkpoints in core/btc_wfa/ so interrupted runs resume where they left off.
@@ -193,6 +195,170 @@ STRATEGIES: dict = {
         "use_regime": False,
     },
 }
+
+
+# --------------------------------------------------------------------------- #
+# PF grid search: wider grids, single 70/30 IS/OOS split, ranked by PF        #
+# --------------------------------------------------------------------------- #
+GRID_SPLIT_RATIO = 0.70
+GRID_MIN_IS_TRADES = 30
+GRID_MIN_OOS_TRADES = 10
+
+
+def _actionzone_pf_grid() -> list:
+    """Structural knobs x exit regime (CDC-pure vs ATR stop) for BTC."""
+    combos = []
+    exit_modes = {
+        "nosl": {"disable_stop_loss": True, "position_pct": 0.95},
+        "sl2.5": {"disable_stop_loss": False, "sl_atr_mult": 2.5,
+                  "trailing_atr_mult": 2.0, "position_pct": 1.0},
+        "sl3.5": {"disable_stop_loss": False, "sl_atr_mult": 3.5,
+                  "trailing_atr_mult": 2.0, "position_pct": 1.0},
+    }
+    for ap, fz, bx, (mode, exits) in itertools.product(
+        [1, 2], [1, 2, 3], [False, True], exit_modes.items()
+    ):
+        ov = {
+            "enable_short": True,
+            "require_fresh_zone": True,
+            "rsi_min": 0.0, "rsi_max": 100.0, "vol_min_ratio": 0.0,
+            "ap_smoothing": ap, "fresh_zone_window": fz,
+            "exit_on_bear_cross": bx, **exits,
+        }
+        combos.append((f"ap={ap}_fz={fz}_bx={int(bx)}_{mode}", ov))
+    return combos
+
+
+PF_GRIDS: dict = {
+    "bbrsi_mean_reversion": _grid(
+        {"enable_short": True},
+        {
+            "bb_std": [2.0, 2.5, 3.0],
+            "rsi_oversold": [20.0, 25.0, 30.0],
+            "rsi_exit": [50.0, 55.0, 60.0],
+            "sl_atr_mult": [1.8, 2.5],
+        },
+    ),
+    "supertrend_ema200": _grid(
+        {"enable_short": True},
+        {
+            "supertrend_mult": [2.5, 3.0, 3.5, 4.0],
+            "atr_period": [10, 14],
+            "sl_atr_mult": [2.0, 2.5, 3.0],
+            "trailing_atr_mult": [1.5, 2.0],
+            "exit_on_ema_loss": [True, False],
+        },
+    ),
+    "xauby_actionzone": _actionzone_pf_grid(),
+    "xauby_smc_pro": _grid(
+        {"use_fair_value_gap": True, "use_order_block": True},
+        {
+            "confluence_min_score": [0.5, 1.0, 1.5, 2.0],
+            "require_liquidity_sweep": [False, True],
+            "fvg_min_atr": [0.0, 0.25],
+        },
+    ),
+}
+
+
+def eval_grid_combo(item):
+    strategy, cid, ov = item
+    gid = f"{strategy}:{cid}"
+    try:
+        df4 = _G["df4"]
+        split = int(len(df4) * GRID_SPLIT_RATIO)
+        is_df = df4.iloc[:split].reset_index(drop=True)
+        oos_df = df4.iloc[max(0, split - WARMUP_BARS):].reset_index(drop=True)
+        oos_skip = split - max(0, split - WARMUP_BARS)
+        return {
+            "id": gid,
+            "strategy": strategy,
+            "combo": cid,
+            "override": ov,
+            "is": _run(strategy, is_df, ov, 0),
+            "oos": _run(strategy, oos_df, ov, oos_skip),
+        }
+    except Exception as exc:
+        return {"id": gid, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def cmd_grid(only: str | None, jobs: int) -> None:
+    items = [(s, cid, ov) for s, grid in PF_GRIDS.items()
+             if only is None or s == only
+             for cid, ov in grid]
+    out_path = os.path.join(OUT_DIR, "pf_grid.jsonl")
+    done = set()
+    if os.path.exists(out_path):
+        with open(out_path) as f:
+            done = {json.loads(l)["id"] for l in f if l.strip()}
+    todo = [it for it in items if f"{it[0]}:{it[1]}" not in done]
+    print(f"{len(todo)} combos to run ({len(done)} already done)", flush=True)
+    t0 = time.time()
+    with Pool(jobs, initializer=_init_worker) as p, open(out_path, "a") as out:
+        for i, res in enumerate(p.imap_unordered(eval_grid_combo, todo), 1):
+            out.write(json.dumps(res) + "\n")
+            out.flush()
+            el = time.time() - t0
+            print(f"  {i}/{len(todo)} {res['id']}"
+                  f"{' ERR ' + res['error'] if 'error' in res else ''}"
+                  f"  elapsed {el/60:.1f}m eta {el/i*(len(todo)-i)/60:.1f}m",
+                  flush=True)
+
+
+def cmd_grid_report(md_path: str | None, top: int = 5) -> None:
+    path = os.path.join(OUT_DIR, "pf_grid.jsonl")
+    rows = []
+    with open(path) as f:
+        for line in f:
+            r = json.loads(line)
+            if "error" not in r:
+                rows.append(r)
+    lines = []
+
+    def emit(s: str = "") -> None:
+        print(s)
+        lines.append(s)
+
+    emit(f"# BTC {SYMBOL} 4h PF grid search "
+         f"(IS {GRID_SPLIT_RATIO:.0%} / OOS {1 - GRID_SPLIT_RATIO:.0%})")
+    emit()
+    emit(f"Validity gates: IS trades >= {GRID_MIN_IS_TRADES}, "
+         f"OOS trades >= {GRID_MIN_OOS_TRADES}, IS net > 0. "
+         f"Ranked by OOS profit factor.")
+    for s in sorted({r["strategy"] for r in rows}):
+        srows = [r for r in rows if r["strategy"] == s]
+        valid = [
+            r for r in srows
+            if (r["is"]["total_trades"] or 0) >= GRID_MIN_IS_TRADES
+            and (r["oos"]["total_trades"] or 0) >= GRID_MIN_OOS_TRADES
+            and (r["is"]["net_profit_pct"] or 0) > 0
+        ]
+        valid.sort(key=lambda r: r["oos"]["profit_factor"] or 0, reverse=True)
+        emit()
+        emit(f"## {s} — {len(srows)} combos, {len(valid)} pass gates")
+        emit()
+        emit("| combo | IS pf | IS net% | IS wr% | IS trd | IS mdd% "
+             "| OOS pf | OOS net% | OOS wr% | OOS trd | OOS mdd% |")
+        emit("|" + "---|" * 11)
+        for r in valid[:top]:
+            i, o = r["is"], r["oos"]
+            emit(f"| {r['combo']} | {i['profit_factor']:.2f} "
+                 f"| {i['net_profit_pct']:+.1f} | {i['win_rate']:.0f} "
+                 f"| {i['total_trades']} | {i['max_drawdown_pct']:.1f} "
+                 f"| {o['profit_factor']:.2f} | {o['net_profit_pct']:+.1f} "
+                 f"| {o['win_rate']:.0f} | {o['total_trades']} "
+                 f"| {o['max_drawdown_pct']:.1f} |")
+        if not valid:
+            best = max(srows, key=lambda r: r["oos"]["profit_factor"] or 0)
+            o = best["oos"]
+            emit(f"| (no combo passes; best raw OOS pf) {best['combo']} "
+                 f"| — | — | — | — | — | {o['profit_factor']:.2f} "
+                 f"| {o['net_profit_pct']:+.1f} | {o['win_rate']:.0f} "
+                 f"| {o['total_trades']} | {o['max_drawdown_pct']:.1f} |")
+    if md_path:
+        with open(md_path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        print(f"\nwritten: {md_path}")
 
 
 # --------------------------------------------------------------------------- #
@@ -436,16 +602,21 @@ def cmd_report(md_path: str | None) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("command", choices=["fetch", "run", "report"])
+    p.add_argument("command", choices=["fetch", "run", "report", "grid", "gridreport"])
     p.add_argument("--strategy", default=None, help="run a single strategy")
     p.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     p.add_argument("--md", default=None, help="report: also write markdown here")
+    p.add_argument("--top", type=int, default=5, help="gridreport: rows per strategy")
     args = p.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
     if args.command == "fetch":
         cmd_fetch()
     elif args.command == "run":
         cmd_run(args.strategy, args.jobs)
+    elif args.command == "grid":
+        cmd_grid(args.strategy, args.jobs)
+    elif args.command == "gridreport":
+        cmd_grid_report(args.md, args.top)
     else:
         cmd_report(args.md)
 
