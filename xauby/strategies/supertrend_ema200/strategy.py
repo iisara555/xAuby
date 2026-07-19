@@ -15,7 +15,7 @@ import pandas as pd
 from xauby.strategies.base import Strategy
 from xauby.strategies.context import MarketContext
 from xauby.strategies.registry import register
-from xauby.strategies.signal import Signal, buy, hold, sell
+from xauby.strategies.signal import Signal, buy, close_short, hold, open_short, sell
 
 
 @register("supertrend_ema200")
@@ -48,6 +48,9 @@ class SuperTrendEMA200Strategy(Strategy):
             "exit_on_supertrend_flip": True,
             "exit_on_ema_loss": True,
             "max_calc_bars": 420,
+            # Mirrored short side (SuperTrend bear below EMA200).
+            # Default off: live long-only behavior is unchanged.
+            "enable_short": False,
         }
 
     def _cfg_int(self, key: str, default: int, cfg: Optional[Dict[str, Any]] = None) -> int:
@@ -261,6 +264,12 @@ class SuperTrendEMA200Strategy(Strategy):
         vol_ok = vol_min_ratio <= 0.0 or vol_ratio >= vol_min_ratio
         body_atr = abs(current_close - current_open) / current_atr if current_atr > 0 else 0.0
 
+        enable_short = self._cfg_bool("enable_short", False, runtime_cfg)
+        bear_confirmed = bool((~st_bull[max(0, i - confirm_bars + 1): i + 1]).all())
+        flip_bear = (not st_now) and st_prev
+        ema_short_ok = current_close < ema_now
+        short_timing_ok = flip_bear if entry_on_flip_only else bear_confirmed
+
         entry_timing_ok = flip_bull if entry_on_flip_only else bull_confirmed
         indicators = {
             "atr": current_atr,
@@ -278,6 +287,15 @@ class SuperTrendEMA200Strategy(Strategy):
             {"label": "RSI", "value": f"{rsi_now:.1f}", "ok": rsi_ok, "hint": f"{rsi_min:.0f}-{rsi_max:.0f}"},
             {"label": "Volume", "value": f"{vol_ratio:.2f}x", "ok": vol_ok, "hint": f">={vol_min_ratio:.2f}x"},
         ]
+
+        if ctx.has_position and str(ctx.position_side or "").upper() == "SHORT":
+            if ctx.sl_confirmed:
+                return close_short("SuperTrend short Stop loss confirmed", confidence=0.9, volatility=current_atr, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
+            if exit_on_st_flip and st_now:
+                return close_short("SuperTrend flipped bullish", confidence=0.72, volatility=current_atr, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
+            if exit_on_ema_loss and current_close > ema_now:
+                return close_short("Close reclaimed EMA200", confidence=0.68, volatility=current_atr, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
+            return hold("SuperTrend EMA200 short managed by ATR trailing stop", confidence=0.5, volatility=current_atr, trail_distance=current_atr * trail_mult if current_atr > 0 else None, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
 
         if ctx.has_position:
             if ctx.sl_confirmed:
@@ -298,6 +316,20 @@ class SuperTrendEMA200Strategy(Strategy):
                 indicators=indicators,
                 checklist=checklist,
                 status_summary=f"ST+EMA BUY ATR {current_atr:.2f}",
+                strategy_name=self.name,
+                timeframe=ctx.timeframe_primary,
+            )
+
+        if enable_short and ema_short_ok and short_timing_ok and rsi_ok and vol_ok and current_atr > 0:
+            return open_short(
+                "SuperTrend bear below EMA200",
+                confidence=0.64,
+                stop_loss_distance=current_atr * sl_mult,
+                trail_distance=current_atr * trail_mult,
+                volatility=current_atr,
+                indicators=indicators,
+                checklist=checklist,
+                status_summary=f"ST+EMA SHORT ATR {current_atr:.2f}",
                 strategy_name=self.name,
                 timeframe=ctx.timeframe_primary,
             )

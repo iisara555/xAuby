@@ -356,13 +356,18 @@ strategy:
       breakeven_buffer_atr_mult: 0.05
       exit_on_trend_loss: true
     supertrend_ema200:
+      # Live BTC pair (4h) — certified grid winner. See
+      # docs/research/btc_supertrend_ema200_certificate_2026-07.md. Kept in sync
+      # with coin_whitelist.json BTC strategy_params (whitelist is source of
+      # truth at runtime; this block is the fallback/default layer).
       enabled: true
-      timeframe: 1h
-      primary_timeframe: 1h
+      timeframe: 4h
+      primary_timeframe: 4h
       confirm_timeframe: ''
+      enable_short: true
       ema_period: 200
       atr_period: 10
-      supertrend_mult: 3.5
+      supertrend_mult: 4.0
       confirm_bars: 1
       entry_on_flip_only: true
       rsi_period: 14
@@ -370,7 +375,7 @@ strategy:
       rsi_max: 100.0
       volume_ma_period: 20
       vol_min_ratio: 0.0
-      sl_atr_mult: 2.5
+      sl_atr_mult: 3.0
       trailing_atr_mult: 2.0
       fixed_tp_pct: 0.0
       breakeven_sl_enabled: true
@@ -393,6 +398,7 @@ strategy:
 strategies:
   enabled:
   - xauby_actionzone
+  - supertrend_ema200
   min_confidence: 0.4
   min_strategies_agree: 1
   independent_strategy_execution: true
@@ -508,7 +514,7 @@ minimal_roi:
     '960': 0.008
 data:
   auto_detect_held_pairs: false
-  pairs: ["XAUUSDT"]
+  pairs: ["XAUUSDT", "BTCUSDT"]
   portfolio_guard:
     held_coins_only: false
   collect_interval_seconds: 60
@@ -563,12 +569,22 @@ portfolio:
     min_order_amount: 10.0
   symbols:
     XAUUSDT:
-      allocation_pct: 100.0
+      allocation_pct: 70.0
       position_sizing:
         risk_pct: 0.02
         max_position_per_trade_pct: 25.0
         min_order_amount: 10.0
-  max_open_positions: 1
+    BTCUSDT:
+      allocation_pct: 25.0
+      position_sizing:
+        risk_pct: 0.02
+        max_position_per_trade_pct: 25.0
+        min_order_amount: 10.0
+  # Two live pairs (XAU + BTC). allocation_pct caps are the reliably-enforced
+  # budget ceilings (orders.py _symbol_allocation_remaining_usdt): XAU 70 +
+  # BTC 25 = 95%, leaving a 5% unallocated cash buffer. Slot for 3 so a manual
+  # add never blocks on the cap.
+  max_open_positions: 3
   max_daily_trades: 3
   min_balance_threshold: 35.0
   read_only: false

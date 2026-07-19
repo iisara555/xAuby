@@ -50,6 +50,45 @@
       "regime_router_enabled": false,
       "regime_router_live_confirmed": false,
       "sim_fee_pct": 0.05
+    },
+    {
+      "symbol": "BTC",
+      "enabled": true,
+      "primary_timeframe": "4h",
+      "confirm_timeframe": "",
+      "strategy": "supertrend_ema200",
+      "strategy_params": {
+        "enable_short": true,
+        "ema_period": 200,
+        "atr_period": 10,
+        "supertrend_mult": 4.0,
+        "confirm_bars": 1,
+        "entry_on_flip_only": true,
+        "rsi_period": 14,
+        "rsi_min": 0.0,
+        "rsi_max": 100.0,
+        "volume_ma_period": 20,
+        "vol_min_ratio": 0.0,
+        "sl_atr_mult": 3.0,
+        "trailing_atr_mult": 2.0,
+        "fixed_tp_pct": 0.0,
+        "breakeven_sl_enabled": true,
+        "breakeven_activation_atr_mult": 1.2,
+        "breakeven_buffer_atr_mult": 0.05,
+        "exit_on_supertrend_flip": true,
+        "exit_on_ema_loss": true,
+        "max_calc_bars": 420
+      },
+      "mode": "live",
+      "allowed_sides": [
+        "long",
+        "short"
+      ],
+      "leverage": 1.0,
+      "short_live_enabled": true,
+      "regime_router_enabled": false,
+      "regime_router_live_confirmed": false,
+      "sim_fee_pct": 0.05
     }
   ]
 }

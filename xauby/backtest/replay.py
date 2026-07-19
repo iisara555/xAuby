@@ -33,6 +33,7 @@ def run_plugin_replay(
     df_regime: Optional[pd.DataFrame] = None,
     primary_timeframe: Optional[str] = None,
     regime_timeframe: Optional[str] = None,
+    min_bars_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     # TODO: make strategy_name a required parameter in a future breaking release
     """Run bar-by-bar replay using the real strategy plugin (ReplayEngine).
@@ -120,10 +121,16 @@ def run_plugin_replay(
         engine_config=cfg,
     )
     regime_df = normalize_ohlcv_df(df_regime) if df_regime is not None else None
+    # min_bars_override lets walk-forward callers prepend a warmup lead-in of
+    # PAST bars that only warms indicators — trading starts at that index, so
+    # out-of-sample stats contain no pre-window trades.
+    min_bars = int(getattr(strategy, "min_bars", 100) or 100)
+    if min_bars_override is not None:
+        min_bars = max(min_bars, int(min_bars_override))
     trades, _events, final_bal, last_checklist = replay.replay_bars(
         df,
         df_regime=regime_df,
-        min_bars=int(getattr(strategy, "min_bars", 100) or 100),
+        min_bars=min_bars,
     )
 
     metrics = build_metrics_from_replay(

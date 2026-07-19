@@ -28,6 +28,7 @@ core/equity_peak.json
 core/funding_*.csv
 core/pair_optimization_report.json
 core/strategy_selection_*.json
+core/btc_wfa/
 core/simulated_balance*.json
 core/sentiment_guard_state.json
 core/usd_thb_rate.json
