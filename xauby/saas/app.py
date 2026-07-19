@@ -1101,8 +1101,17 @@ def create_app(
             equity = float(focus.get("total_equity_usdt") or breakdown.get("portfolio_total_usdt") or 0.0)
             if equity <= 0:
                 raise HTTPException(status_code=409, detail="portfolio equity is unavailable")
-            max_allocation = float(config.get("max_position_per_trade_pct") or 10.0) / 100.0
             preset = context["preset"]
+            max_allocation = min(
+                float(config.get("max_position_per_trade_pct") or 10.0),
+                float(
+                    preset.get(
+                        "max_position_per_trade_pct",
+                        config.get("max_position_per_trade_pct") or 10.0,
+                    )
+                ),
+                float(preset.get("allocation_pct", 100.0)),
+            ) / 100.0
             execution_profile = preset.get("execution_profile") or {}
             cdc_pure = bool(preset.get("cdc_pure_certified"))
             if cdc_pure:
@@ -1119,7 +1128,7 @@ def create_app(
                 allocation_pct = effective_pct * 100.0
                 sizing_mode = "cdc_pure"
             else:
-                risk_fraction = float(config.get("risk_pct") or 0.01)
+                risk_fraction = float(preset.get("risk_pct", config.get("risk_pct") or 0.01))
                 stop_distance = mark * 0.02
                 risk_sized = (equity * risk_fraction / stop_distance) * mark
                 estimated_notional = min(risk_sized, equity * max_allocation)

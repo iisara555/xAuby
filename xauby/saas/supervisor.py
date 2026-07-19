@@ -305,9 +305,18 @@ class TenantSupervisor:
         sizing["max_position_per_trade_pct"] = bounded["max_position_per_trade_pct"]
         for preset in profile["presets"]:
             symbol_cfg = portfolio.setdefault("symbols", {}).setdefault(preset["symbol"], {})
-            symbol_cfg.setdefault("position_sizing", {})[
-                "max_position_per_trade_pct"
-            ] = bounded["max_position_per_trade_pct"]
+            if preset.get("allocation_pct") is not None:
+                symbol_cfg["allocation_pct"] = float(preset["allocation_pct"])
+            symbol_sizing = symbol_cfg.setdefault("position_sizing", {})
+            symbol_sizing["risk_pct"] = float(
+                preset.get("risk_pct", bounded["risk_pct"])
+            )
+            symbol_sizing["max_position_per_trade_pct"] = float(
+                preset.get(
+                    "max_position_per_trade_pct",
+                    bounded["max_position_per_trade_pct"],
+                )
+            )
         cfg.setdefault("derivatives", {}).update({
             "default_leverage": bounded["max_leverage"],
             "max_leverage": bounded["max_leverage"],

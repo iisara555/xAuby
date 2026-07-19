@@ -322,9 +322,9 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(payload["mode"], "simulation")
         self.assertEqual(payload["management_mode"], "strategy_handoff")
         self.assertEqual(payload["sizing_mode"], "cdc_pure")
-        self.assertAlmostEqual(payload["allocation_pct"], 95.0)
-        self.assertAlmostEqual(payload["estimated_notional"], 9500.0)
-        self.assertAlmostEqual(payload["estimated_quantity"], 2.375)
+        self.assertAlmostEqual(payload["allocation_pct"], 65.0)
+        self.assertAlmostEqual(payload["estimated_notional"], 6500.0)
+        self.assertAlmostEqual(payload["estimated_quantity"], 1.625)
 
     def test_live_manual_side_is_independent_of_actionzone_colour(self):
         me = self.client.get("/api/v1/me").json()

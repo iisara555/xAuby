@@ -156,10 +156,19 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         self.assertTrue(all(asset["enabled"] for asset in assets.values()))
         self.assertTrue(all(asset["mode"] == "sim" for asset in assets.values()))
         self.assertTrue(assets["XAU"]["live_certified"])
-        self.assertFalse(assets["BTC"]["live_certified"])
+        self.assertTrue(assets["BTC"]["live_certified"])
         self.assertEqual(assets["XAU"]["sim_fee_pct"], 0.05)
         self.assertEqual(assets["XAU"]["allowed_sides"], ["long", "short"])
-        self.assertEqual(assets["BTC"]["allowed_sides"], ["long"])
+        self.assertEqual(assets["BTC"]["allowed_sides"], ["long", "short"])
+        self.assertEqual(
+            assets["BTC"]["strategy_params"]["supertrend_mult"], 4.0
+        )
+        self.assertEqual(cfg["portfolio"]["symbols"]["XAUUSDT"]["allocation_pct"], 65.0)
+        self.assertEqual(cfg["portfolio"]["symbols"]["BTCUSDT"]["allocation_pct"], 30.0)
+        self.assertEqual(
+            cfg["portfolio"]["symbols"]["BTCUSDT"]["position_sizing"]["risk_pct"],
+            0.02,
+        )
 
     def test_exchange_switch_rewrites_exchange_block_and_flags_reconnect(self):
         tenant = self._tenant()
@@ -198,7 +207,7 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn("save a trading profile", response.json()["detail"])
 
-    def test_set_live_mode_keeps_sim_only_pairs_in_sim(self):
+    def test_set_live_mode_enables_both_certified_okx_pairs(self):
         tenant = self._tenant()
         saved = self._save_profile(
             ["okx-xau-actionzone-v1", "okx-btc-supertrend-v1"], "okx-xau-actionzone-v1"
@@ -208,21 +217,25 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         cfg, whitelist = self._config(tenant["slug"])
         assets = {asset["symbol"]: asset for asset in whitelist["assets"]}
         self.assertEqual(assets["XAU"]["mode"], "live")
-        self.assertEqual(assets["BTC"]["mode"], "sim")
+        self.assertEqual(assets["BTC"]["mode"], "live")
         self.assertEqual(cfg["trading"]["max_open_positions"], 2)
         self.assertEqual(cfg["execution"]["live_strategy_mode"], "cdc_pure")
         self.assertFalse(cfg["risk"]["stop_loss_required"])
         self.assertFalse(cfg["simulate_only"])
         self.assertEqual(assets["XAU"]["manual_allowed_sides"], ["long", "short"])
         self.assertTrue(assets["XAU"]["manual_short_live_enabled"])
-        self.assertFalse(assets["BTC"]["manual_short_live_enabled"])
+        self.assertTrue(assets["BTC"]["manual_short_live_enabled"])
+        self.assertTrue(assets["BTC"]["short_live_enabled"])
 
-    def test_set_live_mode_requires_a_certified_pair(self):
+    def test_certified_btc_pair_can_run_live_without_xau(self):
         tenant = self._tenant()
         saved = self._save_profile(["okx-btc-supertrend-v1"])
         self.assertEqual(saved.status_code, 200, saved.text)
-        with self.assertRaisesRegex(ValueError, "no live-certified pair"):
-            self.supervisor.set_live_mode(tenant["slug"], "okx-swap")
+        self.supervisor.set_live_mode(tenant["slug"], "okx-swap")
+        cfg, whitelist = self._config(tenant["slug"])
+        self.assertTrue(cfg["risk"]["stop_loss_required"])
+        self.assertEqual(whitelist["assets"][0]["mode"], "live")
+        self.assertEqual(whitelist["assets"][0]["allowed_sides"], ["long", "short"])
 
     def test_sim_only_exchange_target_cannot_go_live(self):
         tenant = self._tenant()
@@ -231,7 +244,7 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not live certified"):
             self.supervisor.set_live_mode(tenant["slug"], "binance-global-spot")
 
-    def test_live_request_rejects_a_profile_with_no_certified_preset(self):
+    def test_live_request_accepts_the_certified_btc_preset(self):
         tenant = self._tenant()
         saved = self._save_profile(["okx-btc-supertrend-v1"])
         self.assertEqual(saved.status_code, 200, saved.text)
@@ -239,8 +252,8 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
             tenant["id"], "okx", "1234", target_id="okx-swap", status="tested",
         )
         response = self.client.post("/api/v1/live/request", headers=self.headers)
-        self.assertEqual(response.status_code, 409)
-        self.assertIn("live certified", response.json()["detail"])
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "requested")
 
     def test_credential_env_names_align_with_engine_resolver(self):
         tenant = self._tenant()
