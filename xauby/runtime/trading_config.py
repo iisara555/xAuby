@@ -188,6 +188,23 @@ def _as_float(value: Any, default: float) -> float:
         return default
 
 
+def bounded_position_fraction(
+    position_fraction: Any,
+    allocation_pct: Any = None,
+) -> float:
+    """Cap fixed-fraction sizing by the symbol's portfolio allocation.
+
+    CDC Pure expresses its desired size as a 0..1 equity fraction, while the
+    portfolio owns a per-symbol allocation in percent.  Keeping this conversion
+    here gives previews and every execution side the same sizing rule.
+    """
+    fraction = max(0.0, min(_as_float(position_fraction, 0.0), 1.0))
+    allocation = _as_float(allocation_pct, 0.0)
+    if allocation > 0.0:
+        fraction = min(fraction, max(0.0, min(allocation / 100.0, 1.0)))
+    return fraction
+
+
 def _as_int(value: Any, default: int) -> int:
     try:
         if value is None:

@@ -166,6 +166,18 @@ class TestEntryMarketFallback(unittest.TestCase):
         self.assertEqual(engine.db.saved_state["state"], "bought")
         self.assertAlmostEqual(engine.db.saved_state["quantity"], 5.0, places=4)
 
+    def test_cdc_long_is_capped_by_pair_allocation(self):
+        client = _FallbackClient(fill_limit=True)
+        engine = _FallbackEngine(client, entry_market_fallback=True)
+        engine.config["portfolio"]["symbols"] = {
+            "BTCUSDT": {"allocation_pct": 40.0},
+        }
+
+        ok = engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT")
+
+        self.assertTrue(ok)
+        self.assertAlmostEqual(engine.db.saved_state["quantity"], 4.0, places=4)
+
     def test_disabled_flag_keeps_legacy_cancel_behaviour(self):
         client = _FallbackClient(fill_limit=False)
         engine = _FallbackEngine(client, entry_market_fallback=False)

@@ -8,7 +8,7 @@ from xauby.api.utils import make_client_id, round_step
 from xauby.api.errors import ExchangeAPIError
 from xauby.observability import EventType
 from xauby.notifications.interface import AlertLevel
-from xauby.runtime.trading_config import resolve_trading_config
+from xauby.runtime.trading_config import bounded_position_fraction, resolve_trading_config
 from xauby.runtime.exits import fixed_take_profit_price
 
 logger = logging.getLogger("lite_bot")
@@ -201,7 +201,10 @@ class OrderMixin:
         if disable_sl:
             # CDC-pure: no stop loss, size by position_pct of equity so the SHORT
             # side mirrors the LONG side of the same strategy (symmetric SAR).
-            position_pct = max(0.0, min(float(eff_cfg.strategy.get("position_pct", 1.0) or 1.0), 1.0))
+            position_pct = bounded_position_fraction(
+                eff_cfg.strategy.get("position_pct", 1.0) or 1.0,
+                eff_cfg.portfolio.get("allocation_pct"),
+            )
             notional = equity * position_pct
             if self._use_sim_broker(sym):
                 notional /= 1.0 + self._symbol_fee_pct(sym)
@@ -1405,8 +1408,10 @@ class OrderMixin:
         # derived from an SL distance — use ``position_pct`` of equity instead.
         disable_sl = bool(eff_cfg.strategy.get("disable_stop_loss", False))
         if disable_sl:
-            position_pct = float(eff_cfg.strategy.get("position_pct", 1.0) or 1.0)
-            position_pct = max(0.0, min(position_pct, 1.0))
+            position_pct = bounded_position_fraction(
+                eff_cfg.strategy.get("position_pct", 1.0) or 1.0,
+                eff_cfg.portfolio.get("allocation_pct"),
+            )
             sl_distance = 0.0
             buy_amount_usdt = (equity * position_pct) if ticker_price > 0 else 0.0
             if self._use_sim_broker(sym):

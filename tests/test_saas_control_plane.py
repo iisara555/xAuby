@@ -408,6 +408,69 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertAlmostEqual(payload["estimated_notional"], 6500.0)
         self.assertAlmostEqual(payload["estimated_quantity"], 1.625)
 
+    def test_manual_order_preview_keeps_multi_pair_position_sizes_distinct(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        profile = self.client.put(
+            "/api/v1/profile", headers=self.headers,
+            json={
+                "preset_ids": [
+                    "okx-xau-actionzone-v1",
+                    "okx-btc-supertrend-v1",
+                ],
+                "active_preset_id": "okx-xau-actionzone-v1",
+                "risk": {},
+            },
+        )
+        self.assertEqual(profile.status_code, 200, profile.text)
+        self.store.update_tenant(tenant["id"], status="running")
+
+        runtime = self.supervisor.runtime_dir(tenant["slug"]) / "logs"
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / "xauby_bot_state.json").write_text(
+            json.dumps({
+                "focus_symbol": "XAUUSDT",
+                "by_symbol": {
+                    "XAUUSDT": {
+                        "current_price": 4000.0,
+                        "total_equity_usdt": 10000.0,
+                        "position": {"state": "idle"},
+                    },
+                    "BTCUSDT": {
+                        "current_price": 50000.0,
+                        "total_equity_usdt": 10000.0,
+                        "position": {"state": "idle"},
+                    },
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        object.__setattr__(self.settings, "manual_trading_enabled", True)
+        with patch.object(self.supervisor, "status", return_value="active"):
+            xau_long = self.client.post(
+                "/api/v1/orders/preview", headers=self.headers,
+                json={"symbol": "XAUUSDT", "intent": "OPEN_LONG"},
+            )
+            xau_short = self.client.post(
+                "/api/v1/orders/preview", headers=self.headers,
+                json={"symbol": "XAUUSDT", "intent": "OPEN_SHORT"},
+            )
+            btc_long = self.client.post(
+                "/api/v1/orders/preview", headers=self.headers,
+                json={"symbol": "BTCUSDT", "intent": "OPEN_LONG"},
+            )
+
+        for response in (xau_long, xau_short, btc_long):
+            self.assertEqual(response.status_code, 200, response.text)
+        for response in (xau_long, xau_short):
+            payload = response.json()["preview"]
+            self.assertAlmostEqual(payload["allocation_pct"], 65.0)
+            self.assertAlmostEqual(payload["estimated_notional"], 6500.0)
+        btc_payload = btc_long.json()["preview"]
+        self.assertAlmostEqual(btc_payload["allocation_pct"], 25.0)
+        self.assertAlmostEqual(btc_payload["estimated_notional"], 2500.0)
+
     def test_live_manual_side_is_independent_of_actionzone_colour(self):
         me = self.client.get("/api/v1/me").json()
         tenant = me["tenant"]

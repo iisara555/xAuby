@@ -32,6 +32,7 @@ from xauby.saas.security import (
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
 from xauby.saas.supervisor import TenantSupervisor
+from xauby.runtime.trading_config import bounded_position_fraction
 from xauby.utils.atomic_io import atomic_bytes_write
 
 SESSION_COOKIE = "xauby_saas_session"
@@ -1165,14 +1166,15 @@ def create_app(
             if equity <= 0:
                 raise HTTPException(status_code=409, detail="portfolio equity is unavailable")
             preset = context["preset"]
+            # A certified pair's own cap is authoritative.  The profile-level
+            # value is only a fallback for legacy presets; otherwise the
+            # smallest cap among selected pairs would incorrectly flatten all
+            # manual previews to the same size.
+            preset_position_cap = preset.get("max_position_per_trade_pct")
+            if preset_position_cap is None:
+                preset_position_cap = config.get("max_position_per_trade_pct") or 10.0
             max_allocation = min(
-                float(config.get("max_position_per_trade_pct") or 10.0),
-                float(
-                    preset.get(
-                        "max_position_per_trade_pct",
-                        config.get("max_position_per_trade_pct") or 10.0,
-                    )
-                ),
+                float(preset_position_cap),
                 float(preset.get("allocation_pct", 100.0)),
             ) / 100.0
             execution_profile = preset.get("execution_profile") or {}
@@ -1182,11 +1184,10 @@ def create_app(
                 # a fixed fraction of equity, so the manual preview must use
                 # the same position_pct as the engine instead of inventing an
                 # SL distance and applying the generic risk formula.
-                position_pct = max(
-                    0.0,
-                    min(float(execution_profile.get("position_pct", 0.95) or 0.95), 1.0),
+                effective_pct = bounded_position_fraction(
+                    execution_profile.get("position_pct", 0.95) or 0.95,
+                    preset.get("allocation_pct"),
                 )
-                effective_pct = min(position_pct, max(0.0, max_allocation))
                 estimated_notional = equity * effective_pct
                 allocation_pct = effective_pct * 100.0
                 sizing_mode = "cdc_pure"
