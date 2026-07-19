@@ -3,6 +3,7 @@
 import { useBot, useSnapshot } from "@/lib/hooks";
 import { valueAt } from "@/lib/api";
 import { useWorkspacePair } from "@/components/workspace-pair";
+import { runtimePairState } from "@/lib/runtime-pair-state";
 
 type Tone = "good" | "warn" | "bad" | "neutral";
 
@@ -24,7 +25,7 @@ export function ServerHealth({ compact = false }: { compact?: boolean }) {
   const { selectedSymbol } = useWorkspacePair();
   const state = snapshot?.state ?? {};
   const symbol = selectedSymbol || String(valueAt(state, "focus_symbol") ?? valueAt(state, "symbol") ?? "");
-  const focus = (valueAt(state, "by_symbol", symbol) as Record<string, unknown> | undefined) ?? state;
+  const focus = runtimePairState(state, symbol);
   const latency = (valueAt(focus, "latency") as Record<string, unknown> | undefined) ?? {};
   const wsAge = finite(valueAt(latency, "ws_tick_age_ms"));
   const restLatency = finite(valueAt(latency, "api_latency_ms") ?? valueAt(focus, "api_latency_ms"));

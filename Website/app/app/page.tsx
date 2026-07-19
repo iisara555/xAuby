@@ -13,6 +13,7 @@ import { useCurrentUser } from "@/components/app-shell";
 import { useWorkspacePair } from "@/components/workspace-pair";
 import { api, csrfHeaders, formatNumber, valueAt } from "@/lib/api";
 import { useBot, useCatalog, useSnapshot } from "@/lib/hooks";
+import { runtimePairState } from "@/lib/runtime-pair-state";
 
 function marketSummary(zone: string, stale: boolean, loading: boolean) {
   if (loading) return "Reading the market…";
@@ -82,14 +83,15 @@ export default function DashboardPage() {
   const [message, setMessage] = useState("");
   const running = bot?.tenant.status === "running";
   const state = snapshot?.state ?? {};
-  const focus = (valueAt(state, "by_symbol", symbol) as Record<string, unknown> | undefined) ?? state;
-  const position = (valueAt(focus, "position") as Record<string, unknown> | undefined) ?? (valueAt(state, "position") as Record<string, unknown> | undefined) ?? {};
+  const focus = runtimePairState(state, symbol);
+  const pairReady = Object.keys(focus).length > 0;
+  const position = (valueAt(focus, "position") as Record<string, unknown> | undefined) ?? {};
   const currency = snapshot?.currency ?? {};
   const equity = valueAt(focus, "total_equity_usdt") ?? valueAt(focus, "equity_breakdown", "portfolio_total_usdt") ?? snapshot?.currency?.equity_usdt;
   const cash = valueAt(focus, "equity_breakdown", "usdt_balance_usdt") ?? valueAt(focus, "portfolio", "USDT") ?? snapshot?.currency?.usdt_balance_usdt;
   const exposure = valueAt(focus, "equity_breakdown", "symbol_exposure_usdt") ?? snapshot?.currency?.symbol_exposure_usdt;
   const positionOpen = String(valueAt(position, "state") ?? "idle") === "bought";
-  const lastClosed = (valueAt(focus, "last_closed_trade") as Record<string, unknown> | undefined) ?? (valueAt(state, "last_closed_trade") as Record<string, unknown> | undefined);
+  const lastClosed = valueAt(focus, "last_closed_trade") as Record<string, unknown> | undefined;
   const lastPnlConfirmed = Boolean(lastClosed && Number(valueAt(lastClosed, "pnl_confirmed") ?? 0));
   const pnl = Number(positionOpen ? valueAt(position, "unrealized_pnl") ?? 0 : valueAt(lastClosed ?? {}, "net_pnl") ?? 0);
   const pnlPct = positionOpen
@@ -103,8 +105,7 @@ export default function DashboardPage() {
   const regime = String(valueAt(focus, "regime", "regime") ?? "UNKNOWN");
   const zone = String(valueAt(focus, "indicators", "cdc_zone_4h") ?? "—");
   const apSmoothing = valueAt(focus, "indicators", "ap_smoothing")
-    ?? valueAt(focus, "risk", "ap_smoothing")
-    ?? valueAt(state, "risk", "ap_smoothing");
+    ?? valueAt(focus, "risk", "ap_smoothing");
   const price = valueAt(focus, "current_price") ?? valueAt(position, "mark_price");
   const pct24h = Number(valueAt(focus, "price_change_24h_pct") ?? valueAt(focus, "percent_change_24h") ?? 0);
   const riskState = String(valueAt(focus, "regime", "risk_state") ?? "—");
@@ -167,7 +168,13 @@ export default function DashboardPage() {
         </Link>
       )}
 
-      <section className="dashboard-grid pair-view" id="workspace-pair-view" key={symbol || "workspace"}>
+      <section className={`dashboard-grid pair-view${pairReady ? "" : " pair-pending"}`} id="workspace-pair-view" key={symbol || "workspace"}>
+        {!pairReady && (
+          <article className="card pair-sync-card" role="status" aria-live="polite">
+            <span className="pair-sync-pulse" aria-hidden="true" />
+            <div><small>Preparing market workspace</small><h2>Syncing {symbol || "selected pair"}</h2><p>The engine is loading this pair’s own price, position and strategy state. Existing pairs keep running.</p></div>
+          </article>
+        )}
         <article className="card hero-card">
           <div className="card-kicker"><span>Portfolio equity</span><span>Live estimate</span></div>
           <div className="hero-value">{Number.isFinite(equityNumber) ? `$${formatNumber(equityNumber)}` : "—"}<small>USDT</small></div>

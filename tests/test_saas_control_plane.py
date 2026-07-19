@@ -299,9 +299,12 @@ class SaaSControlPlaneTests(unittest.TestCase):
         first = self.client.put("/api/v1/profile", headers=self.headers, json=xau_payload)
         self.assertEqual(first.status_code, 200, first.text)
         # Profiles saved before the multi-pair release did not carry the XAU
-        # allocation metadata. Adding BTC must still take the safe 65/30 path.
+        # allocation metadata and can contain an older certified preset
+        # snapshot. Adding BTC must still take the safe current-catalog path.
         legacy_profile = self.store.trading_profile(tenant["id"])
         legacy_profile["presets"][0].pop("allocation_pct", None)
+        legacy_profile["presets"][0]["allowed_sides"] = ["long"]
+        legacy_profile["presets"][0]["execution_profile"]["fresh_zone_window"] = 1
         self.store.save_trading_profile(tenant["id"], me["id"], legacy_profile)
         self.supervisor.set_live_mode(tenant["slug"], "okx-swap")
         self.store.update_tenant(tenant["id"], status="running", live_status="active")

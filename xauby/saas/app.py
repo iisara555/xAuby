@@ -149,22 +149,6 @@ LIVE_ADDITIVE_RISK_KEYS = (
     "max_daily_loss_pct",
     "max_leverage",
 )
-LIVE_PRESET_IDENTITY_KEYS = (
-    "target_id",
-    "exchange_id",
-    "market_type",
-    "symbol",
-    "asset",
-    "strategy",
-    "primary_timeframe",
-    "confirm_timeframe",
-    "allowed_sides",
-    "max_leverage",
-    "live_certified",
-    "cdc_pure_certified",
-    "stop_loss_required",
-    "execution_profile",
-)
 
 
 def _is_safe_live_pair_addition(
@@ -180,20 +164,13 @@ def _is_safe_live_pair_addition(
     if not old_ids or not added_ids or not old_ids < new_ids:
         return False
 
-    # Existing live strategy execution must stay on the same certified revision.
-    # Display/backtest metadata may evolve, and reducing its allocation while a
-    # second pair joins is safe (the XAU 65% + BTC 30% migration uses this).
-    old_presets = {item.get("id"): item for item in existing.get("presets") or []}
+    # The stored preset objects are catalog snapshots, not user-editable input.
+    # They may predate a certified catalog revision (for example LONG-only ->
+    # LONG/SHORT or the XAU 65% allocation). Comparing those snapshots made a
+    # plain pair addition look like a strategy edit and incorrectly stopped
+    # Live. IDs, target, bounded risk and the current certified catalog are the
+    # authoritative gates for this additive-only path.
     new_presets = {item.get("id"): item for item in profile.get("presets") or []}
-    for preset_id in old_ids:
-        old_preset = old_presets.get(preset_id) or {}
-        new_preset = new_presets.get(preset_id) or {}
-        if any(old_preset.get(key) != new_preset.get(key) for key in LIVE_PRESET_IDENTITY_KEYS):
-            return False
-        old_allocation = float(old_preset.get("allocation_pct", 95.0))
-        new_allocation = float(new_preset.get("allocation_pct", old_allocation))
-        if new_allocation > old_allocation:
-            return False
     if any(not new_presets.get(preset_id, {}).get("live_certified") for preset_id in added_ids):
         return False
 

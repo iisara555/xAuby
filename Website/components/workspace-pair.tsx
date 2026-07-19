@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { Preset } from "@/lib/api";
 import { valueAt } from "@/lib/api";
 import { useProfile, useSnapshot } from "@/lib/hooks";
+import { normalizeWorkspaceSymbol, runtimePairState } from "@/lib/runtime-pair-state";
 
 export type WorkspacePair = {
   id: string;
@@ -27,10 +28,6 @@ const WorkspacePairContext = createContext<WorkspacePairContextValue | null>(nul
 const EMPTY_PRESETS: Preset[] = [];
 const EMPTY_STATE: Record<string, unknown> = {};
 
-function normalizeSymbol(value: unknown): string {
-  return String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
-
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -38,13 +35,15 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function pairState(preset: Preset, state: Record<string, unknown>, stale: boolean): Omit<WorkspacePair, "isFocus"> {
-  const symbol = normalizeSymbol(preset.symbol);
-  const bySymbol = record(valueAt(state, "by_symbol"));
-  const snapshot = record(bySymbol[symbol] ?? (normalizeSymbol(valueAt(state, "symbol")) === symbol ? state : {}));
+  const symbol = normalizeWorkspaceSymbol(preset.symbol);
+  const snapshot = runtimePairState(state, symbol);
+  const snapshotReady = Object.keys(snapshot).length > 0;
   const position = record(valueAt(snapshot, "position"));
   const positionState = String(valueAt(position, "state") ?? "").toLowerCase();
   const positionSide = String(valueAt(position, "position_side") ?? "").toUpperCase();
-  const hasPosition = positionState === "bought" || positionState === "open" || (positionSide !== "" && positionSide !== "FLAT");
+  const positionQuantity = Number(valueAt(position, "quantity") ?? 0);
+  const hasPosition = positionState === "bought" || positionState === "open"
+    || (!positionState && positionQuantity > 0 && positionSide !== "" && positionSide !== "FLAT");
   const signal = String(valueAt(snapshot, "signal_meta", "action") ?? "WAIT").toUpperCase();
   const actionableSignal = !["", "HOLD", "WAIT", "NONE"].includes(signal);
 
@@ -53,8 +52,8 @@ function pairState(preset: Preset, state: Record<string, unknown>, stale: boolea
     symbol,
     label: preset.label,
     strategy: preset.strategy,
-    status: hasPosition ? positionSide || "OPEN" : stale ? "DELAYED" : signal === "HOLD" ? "WAIT" : signal,
-    tone: hasPosition ? "position" : stale ? "stale" : actionableSignal ? "signal" : "idle",
+    status: !snapshotReady ? "SYNCING" : hasPosition ? positionSide || "OPEN" : stale ? "DELAYED" : signal === "HOLD" ? "WAIT" : signal,
+    tone: !snapshotReady ? "stale" : hasPosition ? "position" : stale ? "stale" : actionableSignal ? "signal" : "idle",
   };
 }
 
@@ -66,18 +65,18 @@ export function WorkspacePairProvider({ children }: { children: React.ReactNode 
   const [locationReady, setLocationReady] = useState(false);
   const presets = profile?.profile?.presets ?? EMPTY_PRESETS;
   const configuredSymbols = useMemo(
-    () => presets.map((preset) => normalizeSymbol(preset.symbol)),
+    () => presets.map((preset) => normalizeWorkspaceSymbol(preset.symbol)),
     [presets],
   );
   const runtimeState = snapshot?.state ?? EMPTY_STATE;
-  const snapshotFocus = normalizeSymbol(valueAt(runtimeState, "focus_symbol") ?? valueAt(runtimeState, "symbol"));
-  const profileFocus = normalizeSymbol(
+  const snapshotFocus = normalizeWorkspaceSymbol(valueAt(runtimeState, "focus_symbol") ?? valueAt(runtimeState, "symbol"));
+  const profileFocus = normalizeWorkspaceSymbol(
     presets.find((preset) => preset.id === profile?.profile?.active_preset_id)?.symbol ?? presets[0]?.symbol,
   );
   const focusSymbol = configuredSymbols.includes(snapshotFocus)
     ? snapshotFocus
     : profileFocus || snapshotFocus || configuredSymbols[0] || "";
-  const normalizedRequest = normalizeSymbol(requestedSymbol);
+  const normalizedRequest = normalizeWorkspaceSymbol(requestedSymbol);
   const selectedSymbol = configuredSymbols.length === 0
     ? focusSymbol
     : configuredSymbols.includes(normalizedRequest)
@@ -87,7 +86,7 @@ export function WorkspacePairProvider({ children }: { children: React.ReactNode 
   const pairs = useMemo(
     () => presets.map((preset) => ({
       ...pairState(preset, runtimeState, Boolean(snapshot?.stale)),
-      isFocus: normalizeSymbol(preset.symbol) === focusSymbol,
+      isFocus: normalizeWorkspaceSymbol(preset.symbol) === focusSymbol,
     })),
     [focusSymbol, presets, runtimeState, snapshot?.stale],
   );
@@ -103,7 +102,7 @@ export function WorkspacePairProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const readPairFromUrl = () => {
       const value = new URL(window.location.href).searchParams.get("pair");
-      setRequestedSymbol(value ? normalizeSymbol(value) : null);
+      setRequestedSymbol(value ? normalizeWorkspaceSymbol(value) : null);
       setLocationReady(true);
     };
     readPairFromUrl();
@@ -117,7 +116,7 @@ export function WorkspacePairProvider({ children }: { children: React.ReactNode 
   }, [locationReady, pathname, selectedSymbol, writePairToUrl]);
 
   const selectPair = useCallback((symbol: string) => {
-    const normalized = normalizeSymbol(symbol);
+    const normalized = normalizeWorkspaceSymbol(symbol);
     if (!configuredSymbols.includes(normalized)) return;
     setRequestedSymbol(normalized);
     writePairToUrl(normalized);

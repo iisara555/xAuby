@@ -557,6 +557,14 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .pair-state-stale { border-color: rgba(199, 154, 42, .3); color: #d6b96f; }
 .pair-focus-pin { flex: 0 0 auto; color: var(--accent); transform: rotate(-35deg); }
 .pair-view { animation: pairViewIn .24s ease both; }
+.pair-pending > .card:not(.pair-sync-card) { display: none; }
+.pair-sync-card { grid-column: 1 / -1; min-height: 260px; display: flex; align-items: center; justify-content: center; gap: 18px; text-align: left; }
+.pair-sync-card > div { max-width: 430px; }
+.pair-sync-card small { color: var(--accent); font-size: 9px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.pair-sync-card h2 { margin: 7px 0 8px; font-size: clamp(24px, 5vw, 38px); }
+.pair-sync-card p { margin: 0; color: var(--muted); line-height: 1.6; }
+.pair-sync-pulse { width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(255, 67, 26, .42); animation: pairSyncPulse 1.5s ease-out infinite; }
+@keyframes pairSyncPulse { 0% { box-shadow: 0 0 0 0 rgba(255, 67, 26, .42); } 70%, 100% { box-shadow: 0 0 0 14px rgba(255, 67, 26, 0); } }
 @keyframes pairViewIn { from { opacity: .42; transform: translateY(4px); } }
 @keyframes pairStatusPulse { 50% { opacity: .55; box-shadow: 0 0 4px rgba(119, 169, 133, .38); } }
 
