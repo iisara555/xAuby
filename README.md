@@ -66,6 +66,13 @@ The primary operating surface is a web SaaS stack, live at
   (`XAUBY_API_ORIGIN`) and deploys independently on Vercel. Its
   `public/research-platform.html` page also serves the public research site.
 
+Production health checks use the trusted Vercel and Tailscale Funnel endpoints:
+
+```bash
+curl -fsS https://xauby.vercel.app/healthz
+curl -fsS https://xauby-vps.tailfcdd3a.ts.net/healthz
+```
+
 ![xAuby Pilot Workspace — trading settings with certified presets](docs/screenshots/pilot-settings.png)
 
 What the console gives an operator:
