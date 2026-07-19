@@ -46,7 +46,8 @@ entry_on_flip_only: true
 | bear | 23 | 8 | +0.08 | +1.8 | -1.24 | +3.77 | 39 |
 | sideways | 5 | 2 | +0.11 | +0.5 | -0.43 | +1.10 | 9 |
 
-Sizing: risk-based, `risk_pct` ≈ 3% of equity per SL distance (NOT the CDC
+Sizing: risk-based, `risk_pct` = 2% of equity per SL distance
+(`trading.risk_pct` = 0.02, the value the replay engine reads; NOT the CDC
 fixed-fraction profile). Worst single month -1.73%; positive-compounded in all
 three market phases.
 
