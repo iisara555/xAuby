@@ -2,6 +2,7 @@
 
 import { useBot, useSnapshot } from "@/lib/hooks";
 import { valueAt } from "@/lib/api";
+import { useWorkspacePair } from "@/components/workspace-pair";
 
 type Tone = "good" | "warn" | "bad" | "neutral";
 
@@ -20,8 +21,9 @@ function compactMs(value: number | null): string {
 export function ServerHealth({ compact = false }: { compact?: boolean }) {
   const { data: bot } = useBot();
   const { data: snapshot } = useSnapshot();
+  const { selectedSymbol } = useWorkspacePair();
   const state = snapshot?.state ?? {};
-  const symbol = String(valueAt(state, "focus_symbol") ?? valueAt(state, "symbol") ?? "");
+  const symbol = selectedSymbol || String(valueAt(state, "focus_symbol") ?? valueAt(state, "symbol") ?? "");
   const focus = (valueAt(state, "by_symbol", symbol) as Record<string, unknown> | undefined) ?? state;
   const latency = (valueAt(focus, "latency") as Record<string, unknown> | undefined) ?? {};
   const wsAge = finite(valueAt(latency, "ws_tick_age_ms"));

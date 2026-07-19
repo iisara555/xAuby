@@ -77,13 +77,19 @@ export function CandleChart({ symbol, currentPrice, zone, apSmoothing }: { symbo
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const indicatorSmoothing = Math.max(1, Math.min(50, Math.trunc(number(apSmoothing) ?? 1)));
-  const key = `/api/v1/runtime/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=${EMA_WARMUP_CANDLES}`;
-  const { data, error, isLoading } = useSWR<CandleResponse>(key, api, {
+  const normalizedSymbol = symbol.trim();
+  const candleKey = normalizedSymbol
+    ? `/api/v1/runtime/candles?symbol=${encodeURIComponent(normalizedSymbol)}&timeframe=${timeframe}&limit=${EMA_WARMUP_CANDLES}`
+    : null;
+  const priceKey = normalizedSymbol
+    ? `/api/v1/runtime/price?symbol=${encodeURIComponent(normalizedSymbol)}`
+    : null;
+  const { data, error, isLoading } = useSWR<CandleResponse>(candleKey, api, {
     refreshInterval: () => (typeof document === "undefined" || document.visibilityState === "visible" ? 15000 : 0),
     revalidateOnFocus: false,
   });
   const { data: priceData } = useSWR<RuntimePrice>(
-    `/api/v1/runtime/price?symbol=${encodeURIComponent(symbol)}`,
+    priceKey,
     api,
     {
       refreshInterval: () => (typeof document === "undefined" || document.visibilityState === "visible" ? 1000 : 0),

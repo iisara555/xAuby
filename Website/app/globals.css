@@ -26,6 +26,7 @@
 }
 
 * { box-sizing: border-box; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 html, body { min-height: 100%; margin: 0; background: var(--bg); color: var(--paper); }
 body { font-family: var(--font-space-grotesk), "Avenir Next", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
 h1, h2, h3, .wordmark { font-family: var(--font-space-grotesk), sans-serif; }
@@ -494,8 +495,90 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .focus-toggle:hover { border-color: rgba(255,67,26,.5); color: var(--fg); }
 .focus-toggle.active { border-color: var(--accent); background: var(--accent); color: #161614; }
 
-/* Pair switcher (Home / Activity) */
-.pair-switcher { margin: 2px 0 14px; display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #10100f; }
-.pair-switcher button { padding: 7px 15px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
-.pair-switcher button:hover { color: var(--fg); }
-.pair-switcher button.active { background: var(--accent); color: #161614; }
+/* Persistent pair view (Home / Activity) */
+.workspace-pair-dock {
+  position: sticky;
+  top: 0;
+  z-index: 32;
+  width: min(100%, 1360px);
+  min-height: 74px;
+  margin: 0 auto;
+  padding: 10px clamp(24px, 4vw, 64px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(9, 8, 8, .97), rgba(9, 8, 8, .91));
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .2);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+.workspace-pair-intro { min-width: 142px; display: flex; align-items: center; gap: 10px; }
+.workspace-pair-intro > span:last-child, .workspace-pair-context { display: grid; gap: 3px; }
+.workspace-pair-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(255, 67, 26, .3); border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
+.workspace-pair-intro small, .workspace-pair-context span { color: var(--accent); font-size: 8px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.workspace-pair-intro strong { font-size: 11px; white-space: nowrap; }
+.workspace-pair-context { min-width: 124px; justify-items: end; }
+.workspace-pair-context strong { font-size: 12px; letter-spacing: -.02em; }
+.workspace-pair-context small { color: var(--muted); font-size: 8px; white-space: nowrap; }
+.pair-switcher { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(128px, 1fr)); gap: 7px; overflow-x: auto; scrollbar-width: none; }
+.pair-switcher.pair-count-2 { grid-template-columns: repeat(2, minmax(128px, 1fr)); }
+.pair-switcher::-webkit-scrollbar { display: none; }
+.pair-switcher button {
+  min-width: 128px;
+  min-height: 52px;
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 20, .72);
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+.pair-switcher button:hover { border-color: var(--line-strong); color: var(--paper); transform: translateY(-1px); }
+.pair-switcher button.active { border-color: rgba(255, 67, 26, .58); background: linear-gradient(135deg, rgba(255, 67, 26, .18), rgba(255, 67, 26, .07)); color: var(--paper); box-shadow: 0 0 0 1px rgba(255, 67, 26, .08) inset, 0 8px 24px rgba(0, 0, 0, .18); }
+.pair-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #605e58; }
+.pair-status-position { background: var(--good); box-shadow: 0 0 9px rgba(119, 169, 133, .7); animation: pairStatusPulse 1.8s ease-in-out infinite; }
+.pair-status-signal { background: var(--accent); box-shadow: 0 0 9px rgba(255, 67, 26, .58); }
+.pair-status-stale { background: var(--warn); }
+.pair-button-copy { min-width: 0; display: grid; gap: 3px; }
+.pair-button-copy strong { overflow: hidden; color: inherit; font-size: 11px; letter-spacing: .015em; text-overflow: ellipsis; white-space: nowrap; }
+.pair-button-copy small { overflow: hidden; color: #77746e; font-size: 8px; letter-spacing: .02em; text-overflow: ellipsis; text-transform: capitalize; white-space: nowrap; }
+.active .pair-button-copy small { color: #aaa69e; }
+.pair-button-state { padding: 3px 5px; border: 1px solid var(--line); color: #77746e; font-size: 7px; font-weight: 750; letter-spacing: .05em; white-space: nowrap; }
+.pair-state-position { border-color: rgba(119, 169, 133, .28); color: #a9c8b1; }
+.pair-state-signal { border-color: rgba(255, 67, 26, .3); color: #e99a82; }
+.pair-state-stale { border-color: rgba(199, 154, 42, .3); color: #d6b96f; }
+.pair-focus-pin { flex: 0 0 auto; color: var(--accent); transform: rotate(-35deg); }
+.pair-view { animation: pairViewIn .24s ease both; }
+@keyframes pairViewIn { from { opacity: .42; transform: translateY(4px); } }
+@keyframes pairStatusPulse { 50% { opacity: .55; box-shadow: 0 0 4px rgba(119, 169, 133, .38); } }
+
+@media (max-width: 1100px) {
+  .workspace-pair-context { display: none; }
+  .workspace-pair-dock { grid-template-columns: auto minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .workspace-pair-dock { gap: 10px; }
+  .workspace-pair-intro { min-width: auto; }
+  .workspace-pair-intro > span:last-child { display: none; }
+  .pair-switcher { grid-template-columns: repeat(3, minmax(142px, 1fr)); scroll-snap-type: x proximity; }
+  .pair-switcher.pair-count-2 { grid-template-columns: repeat(2, minmax(142px, 1fr)); }
+  .pair-switcher button { scroll-snap-align: start; }
+}
+
+@media (max-width: 640px) {
+  .workspace-pair-dock { min-height: 68px; padding: 8px 15px; grid-template-columns: minmax(0, 1fr); border-bottom-color: rgba(255, 67, 26, .2); }
+  .workspace-pair-intro { display: none; }
+  .pair-switcher { margin-inline: -1px; grid-template-columns: repeat(3, minmax(138px, 1fr)); gap: 6px; }
+  .pair-switcher.pair-count-2 { grid-template-columns: repeat(2, minmax(138px, 1fr)); }
+  .pair-switcher button { min-width: 138px; min-height: 50px; padding-inline: 8px; }
+  .pair-button-state { padding-inline: 4px; }
+}

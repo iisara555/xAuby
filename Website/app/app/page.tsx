@@ -5,14 +5,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { CandleChart } from "@/components/candle-chart";
 import { MarketContext } from "@/components/market-context";
-import { PairSwitcher } from "@/components/pair-switcher";
 import { SignalDetail } from "@/components/signal-detail";
 import { TradeDrawer } from "@/components/trade-drawer";
 import { PageHeading } from "@/components/page-heading";
 import { StatusPill } from "@/components/status-pill";
 import { useCurrentUser } from "@/components/app-shell";
+import { useWorkspacePair } from "@/components/workspace-pair";
 import { api, csrfHeaders, formatNumber, valueAt } from "@/lib/api";
-import { useBot, useCatalog, useProfile, useSnapshot } from "@/lib/hooks";
+import { useBot, useCatalog, useSnapshot } from "@/lib/hooks";
 
 function marketSummary(zone: string, stale: boolean, loading: boolean) {
   if (loading) return "Reading the market…";
@@ -77,19 +77,11 @@ export default function DashboardPage() {
   const { data: bot, mutate: mutateBot } = useBot();
   const { data: snapshot } = useSnapshot();
   const { data: catalog } = useCatalog();
-  const { data: profile } = useProfile();
+  const { pairs, selectedSymbol: symbol } = useWorkspacePair();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [pairChoice, setPairChoice] = useState<string | null>(null);
   const running = bot?.tenant.status === "running";
   const state = snapshot?.state ?? {};
-  const configuredSymbols = profile?.profile?.presets?.map((item) => item.symbol) ?? [];
-  const focusSymbol = String(valueAt(state, "focus_symbol") ?? valueAt(state, "symbol") ?? configuredSymbols[0] ?? "");
-  const symbol = pairChoice && configuredSymbols.includes(pairChoice)
-    ? pairChoice
-    : configuredSymbols.length === 0 || configuredSymbols.includes(focusSymbol)
-      ? focusSymbol
-      : configuredSymbols[0];
   const focus = (valueAt(state, "by_symbol", symbol) as Record<string, unknown> | undefined) ?? state;
   const position = (valueAt(focus, "position") as Record<string, unknown> | undefined) ?? (valueAt(state, "position") as Record<string, unknown> | undefined) ?? {};
   const currency = snapshot?.currency ?? {};
@@ -160,7 +152,7 @@ export default function DashboardPage() {
       <PageHeading
         eyebrow="Pilot workspace"
         title={<>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {user.display_name || user.email.split("@")[0]}. <span className="page-heading-market">{marketSummary(zone, Boolean(snapshot?.stale), !snapshot)}</span></>}
-        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={bot?.tenant.live_status === "active"} shortLiveCertified={Boolean(target?.manual_short_live_certified)} engineRunning={running} profileReady={Boolean(profile?.profile)} /></div>}
+        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={bot?.tenant.live_status === "active"} shortLiveCertified={Boolean(target?.manual_short_live_certified)} engineRunning={running} profileReady={pairs.length > 0} /></div>}
       />
 
       {!bot?.exchange_connection && (
@@ -170,9 +162,7 @@ export default function DashboardPage() {
         </Link>
       )}
 
-      <PairSwitcher symbols={configuredSymbols} selected={symbol} onSelect={setPairChoice} />
-
-      <section className="dashboard-grid">
+      <section className="dashboard-grid pair-view" id="workspace-pair-view" key={symbol || "workspace"}>
         <article className="card hero-card">
           <div className="card-kicker"><span>Portfolio equity</span><span>Live estimate</span></div>
           <div className="hero-value">{Number.isFinite(equityNumber) ? `$${formatNumber(equityNumber)}` : "—"}<small>USDT</small></div>

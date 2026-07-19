@@ -1,10 +1,13 @@
 import type { NextConfig } from "next";
 
 const apiOrigin = (process.env.XAUBY_API_ORIGIN ?? "http://127.0.0.1:8790").replace(/\/$/, "");
+const appScriptSource = process.env.NODE_ENV === "development"
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:"
+  : "script-src 'self' 'unsafe-inline' blob:";
 
 const appCsp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' blob:",
+  appScriptSource,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
@@ -17,10 +20,7 @@ const appCsp = [
   "frame-ancestors 'none'",
 ].join("; ");
 
-const researchCsp = appCsp.replace(
-  "script-src 'self' 'unsafe-inline' blob:",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
-);
+const researchCsp = appCsp.replace(appScriptSource, "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:");
 
 const nextConfig: NextConfig = {
   async headers() {
