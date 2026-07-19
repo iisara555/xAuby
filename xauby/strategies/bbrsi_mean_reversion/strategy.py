@@ -11,7 +11,7 @@ from xauby.strategies.base import Strategy
 from xauby.strategies.bbrsi_mean_reversion.indicators import compute_indicators
 from xauby.strategies.context import MarketContext
 from xauby.strategies.registry import register
-from xauby.strategies.signal import Signal, buy, hold, sell
+from xauby.strategies.signal import Signal, buy, close_short, hold, open_short, sell
 
 
 @register("bbrsi_mean_reversion")
@@ -45,6 +45,9 @@ class BBRSIMeanReversionStrategy(Strategy):
             "exit_at_mid_band": True,
             "exit_at_rsi_target": True,
             "exit_at_upper_band": True,
+            # Mirrored short side (sell overbought touches of the upper band).
+            # Default off: live long-only behavior is unchanged.
+            "enable_short": False,
         }
 
     def _cfg_int(self, key: str, default: int, cfg: Optional[Dict[str, Any]] = None) -> int:
@@ -172,6 +175,31 @@ class BBRSIMeanReversionStrategy(Strategy):
             "timeframe": ctx.timeframe_primary,
         }
 
+        enable_short = self._cfg_bool("enable_short", False, runtime_cfg)
+
+        if ctx.has_position and str(ctx.position_side or "").upper() == "SHORT":
+            below_mid = bool(indicators.get("bb_mid", 0.0)) and not indicators.get("above_mid_band")
+            if ctx.sl_confirmed:
+                return close_short("BBRSI short Stop loss confirmed", confidence=0.9, **common)
+            if exit_at_upper and indicators.get("below_lower_band"):
+                return close_short("BBRSI short price reached lower band", confidence=0.85, **common)
+            if exit_at_mid and below_mid:
+                return close_short("BBRSI short reverted to mid band", confidence=0.75, **common)
+            if exit_at_rsi_target and rsi <= (100.0 - rsi_exit):
+                return close_short(
+                    f"BBRSI short RSI reached exit target {100.0 - rsi_exit:.0f}",
+                    confidence=0.7,
+                    **common,
+                )
+            if rsi <= rsi_oversold:
+                return close_short("BBRSI short RSI oversold", confidence=0.72, **common)
+            return hold(
+                "BBRSI mean reversion short open",
+                confidence=0.5,
+                trail_distance=atr * trail_mult if atr > 0 else None,
+                **common,
+            )
+
         if ctx.has_position:
             if ctx.sl_confirmed:
                 return sell("BBRSI mean reversion SL confirmed", confidence=0.9, **common)
@@ -198,6 +226,21 @@ class BBRSIMeanReversionStrategy(Strategy):
                 trail_distance=atr * trail_mult,
                 **common,
             )
+
+        if enable_short:
+            band_short_ok = (
+                bool(indicators.get("above_upper_band"))
+                if require_below_lower
+                else rsi >= rsi_overbought
+            )
+            if band_short_ok and rsi >= rsi_overbought and vol_ok and atr > 0:
+                return open_short(
+                    "BBRSI overbought mean reversion short entry",
+                    confidence=0.64,
+                    stop_loss_distance=atr * sl_mult,
+                    trail_distance=atr * trail_mult,
+                    **common,
+                )
 
         if not rsi_ok:
             reason = f"RSI {rsi:.1f} not oversold (<= {rsi_oversold:.0f})"

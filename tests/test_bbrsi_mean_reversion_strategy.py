@@ -38,6 +38,25 @@ def _oversold_df() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _overbought_df() -> pd.DataFrame:
+    """Mirror of _oversold_df: a spike UP through the upper band."""
+    rows = []
+    for i in range(100):
+        price = 100 + 2 * np.sin(i * 0.3)
+        rows.append(
+            {
+                "open": price,
+                "high": price + 1,
+                "low": price - 1,
+                "close": price,
+                "volume": 1000.0,
+            }
+        )
+    rows[-2].update({"open": 101, "high": 103, "low": 100, "close": 102, "volume": 1200.0})
+    rows[-1].update({"open": 105, "high": 112, "low": 104, "close": 111, "volume": 1500.0})
+    return pd.DataFrame(rows)
+
+
 class TestBBRSIMeanReversionStrategy(unittest.TestCase):
     def test_strategy_is_registered_and_loadable(self):
         self.assertIn("bbrsi_mean_reversion", available_strategies())
@@ -128,6 +147,42 @@ class TestBBRSIMeanReversionStrategy(unittest.TestCase):
         signal = self._signal(pd.DataFrame(rows))
 
         self.assertEqual(signal.action, "HOLD")
+
+    def test_short_disabled_by_default_on_overbought(self):
+        signal = self._signal(_overbought_df())
+
+        self.assertEqual(signal.action, "HOLD")
+
+    def test_overbought_touch_opens_short_when_enabled(self):
+        signal = self._signal(_overbought_df(), enable_short=True)
+
+        self.assertEqual(signal.action, "SELL")
+        self.assertEqual(signal.intent, "OPEN")
+        self.assertTrue(signal.is_short)
+        self.assertIn("short", signal.reason.lower())
+
+    def test_short_exit_at_mid_band(self):
+        df = _overbought_df()
+        df.loc[df.index[-1], "close"] = 98.0
+        df.loc[df.index[-1], "high"] = 100.0
+        df.loc[df.index[-1], "low"] = 97.0
+        df.loc[df.index[-1], "open"] = 100.0
+
+        strategy = BBRSIMeanReversionStrategy({"vol_min_ratio": 0.0, "enable_short": True})
+        signal = strategy.analyze(
+            MarketContext(
+                symbol="BTCUSDT",
+                timeframe_primary="4h",
+                df_primary=df,
+                current_price=float(df["close"].iloc[-1]),
+                has_position=True,
+                position_side="SHORT",
+            )
+        )
+
+        self.assertEqual(signal.action, "BUY")
+        self.assertEqual(signal.intent, "CLOSE")
+        self.assertTrue(signal.is_short)
 
     def test_mean_reversion_exit_at_mid_band(self):
         df = _oversold_df()
