@@ -33,6 +33,14 @@ class CatalogMultiExchangeTests(unittest.TestCase):
             presets = [p for p in CATALOG["presets"] if p["target_id"] == target_id]
             self.assertGreaterEqual(len(presets), 2, target_id)
 
+        targets = {target["id"]: target for target in TARGETS}
+        self.assertTrue(targets["okx-swap"]["manual_short_live_certified"])
+        self.assertTrue(
+            targets["binance-global-futures"]["manual_short_live_certified"]
+        )
+        self.assertFalse(targets["binance-global-spot"]["manual_short_live_certified"])
+        self.assertFalse(targets["binance-th-spot"]["manual_short_live_certified"])
+
     def test_fee_units_stay_consistent_per_target(self):
         # exchange.fee_pct is a fraction; whitelist sim_fee_pct is a percent.
         for target_id, profile in EXCHANGE_PROFILES.items():
@@ -205,6 +213,9 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         self.assertEqual(cfg["execution"]["live_strategy_mode"], "cdc_pure")
         self.assertFalse(cfg["risk"]["stop_loss_required"])
         self.assertFalse(cfg["simulate_only"])
+        self.assertEqual(assets["XAU"]["manual_allowed_sides"], ["long", "short"])
+        self.assertTrue(assets["XAU"]["manual_short_live_enabled"])
+        self.assertFalse(assets["BTC"]["manual_short_live_enabled"])
 
     def test_set_live_mode_requires_a_certified_pair(self):
         tenant = self._tenant()

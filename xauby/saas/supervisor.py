@@ -521,6 +521,11 @@ class TenantSupervisor:
             asset["mode"] = "live" if live_ok else "sim"
             asset["leverage"] = 1.0
             asset["short_live_enabled"] = live_ok and "short" in (asset.get("allowed_sides") or [])
+            asset["manual_short_live_enabled"] = bool(
+                live_ok
+                and target.get("manual_short_live_certified")
+                and "short" in (asset.get("manual_allowed_sides") or [])
+            )
             enabled_count += 1 if enabled else 0
             live_count += 1 if live_ok else 0
             any_cdc_live = any_cdc_live or (live_ok and cdc_pure)

@@ -130,6 +130,11 @@ export default function DashboardPage() {
   const fees = valueAt(position, "estimated_total_fees");
   const funding = valueAt(position, "funding_paid");
   const target = catalog?.targets.find((item) => item.id === bot?.exchange_connection?.target_id);
+  const live = bot?.tenant.live_status === "active";
+  const shortAvailable = Boolean(
+    target?.manual_allowed_sides.includes("short")
+    && (!live || target.manual_short_live_certified)
+  );
 
   async function toggleEngine() {
     setBusy(true);
@@ -152,7 +157,7 @@ export default function DashboardPage() {
       <PageHeading
         eyebrow="Pilot workspace"
         title={<>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {user.display_name || user.email.split("@")[0]}. <span className="page-heading-market">{marketSummary(zone, Boolean(snapshot?.stale), !snapshot)}</span></>}
-        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={bot?.tenant.live_status === "active"} shortLiveCertified={Boolean(target?.manual_short_live_certified)} engineRunning={running} profileReady={pairs.length > 0} /></div>}
+        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={live} shortAvailable={shortAvailable} marketZone={zone} engineRunning={running} profileReady={pairs.length > 0} /></div>}
       />
 
       {!bot?.exchange_connection && (

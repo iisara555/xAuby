@@ -16,7 +16,7 @@ TARGETS = [
         "live_certified": True,
         "manual_allowed_sides": ["long", "short"],
         "manual_long_live_certified": True,
-        "manual_short_live_certified": False,
+        "manual_short_live_certified": True,
     },
     {
         "id": "binance-global-futures",
@@ -27,7 +27,7 @@ TARGETS = [
         "live_certified": True,
         "manual_allowed_sides": ["long", "short"],
         "manual_long_live_certified": True,
-        "manual_short_live_certified": False,
+        "manual_short_live_certified": True,
     },
     {
         "id": "binance-global-spot",

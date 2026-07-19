@@ -16,7 +16,8 @@ export function TradeDrawer({
   positionOpen,
   enabled,
   live,
-  shortLiveCertified,
+  shortAvailable,
+  marketZone,
   engineRunning,
   profileReady,
 }: {
@@ -25,7 +26,8 @@ export function TradeDrawer({
   positionOpen: boolean;
   enabled: boolean;
   live: boolean;
-  shortLiveCertified: boolean;
+  shortAvailable: boolean;
+  marketZone: string;
   engineRunning: boolean;
   profileReady: boolean;
 }) {
@@ -47,7 +49,9 @@ export function TradeDrawer({
 
   const selectedIntent: Intent = positionOpen
     ? "CLOSE_POSITION"
-    : intent === "CLOSE_POSITION" ? "OPEN_LONG" : intent;
+    : intent === "CLOSE_POSITION" || (intent === "OPEN_SHORT" && !shortAvailable)
+      ? "OPEN_LONG"
+      : intent;
   const canReview = engineRunning && profileReady;
 
   async function createPreview() {
@@ -95,10 +99,10 @@ export function TradeDrawer({
         {!preview ? <>
           <div className="order-intents">
             <button className={selectedIntent === "OPEN_LONG" ? "selected" : ""} disabled={positionOpen} onClick={() => setIntent("OPEN_LONG")}><ArrowUpFromLine />Open long</button>
-            <button className={selectedIntent === "OPEN_SHORT" ? "selected" : ""} disabled={positionOpen || (live && !shortLiveCertified)} onClick={() => setIntent("OPEN_SHORT")}><ArrowDownToLine />Open short<small>{live && !shortLiveCertified ? "Not live-certified" : "Perpetual only"}</small></button>
+            <button className={selectedIntent === "OPEN_SHORT" ? "selected" : ""} disabled={positionOpen || !shortAvailable} onClick={() => setIntent("OPEN_SHORT")}><ArrowDownToLine />Open short<small>{shortAvailable ? "Perpetual market" : "Unavailable on this market"}</small></button>
             <button className={selectedIntent === "CLOSE_POSITION" ? "selected" : ""} disabled={!positionOpen} onClick={() => setIntent("CLOSE_POSITION")}><X />Close position</button>
           </div>
-          <p className="drawer-note">Quantity is calculated from the active certified profile. You will review the exact estimate before entering your Trade PIN.</p>
+          <p className="drawer-note">Manual {shortAvailable ? "LONG or SHORT follows" : "LONG follows"} your selected side regardless of the current {marketZone && marketZone !== "—" ? `${marketZone.toUpperCase()} ` : ""}zone. Quantity is still calculated from the active certified profile, and you will review it before entering your Trade PIN.</p>
           {!profileReady && <p className="form-error" role="status">Save a trading preset before reviewing a manual order.</p>}
           {profileReady && !engineRunning && <p className="form-error" role="status">Start the engine before reviewing a manual order.</p>}
           <button className="button-primary wide" disabled={busy || !canReview} onClick={createPreview}>{busy ? "Calculating…" : "Review order"}</button>

@@ -326,6 +326,50 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertAlmostEqual(payload["estimated_notional"], 9500.0)
         self.assertAlmostEqual(payload["estimated_quantity"], 2.375)
 
+    def test_live_manual_side_is_independent_of_actionzone_colour(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        profile = self.client.put(
+            "/api/v1/profile", headers=self.headers,
+            json={"preset_ids": ["okx-xau-actionzone-v1"],
+                  "active_preset_id": "okx-xau-actionzone-v1", "risk": {}},
+        )
+        self.assertEqual(profile.status_code, 200, profile.text)
+        self.store.update_tenant(
+            tenant["id"], status="running", live_status="active"
+        )
+
+        runtime = self.supervisor.runtime_dir(tenant["slug"]) / "logs"
+        runtime.mkdir(parents=True, exist_ok=True)
+        state_path = runtime / "xauby_bot_state.json"
+
+        def preview(zone, intent):
+            state_path.write_text(
+                json.dumps({
+                    "focus_symbol": "XAUUSDT",
+                    "current_price": 4000.0,
+                    "total_equity_usdt": 10000.0,
+                    "position": {"state": "idle"},
+                    "indicators": {"cdc_zone_4h": zone},
+                }),
+                encoding="utf-8",
+            )
+            return self.client.post(
+                "/api/v1/orders/preview", headers=self.headers,
+                json={"symbol": "XAUUSDT", "intent": intent},
+            )
+
+        object.__setattr__(self.settings, "manual_trading_enabled", True)
+        with patch.object(self.supervisor, "status", return_value="active"):
+            long_in_red = preview("RED", "OPEN_LONG")
+            short_in_green = preview("GREEN", "OPEN_SHORT")
+
+        self.assertEqual(long_in_red.status_code, 200, long_in_red.text)
+        self.assertEqual(long_in_red.json()["preview"]["side"], "LONG")
+        self.assertEqual(short_in_green.status_code, 200, short_in_green.text)
+        self.assertEqual(short_in_green.json()["preview"]["side"], "SHORT")
+        self.assertEqual(short_in_green.json()["preview"]["mode"], "live")
+
     def _create_password_user(self, email: str, password: str) -> dict:
         user, _ = self.store.create_password_user(email, password)
         with self.store.connection() as conn:
