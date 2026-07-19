@@ -35,6 +35,11 @@ class TestTradingEngineDecoupling(unittest.TestCase):
         self.assertEqual(self.engine._tg_service, self.notification)
 
     def test_strategy_instances_are_isolated_per_symbol(self):
+        # Pin both symbols to the same plugin for this isolation assertion. The
+        # production BTC preset now intentionally uses SuperTrend EMA200.
+        self.engine._strategy_names_by_symbol["BTCUSDT"] = "xauby_actionzone"
+        self.engine._strategies_by_symbol.pop("BTCUSDT", None)
+        self.engine._runners_by_symbol.pop("BTCUSDT", None)
         gold_strategy = self.engine._get_strategy_for_symbol("XAUUSDT")
         btc_strategy = self.engine._get_strategy_for_symbol("BTCUSDT")
         gold_runner = self.engine._get_runner_for_symbol("XAUUSDT")

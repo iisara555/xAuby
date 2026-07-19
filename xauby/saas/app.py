@@ -143,6 +143,73 @@ class AccountStatusBody(BaseModel):
     status: str = Field(pattern="^(active|rejected|suspended)$")
 
 
+LIVE_ADDITIVE_RISK_KEYS = (
+    "risk_pct",
+    "max_position_per_trade_pct",
+    "max_daily_loss_pct",
+    "max_leverage",
+)
+LIVE_PRESET_IDENTITY_KEYS = (
+    "target_id",
+    "exchange_id",
+    "market_type",
+    "symbol",
+    "asset",
+    "strategy",
+    "primary_timeframe",
+    "confirm_timeframe",
+    "allowed_sides",
+    "max_leverage",
+    "live_certified",
+    "cdc_pure_certified",
+    "stop_loss_required",
+    "execution_profile",
+)
+
+
+def _is_safe_live_pair_addition(
+    existing: dict[str, Any] | None,
+    profile: dict[str, Any],
+) -> bool:
+    """Allow a certified same-exchange pair to join Live without stopping it."""
+    if not existing or existing.get("target_id") != profile.get("target_id"):
+        return False
+    old_ids = set(existing.get("preset_ids") or [])
+    new_ids = set(profile.get("preset_ids") or [])
+    added_ids = new_ids - old_ids
+    if not old_ids or not added_ids or not old_ids < new_ids:
+        return False
+
+    # Existing live strategy execution must stay on the same certified revision.
+    # Display/backtest metadata may evolve, and reducing its allocation while a
+    # second pair joins is safe (the XAU 65% + BTC 30% migration uses this).
+    old_presets = {item.get("id"): item for item in existing.get("presets") or []}
+    new_presets = {item.get("id"): item for item in profile.get("presets") or []}
+    for preset_id in old_ids:
+        old_preset = old_presets.get(preset_id) or {}
+        new_preset = new_presets.get(preset_id) or {}
+        if any(old_preset.get(key) != new_preset.get(key) for key in LIVE_PRESET_IDENTITY_KEYS):
+            return False
+        old_allocation = float(old_preset.get("allocation_pct", 95.0))
+        new_allocation = float(new_preset.get("allocation_pct", old_allocation))
+        if new_allocation > old_allocation:
+            return False
+    if any(not new_presets.get(preset_id, {}).get("live_certified") for preset_id in added_ids):
+        return False
+
+    old_risk = existing.get("risk") or {}
+    new_risk = profile.get("risk") or {}
+    if any(float(old_risk.get(key, 0)) != float(new_risk.get(key, 0)) for key in LIVE_ADDITIVE_RISK_KEYS):
+        return False
+
+    # Certified allocations share one account. Never hot-add a set whose fixed
+    # catalog allocations consume more than the 95% deployable cash envelope.
+    allocations = [item.get("allocation_pct") for item in profile.get("presets") or []]
+    return all(value is not None for value in allocations) and sum(
+        float(value) for value in allocations
+    ) <= 95.0
+
+
 def _safe_slug_from_email(email: str, fallback: str) -> str:
     local = str(email).split("@", 1)[0].lower()
     # Keep room for the ``xauby-`` prefix used by the tenant-specific Linux
@@ -735,7 +802,11 @@ def create_app(
                 existing and existing.get("target_id")
                 and existing.get("target_id") != profile["target_id"]
             )
-            if live_was_enabled:
+            live_addition = bool(
+                tenant["live_status"] == "active"
+                and _is_safe_live_pair_addition(existing, profile)
+            )
+            if live_was_enabled and not live_addition:
                 supervisor.stop(tenant["slug"])
                 store.update_tenant(tenant["id"], status="stopped")
                 store.reset_live_approval(tenant["id"], user["id"], "trading profile changed")
@@ -745,7 +816,8 @@ def create_app(
                 supervisor.stop(tenant["slug"])
                 store.update_tenant(tenant["id"], status="stopped")
             compiled = supervisor.apply_profile(
-                tenant["slug"], body.preset_ids, body.active_preset_id, body.risk
+                tenant["slug"], body.preset_ids, body.active_preset_id, body.risk,
+                preserve_live=live_addition,
             )
             store.save_trading_profile(tenant["id"], user["id"], profile)
             target = target_by_id(profile["target_id"])
@@ -753,6 +825,18 @@ def create_app(
                 tenant["id"], exchange_id=target["exchange_id"],
                 market_type=target["market_type"],
             )
+            if live_addition:
+                store.audit(
+                    "live_pairs_hot_added",
+                    tenant_id=tenant["id"],
+                    user_id=user["id"],
+                    payload={
+                        "added_preset_ids": sorted(
+                            set(profile["preset_ids"]) - set(existing["preset_ids"])
+                        ),
+                        "max_open_positions": profile["risk"]["max_open_positions"],
+                    },
+                )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         connection = store.exchange_connection(tenant["id"])
@@ -763,8 +847,10 @@ def create_app(
         return {
             "ok": True,
             "profile": compiled,
-            "mode": "simulation",
-            "live_reapproval_required": live_was_enabled,
+            "mode": "live" if live_addition else "simulation",
+            "live_reapproval_required": live_was_enabled and not live_addition,
+            "live_preserved": live_addition,
+            "hot_reload_eta_seconds": 30 if live_addition else None,
             "profile_changed": True,
             "exchange_switched": exchange_switched,
             "reconnect_required": reconnect_required,

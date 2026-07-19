@@ -266,8 +266,15 @@ class TenantSupervisor:
         self._set_config_permissions(self.config_dir(slug))
         return self.read_curated_config(slug)
 
-    def apply_profile(self, slug: str, preset_ids: list[str], active_preset_id: str,
-                      risk_values: dict[str, Any]) -> dict[str, Any]:
+    def apply_profile(
+        self,
+        slug: str,
+        preset_ids: list[str],
+        active_preset_id: str,
+        risk_values: dict[str, Any],
+        *,
+        preserve_live: bool = False,
+    ) -> dict[str, Any]:
         """Compile catalog choices into bounded files; raw strategy config is never accepted."""
         profile = validate_profile(preset_ids, active_preset_id, risk_values)
         self.provision(slug)
@@ -321,8 +328,6 @@ class TenantSupervisor:
             "default_leverage": bounded["max_leverage"],
             "max_leverage": bounded["max_leverage"],
         })
-        cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
-
         wl_recipe = exchange_recipe["whitelist"]
         market_type = exchange_recipe["exchange"].get("market_type", "spot")
         assets = []
@@ -362,15 +367,25 @@ class TenantSupervisor:
                 "regime_router_live_confirmed": False,
                 "sim_fee_pct": wl_recipe["sim_fee_pct"],
             })
+        whitelist = {
+            "version": 1,
+            "quote_asset": wl_recipe["quote_asset"],
+            "min_quote_balance_usdt": wl_recipe["min_quote_balance"],
+            "min_quote_balance_for_pairs": 0,
+            "require_supported_market": True,
+            "include_assets_with_balance": False,
+            "assets": assets,
+        }
+        if preserve_live:
+            self._enable_live_payload(cfg, whitelist, profile["target_id"])
+
+        # The engine watches the whitelist for hot reload. Write YAML first so
+        # an accepted whitelist mtime always points at its matching risk and
+        # portfolio configuration.
+        cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         atomic_json_write(
-            str(self.config_dir(slug) / "coin_whitelist.json"),
-            {"version": 1, "quote_asset": wl_recipe["quote_asset"],
-             "min_quote_balance_usdt": wl_recipe["min_quote_balance"],
-             "min_quote_balance_for_pairs": 0, "require_supported_market": True,
-             "include_assets_with_balance": False, "assets": assets},
-            indent=2,
+            str(self.config_dir(slug) / "coin_whitelist.json"), whitelist, indent=2
         )
-        self.set_sim_mode(slug)
         self._set_config_permissions(self.config_dir(slug))
         return profile
 
@@ -483,27 +498,28 @@ class TenantSupervisor:
         except (ValueError, IndexError) as exc:
             raise RuntimeError("exchange probe returned invalid output") from exc
 
-    def set_live_mode(self, slug: str, target_id: str) -> None:
+    @classmethod
+    def _enable_live_payload(
+        cls,
+        cfg: dict[str, Any],
+        whitelist: dict[str, Any],
+        target_id: str,
+    ) -> None:
         target = target_by_id(target_id)
         exchange = str(target["exchange_id"]).lower()
         market = str(target["market_type"]).lower()
-        if (exchange, market) not in self.LIVE_CERTIFIED:
+        if (exchange, market) not in cls.LIVE_CERTIFIED:
             raise ValueError(f"{exchange}/{market} is not live certified")
         if not target.get("live_certified"):
             raise ValueError(f"{target_id} is not live certified")
-        self.provision(slug)
-        cfg_path = self.config_dir(slug) / "bot_config.yaml"
-        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         cfg["simulate_only"] = False
         cfg["read_only"] = False
-        self._apply_exchange_profile(cfg, target_id)
+        cls._apply_exchange_profile(cfg, target_id)
         cfg.setdefault("derivatives", {})["default_leverage"] = 1
         cfg["derivatives"]["max_leverage"] = 1
         any_cdc_live = False
         enabled_count = 0
         live_count = 0
-        wl_path = self.config_dir(slug) / "coin_whitelist.json"
-        whitelist = json.loads(wl_path.read_text(encoding="utf-8"))
         for asset in whitelist.get("assets") or []:
             params = asset.setdefault("strategy_params", {})
             cdc_pure = bool(asset.get("cdc_pure_certified"))
@@ -545,6 +561,14 @@ class TenantSupervisor:
         cfg.setdefault("execution", {})["live_strategy_mode"] = (
             "cdc_pure" if any_cdc_live else "stop_loss"
         )
+
+    def set_live_mode(self, slug: str, target_id: str) -> None:
+        self.provision(slug)
+        cfg_path = self.config_dir(slug) / "bot_config.yaml"
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        wl_path = self.config_dir(slug) / "coin_whitelist.json"
+        whitelist = json.loads(wl_path.read_text(encoding="utf-8"))
+        self._enable_live_payload(cfg, whitelist, target_id)
         cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         atomic_json_write(str(wl_path), whitelist, indent=2)
         self._set_config_permissions(self.config_dir(slug))

@@ -62,6 +62,14 @@ export default function SettingsPage() {
     [savedProfile],
   );
   const savedTargetId = savedProfile?.target_id ?? null;
+  const addedPresets = useMemo(
+    () => catalog?.presets.filter((item) => selectedIds.includes(item.id) && !savedIds.includes(item.id)) ?? [],
+    [catalog, savedIds, selectedIds],
+  );
+  const removedIds = useMemo(
+    () => savedIds.filter((id) => !selectedIds.includes(id)),
+    [savedIds, selectedIds],
+  );
   const focusPreset = useMemo(() => catalog?.presets.find((item) => item.id === focusId), [catalog, focusId]);
   const selectionDirty = useMemo(() => {
     if (!savedProfile) return selectedIds.length > 0;
@@ -70,6 +78,15 @@ export default function SettingsPage() {
     return a !== b || focusId !== savedProfile.active_preset_id;
   }, [savedProfile, savedIds, selectedIds, focusId]);
   const exchangeSwitchPending = Boolean(savedTargetId && targetId && targetId !== savedTargetId);
+  const livePairAddition = Boolean(
+    bot?.tenant.live_status === "active"
+    && savedProfile
+    && targetId === savedTargetId
+    && addedPresets.length > 0
+    && removedIds.length === 0
+    && addedPresets.every((item) => item.live_certified),
+  );
+  const addedPairNames = addedPresets.map((item) => item.asset ?? item.symbol.replace(/USDT$/, ""));
   const savedCertified = Boolean(savedProfile?.presets?.some((item) => item.live_certified));
   const maxPositionPct = Number(profile?.profile?.risk?.max_position_per_trade_pct ?? 10);
   const cdcPure = Boolean(savedProfile?.presets?.some((item) => item.cdc_pure_certified) ?? focusPreset?.cdc_pure_certified);
@@ -138,7 +155,7 @@ export default function SettingsPage() {
   async function saveProfile() {
     if (selectedIds.length === 0 || !focusId || !selectedIds.includes(focusId)) return;
     const liveProfileChange = bot?.tenant.live_status === "active" && selectionDirty;
-    if (liveProfileChange && !window.confirm("Changing the configured pairs will stop Live mode and require Live approval again. Continue?")) return;
+    if (liveProfileChange && !livePairAddition && !window.confirm("This change will stop Live mode and require Live approval again. Continue?")) return;
     if (exchangeSwitchPending && !window.confirm("Switching the exchange replaces your configured pairs and requires connecting new API keys. Continue?")) return;
     begin();
     try {
@@ -146,6 +163,8 @@ export default function SettingsPage() {
         mode: "live" | "simulation";
         live_reapproval_required: boolean;
         profile_changed: boolean;
+        live_preserved?: boolean;
+        hot_reload_eta_seconds?: number | null;
         exchange_switched?: boolean;
         reconnect_required?: boolean;
       }>("/api/v1/profile", {
@@ -159,6 +178,8 @@ export default function SettingsPage() {
       await Promise.all([mutateProfile(), mutate()]);
       if (!result.profile_changed && result.mode === "live") {
         setMessage("Pairs are unchanged. Live mode remains active.");
+      } else if (result.live_preserved) {
+        setMessage(`${addedPairNames.join(" + ")} activated. Existing pairs stay Live; the new pair joins within about ${result.hot_reload_eta_seconds ?? 30} seconds.`);
       } else if (result.exchange_switched || result.reconnect_required) {
         setMessage("Pairs saved on the new exchange. Connect and test API keys for it before going Live.");
       } else if (result.live_reapproval_required) {
@@ -283,7 +304,7 @@ export default function SettingsPage() {
                   <span className="preset-option-head">
                     <span className="radio-dot">{checked && <Check size={13} />}</span>
                     <span className="preset-copy"><strong>{preset.label}</strong><small>{preset.symbol} · {preset.strategy.replaceAll("_", " ")}</small></span>
-                    {preset.live_certified === false ? <StatusPill label="SIM only" tone="warn" /> : saved ? <StatusPill label="Saved" tone="good" /> : null}
+                    {preset.live_certified === false ? <StatusPill label="SIM only" tone="warn" /> : saved ? <StatusPill label={bot?.tenant.live_status === "active" ? "Active" : "Saved"} tone="good" /> : checked ? <StatusPill label="Ready" tone="good" /> : null}
                     <em>{preset.confirm_timeframe ? `${preset.primary_timeframe} / ${preset.confirm_timeframe}` : `${preset.primary_timeframe} · single TF`}</em>
                   </span>
                   <span className="preset-backtest">
@@ -320,9 +341,21 @@ export default function SettingsPage() {
           <div className="risk-summary">
             <div><span>Strategy sides</span><strong>{focusPreset?.cdc_pure_certified ? "CDC Pure · " : ""}{(focusPreset?.allowed_sides ?? ["long"]).map((side) => side.toUpperCase()).join(" / ")}</strong></div><div><span>D1 filter</span><strong>{focusPreset?.execution_profile?.use_d1_regime_filter === true ? "On" : focusPreset?.execution_profile?.use_d1_regime_filter === false ? "Off" : "—"}</strong></div><div><span>Partial TP</span><strong>{typeof focusPreset?.execution_profile?.partial_tp_pct === "number" && Number(focusPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(focusPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${focusPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{focusPreset?.cdc_pure_certified ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Open positions</span><strong>{Math.max(selectedIds.length, 1)} max</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
           </div>
-          {selectionDirty && selectedIds.length > 0 && <p className="field-help preset-switch-hint" role="status">Your pair selection is not saved yet{bot?.tenant.live_status === "active" ? " — saving will stop Live mode until you re-approve it" : ""}.</p>}
+          {selectionDirty && selectedIds.length > 0 && (
+            <p className="field-help preset-switch-hint" role="status">
+              {livePairAddition
+                ? `${addedPairNames.join(" + ")} is ready to join Live. Existing pairs keep running; activation takes up to about 30 seconds.`
+                : `Your pair selection is not saved yet${bot?.tenant.live_status === "active" ? " — this change will stop Live mode until you re-approve it" : ""}.`}
+            </p>
+          )}
           <button className="button-primary" onClick={saveProfile} disabled={busy || selectedIds.length === 0 || !focusId || !selectionDirty}>
-            {selectedIds.length === 0 ? "Select at least one pair" : !selectionDirty ? "These pairs are already saved" : `Save ${selectedIds.length} pair${selectedIds.length > 1 ? "s" : ""}`}
+            {selectedIds.length === 0
+              ? "Select at least one pair"
+              : !selectionDirty
+                ? "These pairs are already active"
+                : livePairAddition
+                  ? `Activate ${addedPairNames.join(" + ")}`
+                  : `Save ${selectedIds.length} pair${selectedIds.length > 1 ? "s" : ""}`}
           </button>
         </Tabs.Content>
 

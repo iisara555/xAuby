@@ -288,6 +288,85 @@ class SaaSControlPlaneTests(unittest.TestCase):
         )
         self.assertFalse(config["simulate_only"])
 
+    def test_live_certified_pair_is_hot_added_without_stopping_existing_pair(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        xau_payload = {
+            "preset_ids": ["okx-xau-actionzone-v1"],
+            "active_preset_id": "okx-xau-actionzone-v1",
+            "risk": {},
+        }
+        first = self.client.put("/api/v1/profile", headers=self.headers, json=xau_payload)
+        self.assertEqual(first.status_code, 200, first.text)
+        # Profiles saved before the multi-pair release did not carry the XAU
+        # allocation metadata. Adding BTC must still take the safe 65/30 path.
+        legacy_profile = self.store.trading_profile(tenant["id"])
+        legacy_profile["presets"][0].pop("allocation_pct", None)
+        self.store.save_trading_profile(tenant["id"], me["id"], legacy_profile)
+        self.supervisor.set_live_mode(tenant["slug"], "okx-swap")
+        self.store.update_tenant(tenant["id"], status="running", live_status="active")
+
+        expanded_payload = {
+            "preset_ids": ["okx-xau-actionzone-v1", "okx-btc-supertrend-v1"],
+            "active_preset_id": "okx-xau-actionzone-v1",
+            "risk": {},
+        }
+        with patch.object(self.supervisor, "stop") as stop, \
+                patch.object(self.supervisor, "restart") as restart:
+            expanded = self.client.put(
+                "/api/v1/profile", headers=self.headers, json=expanded_payload
+            )
+
+        self.assertEqual(expanded.status_code, 200, expanded.text)
+        self.assertEqual(expanded.json()["mode"], "live")
+        self.assertTrue(expanded.json()["live_preserved"])
+        self.assertFalse(expanded.json()["live_reapproval_required"])
+        self.assertEqual(expanded.json()["hot_reload_eta_seconds"], 30)
+        stop.assert_not_called()
+        restart.assert_not_called()
+
+        refreshed_tenant = self.store.tenant_by_slug(tenant["slug"])
+        self.assertEqual(refreshed_tenant["live_status"], "active")
+        self.assertEqual(refreshed_tenant["status"], "running")
+        config_dir = self.supervisor.config_dir(tenant["slug"])
+        config = yaml.safe_load((config_dir / "bot_config.yaml").read_text(encoding="utf-8"))
+        whitelist = json.loads((config_dir / "coin_whitelist.json").read_text(encoding="utf-8"))
+        self.assertFalse(config["simulate_only"])
+        self.assertEqual(config["trading"]["max_open_positions"], 2)
+        self.assertEqual({item["symbol"] for item in whitelist["assets"]}, {"XAU", "BTC"})
+        self.assertTrue(all(item["mode"] == "live" for item in whitelist["assets"]))
+
+    def test_removing_a_live_pair_still_requires_reapproval(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        two_pairs = {
+            "preset_ids": ["okx-xau-actionzone-v1", "okx-btc-supertrend-v1"],
+            "active_preset_id": "okx-xau-actionzone-v1",
+            "risk": {},
+        }
+        first = self.client.put("/api/v1/profile", headers=self.headers, json=two_pairs)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.supervisor.set_live_mode(tenant["slug"], "okx-swap")
+        self.store.update_tenant(tenant["id"], status="running", live_status="active")
+
+        removed = self.client.put(
+            "/api/v1/profile",
+            headers=self.headers,
+            json={
+                "preset_ids": ["okx-xau-actionzone-v1"],
+                "active_preset_id": "okx-xau-actionzone-v1",
+                "risk": {},
+            },
+        )
+
+        self.assertEqual(removed.status_code, 200, removed.text)
+        self.assertEqual(removed.json()["mode"], "simulation")
+        self.assertFalse(removed.json()["live_preserved"])
+        self.assertTrue(removed.json()["live_reapproval_required"])
+        refreshed_tenant = self.store.tenant_by_slug(tenant["slug"])
+        self.assertEqual(refreshed_tenant["live_status"], "not_requested")
+        self.assertEqual(refreshed_tenant["status"], "stopped")
+
     def test_manual_order_preview_uses_saved_profile(self):
         me = self.client.get("/api/v1/me").json()
         tenant = me["tenant"]

@@ -807,6 +807,39 @@ class BaseEngine:
             logger.error(f"Failed to load config: {e}")
             self.config = {}
 
+    def _reload_hot_pair_config(self) -> bool:
+        """Refresh pair-owned YAML after the whitelist hot-reload trigger.
+
+        The control plane writes YAML first and the atomic whitelist last. This
+        keeps strategy sizing, pair allocations and max-open-position limits in
+        the same hot-reload transaction without restarting the live engine.
+        Exchange changes are intentionally rejected because the existing API
+        client and credentials cannot be replaced safely in place.
+        """
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as handle:
+                candidate = yaml.safe_load(handle) or {}
+        except Exception as exc:
+            logger.warning("Pair config hot reload rejected: %s", exc)
+            return False
+
+        def exchange_signature(config: Dict[str, Any]) -> tuple[str, str, str]:
+            exchange = config.get("exchange") or {}
+            derivatives = config.get("derivatives") or {}
+            return (
+                str(exchange.get("ccxt_id") or exchange.get("id") or exchange.get("name") or "").lower(),
+                str(exchange.get("market_type") or derivatives.get("market_type") or "").lower(),
+                str(exchange.get("quote_asset") or (config.get("portfolio") or {}).get("quote_asset") or "").upper(),
+            )
+
+        if exchange_signature(candidate) != exchange_signature(self.config):
+            logger.warning("Pair config hot reload rejected: exchange target changed")
+            return False
+        self.config = candidate
+        self._pair_registry.config = candidate
+        logger.info("Reloaded pair risk and portfolio config from %s", self.config_path)
+        return True
+
     def _get_strategy_config(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         sym = symbol or self._sym()
         name = self._strategy_name_for_symbol(sym)

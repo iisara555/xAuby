@@ -1415,6 +1415,7 @@ class LoopMixin:
             self._emitter.set_tick_id(tick_id)
             if self._pair_registry.maybe_reload(self.client):
                 prev_syms = set(self.contexts.keys())
+                self._reload_hot_pair_config()
                 self._init_pair_runtime()
                 if set(self._pair_registry.active_symbols()) != prev_syms:
                     self._refresh_websocket_symbols()
