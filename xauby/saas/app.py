@@ -177,8 +177,7 @@ def create_app(
         if not encrypted:
             return None
         target_id, envelope = encrypted
-        target = target_by_id(target_id)
-        return target["exchange_id"], cipher.decrypt(tenant["id"], target_id, envelope)
+        return target_id, cipher.decrypt(tenant["id"], target_id, envelope)
 
     supervisor.set_credential_loader(load_credentials)
     mailer = mailer or Mailer(settings)
@@ -268,9 +267,19 @@ def create_app(
             raise HTTPException(status_code=409, detail="market snapshot is too old")
         state = snapshot.get("state") if isinstance(snapshot.get("state"), dict) else {}
         clean_symbol = RuntimeGateway._symbol(symbol)
-        focus_symbol = str(state.get("focus_symbol") or state.get("symbol") or "").upper()
-        if clean_symbol != focus_symbol:
-            raise HTTPException(status_code=409, detail="symbol is not the active trading pair")
+        profile = store.trading_profile(tenant["id"])
+        if not profile:
+            raise HTTPException(status_code=409, detail="a trading profile is required")
+        preset = next(
+            (
+                item
+                for item in profile.get("presets", [])
+                if str(item.get("symbol") or "").upper() == clean_symbol
+            ),
+            None,
+        )
+        if not preset:
+            raise HTTPException(status_code=409, detail="symbol is not a configured trading pair")
         focus = RuntimeGateway._focus_state(state, clean_symbol)
         position = focus.get("position") if isinstance(focus.get("position"), dict) else {}
         is_open = str(position.get("state") or "idle") == "bought"
@@ -278,15 +287,6 @@ def create_app(
             raise HTTPException(status_code=409, detail="there is no tracked position to close")
         if intent != "CLOSE_POSITION" and is_open:
             raise HTTPException(status_code=409, detail="close the current position before opening another")
-        profile = store.trading_profile(tenant["id"])
-        if not profile:
-            raise HTTPException(status_code=409, detail="a trading profile is required")
-        preset = next(
-            (item for item in profile.get("presets", []) if item.get("id") == profile.get("active_preset_id")),
-            None,
-        )
-        if not preset or str(preset.get("symbol") or "").upper() != clean_symbol:
-            raise HTTPException(status_code=409, detail="active profile does not match the symbol")
         target = target_by_id(str(profile.get("target_id") or preset.get("target_id") or ""))
         requested_side = "short" if intent == "OPEN_SHORT" else "long"
         if intent != "CLOSE_POSITION" and requested_side not in target.get("manual_allowed_sides", []):
@@ -731,27 +731,43 @@ def create_app(
                     "profile_changed": False,
                 }
 
+            exchange_switched = bool(
+                existing and existing.get("target_id")
+                and existing.get("target_id") != profile["target_id"]
+            )
             if live_was_enabled:
                 supervisor.stop(tenant["slug"])
                 store.update_tenant(tenant["id"], status="stopped")
                 store.reset_live_approval(tenant["id"], user["id"], "trading profile changed")
+            elif exchange_switched and tenant.get("status") == "running":
+                # A running sim engine still holds the old exchange config —
+                # stop it so the next start picks up the new venue cleanly.
+                supervisor.stop(tenant["slug"])
+                store.update_tenant(tenant["id"], status="stopped")
             compiled = supervisor.apply_profile(
                 tenant["slug"], body.preset_ids, body.active_preset_id, body.risk
             )
             store.save_trading_profile(tenant["id"], user["id"], profile)
-            active = profile["presets"][0]
+            target = target_by_id(profile["target_id"])
             store.update_tenant(
-                tenant["id"], exchange_id=active["exchange_id"],
-                market_type=active["market_type"],
+                tenant["id"], exchange_id=target["exchange_id"],
+                market_type=target["market_type"],
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        connection = store.exchange_connection(tenant["id"])
+        reconnect_required = exchange_switched or bool(
+            connection and connection.get("target_id")
+            and connection.get("target_id") != profile["target_id"]
+        )
         return {
             "ok": True,
             "profile": compiled,
             "mode": "simulation",
             "live_reapproval_required": live_was_enabled,
             "profile_changed": True,
+            "exchange_switched": exchange_switched,
+            "reconnect_required": reconnect_required,
         }
 
     @app.get("/api/v1/bot")
@@ -931,8 +947,14 @@ def create_app(
         }
         if any("\n" in value or "\r" in value for value in credentials.values()):
             raise HTTPException(status_code=422, detail="credentials may not contain line breaks")
+        profile = store.trading_profile(tenant["id"])
+        if profile and profile.get("target_id") and profile["target_id"] != target["id"]:
+            raise HTTPException(
+                status_code=422,
+                detail="save a trading profile for this exchange before connecting its keys",
+            )
         envelope = cipher.encrypt(tenant["id"], target["id"], credentials)
-        supervisor.configure_exchange(tenant["slug"], target["exchange_id"])
+        supervisor.configure_exchange(tenant["slug"], target["id"])
         supervisor.set_sim_mode(tenant["slug"])
         store.reset_live_approval(tenant["id"], user["id"], "exchange credentials changed")
         store.update_tenant(
@@ -984,12 +1006,10 @@ def create_app(
         profile = store.trading_profile(tenant["id"])
         if not profile:
             raise HTTPException(status_code=409, detail="certified trading profile is required")
-        active = next(
-            (item for item in profile.get("presets", [])
-             if item.get("id") == profile.get("active_preset_id")), None
-        )
-        if not active or not active.get("live_certified"):
-            raise HTTPException(status_code=409, detail="active preset is not live certified")
+        if not any(item.get("live_certified") for item in profile.get("presets", [])):
+            raise HTTPException(
+                status_code=409, detail="no selected preset is live certified"
+            )
         return store.request_live(tenant["id"], user["id"], risk=profile.get("risk"))
 
     @app.post("/api/v1/live/activate")
@@ -1015,25 +1035,26 @@ def create_app(
         profile = store.trading_profile(tenant["id"])
         if not profile or profile.get("target_id") != connection.get("target_id"):
             raise HTTPException(status_code=409, detail="profile and exchange target must match")
-        active = profile["presets"][0]
-        cdc_pure = bool(
-            active.get("cdc_pure_certified")
-            and active.get("symbol") == "XAUUSDT"
-            and active.get("strategy") == "xauby_actionzone"
-        )
-        if not active.get("live_certified") or (
-            not profile["risk"].get("stop_loss_required") and not cdc_pure
-        ):
-            raise HTTPException(status_code=409, detail="a certified stop-loss or CDC Pure profile is required")
+        certified = [
+            item for item in profile.get("presets", []) if item.get("live_certified")
+        ]
+        if not certified:
+            raise HTTPException(status_code=409, detail="no selected preset is live certified")
+        for preset in certified:
+            # Only a catalog-certified CDC Pure preset may go live without a
+            # stop loss; every other certified preset must keep one.
+            if not preset.get("stop_loss_required", True) and not preset.get("cdc_pure_certified"):
+                raise HTTPException(
+                    status_code=409,
+                    detail="a certified stop-loss or CDC Pure profile is required",
+                )
         if not store.reserve_engine_slot(tenant["id"], settings.max_active_engines):
             raise HTTPException(status_code=409, detail="engine capacity is full; tenant queued")
         try:
             if tenant["live_status"] != "requested":
                 store.request_live(tenant["id"], user["id"], risk=profile.get("risk"))
             store.approve_live(tenant["id"], user["id"])
-            supervisor.set_live_mode(
-                tenant["slug"], tenant["exchange_id"], tenant["market_type"]
-            )
+            supervisor.set_live_mode(tenant["slug"], profile["target_id"])
             supervisor.restart(tenant["slug"])
             store.update_tenant(tenant["id"], live_status="active", status="running")
         except Exception as exc:
@@ -1083,11 +1104,7 @@ def create_app(
             max_allocation = float(config.get("max_position_per_trade_pct") or 10.0) / 100.0
             preset = context["preset"]
             execution_profile = preset.get("execution_profile") or {}
-            cdc_pure = bool(
-                preset.get("cdc_pure_certified")
-                and str(preset.get("symbol") or "").upper() == "XAUUSDT"
-                and preset.get("strategy") == "xauby_actionzone"
-            )
+            cdc_pure = bool(preset.get("cdc_pure_certified"))
             if cdc_pure:
                 # CDC Pure has no exchange stop loss.  Its certified sizing is
                 # a fixed fraction of equity, so the manual preview must use
@@ -1293,12 +1310,15 @@ def create_app(
         connection = store.exchange_connection(tenant_id)
         if not connection or connection["status"] != "tested":
             raise HTTPException(status_code=409, detail="exchange connection is not tested")
+        profile = store.trading_profile(tenant_id)
+        if not profile or not profile.get("target_id"):
+            raise HTTPException(status_code=409, detail="tenant has no saved trading profile")
         was_active = tenant["status"] in {"starting", "running", "degraded"}
         if not store.reserve_engine_slot(tenant_id, settings.max_active_engines):
             raise HTTPException(status_code=409, detail="engine capacity is full; tenant queued")
         try:
             store.approve_live(tenant_id, user["id"])
-            supervisor.set_live_mode(tenant["slug"], tenant["exchange_id"], tenant["market_type"])
+            supervisor.set_live_mode(tenant["slug"], profile["target_id"])
             supervisor.restart(tenant["slug"])
             store.update_tenant(tenant_id, live_status="active", status="running")
         except Exception as exc:

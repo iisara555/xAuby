@@ -9,7 +9,13 @@ from typing import Any, Callable
 
 import yaml
 
-from xauby.saas.catalog import preset_by_id, safe_risk, validate_profile
+from xauby.saas.catalog import (
+    exchange_profile,
+    preset_by_id,
+    safe_risk,
+    target_by_id,
+    validate_profile,
+)
 from xauby.saas.security import validate_tenant_slug
 from xauby.saas.settings import SaaSSettings
 from xauby.utils.atomic_io import atomic_json_write
@@ -267,14 +273,24 @@ class TenantSupervisor:
         self.provision(slug)
         bounded = safe_risk(profile["risk"])
         bounded["stop_loss_required"] = bool(profile["risk"].get("stop_loss_required", True))
+        pair_count = len(profile["preset_ids"])
+        active_symbol = str(
+            next(
+                preset["symbol"]
+                for preset in profile["presets"]
+                if preset["id"] == profile["active_preset_id"]
+            )
+        )
         cfg_path = self.config_dir(slug) / "bot_config.yaml"
         cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         cfg["simulate_only"] = True
+        exchange_recipe = self._apply_exchange_profile(cfg, profile["target_id"])
         cfg.setdefault("trading", {}).update({
             "risk_pct": bounded["risk_pct"],
             "max_position_per_trade_pct": bounded["max_position_per_trade_pct"],
             "max_daily_loss_pct": bounded["max_daily_loss_pct"],
-            "max_open_positions": 1,
+            "max_open_positions": pair_count,
+            "trading_pair": active_symbol,
         })
         cfg.setdefault("risk", {}).update({
             "risk_pct": bounded["risk_pct"],
@@ -284,11 +300,11 @@ class TenantSupervisor:
             "stop_loss_required": bounded["stop_loss_required"],
         })
         portfolio = cfg.setdefault("portfolio", {})
+        portfolio["quote_asset"] = exchange_recipe["exchange"]["quote_asset"]
         sizing = portfolio.setdefault("position_sizing", {})
         sizing["max_position_per_trade_pct"] = bounded["max_position_per_trade_pct"]
-        symbol = str((cfg.get("trading") or {}).get("trading_pair") or "").upper().replace("_", "")
-        if symbol:
-            symbol_cfg = portfolio.setdefault("symbols", {}).setdefault(symbol, {})
+        for preset in profile["presets"]:
+            symbol_cfg = portfolio.setdefault("symbols", {}).setdefault(preset["symbol"], {})
             symbol_cfg.setdefault("position_sizing", {})[
                 "max_position_per_trade_pct"
             ] = bounded["max_position_per_trade_pct"]
@@ -298,6 +314,8 @@ class TenantSupervisor:
         })
         cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
 
+        wl_recipe = exchange_recipe["whitelist"]
+        market_type = exchange_recipe["exchange"].get("market_type", "spot")
         assets = []
         for preset_id in profile["preset_ids"]:
             preset = preset_by_id(preset_id)
@@ -313,22 +331,32 @@ class TenantSupervisor:
                     "ap_smoothing": 2, "sl_atr_mult": 2.0, "trailing_atr_mult": 1.8,
                 })
             params.update(execution_profile)
+            # Sim previews the certified sides; spot can never carry a short.
+            sides = [s for s in (preset.get("allowed_sides") or ["long"]) if s in {"long", "short"}]
+            if market_type != "swap":
+                sides = ["long"]
+            if "long" not in sides:
+                sides = ["long", *sides]
             assets.append({
-                "symbol": preset["asset"], "enabled": preset_id == active_preset_id,
+                "symbol": preset["asset"], "enabled": True,
+                "preset_id": preset_id,
                 "primary_timeframe": preset["primary_timeframe"],
                 "confirm_timeframe": preset["confirm_timeframe"],
                 "strategy": preset["strategy"], "strategy_params": params,
                 "cdc_pure_certified": cdc_pure,
-                "mode": "sim", "allowed_sides": ["long"], "leverage": 1.0,
+                "live_certified": bool(preset.get("live_certified")),
+                "mode": "sim", "allowed_sides": sides, "leverage": 1.0,
                 "manual_allowed_sides": ["long", "short"]
-                if preset["market_type"] == "swap" else ["long"],
+                if market_type == "swap" else ["long"],
                 "manual_short_live_enabled": False,
                 "short_live_enabled": False, "regime_router_enabled": False,
-                "regime_router_live_confirmed": False, "sim_fee_pct": 0.05,
+                "regime_router_live_confirmed": False,
+                "sim_fee_pct": wl_recipe["sim_fee_pct"],
             })
         atomic_json_write(
             str(self.config_dir(slug) / "coin_whitelist.json"),
-            {"version": 1, "quote_asset": "USDT", "min_quote_balance_usdt": 10.0,
+            {"version": 1, "quote_asset": wl_recipe["quote_asset"],
+             "min_quote_balance_usdt": wl_recipe["min_quote_balance"],
              "min_quote_balance_for_pairs": 0, "require_supported_market": True,
              "include_assets_with_balance": False, "assets": assets},
             indent=2,
@@ -337,21 +365,52 @@ class TenantSupervisor:
         self._set_config_permissions(self.config_dir(slug))
         return profile
 
-    def configure_exchange(self, slug: str, exchange_id: str) -> None:
+    @staticmethod
+    def _apply_exchange_profile(cfg: dict[str, Any], target_id: str) -> dict[str, Any]:
+        """Write the full per-target exchange recipe into a tenant config.
+
+        The exchange block is replaced wholesale so keys from a previous
+        target (params/base_url/settle_asset) can never leak across a switch.
+        Returns the applied profile.
+        """
+        profile = exchange_profile(target_id)
+        cfg["exchange"] = dict(profile["exchange"])
+        derivatives = cfg.setdefault("derivatives", {})
+        derivatives["market_type"] = profile["derivatives"]["market_type"]
+        return profile
+
+    def configure_exchange(self, slug: str, target_id: str) -> None:
         self.provision(slug)
-        exchange = str(exchange_id or "").strip().lower()
-        prefix = "".join(ch if ch.isalnum() else "_" for ch in exchange).upper()
-        if not prefix:
-            raise ValueError("exchange is required")
         cfg_path = self.config_dir(slug) / "bot_config.yaml"
         cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-        exchange_cfg = cfg.setdefault("exchange", {})
-        exchange_cfg.update({
-            "provider": "ccxt", "ccxt_id": exchange,
-            "api_key_env": f"{prefix}_API_KEY", "api_secret_env": f"{prefix}_API_SECRET",
-        })
+        self._apply_exchange_profile(cfg, target_id)
         cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         self._set_config_permissions(self.config_dir(slug))
+
+    @staticmethod
+    def _credential_env_names(cfg: dict[str, Any]) -> tuple[str, str, str]:
+        """Env-var names the engine will read, straight from the tenant YAML.
+
+        Single contract shared with xauby.runtime.exchange_config: explicit
+        api_key_env/api_secret_env win; the passphrase env swaps the _API_KEY
+        suffix (OKX_API_KEY -> OKX_API_PASSPHRASE, matching the ccxt adapter's
+        prefix-derived lookup).
+        """
+        exchange_cfg = cfg.get("exchange") or {}
+        raw = str(
+            exchange_cfg.get("ccxt_id")
+            or exchange_cfg.get("name")
+            or exchange_cfg.get("provider")
+            or "binance"
+        )
+        prefix = "".join(ch if ch.isalnum() else "_" for ch in raw).upper()
+        key_env = str(exchange_cfg.get("api_key_env") or f"{prefix}_API_KEY")
+        secret_env = str(exchange_cfg.get("api_secret_env") or f"{prefix}_API_SECRET")
+        if key_env.endswith("_API_KEY"):
+            passphrase_env = key_env[: -len("_API_KEY")] + "_API_PASSPHRASE"
+        else:
+            passphrase_env = f"{prefix}_API_PASSPHRASE"
+        return key_env, secret_env, passphrase_env
 
     def materialize_credentials(self, slug: str) -> Path | None:
         if self._credential_loader is None:
@@ -359,22 +418,20 @@ class TenantSupervisor:
         loaded = self._credential_loader(validate_tenant_slug(slug))
         if loaded is None:
             return None
-        exchange, credentials = loaded
+        _target_id, credentials = loaded
         if any("\n" in value or "\r" in value for value in credentials.values()):
             raise ValueError("exchange credentials may not contain line breaks")
-        prefix = "".join(ch if ch.isalnum() else "_" for ch in exchange).upper()
         cfg = yaml.safe_load(
             (self.config_dir(slug) / "bot_config.yaml").read_text(encoding="utf-8")
         ) or {}
+        key_env, secret_env, passphrase_env = self._credential_env_names(cfg)
         lines = [
-            self._environment_line(f"{prefix}_API_KEY", credentials.get("api_key", "")),
-            self._environment_line(f"{prefix}_API_SECRET", credentials.get("api_secret", "")),
+            self._environment_line(key_env, credentials.get("api_key", "")),
+            self._environment_line(secret_env, credentials.get("api_secret", "")),
         ]
         if credentials.get("passphrase"):
             lines.append(
-                self._environment_line(
-                    f"{prefix}_API_PASSPHRASE", credentials["passphrase"]
-                )
+                self._environment_line(passphrase_env, credentials["passphrase"])
             )
         live = not bool(cfg.get("simulate_only", True))
         lines.extend([
@@ -400,12 +457,11 @@ class TenantSupervisor:
         cfg = yaml.safe_load(
             (self.config_dir(slug) / "bot_config.yaml").read_text(encoding="utf-8")
         ) or {}
-        exchange = str((cfg.get("exchange") or {}).get("ccxt_id") or "")
-        prefix = "".join(ch if ch.isalnum() else "_" for ch in exchange).upper()
-        env[f"{prefix}_API_KEY"] = credentials.get("api_key", "")
-        env[f"{prefix}_API_SECRET"] = credentials.get("api_secret", "")
+        key_env, secret_env, passphrase_env = self._credential_env_names(cfg)
+        env[key_env] = credentials.get("api_key", "")
+        env[secret_env] = credentials.get("api_secret", "")
         if credentials.get("passphrase"):
-            env[f"{prefix}_API_PASSPHRASE"] = credentials["passphrase"]
+            env[passphrase_env] = credentials["passphrase"]
         result = subprocess.run(
             [sys.executable, "-m", "xauby.saas.probe", "--config-dir", str(self.config_dir(slug))],
             cwd=str(self.settings.project_root), env=env, capture_output=True,
@@ -418,29 +474,30 @@ class TenantSupervisor:
         except (ValueError, IndexError) as exc:
             raise RuntimeError("exchange probe returned invalid output") from exc
 
-    def set_live_mode(self, slug: str, exchange_id: str, market_type: str) -> None:
-        exchange = str(exchange_id).lower()
-        market = str(market_type).lower()
+    def set_live_mode(self, slug: str, target_id: str) -> None:
+        target = target_by_id(target_id)
+        exchange = str(target["exchange_id"]).lower()
+        market = str(target["market_type"]).lower()
         if (exchange, market) not in self.LIVE_CERTIFIED:
             raise ValueError(f"{exchange}/{market} is not live certified")
+        if not target.get("live_certified"):
+            raise ValueError(f"{target_id} is not live certified")
         self.provision(slug)
         cfg_path = self.config_dir(slug) / "bot_config.yaml"
         cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         cfg["simulate_only"] = False
         cfg["read_only"] = False
+        self._apply_exchange_profile(cfg, target_id)
         cfg.setdefault("derivatives", {})["default_leverage"] = 1
         cfg["derivatives"]["max_leverage"] = 1
-        cfg.setdefault("trading", {})["max_open_positions"] = 1
-        cdc_pure = False
+        any_cdc_live = False
+        enabled_count = 0
+        live_count = 0
         wl_path = self.config_dir(slug) / "coin_whitelist.json"
         whitelist = json.loads(wl_path.read_text(encoding="utf-8"))
         for asset in whitelist.get("assets") or []:
             params = asset.setdefault("strategy_params", {})
-            cdc_pure = bool(
-                asset.get("cdc_pure_certified")
-                and asset.get("symbol") == "XAU"
-                and asset.get("strategy") == "xauby_actionzone"
-            )
+            cdc_pure = bool(asset.get("cdc_pure_certified"))
             if bool(params.get("disable_stop_loss")) and not cdc_pure:
                 raise ValueError("live activation requires a stop loss")
             if cdc_pure:
@@ -451,15 +508,29 @@ class TenantSupervisor:
                 params["position_pct"] = 0.95
                 params["enable_short"] = True
                 params["use_d1_regime_filter"] = False
-                asset["allowed_sides"] = ["long", "short"]
+                if market == "swap":
+                    asset["allowed_sides"] = ["long", "short"]
             else:
                 params["disable_stop_loss"] = False
                 params["position_pct"] = min(float(params.get("position_pct", 0.1) or 0.1), 0.1)
-            asset["mode"] = "live" if asset.get("enabled", True) else "sim"
+            enabled = bool(asset.get("enabled", True))
+            # Legacy whitelists predate the per-asset flag; only catalog code
+            # writes these files and every legacy asset already passed the
+            # stop-loss/CDC check above, so missing defaults to certified.
+            live_ok = enabled and bool(asset.get("live_certified", True))
+            asset["mode"] = "live" if live_ok else "sim"
             asset["leverage"] = 1.0
-            asset["short_live_enabled"] = "short" in (asset.get("allowed_sides") or [])
-        cfg.setdefault("risk", {})["stop_loss_required"] = not cdc_pure
-        cfg.setdefault("execution", {})["live_strategy_mode"] = "cdc_pure" if cdc_pure else "stop_loss"
+            asset["short_live_enabled"] = live_ok and "short" in (asset.get("allowed_sides") or [])
+            enabled_count += 1 if enabled else 0
+            live_count += 1 if live_ok else 0
+            any_cdc_live = any_cdc_live or (live_ok and cdc_pure)
+        if live_count == 0:
+            raise ValueError("no live-certified pair is selected")
+        cfg.setdefault("trading", {})["max_open_positions"] = max(1, enabled_count)
+        cfg.setdefault("risk", {})["stop_loss_required"] = not any_cdc_live
+        cfg.setdefault("execution", {})["live_strategy_mode"] = (
+            "cdc_pure" if any_cdc_live else "stop_loss"
+        )
         cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         atomic_json_write(str(wl_path), whitelist, indent=2)
         self._set_config_permissions(self.config_dir(slug))

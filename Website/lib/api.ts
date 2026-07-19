@@ -66,11 +66,13 @@ export type Preset = {
   target_id: string;
   label: string;
   symbol: string;
+  asset?: string;
   strategy: string;
   primary_timeframe: string;
   confirm_timeframe: string;
   market_type: string;
   allowed_sides?: Array<"long" | "short">;
+  live_certified?: boolean;
   cdc_pure_certified?: boolean;
   stop_loss_required?: boolean;
   execution_profile?: Record<string, unknown>;
@@ -93,6 +95,7 @@ export type Target = {
   label: string;
   market_type: string;
   credential_fields: string[];
+  live_certified?: boolean;
   manual_allowed_sides: Array<"long" | "short">;
   manual_long_live_certified: boolean;
   manual_short_live_certified: boolean;
@@ -100,6 +103,7 @@ export type Target = {
 
 export type TradingProfile = {
   profile: null | {
+    preset_ids?: string[];
     active_preset_id: string;
     target_id: string;
     presets: Preset[];

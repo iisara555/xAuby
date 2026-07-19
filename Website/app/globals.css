@@ -480,3 +480,22 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
     }
   }
 }
+
+/* Exchange switcher (Settings > Trading) */
+.exchange-grid { margin: 20px 0 6px; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.exchange-option { min-height: 58px; padding: 12px 15px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: #10100f; cursor: pointer; }
+.exchange-option:hover, .exchange-option.selected { border-color: rgba(255,67,26,.5); background: var(--accent-soft); }
+.exchange-option strong { font-size: 12px; }
+.exchange-option small { color: var(--muted); font-size: 10px; }
+.pairs-heading { margin-top: 26px; }
+
+/* Focus-pair toggle inside a selected preset card */
+.focus-toggle { margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
+.focus-toggle:hover { border-color: rgba(255,67,26,.5); color: var(--fg); }
+.focus-toggle.active { border-color: var(--accent); background: var(--accent); color: #161614; }
+
+/* Pair switcher (Home / Activity) */
+.pair-switcher { margin: 2px 0 14px; display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #10100f; }
+.pair-switcher button { padding: 7px 15px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
+.pair-switcher button:hover { color: var(--fg); }
+.pair-switcher button.active { background: var(--accent); color: #161614; }

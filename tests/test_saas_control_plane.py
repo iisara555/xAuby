@@ -269,7 +269,7 @@ class SaaSControlPlaneTests(unittest.TestCase):
         first = self.client.put("/api/v1/profile", headers=self.headers, json=payload)
         self.assertEqual(first.status_code, 200, first.text)
 
-        self.supervisor.set_live_mode(tenant["slug"], "okx", "swap")
+        self.supervisor.set_live_mode(tenant["slug"], "okx-swap")
         self.store.update_tenant(tenant["id"], status="running", live_status="active")
 
         with patch.object(self.supervisor, "stop") as stop, \

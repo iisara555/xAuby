@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { CandleChart } from "@/components/candle-chart";
 import { MarketContext } from "@/components/market-context";
+import { PairSwitcher } from "@/components/pair-switcher";
 import { SignalDetail } from "@/components/signal-detail";
 import { TradeDrawer } from "@/components/trade-drawer";
 import { PageHeading } from "@/components/page-heading";
@@ -79,9 +80,16 @@ export default function DashboardPage() {
   const { data: profile } = useProfile();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [pairChoice, setPairChoice] = useState<string | null>(null);
   const running = bot?.tenant.status === "running";
   const state = snapshot?.state ?? {};
-  const symbol = String(valueAt(state, "focus_symbol") ?? valueAt(state, "symbol") ?? "XAUUSDT");
+  const configuredSymbols = profile?.profile?.presets?.map((item) => item.symbol) ?? [];
+  const focusSymbol = String(valueAt(state, "focus_symbol") ?? valueAt(state, "symbol") ?? configuredSymbols[0] ?? "");
+  const symbol = pairChoice && configuredSymbols.includes(pairChoice)
+    ? pairChoice
+    : configuredSymbols.length === 0 || configuredSymbols.includes(focusSymbol)
+      ? focusSymbol
+      : configuredSymbols[0];
   const focus = (valueAt(state, "by_symbol", symbol) as Record<string, unknown> | undefined) ?? state;
   const position = (valueAt(focus, "position") as Record<string, unknown> | undefined) ?? (valueAt(state, "position") as Record<string, unknown> | undefined) ?? {};
   const currency = snapshot?.currency ?? {};
@@ -162,6 +170,8 @@ export default function DashboardPage() {
         </Link>
       )}
 
+      <PairSwitcher symbols={configuredSymbols} selected={symbol} onSelect={setPairChoice} />
+
       <section className="dashboard-grid">
         <article className="card hero-card">
           <div className="card-kicker"><span>Portfolio equity</span><span>Live estimate</span></div>
@@ -173,7 +183,7 @@ export default function DashboardPage() {
           <div className={`hero-pnl ${pnlTone}`}>
             <div><span>{positionOpen ? "Unrealized PnL" : "Last realized PnL"}</span><strong>{positionOpen || lastPnlConfirmed ? `${formatSigned(pnl)} USDT` : "—"}</strong></div>
             <div><span>Return</span><strong>{positionOpen || lastPnlConfirmed ? formatSignedPercent(pnlPct) : "—"}</strong></div>
-            <small>{positionOpen ? formatApproxBaht(pnlThb, true, 2) : lastPnlConfirmed ? "OKX verified" : "No verified realized PnL yet"}</small>
+            <small>{positionOpen ? formatApproxBaht(pnlThb, true, 2) : lastPnlConfirmed ? `${target?.label ?? "Exchange"} verified` : "No verified realized PnL yet"}</small>
           </div>
           <div className="hero-allocation">
             <div className="hero-allocation-head"><span>Capital allocation</span><strong>{totalForAllocation ? `${formatNumber(exposurePct, 1)}% deployed` : "Waiting for equity"}</strong></div>
@@ -226,7 +236,7 @@ export default function DashboardPage() {
             <div><span>{positionOpen ? "Unrealized PnL" : "Last realized PnL"}</span><strong className={pnlTone}>{lastPnlConfirmed || positionOpen ? `${formatSigned(pnl)} · ${formatSignedPercent(pnlPct)}` : "—"}</strong><small>{positionOpen ? formatApproxBaht(pnlThb, true, 2) : ""}</small></div>
             <div><span>{positionOpen ? "Fees estimated" : "Realized fees"}</span><strong>{positionOpen ? formatNumber(valueAt(position, "estimated_total_fees")) : lastPnlConfirmed ? formatNumber(valueAt(lastClosed ?? {}, "total_fees")) : "—"}</strong></div>
             <div><span>Margin</span><strong>{positionOpen ? String(valueAt(position, "margin_mode") ?? "—") : "—"}</strong></div>
-            <div><span>PnL source</span><strong>{lastPnlConfirmed && !positionOpen ? "OKX verified" : "Tenant"}</strong></div>
+            <div><span>PnL source</span><strong>{lastPnlConfirmed && !positionOpen ? `${target?.label ?? "Exchange"} verified` : "Tenant"}</strong></div>
           </div>
         </article>
 

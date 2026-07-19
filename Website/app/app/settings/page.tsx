@@ -41,6 +41,9 @@ export default function SettingsPage() {
   const { data: bot, mutate } = useBot();
   const { data: profile, mutate: mutateProfile } = useProfile();
   const [targetId, setTargetId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [focusId, setFocusId] = useState("");
+  const [seeded, setSeeded] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,21 +51,72 @@ export default function SettingsPage() {
   const [liveError, setLiveError] = useState("");
   const [nowSeconds, setNowSeconds] = useState<number | null>(null);
   const selectedTarget = useMemo(() => catalog?.targets.find((item) => item.id === targetId), [catalog, targetId]);
-  const selectedPreset = useMemo(() => catalog?.presets.find((item) => item.target_id === targetId), [catalog, targetId]);
-  const activePresetId = profile?.profile?.active_preset_id ?? null;
-  const activePreset = useMemo(() => catalog?.presets.find((item) => item.id === activePresetId), [catalog, activePresetId]);
-  const selectionIsActive = Boolean(selectedPreset && activePresetId && selectedPreset.id === activePresetId);
-  const selectionPending = Boolean(selectedPreset && activePresetId && selectedPreset.id !== activePresetId);
+  const targetPresets = useMemo(
+    () => catalog?.presets.filter((item) => item.target_id === targetId) ?? [],
+    [catalog, targetId],
+  );
+  const maxPairs = catalog?.limits?.configured_pairs ?? 3;
+  const savedProfile = profile?.profile ?? null;
+  const savedIds = useMemo(
+    () => savedProfile?.preset_ids ?? savedProfile?.presets?.map((item) => item.id) ?? [],
+    [savedProfile],
+  );
+  const savedTargetId = savedProfile?.target_id ?? null;
+  const focusPreset = useMemo(() => catalog?.presets.find((item) => item.id === focusId), [catalog, focusId]);
+  const selectionDirty = useMemo(() => {
+    if (!savedProfile) return selectedIds.length > 0;
+    const a = [...selectedIds].sort().join(",");
+    const b = [...savedIds].sort().join(",");
+    return a !== b || focusId !== savedProfile.active_preset_id;
+  }, [savedProfile, savedIds, selectedIds, focusId]);
+  const exchangeSwitchPending = Boolean(savedTargetId && targetId && targetId !== savedTargetId);
+  const savedCertified = Boolean(savedProfile?.presets?.some((item) => item.live_certified));
   const maxPositionPct = Number(profile?.profile?.risk?.max_position_per_trade_pct ?? 10);
-  const cdcPure = Boolean(selectedPreset?.cdc_pure_certified);
+  const cdcPure = Boolean(savedProfile?.presets?.some((item) => item.cdc_pure_certified) ?? focusPreset?.cdc_pure_certified);
+  const connectionMismatch = Boolean(
+    bot?.exchange_connection?.target_id && savedTargetId
+    && bot.exchange_connection.target_id !== savedTargetId,
+  );
   const exchangeTestFresh = bot?.exchange_connection?.status === "tested"
     && (nowSeconds === null || (bot.exchange_connection.tested_at != null && nowSeconds - bot.exchange_connection.tested_at < 1800));
   const exchangeTestExpired = bot?.exchange_connection?.status === "tested" && nowSeconds !== null && !exchangeTestFresh;
 
   useEffect(() => {
-    if (targetId || !catalog) return;
-    setTargetId(profile?.profile?.target_id ?? bot?.exchange_connection?.target_id ?? catalog.targets[0]?.id ?? "");
-  }, [bot?.exchange_connection?.target_id, catalog, profile?.profile?.target_id, targetId]);
+    if (seeded || !catalog) return;
+    const seedTarget = savedTargetId ?? bot?.exchange_connection?.target_id ?? catalog.targets[0]?.id ?? "";
+    setTargetId(seedTarget);
+    if (savedProfile) {
+      setSelectedIds(savedIds);
+      setFocusId(savedProfile.active_preset_id ?? savedIds[0] ?? "");
+    }
+    setSeeded(true);
+  }, [bot?.exchange_connection?.target_id, catalog, savedIds, savedProfile, savedTargetId, seeded]);
+
+  function chooseTarget(nextId: string) {
+    if (nextId === targetId) return;
+    setTargetId(nextId);
+    if (nextId === savedTargetId) {
+      setSelectedIds(savedIds);
+      setFocusId(savedProfile?.active_preset_id ?? savedIds[0] ?? "");
+    } else {
+      setSelectedIds([]);
+      setFocusId("");
+    }
+  }
+
+  function togglePreset(presetId: string) {
+    setSelectedIds((current) => {
+      if (current.includes(presetId)) {
+        const next = current.filter((id) => id !== presetId);
+        if (focusId === presetId) setFocusId(next[0] ?? "");
+        return next;
+      }
+      if (current.length >= maxPairs) return current;
+      const next = [...current, presetId];
+      if (!focusId) setFocusId(presetId);
+      return next;
+    });
+  }
 
   useEffect(() => {
     const updateClock = () => setNowSeconds(Math.floor(Date.now() / 1000));
@@ -82,31 +136,35 @@ export default function SettingsPage() {
   }
 
   async function saveProfile() {
-    if (!selectedPreset) return;
-    const liveProfileChange = bot?.tenant.live_status === "active"
-      && profile?.profile?.active_preset_id !== selectedPreset.id;
-    if (liveProfileChange && !window.confirm("Changing the active preset will stop Live mode and require Live approval again. Continue?")) return;
+    if (selectedIds.length === 0 || !focusId || !selectedIds.includes(focusId)) return;
+    const liveProfileChange = bot?.tenant.live_status === "active" && selectionDirty;
+    if (liveProfileChange && !window.confirm("Changing the configured pairs will stop Live mode and require Live approval again. Continue?")) return;
+    if (exchangeSwitchPending && !window.confirm("Switching the exchange replaces your configured pairs and requires connecting new API keys. Continue?")) return;
     begin();
     try {
       const result = await api<{
         mode: "live" | "simulation";
         live_reapproval_required: boolean;
         profile_changed: boolean;
+        exchange_switched?: boolean;
+        reconnect_required?: boolean;
       }>("/api/v1/profile", {
         method: "PUT", headers: csrfHeaders(user),
         body: JSON.stringify({
-          preset_ids: [selectedPreset.id],
-          active_preset_id: selectedPreset.id,
+          preset_ids: selectedIds,
+          active_preset_id: focusId,
           risk: profile?.profile?.risk ?? {},
         }),
       });
       await Promise.all([mutateProfile(), mutate()]);
       if (!result.profile_changed && result.mode === "live") {
-        setMessage("Preset is unchanged. Live mode remains active.");
+        setMessage("Pairs are unchanged. Live mode remains active.");
+      } else if (result.exchange_switched || result.reconnect_required) {
+        setMessage("Pairs saved on the new exchange. Connect and test API keys for it before going Live.");
       } else if (result.live_reapproval_required) {
-        setMessage("Preset changed. Live mode was stopped; review and activate Live again when ready.");
+        setMessage("Pairs changed. Live mode was stopped; review and activate Live again when ready.");
       } else {
-        setMessage("Preset saved. The current Simulation/Live mode was kept.");
+        setMessage("Pairs saved. The current Simulation/Live mode was kept.");
       }
       setBusy(false);
     } catch (reason) { fail(reason); }
@@ -200,20 +258,32 @@ export default function SettingsPage() {
         </Tabs.Content>
 
         <Tabs.Content value="trading" className="settings-panel card">
-          <div className="section-heading"><div><span>Certified preset</span><h2>Choose one focused strategy</h2></div><StatusPill label={activePreset ? `Active: ${activePreset.label}` : "No preset saved yet"} tone={activePreset ? "good" : "warn"} /></div>
-          <p className="section-copy">The card marked <strong>Active</strong> is the strategy your engine runs right now. Select a different card and save to switch — switching while Live is on stops Live mode until you approve it again.</p>
+          <div className="section-heading"><div><span>Exchange</span><h2>Choose your trading venue</h2></div><StatusPill label={savedTargetId ? `Saved: ${catalog?.targets.find((item) => item.id === savedTargetId)?.label ?? savedTargetId}` : "No exchange saved yet"} tone={savedTargetId ? "good" : "warn"} /></div>
+          <p className="section-copy">All configured pairs trade on one exchange. Switching venue replaces your pairs and requires connecting API keys for the new exchange.</p>
+          <div className="exchange-grid">
+            {catalog?.targets.map((target) => (
+              <button type="button" className={targetId === target.id ? "exchange-option selected" : "exchange-option"} onClick={() => chooseTarget(target.id)} key={target.id}>
+                <span className="radio-dot">{targetId === target.id && <Check size={13} />}</span>
+                <span className="preset-copy"><strong>{target.label}</strong><small>{target.market_type === "swap" ? "Perpetual" : "Spot"} · {catalog.presets.filter((item) => item.target_id === target.id).length} certified presets</small></span>
+                <StatusPill label={target.live_certified === false ? "SIM only" : "Live ready"} tone={target.live_certified === false ? "warn" : "good"} />
+              </button>
+            ))}
+          </div>
+          {exchangeSwitchPending && <p className="field-help preset-switch-hint" role="status">Switching to <strong>{selectedTarget?.label}</strong> replaces your configured pairs and requires new API keys. Nothing changes until you save.</p>}
+
+          <div className="section-heading pairs-heading"><div><span>Certified pairs</span><h2>Pick up to {maxPairs} pairs</h2></div><StatusPill label={`${selectedIds.length} / ${maxPairs} pairs`} tone={selectedIds.length > 0 ? "good" : "warn"} /></div>
+          <p className="section-copy">Each pair runs its own certified strategy preset. Pairs marked <strong>SIM only</strong> trade in simulation even while Live is on. The <strong>Focus</strong> pair is the dashboard default.</p>
           <div className="preset-grid">
-            {catalog?.targets.map((target) => {
-              const preset = catalog.presets.find((item) => item.target_id === target.id);
-              if (!preset) return null;
+            {targetPresets.map((preset) => {
               const backtest = preset.backtest ?? PENDING_BACKTEST;
+              const checked = selectedIds.includes(preset.id);
+              const saved = savedIds.includes(preset.id) && targetId === savedTargetId;
               return (
-                <button type="button" className={targetId === target.id ? "preset-option selected" : "preset-option"} onClick={() => setTargetId(target.id)} key={target.id}>
+                <button type="button" className={checked ? "preset-option selected" : "preset-option"} onClick={() => togglePreset(preset.id)} key={preset.id}>
                   <span className="preset-option-head">
-                    <span className="radio-dot">{targetId === target.id && <Check size={13} />}</span>
-                    <span className="preset-copy"><strong>{preset.label}</strong><small>{target.label} · {preset.symbol} · {preset.strategy.replaceAll("_", " ")}</small></span>
-                    {preset.id === activePresetId && <StatusPill label="Active" tone="good" />}
-                    {targetId === target.id && preset.id !== activePresetId && activePresetId != null && <StatusPill label="Selected · not saved" tone="warn" />}
+                    <span className="radio-dot">{checked && <Check size={13} />}</span>
+                    <span className="preset-copy"><strong>{preset.label}</strong><small>{preset.symbol} · {preset.strategy.replaceAll("_", " ")}</small></span>
+                    {preset.live_certified === false ? <StatusPill label="SIM only" tone="warn" /> : saved ? <StatusPill label="Saved" tone="good" /> : null}
                     <em>{preset.primary_timeframe} / {preset.confirm_timeframe}</em>
                   </span>
                   <span className="preset-backtest">
@@ -232,22 +302,34 @@ export default function SettingsPage() {
                       {preset.strategy_traits.map((trait) => <span key={trait}>{trait}</span>)}
                     </span>
                   )}
+                  {checked && selectedIds.length > 1 && (
+                    <span
+                      className={focusId === preset.id ? "focus-toggle active" : "focus-toggle"}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => { event.stopPropagation(); setFocusId(preset.id); }}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.stopPropagation(); setFocusId(preset.id); } }}
+                    >
+                      {focusId === preset.id ? "Focus pair" : "Set as focus"}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
           <div className="risk-summary">
-            <div><span>Strategy sides</span><strong>{cdcPure ? `CDC Pure · ${(selectedPreset?.allowed_sides ?? ["long"]).join(" + ")}` : selectedPreset?.market_type === "swap" ? "Long certified" : "Spot long"}</strong></div><div><span>D1 filter</span><strong>{selectedPreset?.execution_profile?.use_d1_regime_filter === true ? "On" : selectedPreset?.execution_profile?.use_d1_regime_filter === false ? "Off" : "—"}</strong></div><div><span>Partial TP</span><strong>{typeof selectedPreset?.execution_profile?.partial_tp_pct === "number" && Number(selectedPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(selectedPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${selectedPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{cdcPure ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
+            <div><span>Strategy sides</span><strong>{focusPreset?.cdc_pure_certified ? `CDC Pure · ${(focusPreset?.allowed_sides ?? ["long"]).join(" + ")}` : focusPreset?.market_type === "swap" ? "Long certified" : "Spot long"}</strong></div><div><span>D1 filter</span><strong>{focusPreset?.execution_profile?.use_d1_regime_filter === true ? "On" : focusPreset?.execution_profile?.use_d1_regime_filter === false ? "Off" : "—"}</strong></div><div><span>Partial TP</span><strong>{typeof focusPreset?.execution_profile?.partial_tp_pct === "number" && Number(focusPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(focusPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${focusPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{focusPreset?.cdc_pure_certified ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Open positions</span><strong>{Math.max(selectedIds.length, 1)} max</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
           </div>
-          {selectionPending && <p className="field-help preset-switch-hint" role="status">You selected <strong>{selectedPreset?.label}</strong>. It is not active until you press the button below{bot?.tenant.live_status === "active" ? " — this will stop Live mode until you re-approve it" : ""}.</p>}
-          <button className="button-primary" onClick={saveProfile} disabled={busy || !selectedPreset || selectionIsActive}>
-            {selectionIsActive ? "This preset is already active" : selectionPending ? `Switch to ${selectedPreset?.label}` : "Save preset"}
+          {selectionDirty && selectedIds.length > 0 && <p className="field-help preset-switch-hint" role="status">Your pair selection is not saved yet{bot?.tenant.live_status === "active" ? " — saving will stop Live mode until you re-approve it" : ""}.</p>}
+          <button className="button-primary" onClick={saveProfile} disabled={busy || selectedIds.length === 0 || !focusId || !selectionDirty}>
+            {selectedIds.length === 0 ? "Select at least one pair" : !selectionDirty ? "These pairs are already saved" : `Save ${selectedIds.length} pair${selectedIds.length > 1 ? "s" : ""}`}
           </button>
         </Tabs.Content>
 
         <Tabs.Content value="exchange" className="settings-panel card">
           <div className="section-heading"><div><span>API connection</span><h2>{selectedTarget?.label ?? "Select an exchange"}</h2></div>{bot?.exchange_connection && <StatusPill label={bot.exchange_connection.status} tone={bot.exchange_connection.status === "tested" ? "good" : "warn"} />}</div>
           <p className="section-copy">Create a key with read and trade permissions only. Withdraw permission must remain disabled.</p>
+          {connectionMismatch && <p className="form-error" role="status">Saved credentials belong to {catalog?.targets.find((item) => item.id === bot?.exchange_connection?.target_id)?.label ?? "another exchange"}. Connect and test keys for {catalog?.targets.find((item) => item.id === savedTargetId)?.label ?? "the new exchange"} before going Live.</p>}
           <form className="form-stack two-column-form" onSubmit={connect}>
             <label>API key<input name="apiKey" required autoComplete="off" /></label>
             <label>API secret<input name="apiSecret" type="password" required autoComplete="new-password" /></label>
@@ -259,7 +341,8 @@ export default function SettingsPage() {
           <div className="live-zone">
             <div><ShieldAlert size={21} /><span><strong>Live execution</strong><small>Requires a test from the last 30 minutes, TOTP and your Trade PIN. {cdcPure ? "CDC Pure exits by signal/ROI; no exchange stop-loss." : "Stop-loss protection is required."}</small></span></div>
             {exchangeTestExpired && <p className="form-error" role="status">The last exchange test expired. Tap “Test connection” before activating Live.</p>}
-            {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={openLiveDialog} disabled={busy || !exchangeTestFresh}>Review & activate</button>}
+            {!savedCertified && savedProfile && <p className="form-error" role="status">All saved pairs are SIM-only. Live activation needs at least one live-certified preset.</p>}
+            {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={openLiveDialog} disabled={busy || !exchangeTestFresh || !savedCertified}>Review & activate</button>}
           </div>
         </Tabs.Content>
 
