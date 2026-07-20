@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.saas.example
 
 # Python cache & virtualenvs
 __pycache__/
