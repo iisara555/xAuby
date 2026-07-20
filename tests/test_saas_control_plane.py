@@ -88,6 +88,39 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertTrue(presets["okx-xau-actionzone-v1"]["cdc_pure_certified"])
         self.assertFalse(presets["okx-xau-actionzone-v1"]["stop_loss_required"])
         self.assertEqual(presets["binance-btc-supertrend-v1"]["backtest"]["status"], "insufficient")
+        okx_btc = presets["okx-btc-supertrend-v1"]
+        self.assertEqual(okx_btc["primary_timeframe"], "4h")
+        self.assertEqual(okx_btc["allowed_sides"], ["long", "short"])
+        self.assertEqual(okx_btc["backtest"]["score_label"], "+9.8% OOS")
+        self.assertEqual(okx_btc["allocation_pct"], 30.0)
+        self.assertEqual(self.client.get("/api/v1/catalog").json()["risk"]["max_daily_loss_pct"], {
+            "default": 6.0,
+            "min": 1.0,
+            "max": 6.0,
+        })
+
+    def test_compiled_profile_exposes_pair_allocations_and_guardrails(self):
+        saved = self.client.put(
+            "/api/v1/profile",
+            headers=self.headers,
+            json={
+                "preset_ids": [
+                    "okx-xau-actionzone-v1",
+                    "okx-btc-supertrend-v1",
+                ],
+                "active_preset_id": "okx-xau-actionzone-v1",
+                "risk": {},
+            },
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+        compiled = self.client.get("/api/v1/profile").json()["compiled"]
+        self.assertEqual(compiled["max_daily_loss_pct"], 6.0)
+        self.assertEqual(compiled["max_daily_trades"], 3)
+        self.assertTrue(compiled["drawdown_guard_enabled"])
+        self.assertEqual(compiled["max_drawdown_pct"], 25.0)
+        self.assertEqual(
+            compiled["pair_allocations"], {"XAUUSDT": 65.0, "BTCUSDT": 30.0}
+        )
 
     def test_runtime_snapshot_is_tenant_scoped_and_fail_closed(self):
         response = self.client.get("/api/v1/runtime/snapshot")

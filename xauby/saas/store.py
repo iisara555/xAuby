@@ -837,7 +837,7 @@ class ControlPlaneStore:
             "max_allocation_pct": float(
                 supplied.get("max_position_per_trade_pct", 10)
             ),
-            "max_daily_loss_pct": float(supplied.get("max_daily_loss_pct", 3)),
+            "max_daily_loss_pct": float(supplied.get("max_daily_loss_pct", 6)),
             "risk_pct": float(supplied.get("risk_pct", 0.01)),
             "stop_loss_required": bool(supplied.get("stop_loss_required", True)),
             "execution_mode": "cdc_pure"

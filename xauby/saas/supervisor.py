@@ -121,11 +121,11 @@ class TenantSupervisor:
             cfg["read_only"] = False
             cfg.setdefault("trading", {}).update({
                 "risk_pct": 0.01, "max_position_per_trade_pct": 10.0,
-                "max_daily_loss_pct": 3.0, "max_open_positions": 1,
+                "max_daily_loss_pct": 6.0, "max_open_positions": 1,
             })
             cfg.setdefault("risk", {}).update({
                 "risk_pct": 0.01, "max_position_per_trade_pct": 10.0,
-                "max_daily_loss_pct": 3.0, "stop_loss_pct": 2.0,
+                "max_daily_loss_pct": 6.0, "stop_loss_pct": 2.0,
             })
             cfg.setdefault("derivatives", {}).update({"default_leverage": 1, "max_leverage": 2})
             cfg.setdefault("data", {}).setdefault(
@@ -214,6 +214,7 @@ class TenantSupervisor:
         trading = cfg.get("trading") or {}
         portfolio = cfg.get("portfolio") or {}
         sizing = portfolio.get("position_sizing") or {}
+        risk = cfg.get("risk") or {}
         symbol = str(trading.get("trading_pair") or "").upper().replace("_", "")
         symbol_cfg = (portfolio.get("symbols") or {}).get(symbol) or {}
         symbol_sizing = symbol_cfg.get("position_sizing") or {}
@@ -229,7 +230,24 @@ class TenantSupervisor:
             "max_open_positions": int(trading.get("max_open_positions", 1)),
             "risk_pct": float(trading.get("risk_pct", 0.01)),
             "max_position_per_trade_pct": float(max_position),
-            "max_daily_loss_pct": float(trading.get("max_daily_loss_pct", 3.0)),
+            "max_daily_loss_pct": float(
+                risk.get("max_daily_loss_pct", trading.get("max_daily_loss_pct", 6.0))
+            ),
+            "max_daily_trades": int(risk.get("max_daily_trades", 3)),
+            "drawdown_guard_enabled": bool(
+                (risk.get("drawdown_guard") or {}).get("enabled", True)
+            ),
+            "max_drawdown_pct": float(
+                (risk.get("drawdown_guard") or {}).get("max_drawdown_pct", 25.0)
+            ),
+            "pair_allocations": {
+                str(pair).upper().replace("_", ""): float(
+                    (pair_cfg or {}).get("allocation_pct")
+                )
+                for pair, pair_cfg in (portfolio.get("symbols") or {}).items()
+                if isinstance(pair_cfg, dict)
+                and (pair_cfg or {}).get("allocation_pct") is not None
+            },
             "assets": whitelist.get("assets") or [],
         }
 
@@ -238,7 +256,7 @@ class TenantSupervisor:
         allowed = {
             "risk_pct": (0.001, 0.01),
             "max_position_per_trade_pct": (1.0, 95.0),
-            "max_daily_loss_pct": (1.0, 3.0),
+            "max_daily_loss_pct": (1.0, 6.0),
         }
         cfg_path = self.config_dir(slug) / "bot_config.yaml"
         cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}

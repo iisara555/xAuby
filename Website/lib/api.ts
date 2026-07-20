@@ -71,6 +71,8 @@ export type Preset = {
   primary_timeframe: string;
   confirm_timeframe: string;
   market_type: string;
+  allocation_pct?: number;
+  max_position_per_trade_pct?: number;
   allowed_sides?: Array<"long" | "short">;
   live_certified?: boolean;
   cdc_pure_certified?: boolean;

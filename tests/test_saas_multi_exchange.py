@@ -41,6 +41,18 @@ class CatalogMultiExchangeTests(unittest.TestCase):
         self.assertFalse(targets["binance-global-spot"]["manual_short_live_certified"])
         self.assertFalse(targets["binance-th-spot"]["manual_short_live_certified"])
 
+    def test_certified_okx_presets_publish_pair_sizing_metadata(self):
+        presets = {item["id"]: item for item in CATALOG["presets"]}
+        self.assertEqual(presets["okx-xau-actionzone-v1"]["allocation_pct"], 65.0)
+        self.assertEqual(
+            presets["okx-xau-actionzone-v1"]["max_position_per_trade_pct"], 25.0
+        )
+        self.assertEqual(presets["okx-btc-supertrend-v1"]["allocation_pct"], 30.0)
+        self.assertEqual(
+            CATALOG["risk"]["max_daily_loss_pct"],
+            {"default": 6.0, "min": 1.0, "max": 6.0},
+        )
+
     def test_fee_units_stay_consistent_per_target(self):
         # exchange.fee_pct is a fraction; whitelist sim_fee_pct is a percent.
         for target_id, profile in EXCHANGE_PROFILES.items():

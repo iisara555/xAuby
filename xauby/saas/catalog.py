@@ -160,6 +160,7 @@ PRESETS = [
         "allowed_sides": ["long", "short"],
         "max_leverage": 1,
         "allocation_pct": 65.0,
+        "max_position_per_trade_pct": 25.0,
         "live_certified": True,
         "cdc_pure_certified": True,
         "stop_loss_required": False,
@@ -199,7 +200,7 @@ PRESETS = [
     {
         "id": "binance-btc-supertrend-v1",
         "target_id": "binance-global-futures",
-        "label": "BTC Supertrend EMA200",
+        "label": "BTC Supertrend EMA200 · Binance 1H",
         "exchange_id": "binanceusdm",
         "market_type": "swap",
         "symbol": "BTCUSDT",
@@ -290,7 +291,7 @@ PRESETS = [
             "Long + short · 1× isolated perpetual",
             "Single timeframe: 4H",
             "Risk sizing: 2% equity / stop distance",
-            "Portfolio cap: 30% · 5% shared cash buffer",
+            "Pair allocation cap: 30%",
             "Exit: SuperTrend flip / EMA200 loss · 3× ATR stop",
         ],
         "backtest": {
@@ -416,12 +417,12 @@ CATALOG: dict[str, Any] = {
     "presets": PRESETS,
     "risk": {
         "risk_pct": {"default": 0.01, "min": 0.001, "max": 0.01},
-        # Position allocation is capped at 95% so a configured position can
-        # leave a 5% quote-currency buffer.  The default remains 10%; high
-        # allocation is opt-in and still subject to the one-position,
-        # 1x-leverage and strategy-exit/circuit-breaker gates.
+        # Position allocation is owned by each certified preset. This global
+        # value remains only as a legacy fallback for presets without a pair
+        # cap; the workspace displays the selected pair allocations and the
+        # resulting unallocated cash instead of inventing a fixed buffer.
         "max_position_per_trade_pct": {"default": 10.0, "min": 1.0, "max": 95.0},
-        "max_daily_loss_pct": {"default": 3.0, "min": 1.0, "max": 3.0},
+        "max_daily_loss_pct": {"default": 6.0, "min": 1.0, "max": 6.0},
         "max_leverage": {"default": 1.0, "min": 1.0, "max": 1.0},
         "max_open_positions": {"default": 1, "min": 1, "max": MAX_ACTIVE_PAIRS},
         "stop_loss_required": True,

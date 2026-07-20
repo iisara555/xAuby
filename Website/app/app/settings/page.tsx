@@ -88,7 +88,49 @@ export default function SettingsPage() {
   );
   const addedPairNames = addedPresets.map((item) => item.asset ?? item.symbol.replace(/USDT$/, ""));
   const savedCertified = Boolean(savedProfile?.presets?.some((item) => item.live_certified));
-  const maxPositionPct = Number(profile?.profile?.risk?.max_position_per_trade_pct ?? 10);
+  const selectedPresets = useMemo(
+    () => catalog?.presets.filter((item) => selectedIds.includes(item.id)) ?? [],
+    [catalog, selectedIds],
+  );
+  const compiledPairAllocations = useMemo(() => {
+    const value = profile?.compiled?.pair_allocations;
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+  }, [profile?.compiled]);
+  const canUseCompiledAllocations = Boolean(
+    targetId && targetId === savedTargetId && savedIds.length > 0,
+  );
+  const allocationForPreset = (item: (typeof selectedPresets)[number]) => {
+    const symbol = item.symbol.toUpperCase().replace(/_/g, "");
+    const compiled = canUseCompiledAllocations && savedIds.includes(item.id)
+      ? compiledPairAllocations[symbol]
+      : undefined;
+    if (compiled == null) return item.allocation_pct;
+    const numeric = Number(compiled);
+    return Number.isFinite(numeric) ? numeric : item.allocation_pct;
+  };
+  const pairAllocationLabel = selectedPresets.length > 0
+    ? selectedPresets.map((item) => `${item.asset ?? item.symbol.replace(/USDT$/, "")} ${allocationForPreset(item) ?? "—"}%`).join(" · ")
+    : "—";
+  const selectedAllocationPct = selectedPresets.reduce(
+    (total, item) => total + (Number(allocationForPreset(item)) || 0),
+    0,
+  );
+  const unallocatedCashPct = Math.max(0, 100 - selectedAllocationPct);
+  const maxOpenPositions = Number(
+    profile?.compiled?.max_open_positions
+      ?? profile?.profile?.risk?.max_open_positions
+      ?? Math.max(selectedIds.length, 1),
+  );
+  const dailyLossCapPct = Number(
+    profile?.compiled?.max_daily_loss_pct
+      ?? profile?.profile?.risk?.max_daily_loss_pct
+      ?? 6,
+  );
+  const dailyTradeCap = Number(profile?.compiled?.max_daily_trades ?? 3);
+  const drawdownGuardEnabled = profile?.compiled?.drawdown_guard_enabled !== false;
+  const maxDrawdownPct = Number(profile?.compiled?.max_drawdown_pct ?? 25);
   const cdcPure = Boolean(savedProfile?.presets?.some((item) => item.cdc_pure_certified) ?? focusPreset?.cdc_pure_certified);
   const connectionMismatch = Boolean(
     bot?.exchange_connection?.target_id && savedTargetId
@@ -339,7 +381,7 @@ export default function SettingsPage() {
             })}
           </div>
           <div className="risk-summary">
-            <div><span>Strategy sides</span><strong>{focusPreset?.cdc_pure_certified ? "CDC Pure · " : ""}{(focusPreset?.allowed_sides ?? ["long"]).map((side) => side.toUpperCase()).join(" / ")}</strong></div><div><span>D1 filter</span><strong>{focusPreset?.execution_profile?.use_d1_regime_filter === true ? "On" : focusPreset?.execution_profile?.use_d1_regime_filter === false ? "Off" : "—"}</strong></div><div><span>Partial TP</span><strong>{typeof focusPreset?.execution_profile?.partial_tp_pct === "number" && Number(focusPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(focusPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${focusPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{focusPreset?.cdc_pure_certified ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Position cap</span><strong>{maxPositionPct}% · 5% buffer</strong></div><div><span>Open positions</span><strong>{Math.max(selectedIds.length, 1)} max</strong></div><div><span>Daily loss cap</span><strong>3%</strong></div>
+            <div><span>Strategy sides</span><strong>{focusPreset?.cdc_pure_certified ? "CDC Pure · " : ""}{(focusPreset?.allowed_sides ?? ["long"]).map((side) => side.toUpperCase()).join(" / ")}</strong></div><div><span>D1 filter</span><strong>{focusPreset?.execution_profile?.use_d1_regime_filter === true ? "On" : focusPreset?.execution_profile?.use_d1_regime_filter === false ? "Off" : "—"}</strong></div><div><span>Partial TP</span><strong>{typeof focusPreset?.execution_profile?.partial_tp_pct === "number" && Number(focusPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(focusPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${focusPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{focusPreset?.cdc_pure_certified ? "CDC signal / ROI" : "Stop loss"}</strong></div><div><span>Pair allocation</span><strong>{pairAllocationLabel}</strong></div><div><span>Unallocated cash</span><strong>{unallocatedCashPct}%</strong></div><div><span>Open positions</span><strong>{maxOpenPositions} max</strong></div><div><span>Daily loss cap</span><strong>{dailyLossCapPct}%</strong></div><div><span>Daily trade cap</span><strong>{dailyTradeCap} trades</strong></div><div><span>Drawdown guard</span><strong>{drawdownGuardEnabled ? `${maxDrawdownPct}%` : "Off"}</strong></div>
           </div>
           {selectionDirty && selectedIds.length > 0 && (
             <p className="field-help preset-switch-hint" role="status">
@@ -397,7 +439,7 @@ export default function SettingsPage() {
           <AlertDialog.Overlay className="dialog-overlay" />
           <AlertDialog.Content className="dialog-content">
             <AlertDialog.Title>Activate Live execution?</AlertDialog.Title>
-            <AlertDialog.Description>Orders may be sent to {selectedTarget?.label}. Maximum position allocation is {maxPositionPct}% of equity, leaving a 5% buffer. {cdcPure ? "CDC Pure exits by its certified signal and ROI schedule; no exchange stop-loss is placed." : "xAuby enforces a stop-loss exit."} Live trading can still lose money.</AlertDialog.Description>
+            <AlertDialog.Description>Orders may be sent to {selectedTarget?.label}. Selected pair allocation is {pairAllocationLabel}, leaving {unallocatedCashPct}% unallocated cash. The backend allows up to {maxOpenPositions} open positions, limits daily loss to {dailyLossCapPct}% ({dailyTradeCap} trades), and uses a {drawdownGuardEnabled ? `${maxDrawdownPct}% drawdown` : "disabled drawdown"} guard. {cdcPure ? "CDC Pure exits by its certified signal and ROI schedule; no exchange stop-loss is placed." : "xAuby enforces a stop-loss exit."} Live trading can still lose money.</AlertDialog.Description>
             <form className="form-stack" onSubmit={activateLive} noValidate>
               {liveError && <p className="form-error" role="alert">{liveError}</p>}
               <label>Trade PIN (8–12 digits)<input name="tradePin" type="password" inputMode="numeric" minLength={8} maxLength={12} required autoComplete="off" /></label>
