@@ -842,6 +842,7 @@ def create_app(
             "service_status": supervisor.status(tenant["slug"]),
             "state": supervisor.read_state(tenant["slug"]),
             "exchange_connection": store.exchange_connection(tenant["id"]),
+            "api_whitelist_ips": settings.whitelist_ip_list(),
         }
 
     @app.get("/api/v1/runtime/snapshot")
