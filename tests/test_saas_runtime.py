@@ -32,6 +32,22 @@ class RuntimeGatewayTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_whitelist_ip_list_parses_comma_separated_env(self):
+        base = dict(
+            project_root=Path(self.temp.name),
+            data_root=Path(self.temp.name) / "d",
+            tenant_config_root=Path(self.temp.name) / "c",
+            tenant_runtime_root=Path(self.temp.name) / "r",
+            database_path=Path(self.temp.name) / "x.db",
+            public_base_url="http://t",
+            session_secret="s",
+        )
+        self.assertEqual(
+            SaaSSettings(**base, api_whitelist_ips=" 203.0.113.7, 198.51.100.9 ").whitelist_ip_list(),
+            ["203.0.113.7", "198.51.100.9"],
+        )
+        self.assertEqual(SaaSSettings(**base).whitelist_ip_list(), [])
+
     def test_snapshot_reads_tenant_runtime_directory(self):
         gateway = RuntimeGateway(self.settings, self.supervisor)
         payload = gateway.snapshot("customer-one")

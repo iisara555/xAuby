@@ -404,6 +404,11 @@ export default function SettingsPage() {
         <Tabs.Content value="exchange" className="settings-panel card">
           <div className="section-heading"><div><span>API connection</span><h2>{selectedTarget?.label ?? "Select an exchange"}</h2></div>{bot?.exchange_connection && <StatusPill label={bot.exchange_connection.status} tone={bot.exchange_connection.status === "tested" ? "good" : "warn"} />}</div>
           <p className="section-copy">Create a key with read and trade permissions only. Withdraw permission must remain disabled.</p>
+          {bot?.api_whitelist_ips && bot.api_whitelist_ips.length > 0 ? (
+            <p className="field-help" role="note">Restrict the key to this bot&apos;s server IP{bot.api_whitelist_ips.length > 1 ? "s" : ""}: <strong>{bot.api_whitelist_ips.join(", ")}</strong>. On OKX, add {bot.api_whitelist_ips.length > 1 ? "them" : "it"} under the key&apos;s <strong>Link IP address</strong> restriction so a leaked key still cannot trade from anywhere else.</p>
+          ) : (
+            <p className="field-help" role="note">If your exchange supports IP restriction, restrict the key to this bot&apos;s egress IP. Ask your operator for the server IP to whitelist.</p>
+          )}
           {connectionMismatch && <p className="form-error" role="status">Saved credentials belong to {catalog?.targets.find((item) => item.id === bot?.exchange_connection?.target_id)?.label ?? "another exchange"}. Connect and test keys for {catalog?.targets.find((item) => item.id === savedTargetId)?.label ?? "the new exchange"} before going Live.</p>}
           <form className="form-stack two-column-form" onSubmit={connect}>
             <label>API key<input name="apiKey" required autoComplete="off" /></label>

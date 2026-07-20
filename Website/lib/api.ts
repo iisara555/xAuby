@@ -59,6 +59,7 @@ export type Bot = {
   service_status: string;
   state: Record<string, unknown>;
   exchange_connection: ExchangeConnection | null;
+  api_whitelist_ips?: string[];
 };
 
 export type Preset = {

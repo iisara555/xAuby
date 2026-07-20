@@ -28,6 +28,10 @@ class SaaSSettings:
     smtp_from: str = ""
     live_activation_enabled: bool = False
     manual_trading_enabled: bool = False
+    # Comma-separated static egress IP(s) of the engine host. Surfaced in the
+    # API-connection screen so operators can restrict their exchange API key to
+    # these IPs (OKX "Link IP address"). Empty = no IP shown (guidance only).
+    api_whitelist_ips: str = ""
     systemctl_bin: str = "systemctl"
     engine_unit_template: str = "xauby-engine@{tenant}.service"
     provision_helper: str = ""
@@ -88,6 +92,7 @@ class SaaSSettings:
             manual_trading_enabled=os.environ.get(
                 "XAUBY_MANUAL_TRADING_ENABLED", "0"
             ).lower() in {"1", "true", "yes"},
+            api_whitelist_ips=os.environ.get("XAUBY_API_WHITELIST_IPS", "").strip(),
             systemctl_bin=os.environ.get("XAUBY_SYSTEMCTL", "systemctl"),
             provision_helper=os.environ.get("XAUBY_PROVISION_HELPER", ""),
             service_helper=os.environ.get("XAUBY_SERVICE_HELPER", ""),
@@ -99,3 +104,7 @@ class SaaSSettings:
     def ensure_directories(self) -> None:
         for path in (self.data_root, self.tenant_config_root, self.tenant_runtime_root):
             path.mkdir(parents=True, exist_ok=True)
+
+    def whitelist_ip_list(self) -> list[str]:
+        """Parsed egress IPs (comma-separated env), empty list when unset."""
+        return [ip.strip() for ip in self.api_whitelist_ips.split(",") if ip.strip()]
