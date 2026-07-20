@@ -557,6 +557,34 @@ class LoopMixin:
             self._last_equity = total
         return total
 
+    def _sim_portfolio_equity_total(self) -> float:
+        """Virtual-pool equity total for sim-gated pairs.
+
+        In a mixed sim+live run ``get_portfolio_equity_total`` reports only the
+        REAL exchange portfolio — the SimBroker's virtual capital is deliberately
+        kept out of it (see ``_balance_totals_map``). A sim pair's equity card
+        must therefore total its OWN virtual pool, otherwise it shows the live
+        portfolio total sitting next to a virtual cash balance and two cards for
+        different pools never reconcile. Mirrors the all-sim accounting in
+        ``_balance_totals_map``, scoped to sim symbols.
+        """
+        total = float(self.get_simulated_balance())
+        for spec in self._pair_registry.active():
+            sym = spec.symbol
+            if not self._use_sim_broker(sym):
+                continue
+            st = self.db.get_trade_state(sym)
+            if st.get("state") != "bought":
+                continue
+            if str(st.get("position_side") or "LONG").upper() == "SHORT":
+                ledger = self._sim_broker.get_ledger(sym)
+                total += float(ledger.margin_reserved) + float(ledger.unrealized_pnl)
+            else:
+                price = self._price_for_symbol(sym)
+                if price > 0:
+                    total += float(st["quantity"]) * price
+        return total
+
     def get_symbol_equity_breakdown(self, symbol: str) -> Dict[str, Any]:
         sym = symbol.upper().replace("_", "")
         base = self._get_base_asset(sym)
@@ -568,11 +596,15 @@ class LoopMixin:
             st = self.db.get_trade_state(sym)
             is_short = str(st.get("position_side") or "LONG").upper() == "SHORT"
             base_qty = float(st["quantity"]) if st.get("state") == "bought" and not is_short else 0.0
+            # A sim pair totals its virtual pool, not the real live portfolio,
+            # so portfolio_total_usdt stays consistent with the virtual cash above.
+            portfolio_total = self._sim_portfolio_equity_total()
         else:
             totals = self._balance_totals_map()
             usdt = float(totals.get(self._quote_asset(), 0.0) or 0.0)
             base_qty = float(totals.get(base, 0.0) or 0.0)
             st = self.db.get_trade_state(sym)
+            portfolio_total = self.get_portfolio_equity_total()
         base_value = base_qty * price if price > 0 else 0.0
         pnl = estimate_net_unrealized_pnl(
             st,
@@ -580,7 +612,6 @@ class LoopMixin:
             fee_pct=self._symbol_fee_pct(sym),
         )
         exposure = base_value + float(pnl["net_pnl"])
-        portfolio_total = self.get_portfolio_equity_total()
         return {
             "portfolio_total_usdt": round(portfolio_total, 2),
             "usdt_balance_usdt": round(usdt, 2),
