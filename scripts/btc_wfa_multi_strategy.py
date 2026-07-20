@@ -194,6 +194,17 @@ STRATEGIES: dict = {
         ),
         "use_regime": False,
     },
+    "squeeze_momentum": {
+        "grid": _grid(
+            {"enable_short": True},
+            {
+                "kc_length": [20, 34],
+                "entry_trigger": ["zero_cross", "squeeze_release"],
+                "sl_atr_mult": [2.0, 2.5],
+            },
+        ),
+        "use_regime": False,
+    },
 }
 
 
@@ -256,6 +267,16 @@ PF_GRIDS: dict = {
             "confluence_min_score": [0.5, 1.0, 1.5, 2.0],
             "require_liquidity_sweep": [False, True],
             "fvg_min_atr": [0.0, 0.25],
+        },
+    ),
+    "squeeze_momentum": _grid(
+        {"enable_short": True, "bb_mult": 2.0},
+        {
+            "kc_length": [14, 20, 34],
+            "kc_mult": [1.0, 1.5, 2.0],
+            "entry_trigger": ["zero_cross", "squeeze_release"],
+            "sl_atr_mult": [2.0, 2.5, 3.0],
+            "exit_on_zero_cross": [True],
         },
     ),
 }

@@ -300,7 +300,7 @@ PRESETS = [
             "period": "Jan 2021 – Jun 2026",
             "duration": "66 OOS months · fixed config",
             "win_rate_pct": None,
-            "max_drawdown_pct": None,
+            "max_drawdown_pct": 4.8,
             "trades": 111,
             "source": "July 2026 certification · BTCUSDT 4H proxy · long+short · net of costs",
         },

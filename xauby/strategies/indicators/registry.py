@@ -40,6 +40,7 @@ DEFAULT_STRATEGY_CHART_MAP: Dict[str, List[str]] = {
     "rsi2_meanrev": ["rsi2_meanrev"],
     "vol_breakout": ["vol_breakout"],
     "supertrend_short": ["supertrend", "ema200"],
+    "squeeze_momentum": ["squeeze_momentum"],
 }
 
 
