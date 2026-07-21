@@ -7,17 +7,30 @@ cd "$ROOT"
 
 PY="${PYTHON:-./venv/bin/python}"
 LOG_PATH="${XAUBY_ENGINE_LOG:-core/logs/xauby_engine_bg.log}"
-ENGINE_PATTERN="[p]ython.*run_xauby.py"
+
+# Only engines launched from THIS checkout (matched by process cwd). A bare
+# "run_xauby.py" pattern also matches systemd tenant engines running from
+# other install roots (e.g. /opt/xauby/current) and must never kill them.
+engine_pids() {
+  local pid
+  for pid in $(pgrep -f "run_xauby\.py" || true); do
+    if [ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)" = "$ROOT" ]; then
+      echo "$pid"
+    fi
+  done
+}
 
 echo "[1/4] Running restart preflight..."
 "$PY" scripts/controlled_restart_preflight.py
 
 echo "[2/4] Stopping current run_xauby.py processes..."
-pkill -TERM -f "$ENGINE_PATTERN" || true
+PIDS="$(engine_pids)"
+[ -n "$PIDS" ] && kill -TERM $PIDS 2>/dev/null || true
 sleep 3
-if pgrep -f "$ENGINE_PATTERN" >/dev/null; then
+PIDS="$(engine_pids)"
+if [ -n "$PIDS" ]; then
   echo "[WARN] Engine still running after SIGTERM; sending SIGKILL."
-  pkill -KILL -f "$ENGINE_PATTERN" || true
+  kill -KILL $PIDS 2>/dev/null || true
   sleep 1
 fi
 

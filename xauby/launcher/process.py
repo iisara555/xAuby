@@ -33,6 +33,7 @@ __all__ = [
     "run_engine_with_tui",
     "run_textual_tui",
     "get_running_engine_pid",
+    "kill_local_engine_processes",
     "run_backtester_tui",
     "restart_bot_service",
 ]
@@ -225,6 +226,36 @@ def run_textual_tui(*, start_screen: str = "dashboard"):
 
 
 
+def kill_local_engine_processes(sig: int | None = None) -> int:
+    """Signal run_xauby.py processes whose cwd is THIS checkout; return count.
+
+    A bare ``pkill -f run_xauby.py`` also matches engines launched from other
+    install roots (e.g. systemd tenant engines under /opt/xauby) — those belong
+    to a different deployment and must never be killed from here.
+    """
+    import signal
+    if sig is None:
+        sig = signal.SIGTERM
+    try:
+        out = subprocess.run(
+            ["pgrep", "-f", r"run_xauby\.py"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        pids = [int(p) for p in out.stdout.split()]
+    except Exception:
+        return 0
+    root = os.path.realpath(os.getcwd())
+    count = 0
+    for pid in pids:
+        try:
+            if os.path.realpath(f"/proc/{pid}/cwd") == root:
+                os.kill(pid, sig)
+                count += 1
+        except (OSError, ValueError):
+            continue
+    return count
+
+
 def get_running_engine_pid():
     state_file = "core/logs/xauby_bot_state.json"
     if not os.path.exists(state_file):
@@ -388,10 +419,7 @@ def restart_bot_service(*, pause: bool = True, clear_screen: bool = True):
                     pass
             else:
                 try:
-                    subprocess.run(
-                        ["pkill", "-f", "python.*run_xauby\\.py"],
-                        shell=False,
-                    )
+                    kill_local_engine_processes()
                 except Exception:
                     pass
                     

@@ -118,13 +118,9 @@ def _do_restart(live_mode: bool) -> int:
     else:
         eng, _ = check_engine_status()
         if eng == "RUNNING":
-            print("  → Stopping engine (no PID file, using pkill)...")
+            print("  → Stopping engine (no PID file, using cwd-scoped kill)...")
             try:
-                subprocess.run(
-                    ["pkill", "-f", "python.*run_xauby\\.py"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
+                launcher.kill_local_engine_processes()
                 time.sleep(2.0)
             except Exception:
                 pass

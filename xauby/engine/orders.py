@@ -143,6 +143,24 @@ class OrderMixin:
             return
         logger.critical("Trading halted for %s: %s", symbol, reason)
 
+    def _close_halt_reason(self, symbol: str) -> str:
+        """Halt reason blocking close orders for ``symbol``, or "" when clear.
+
+        Every ``trading_halted`` source means the tracked position state is
+        unreliable (side mismatch, orphan balance, pending reconciliation,
+        unsupported account mode) — a "close" computed from it can fire on the
+        wrong side, so exits must freeze together with entries until an
+        operator resolves the halt.
+        """
+        try:
+            sc = self._sc(symbol)
+        except (AttributeError, KeyError):
+            return ""  # minimal stubs / unknown symbol: no per-symbol safety state
+        feed_status = sc.feed_snapshot()
+        if feed_status["trading_halted"]:
+            return str(feed_status["halt_reason"] or "unspecified halt")
+        return ""
+
     def _live_swap_contract_size(self, symbol: str) -> float:
         caps = getattr(self.client, "capabilities", {}) or {}
         if not caps.get("swap"):
@@ -279,6 +297,10 @@ class OrderMixin:
     def execute_close_short(self, state: Dict[str, Any], ticker_price: float,
                             trigger_reason: str, symbol: Optional[str] = None) -> bool:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        halt_reason = self._close_halt_reason(sym)
+        if halt_reason:
+            logger.warning("SHORT close blocked for %s: trading halted (%s)", sym, halt_reason)
+            return False
         qty = float(state.get("quantity") or 0.0)
         entry = float(state.get("entry_price") or 0.0)
         funding = float(state.get("funding_paid") or 0.0)
@@ -409,6 +431,10 @@ class OrderMixin:
     def execute_close_long(self, state: Dict[str, Any], ticker_price: float,
                            trigger_reason: str, symbol: Optional[str] = None) -> bool:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        halt_reason = self._close_halt_reason(sym)
+        if halt_reason:
+            logger.warning("LONG close blocked for %s: trading halted (%s)", sym, halt_reason)
+            return False
         qty = float(state.get("quantity") or 0.0)
         entry = float(state.get("entry_price") or 0.0)
         funding = float(state.get("funding_paid") or 0.0)
@@ -541,6 +567,10 @@ class OrderMixin:
         """
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         if self.read_only:
+            return False
+        halt_reason = self._close_halt_reason(sym)
+        if halt_reason:
+            logger.warning("Partial TP blocked for %s: trading halted (%s)", sym, halt_reason)
             return False
         qty_total = float(state.get("quantity") or 0.0)
         entry = float(state.get("entry_price") or 0.0)
@@ -1940,6 +1970,10 @@ class OrderMixin:
 
     def execute_sell(self, state: Dict[str, Any], ticker_price: float, trigger_reason: str, symbol: Optional[str] = None) -> bool:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        halt_reason = self._close_halt_reason(sym)
+        if halt_reason:
+            logger.warning("SELL blocked for %s: trading halted (%s)", sym, halt_reason)
+            return False
         if self._use_sim_broker(sym):
             ticker_price = self._sim_fill_price(sym, ticker_price)
         qty = state["quantity"]
