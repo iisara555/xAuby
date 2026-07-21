@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Check, Copy, KeyRound, MailPlus, UsersRound } from "lucide-react";
+import { Check, Copy, KeyRound, MailPlus, Rocket, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
@@ -20,6 +20,31 @@ type InviteResult = {
   delivery: "sent" | "manual";
   delivery_detail: string;
 };
+type AdminTenant = {
+  id: string;
+  slug: string;
+  owner_email: string;
+  status: string;
+  live_status: string;
+  exchange_id: string;
+  market_type: string;
+  created_at: number;
+};
+type Tenants = { items: AdminTenant[]; capacity: number; active: number };
+
+function tenantStatusTone(status: string): "good" | "warn" | "bad" | "neutral" {
+  if (status === "running") return "good";
+  if (status === "starting" || status === "degraded" || status === "queued") return "warn";
+  if (status === "stopped" || status === "error") return "bad";
+  return "neutral";
+}
+
+function liveStatusTone(status: string): "good" | "warn" | "bad" | "neutral" {
+  if (status === "active") return "good";
+  if (status === "requested" || status === "approved") return "warn";
+  if (status === "rejected") return "bad";
+  return "neutral";
+}
 
 export default function AdminPage() {
   const user = useCurrentUser();
@@ -30,10 +55,54 @@ export default function AdminPage() {
     adminReady ? "/api/v1/admin/users" : null,
     api,
   );
+  const { data: tenants, error: tenantsError, mutate: mutateTenants } = useSWR<Tenants>(
+    adminReady ? "/api/v1/admin/tenants" : null,
+    api,
+    { refreshInterval: 15000 },
+  );
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [opsStatus, setOpsStatus] = useState("");
+  const [opsBusyId, setOpsBusyId] = useState<string | null>(null);
+
+  async function approveLive(tenantId: string) {
+    setOpsBusyId(tenantId);
+    setOpsStatus("");
+    try {
+      await api(`/api/v1/admin/tenants/${tenantId}/approve-live`, {
+        method: "POST",
+        headers: csrfHeaders(user),
+      });
+      setOpsStatus("Live approved. The tenant engine is restarting into live mode.");
+      await mutateTenants();
+    } catch (reason) {
+      setOpsStatus(reason instanceof Error ? reason.message : "Approval failed");
+    } finally {
+      setOpsBusyId(null);
+    }
+  }
+
+  async function setPilotStatus(userId: string, nextStatus: "active" | "suspended") {
+    setOpsBusyId(userId);
+    setOpsStatus("");
+    try {
+      await api(`/api/v1/admin/users/${userId}/status`, {
+        method: "POST",
+        headers: csrfHeaders(user),
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      setOpsStatus(
+        nextStatus === "active" ? "Pilot reactivated." : "Pilot suspended and their engine was stopped.",
+      );
+      await Promise.all([mutate(), mutateTenants()]);
+    } catch (reason) {
+      setOpsStatus(reason instanceof Error ? reason.message : "Status change failed");
+    } finally {
+      setOpsBusyId(null);
+    }
+  }
 
   async function verifyMfa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -156,7 +225,50 @@ export default function AdminPage() {
             </div>
           )}
         </article>
-        <article className="card users-card"><div className="section-heading"><div><span>Capacity</span><h2>Users</h2></div><UsersRound size={22} /></div><div className="user-list">{data?.items.map((pilot) => <div key={pilot.id}><span className="avatar">{(pilot.email?.[0] ?? "?").toUpperCase()}</span><span><strong>{pilot.email}</strong><small>{pilot.role === "platform_admin" ? "Owner" : "Pilot"}</small></span><StatusPill label={pilot.account_status} tone={pilot.account_status === "active" ? "good" : "warn"} /></div>)}</div></article>
+        <article className="card users-card"><div className="section-heading"><div><span>Capacity</span><h2>Users</h2></div><UsersRound size={22} /></div><div className="user-list">{data?.items.map((pilot) => (
+          <div key={pilot.id}>
+            <span className="avatar">{(pilot.email?.[0] ?? "?").toUpperCase()}</span>
+            <span><strong>{pilot.email}</strong><small>{pilot.role === "platform_admin" ? "Owner" : "Pilot"}</small></span>
+            <span className="user-row-actions">
+              <StatusPill label={pilot.account_status} tone={pilot.account_status === "active" ? "good" : "warn"} />
+              {pilot.role !== "platform_admin" && (
+                pilot.account_status === "active" ? (
+                  <button type="button" className="button-danger row-action" disabled={opsBusyId === pilot.id} onClick={() => setPilotStatus(pilot.id, "suspended")}>
+                    {opsBusyId === pilot.id ? "…" : "Suspend"}
+                  </button>
+                ) : (
+                  <button type="button" className="button-secondary row-action" disabled={opsBusyId === pilot.id} onClick={() => setPilotStatus(pilot.id, "active")}>
+                    {opsBusyId === pilot.id ? "…" : "Reactivate"}
+                  </button>
+                )
+              )}
+            </span>
+          </div>
+        ))}</div></article>
+
+        <article className="card tenants-card">
+          <div className="section-heading">
+            <div><span>Engine capacity</span><h2>Tenants</h2></div>
+            <StatusPill label={tenants ? `${tenants.active} / ${tenants.capacity} engines` : "Loading"} tone={tenants && tenants.active >= tenants.capacity ? "warn" : "neutral"} />
+          </div>
+          {tenantsError && <p className="form-error" role="alert">{tenantsError instanceof Error ? tenantsError.message : "Could not load tenants"}</p>}
+          {opsStatus && <p className="field-help" role="status">{opsStatus}</p>}
+          <div className="tenant-list">
+            {tenants?.items.map((tenant) => (
+              <div key={tenant.id}>
+                <span><strong>{tenant.owner_email}</strong><small>{tenant.slug} &middot; {tenant.exchange_id}/{tenant.market_type}</small></span>
+                <StatusPill label={tenant.status} tone={tenantStatusTone(tenant.status)} />
+                <StatusPill label={tenant.live_status.replace(/_/g, " ")} tone={liveStatusTone(tenant.live_status)} />
+                {tenant.live_status === "requested" ? (
+                  <button type="button" className="button-primary row-action" disabled={opsBusyId === tenant.id} onClick={() => approveLive(tenant.id)}>
+                    <Rocket size={14} />{opsBusyId === tenant.id ? "Approving…" : "Approve live"}
+                  </button>
+                ) : <span className="row-action-spacer" />}
+              </div>
+            ))}
+            {tenants && tenants.items.length === 0 && <p className="field-help">No tenants provisioned yet.</p>}
+          </div>
+        </article>
       </section>
     </div>
   );

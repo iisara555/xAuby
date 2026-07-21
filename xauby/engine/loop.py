@@ -2588,9 +2588,18 @@ class LoopMixin:
         self._release_account_lock()
 
     def start(self):
-        from xauby.runtime.trading_config import validate_risk_config
+        from xauby.runtime.trading_config import (
+            validate_open_positions_config,
+            validate_risk_config,
+        )
 
         validate_risk_config(self.config)
+        live_pairs = sum(
+            1
+            for spec in self._pair_registry.active()
+            if getattr(spec, "execution_mode", "sim") == "live"
+        )
+        validate_open_positions_config(self.config, live_pair_count=live_pairs)
         active_syms = ", ".join(self._pair_registry.active_symbols()) or self.focus_symbol
         logger.info(
             f"Starting Lite Trading Engine. Pairs: {active_syms}, "

@@ -447,6 +447,55 @@ def validate_risk_config(cfg: Dict[str, Any]) -> None:
         )
 
 
+def validate_open_positions_config(cfg: Dict[str, Any], live_pair_count: int = 0) -> None:
+    """Refuse startup when the max_open_positions keys disagree or under-cap.
+
+    Three same-named keys live in different blocks with different consumers:
+    the engine BUY gate reads ``trading.max_open_positions``, the config
+    resolver reads ``risk.max_open_positions``, and ``portfolio`` carries a
+    display-only copy. A mismatch means one path enforces a limit another
+    path (and the operator) doesn't expect — the July 2026 incident had the
+    portfolio key raised to 3 while the enforced keys stayed at 1, silently
+    blocking the second live pair's entries.
+
+    Raises ValueError when the set keys disagree, or when the effective cap is
+    below ``live_pair_count`` (certified live pairs would silently never trade).
+    """
+
+    def _get(block: str) -> Any:
+        return (cfg.get(block) or {}).get("max_open_positions")
+
+    values: Dict[str, int] = {}
+    for block in ("trading", "risk", "portfolio"):
+        raw = _get(block)
+        if raw is None:
+            continue
+        try:
+            values[f"{block}.max_open_positions"] = int(raw)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"{block}.max_open_positions is not an integer: {raw!r}"
+            ) from None
+
+    distinct = set(values.values())
+    if len(distinct) > 1:
+        listing = ", ".join(f"{k}={v}" for k, v in sorted(values.items()))
+        raise ValueError(
+            "max_open_positions keys disagree — the engine enforces "
+            "trading.max_open_positions and the resolver reads "
+            f"risk.max_open_positions; keep all set keys equal: {listing}"
+        )
+
+    if values and live_pair_count > 0:
+        effective = next(iter(distinct))
+        if effective < live_pair_count:
+            raise ValueError(
+                f"max_open_positions={effective} is below the {live_pair_count} "
+                "live whitelist pair(s) — the extra pair(s) would silently never "
+                "enter. Raise the cap or set the pair(s) to sim."
+            )
+
+
 def engine_config_block(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Return engine-owned operational config."""
     keys = (
