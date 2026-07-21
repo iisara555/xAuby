@@ -42,7 +42,9 @@ trading:
   interval_seconds: 60
   timeframe: 4h
   mode: full_auto
-  max_open_positions: 1
+  # ENFORCED key for concurrent positions (engine/loop.py BUY gate). Must be
+  # >= number of live whitelist pairs or the second pair silently never enters.
+  max_open_positions: 2
   min_order_amount: 10.0
   risk_pct: 0.02
   max_position_per_trade_pct: 25.0
@@ -137,7 +139,9 @@ risk:
   min_risk_per_trade_pct: 0.3
   max_daily_loss_pct: 6.0
   max_position_per_trade_pct: 25.0
-  max_open_positions: 1
+  # Keep in sync with trading.max_open_positions (trading_config.py resolves
+  # the portfolio value from THIS key; engine loop reads the trading key).
+  max_open_positions: 2
   max_daily_trades: 3
   protection_alert_cooldown_seconds: 900
   # Portfolio drawdown circuit-breaker (engine-managed kill-switch). When equity
@@ -582,9 +586,11 @@ portfolio:
         min_order_amount: 10.0
   # Two live pairs (XAU + BTC). allocation_pct caps are the reliably-enforced
   # budget ceilings (orders.py _symbol_allocation_remaining_usdt): XAU 65 +
-  # BTC 30 = 95%, leaving a 5% unallocated cash buffer. Slot for 3 so a manual
-  # add never blocks on the cap.
-  max_open_positions: 3
+  # BTC 30 = 95%, leaving a 5% unallocated cash buffer.
+  # NOTE: this portfolio-level key is DISPLAY-ONLY — concurrency is enforced by
+  # trading.max_open_positions (engine loop) / risk.max_open_positions
+  # (trading_config resolver). Keep all three in sync.
+  max_open_positions: 2
   max_daily_trades: 3
   min_balance_threshold: 35.0
   read_only: false
