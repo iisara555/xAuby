@@ -123,6 +123,56 @@ class TestEquityBreakdownPools(unittest.TestCase):
         self.assertEqual(btc["portfolio_total_usdt"], 1600.0)
         self.assertNotEqual(btc["portfolio_total_usdt"], 99999.0)
 
+    def test_live_swap_position_exposure_uses_position_notional(self):
+        # Regression: a swap position holds no spot base asset, so exposure
+        # used to collapse to bare unrealized PnL (spot-era base-holdings math)
+        # and the workspace allocation bar sat at its 2% display floor.
+        eng = _EngineStub(
+            sim_symbols=[],
+            live_symbols=["XAUUSDT"],
+            sim_cash=0.0,
+            real_total=179.0,
+            states={"XAUUSDT": {
+                "state": "bought", "position_side": "LONG",
+                "entry_price": 4000.0, "quantity": 0.015,
+            }},
+            prices={"XAUUSDT": 4100.0},
+        )
+        xau = eng.get_symbol_equity_breakdown("XAUUSDT")
+        notional = 0.015 * 4100.0  # 61.5
+        gross = (4100.0 - 4000.0) * 0.015
+        fees = (4000.0 + 4100.0) * 0.015 * 0.0005
+        self.assertEqual(
+            xau["symbol_exposure_usdt"], round(notional + gross - fees, 2)
+        )
+        # Spot holdings stay zero for a swap pair; exposure must not.
+        self.assertEqual(xau["base_value_usdt"], 0.0)
+
+    def test_sim_short_exposure_uses_position_notional(self):
+        eng = _EngineStub(
+            sim_symbols=["BTCUSDT"],
+            live_symbols=[],
+            sim_cash=1000.0,
+            real_total=0.0,
+            states={"BTCUSDT": {
+                "state": "bought", "position_side": "SHORT",
+                "entry_price": 60000.0, "quantity": 0.01,
+            }},
+            prices={"BTCUSDT": 59000.0},
+        )
+        eng._sim_broker = types.SimpleNamespace(
+            get_ledger=lambda sym: types.SimpleNamespace(
+                margin_reserved=600.0, unrealized_pnl=10.0
+            )
+        )
+        btc = eng.get_symbol_equity_breakdown("BTCUSDT")
+        notional = 0.01 * 59000.0  # 590
+        gross = (60000.0 - 59000.0) * 0.01  # short gains as price falls
+        fees = (60000.0 + 59000.0) * 0.01 * 0.0005
+        self.assertEqual(
+            btc["symbol_exposure_usdt"], round(notional + gross - fees, 2)
+        )
+
     def test_all_sim_pairs_share_one_total(self):
         eng = _EngineStub(
             sim_symbols=["BTCUSDT", "XAUUSDT"],

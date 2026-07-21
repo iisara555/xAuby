@@ -611,7 +611,19 @@ class LoopMixin:
             mark_price=price,
             fee_pct=self._symbol_fee_pct(sym),
         )
-        exposure = base_value + float(pnl["net_pnl"])
+        # Derivative positions hold no spot base asset (swap shorts hold none
+        # either), so exposure sizes from the open position's notional at mark;
+        # spot holdings remain the fallback when no position is tracked.
+        open_qty = (
+            float(st.get("quantity") or 0.0)
+            if str(st.get("state") or "") == "bought"
+            else 0.0
+        )
+        if open_qty > 0 and price > 0:
+            exposure_notional = open_qty * price
+        else:
+            exposure_notional = base_value
+        exposure = exposure_notional + float(pnl["net_pnl"])
         return {
             "portfolio_total_usdt": round(portfolio_total, 2),
             "usdt_balance_usdt": round(usdt, 2),
