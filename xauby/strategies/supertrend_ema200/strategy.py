@@ -1,8 +1,8 @@
 """SuperTrend + EMA200 strategy plugin.
 
-Long-only spot strategy intended for BTC lower-timeframe paper/live testing:
-trade only above EMA200, enter on SuperTrend bull state, and use ATR-based
-strategy exits plus engine trailing stop.
+BTC 4H SuperTrend + EMA200 trend strategy.  It trades above/below EMA200 on a
+fresh SuperTrend flip and uses ATR-based strategy exits plus engine trailing
+stop.
 """
 
 from __future__ import annotations
@@ -22,9 +22,9 @@ from xauby.strategies.signal import Signal, buy, close_short, hold, open_short, 
 class SuperTrendEMA200Strategy(Strategy):
     version = "0.1.0"
     author = "xAuby"
-    description = "BTC SuperTrend + EMA200 long-only trend strategy."
-    tags = ["btc", "supertrend", "ema200", "1h", "trend"]
-    required_timeframes = ["1h"]
+    description = "BTC 4H SuperTrend + EMA200 trend strategy."
+    tags = ["btc", "supertrend", "ema200", "4h", "trend"]
+    required_timeframes = ["4h"]
     min_bars = 240
 
     @classmethod
@@ -32,7 +32,7 @@ class SuperTrendEMA200Strategy(Strategy):
         return {
             "ema_period": 200,
             "atr_period": 10,
-            "supertrend_mult": 3.5,
+            "supertrend_mult": 4.0,
             "confirm_bars": 1,
             "entry_on_flip_only": True,
             "rsi_period": 14,
@@ -40,7 +40,7 @@ class SuperTrendEMA200Strategy(Strategy):
             "rsi_max": 100.0,
             "volume_ma_period": 20,
             "vol_min_ratio": 0.0,
-            "sl_atr_mult": 2.5,
+            "sl_atr_mult": 3.0,
             "trailing_atr_mult": 2.0,
             "breakeven_sl_enabled": True,
             "breakeven_activation_atr_mult": 1.2,

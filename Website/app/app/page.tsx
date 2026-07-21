@@ -68,7 +68,10 @@ export default function DashboardPage() {
   const pairReady = Object.keys(focus).length > 0;
   const position = (valueAt(focus, "position") as Record<string, unknown> | undefined) ?? {};
   const currency = snapshot?.currency ?? {};
-  const equity = valueAt(focus, "total_equity_usdt") ?? valueAt(focus, "equity_breakdown", "portfolio_total_usdt") ?? snapshot?.currency?.equity_usdt;
+  // Equity is account-wide on a live OKX account, not pair-specific.  Use the
+  // engine aggregate first so switching BTC/XAU cannot display a stale pair
+  // snapshot as a different portfolio balance.
+  const equity = valueAt(state, "aggregate", "total_equity_usdt") ?? valueAt(focus, "total_equity_usdt") ?? valueAt(focus, "equity_breakdown", "portfolio_total_usdt") ?? snapshot?.currency?.equity_usdt;
   const cash = valueAt(focus, "equity_breakdown", "usdt_balance_usdt") ?? valueAt(focus, "portfolio", "USDT") ?? snapshot?.currency?.usdt_balance_usdt;
   const exposure = valueAt(focus, "equity_breakdown", "symbol_exposure_usdt") ?? snapshot?.currency?.symbol_exposure_usdt;
   const positionOpen = String(valueAt(position, "state") ?? "idle") === "bought";

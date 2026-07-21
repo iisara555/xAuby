@@ -86,7 +86,7 @@ class TestPairStrategySelection(unittest.TestCase):
 
         self.assertEqual(strategy.name, "supertrend_ema200")
         self.assertEqual(strategy.config["supertrend_mult"], 2.5)
-        self.assertEqual(strategy.required_timeframes, ["1h"])
+        self.assertEqual(strategy.required_timeframes, ["4h"])
 
 
 if __name__ == "__main__":

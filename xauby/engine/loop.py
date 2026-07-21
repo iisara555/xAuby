@@ -903,7 +903,18 @@ class LoopMixin:
 
     def load_candles_df(self, timeframe: str, symbol: Optional[str] = None) -> pd.DataFrame:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
-        rows = self.db.get_candles(sym, timeframe, limit=250)
+        # Keep the live calculation window in sync with the active strategy.
+        # EMA200/SuperTrend's certified BTC preset uses a 420-bar calculation
+        # window; fetching only the old 250-bar default shortens the EMA warm-up
+        # and makes live signals diverge from chart/backtest calculations.
+        candle_limit = 250
+        try:
+            strategy_cfg = self._get_strategy_config(sym)
+            configured_limit = int(strategy_cfg.get("max_calc_bars") or 0)
+            candle_limit = max(candle_limit, configured_limit)
+        except Exception:
+            pass
+        rows = self.db.get_candles(sym, timeframe, limit=candle_limit)
         if not rows:
             return pd.DataFrame()
         df = pd.DataFrame(rows)
@@ -2313,9 +2324,11 @@ class LoopMixin:
             open_reverse_after_close(closed)
         elif action == "BUY" and state["state"] == "idle" and signal_side == "SHORT":
             self.execute_open_short(signal, ticker_price, symbol=sym)
-        elif state["state"] == "bought":
-            if str(state.get("position_side") or "LONG").upper() == "SHORT":
-                return
+        elif state["state"] == "bought" and str(state.get("position_side") or "LONG").upper() != "SHORT":
+            # Short positions do not use this long-only trailing-stop branch,
+            # but they must still reach the state exporter below.  Returning
+            # here left by_symbol[SHORT] snapshots frozen while the engine
+            # continued evaluating the position.
             highest_seen = max(state.get("highest_price_seen", 0.0), ticker_price)
 
             current_sl = state.get("stop_loss", 0.0)

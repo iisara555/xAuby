@@ -83,10 +83,10 @@ macro_sentiment_guard:
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Router | Notes |
 |--------|------|----------|------------|------------|--------|-------|
-| `XAUTUSDT` | `live` | `cdc_action_zone` | `4h` | `1d` | Off | `PAXGUSDT` backtest proxy |
-| `BTCUSDT` | `sim` | `supertrend_ema200` | `1h` | none | On, not live-confirmed | Auto-regime soak |
+| `XAUUSDT` | `live` | `xauby_actionzone` | `4h` | `1d` | Off | `PAXGUSDT` backtest proxy |
+| `BTCUSDT` | `live` | `supertrend_ema200` | `4h` | none | Off | Certified OKX 4H preset |
 
-`risk_pct` is intentionally kept at `0.45` in both trading and portfolio sizing.
+`risk_pct` is intentionally kept at `0.01` (1%) in both trading and portfolio sizing.
 
 ## Partial take-profit
 
