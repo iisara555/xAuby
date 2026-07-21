@@ -503,6 +503,62 @@ class SaaSControlPlaneTests(unittest.TestCase):
         btc_payload = btc_long.json()["preview"]
         self.assertAlmostEqual(btc_payload["allocation_pct"], 25.0)
         self.assertAlmostEqual(btc_payload["estimated_notional"], 2500.0)
+        # No indicators in this fixture's snapshot -> ATR unavailable -> the
+        # preview fell back to the fixed-percent heuristic (and, here, that
+        # heuristic's notional happened to exceed the allocation cap, so the
+        # cap — not the fallback distance — produced the 2500.0 above).
+        self.assertEqual(btc_payload["sizing_basis"], "fixed_pct")
+
+    def test_manual_order_preview_sizes_from_live_atr(self):
+        # Audit F-3: with a live ATR present, the preview must size off
+        # ATR * the preset's own sl_atr_mult (matching how the certified
+        # strategy itself stops), not the old synthetic mark*2% distance.
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        profile = self.client.put(
+            "/api/v1/profile", headers=self.headers,
+            json={"preset_ids": ["okx-btc-supertrend-v1"],
+                  "active_preset_id": "okx-btc-supertrend-v1",
+                  "risk": {}},
+        )
+        self.assertEqual(profile.status_code, 200, profile.text)
+        self.store.update_tenant(tenant["id"], status="running")
+
+        runtime = self.supervisor.runtime_dir(tenant["slug"]) / "logs"
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / "xauby_bot_state.json").write_text(
+            json.dumps({
+                "focus_symbol": "BTCUSDT",
+                "by_symbol": {
+                    "BTCUSDT": {
+                        "current_price": 50000.0,
+                        "total_equity_usdt": 10000.0,
+                        "position": {"state": "idle"},
+                        # supertrend_ema200 names its ATR indicator "atr".
+                        "indicators": {"atr": 1500.0},
+                    },
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        object.__setattr__(self.settings, "manual_trading_enabled", True)
+        with patch.object(self.supervisor, "status", return_value="active"):
+            preview = self.client.post(
+                "/api/v1/orders/preview", headers=self.headers,
+                json={"symbol": "BTCUSDT", "intent": "OPEN_LONG"},
+            )
+
+        self.assertEqual(preview.status_code, 200, preview.text)
+        payload = preview.json()["preview"]
+        self.assertEqual(payload["sizing_mode"], "risk_based")
+        self.assertEqual(payload["sizing_basis"], "atr")
+        # risk_amount 10000*0.02=200; stop_distance = atr 1500 * sl_atr_mult
+        # 3.0 = 4500; risk_sized = (200/4500)*50000 = 2222.22 — comfortably
+        # under the 25% allocation cap (2500), so this value is driven by the
+        # ATR math, not clamped by the cap.
+        self.assertAlmostEqual(payload["estimated_notional"], 2222.222222, places=3)
+        self.assertLess(payload["estimated_notional"], 2500.0)
 
     def test_live_manual_side_is_independent_of_actionzone_colour(self):
         me = self.client.get("/api/v1/me").json()

@@ -10,7 +10,7 @@ roles. Read-only audit; one HIGH config fix applied in the same change (see F-1)
 | Layer | Pieces |
 |---|---|
 | Tenant UI | dashboard (`app/page.tsx`), settings (trading/exchange/security tabs), activity, signal, login/invite/reset flows |
-| Owner UI | `app/admin/page.tsx` — users list + invite issuing only |
+| Owner UI | `app/admin/page.tsx` — users list, invite issuing, tenant list with approve-live and pilot suspend/reactivate (Operations, added 2026-07-21) |
 | API | 45 endpoints: auth (15), profile/catalog (7), runtime (5), bot control (4), exchange/live (5), orders (3), trade-pin (2), admin (5) |
 | Engine state | v2 schema: `aggregate` + `by_symbol{SYM}` + `focus_symbol`, per-pair `position` / `equity_breakdown` / `signal_meta` / `regime` / `recent_events` |
 | Tenant compile | `supervisor.apply_profile` — catalog presets → bounded yaml/whitelist; **raw strategy config is never accepted** |
@@ -27,24 +27,37 @@ silently blocked with "max_open_positions 1 reached". Tenant engines were NOT
 affected (`apply_profile` writes `trading.max_open_positions = pair_count`).
 **Fix applied:** all three keys set to 2 with cross-reference comments.
 **Root cause class:** three same-named keys in different blocks with different
-consumers; recommend a startup consistency check mirroring the `risk_pct` guard.
+consumers. **Fixed 2026-07-21:** `validate_open_positions_config`
+(`xauby/runtime/trading_config.py`) now runs in `LiteTradingEngine.start()`
+alongside `validate_risk_config` — refuses to start when the set keys
+disagree, or when the effective cap is below the live pair count. 8 unit
+tests in `tests/test_open_positions_guard.py`.
 
-### F-2 MEDIUM — owner UI covers a fraction of the owner API
-`admin/page.tsx` exposes only *users list* and *invite issuing*. The
-consequential owner actions — `POST /admin/tenants/{id}/approve-live`,
-`POST /admin/users/{id}/status` (suspend/reactivate), `GET /admin/tenants`
-(capacity/slots) — have **no UI**; the owner must curl them with a CSRF token
-and TOTP-verified session, which is error-prone for exactly the actions that
-gate real money. Recommend an "Operations" section on the admin page.
+### F-2 MEDIUM — owner UI covers a fraction of the owner API — FIXED 2026-07-21
+`admin/page.tsx` exposed only *users list* and *invite issuing*. Added an
+**Operations** section: a tenants list (owner email, engine status, live
+status, engine-slot capacity) with an **Approve live** action wired to
+`POST /admin/tenants/{id}/approve-live`, and **Suspend/Reactivate** actions
+on each pilot row wired to `POST /admin/users/{id}/status`. Both reuse the
+existing, unchanged backend endpoints — no new API surface. Verified with
+`tsc --noEmit` and a production `next build` (both clean).
 
-### F-3 MEDIUM — manual-order preview sizing diverges from certified sizing
-`orders/preview` risk-sizes with a synthetic stop distance of `mark * 0.02`
-(`app.py`), while the certified BTC preset stops at 3×ATR (≈3% on 4h). A
-manual `strategy_handoff` open can therefore be ~1.5× larger than the same
-signal sized by the engine. Bounded by `min(preset cap, allocation_pct)` so
-exposure stays capped, but preview quantity ≠ engine quantity for the same
-trade. Recommend sizing the preview from the pair's live ATR (available in the
-runtime snapshot's indicators).
+### F-3 MEDIUM — manual-order preview sizing diverges from certified sizing — FIXED 2026-07-21
+`orders/preview` risk-sized every non-CDC-pure pair off a synthetic stop
+distance of `mark * 0.02`, while the certified BTC preset stops at 3×ATR. A
+manual `strategy_handoff` open could be ~1.5× larger than the same signal
+sized by the engine (bounded by the allocation cap, so not an exposure
+breach, but not size-parity either). **Fix:** new `xauby/saas/order_sizing.py`
+(pure functions, unit-testable without FastAPI) resolves the pair's live ATR
+from the runtime snapshot's `indicators` (handles the per-strategy key name —
+`atr` for supertrend_ema200, `atr_4h` for xauby_actionzone) and sizes off
+`atr * preset.execution_profile.sl_atr_mult`; falls back to the old
+fixed-percent heuristic only when no live ATR is present, and the response
+payload now carries `sizing_basis: "atr" | "fixed_pct"` so a fallback preview
+is never silently shown as strategy-matched (surfaced in the trade drawer).
+13 unit tests (`tests/test_order_sizing.py`) plus an end-to-end FastAPI test
+(`test_manual_order_preview_sizes_from_live_atr`) proving the live-ATR path
+produces a materially different, uncapped notional from the old heuristic.
 
 ### F-4 LOW — `read_curated_config` flattens per-pair sizing to the focus pair
 `max_position_per_trade_pct` in the compiled summary comes from the *active*
@@ -94,9 +107,13 @@ the OKX-swap baseline.
   execution with idempotency key, feature-gated by env, fully audited.
 
 ## Recommended next steps (in order)
-1. Add a startup guard asserting `trading.max_open_positions ==
-   risk.max_open_positions >= live pair count` (mirror of `MAX_SANE_RISK_PCT`).
-2. Owner Operations UI for approve-live / suspend / tenant slots (F-2).
-3. ATR-based preview sizing for manual orders (F-3).
+1. ~~Add a startup guard asserting `trading.max_open_positions ==
+   risk.max_open_positions >= live pair count`.~~ **Done 2026-07-21** (F-1).
+2. ~~Owner Operations UI for approve-live / suspend / tenant slots.~~
+   **Done 2026-07-21** (F-2).
+3. ~~ATR-based preview sizing for manual orders.~~ **Done 2026-07-21** (F-3).
 4. Fold the certification pipeline (previous discussion) into catalog
    generation so preset/backtest blocks can never drift by hand again.
+5. F-4 (per-pair sizing flattened in the settings display) and F-5 (admin
+   read endpoints' inline authz vs the shared dependency) remain open — both
+   LOW severity, no live-money impact.

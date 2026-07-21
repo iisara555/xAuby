@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from xauby.saas.catalog import public_catalog, target_by_id, validate_profile
 from xauby.saas.credentials import CredentialCipher
 from xauby.saas.mailer import Mailer
+from xauby.saas.order_sizing import resolve_pair_atr, risk_based_stop_distance
 from xauby.saas.runtime import RuntimeGateway
 from xauby.saas.security import (
     AttemptThrottle,
@@ -1194,7 +1195,18 @@ def create_app(
                 sizing_mode = "cdc_pure"
             else:
                 risk_fraction = float(preset.get("risk_pct", config.get("risk_pct") or 0.01))
-                stop_distance = mark * 0.02
+                # Size off the pair's live ATR at the preset's own sl_atr_mult —
+                # the same distance the strategy itself would stop at — instead
+                # of a synthetic fixed percent, so a manual preview isn't
+                # larger than the engine would size the identical signal
+                # (see docs/audit_system_2026-07-21.md F-3).
+                atr = resolve_pair_atr(
+                    focus.get("indicators") if isinstance(focus.get("indicators"), dict) else None
+                )
+                sl_atr_mult = float(execution_profile.get("sl_atr_mult") or 0.0)
+                stop_distance, sizing_basis = risk_based_stop_distance(
+                    mark_price=mark, atr=atr, sl_atr_mult=sl_atr_mult,
+                )
                 risk_sized = (equity * risk_fraction / stop_distance) * mark
                 estimated_notional = min(risk_sized, equity * max_allocation)
                 allocation_pct = (estimated_notional / equity) * 100.0
@@ -1216,6 +1228,7 @@ def create_app(
             "estimated_quantity": quantity,
             "estimated_notional": estimated_notional,
             "sizing_mode": sizing_mode,
+            "sizing_basis": sizing_basis if sizing_mode == "risk_based" else None,
             "allocation_pct": allocation_pct,
             "preset_id": context["preset"]["id"],
             "target_id": context["target"]["id"],

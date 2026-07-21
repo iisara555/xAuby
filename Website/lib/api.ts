@@ -135,6 +135,7 @@ export type OrderPreview = {
     estimated_quantity: number;
     estimated_notional: number;
     sizing_mode?: "cdc_pure" | "risk_based" | "close_position";
+    sizing_basis?: "atr" | "fixed_pct" | null;
     allocation_pct?: number | null;
   };
 };
