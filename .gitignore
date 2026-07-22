@@ -57,7 +57,11 @@ build/
 dist/
 =0.50.0
 
+# Generated knowledge-graph output (graphify)
+graphify-out/
+
 # IDE / editor
 .idea/
 .vscode/
 .cursor/
+.claude/settings.local.json
