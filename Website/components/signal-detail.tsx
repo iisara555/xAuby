@@ -30,7 +30,7 @@ export function SignalDetail({ state, stale }: { state: Record<string, unknown>;
     <div className="signal-facts"><span>Confidence<strong>{confidenceLabel(meta.confidence)}</strong></span><span>Regime<strong>{String(regimeData.regime ?? "—").replaceAll("_", " ")}</strong></span><span>Trend<strong>{String(regimeData.trend ?? "—").replaceAll("_", " ")}</strong></span><span>Volatility<strong>{String(regimeData.volatility ?? "—").replaceAll("_", " ")}</strong></span></div>
     {checklist.length ? <ul className="compact-checklist">{checklist.map((item, index) => {
       const passed = typeof item.ok === "boolean" ? item.ok : Boolean(item.passed);
-      return <li key={String(item.id ?? item.label ?? index)}>{passed ? <CheckCircle2 /> : <CircleDashed />}<span><strong>{String(item.label ?? item.name ?? "Strategy check")}</strong><small>{checklistDetail(item)}</small></span></li>;
+      return <li key={String(item.id ?? item.label ?? index)} className={passed ? "check-pass" : "check-pending"}>{passed ? <CheckCircle2 /> : <CircleDashed />}<span><strong>{String(item.label ?? item.name ?? "Strategy check")}</strong><small>{checklistDetail(item)}</small></span></li>;
     })}</ul> : <div className="signal-protection"><ShieldCheck /><span><strong>Risk gates remain active</strong><small>Position cap, feed health and Live certification are checked again before execution.</small></span></div>}
   </article>;
 }

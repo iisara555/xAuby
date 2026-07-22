@@ -2,7 +2,8 @@
 
 ## Current architecture state
 
-The committed baseline is no longer a pure legacy single-strategy setup. The current runtime uses:
+The committed baseline is OKX USDT-settled perpetual swap via CCXT, single
+live pair (XAU), long-only, 1x leverage. The current runtime uses:
 
 | Capability | Current state |
 |------------|---------------|
@@ -10,18 +11,23 @@ The committed baseline is no longer a pure legacy single-strategy setup. The cur
 | Indicator registry | Enabled for terminal chart and TUI legend |
 | Per-symbol execution mode | Enabled so each pair can be `sim` or `live` |
 | SimBroker | Enabled for per-symbol sim orders |
-| RegimeRouter | Globally enabled, but still gated per asset |
+| RegimeRouter | Globally enabled, but gated per asset — XAU keeps it off |
 | Event bus | Enabled |
-| Regime confidence filter | Disabled until enough regime history exists |
+| Regime confidence filter | Enabled after a 30-sample warmup |
+| Statistical regime crosscheck | Disabled (advisory-only when armed) |
 
-Current pair state:
+Current pair state (`coin_whitelist.json`):
 
 | Symbol | Mode | Strategy | Router |
 |--------|------|----------|--------|
-| `XAUTUSDT` | `live` | `cdc_action_zone` | Off |
-| `BTCUSDT` | `sim` | `supertrend_ema200` | On, not live-confirmed |
+| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` (CDC Action Zone V3) | Off |
 
 A live pair cannot use RegimeRouter unless the asset has both `regime_router_enabled: true` and `regime_router_live_confirmed: true`. Without live confirmation the engine forces that pair to sim and emits an operator warning.
+
+A separate multi-tenant SaaS control plane (`xauby/saas/`) runs isolated
+copies of this same engine for other operators, invite-only. It is not part
+of this single-owner architecture state — see the root
+[README.md#saas-control-plane](README.md#saas-control-plane).
 
 ## Strategy + indicator plugin pairing
 
@@ -57,7 +63,8 @@ Current mappings:
 
 | Strategy | Indicator plugin list |
 |----------|-----------------------|
-| `cdc_action_zone` | `[cdc_action_zone]` |
+| `xauby_actionzone` (CDC Action Zone) | `[xauby_actionzone]` |
+| `xauby_donchian_trend` | `[xauby_donchian_trend]` |
 | `supertrend_ema200` | `[supertrend, ema200]` |
 | `btc_ema_pullback` | `[btc_ema_pullback]` |
 | `ict_lite_strategy` | `[ict_lite]` |
@@ -71,25 +78,30 @@ All flags live under `bot_config.yaml` -> `architecture:`. Routing rules live un
 | Flag | Purpose |
 |------|---------|
 | `whitelist_strict` | Whitelist is sole pair/strategy source; fail-fast validation |
+| `strategy_sandbox_strict` | Reject (vs. warn) plugins that fail the static AST sandbox scan |
+| `strategy_validate_strict` | Reject (vs. warn) a strategy with non-empty `config_errors()` at start |
 | `indicator_registry_enabled` | Chart computes indicators via `IndicatorRegistry` |
 | `tui_indicator_registry` | TUI checklist/legend from `IndicatorDisplayAdapter` |
 | `per_symbol_execution_mode` | Per-asset `mode: sim|live` plus Sim/Live PnL split |
 | `sim_broker_enabled` | Route sim orders through `SimBroker` |
 | `regime_router_enabled` | Master switch for RegimeRouter; per-asset flag also required |
 | `regime_confidence_filter` | Block regime switches when confidence is below threshold after 30 history rows |
+| `regime_statistical_crosscheck` | Fit an independent Gaussian-mixture regime model each tick; advisory only, never overrides routing |
 | `event_bus_enabled` | Dispatch `EventEmitter` events to in-process subscribers |
+| `api_circuit_breaker_enabled` | Wrap outbound exchange REST calls in a token-bucket rate limiter + circuit breaker |
 
 Rollback is intentionally simple: set a flag to `false` without reverting code. For router rollback, disable either the global `architecture.regime_router_enabled` flag or the per-asset `regime_router_enabled` field.
 
 ## Safe rollout and promotion
 
-Current baseline is BTC sim soak. Promotion path:
+Adding a second live/sim pair follows the same pattern the codebase already
+supports (per-symbol `mode`, isolated `SymbolContext`, RegimeRouter gating):
 
-1. Keep XAUT live CDC unchanged while BTC runs in sim.
-2. Review BTC SimBroker ledger, trade frequency, PnL, regime switch history, and replay validation.
-3. Keep `regime_confidence_filter: false` until at least 30 useful `regime_history` rows exist.
-4. If BTC router behavior is acceptable, set BTC `regime_router_live_confirmed: true` only after explicit operator sign-off.
-5. Do not enable RegimeRouter on XAUT live until BTC router has proven stable.
+1. Add the pair to `coin_whitelist.json` with `mode: sim` first.
+2. Review the SimBroker ledger, trade frequency, PnL, regime switch history, and replay validation.
+3. Keep `regime_confidence_filter` conservative until at least 30 useful `regime_history` rows exist for the new pair.
+4. If router behavior is acceptable, set that pair's `regime_router_live_confirmed: true` only after explicit operator sign-off.
+5. Do not touch the XAU live pair's config while validating a new one.
 
 ## Whitelist per-asset fields
 
@@ -106,7 +118,7 @@ Current baseline is BTC sim soak. Promotion path:
 ```
 
 - `mode: live` with `regime_router_enabled` but without `regime_router_live_confirmed` forces sim for safety.
-- `sim_fee_pct` is in percent (`0.1` means 0.1%).
+- `sim_fee_pct` is in percent (`0.1` means 0.1%; the live XAU entry uses `0.05`).
 - `strategy_params` in `coin_whitelist.json` are merged into live/backtest strategy config.
 - `primary_timeframe` and `confirm_timeframe` belong to the pair/strategy source of truth and should not be duplicated elsewhere unless intentionally overridden for a test.
 
@@ -157,6 +169,16 @@ Full suite:
 
 ```bash
 PYTHONPATH=. python3 -m unittest discover -s tests -q
+```
+
+SaaS control plane suite (`xauby/saas/`, separate FastAPI service):
+
+```bash
+PYTHONPATH=. python3 -m unittest \
+  tests.test_saas_control_plane \
+  tests.test_saas_auth_backup \
+  tests.test_saas_runtime \
+  -v
 ```
 
 New plugins require strategy tests, indicator tests, and chart legend coverage.

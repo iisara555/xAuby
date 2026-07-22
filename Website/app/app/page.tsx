@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity as ActivityIcon, ArrowRight, BarChart3, Bot as BotIcon, Pause, Play, Radio, ShieldCheck, TrendingUp, WalletCards, WifiOff } from "lucide-react";
+import { Activity as ActivityIcon, ArrowRight, BarChart3, Bot as BotIcon, Pause, Play, Radio, ShieldCheck, TrendingDown, TrendingUp, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { CandleChart } from "@/components/candle-chart";
@@ -161,25 +161,30 @@ export default function DashboardPage() {
           </article>
         )}
         <article className="card hero-card">
-          <div className="card-kicker"><span>Portfolio equity</span><span>Live estimate</span></div>
+          <div className="card-kicker"><span>Portfolio equity</span><span>{bot?.exchange_connection ? `Live · ${target?.label ?? "OKX"}` : "Estimate"}</span></div>
           <div className="hero-value">{Number.isFinite(equityNumber) ? `$${formatNumber(equityNumber)}` : "—"}<small>USDT</small></div>
           <div className="hero-secondary-value">
             <strong>{formatApproxBaht(equityThb)}</strong>
             <span>{usdThbRate == null ? "FX rate unavailable" : `FX ${formatNumber(usdThbRate, 2)} THB / USDT`}</span>
           </div>
           <div className={`hero-pnl ${pnlTone}`}>
-            <div><span>{positionOpen ? "Unrealized PnL" : "Last realized PnL"}</span><strong>{positionOpen || lastPnlConfirmed ? `${formatSigned(pnl)} USDT` : "—"}</strong></div>
+            <div><span>PnL</span><strong>{positionOpen || lastPnlConfirmed ? `${formatSigned(pnl)} USDT` : "—"}</strong></div>
             <div><span>Return</span><strong>{positionOpen || lastPnlConfirmed ? formatSignedPercent(pnlPct) : "—"}</strong></div>
-            <small>{positionOpen ? formatApproxBaht(pnlThb, true, 2) : lastPnlConfirmed ? `${target?.label ?? "Exchange"} verified` : "No verified realized PnL yet"}</small>
+            <small>
+              <span className="hero-pnl-tag">{positionOpen ? "Unrealized" : lastPnlConfirmed ? `Realized · ${target?.label ?? "OKX"} confirmed` : "No closed trades yet"}</span>
+              {positionOpen || lastPnlConfirmed ? formatApproxBaht(pnlThb, true, 2) : ""}
+            </small>
           </div>
           <div className="hero-allocation">
             <div className="hero-allocation-head"><span>Capital allocation</span><strong>{totalForAllocation ? `${formatNumber(exposurePct, 1)}% deployed` : "Waiting for equity"}</strong></div>
-            <div className="hero-allocation-track" role="meter" aria-label="Capital deployed" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(exposurePct)}><span style={{ width: `${exposurePct}%` }} /></div>
-            <div className="hero-allocation-legend"><span>Available <b>{totalForAllocation ? `${formatNumber(cashPct, 1)}%` : "—"}</b></span><span>Exposure <b>{positionOpen ? `${formatNumber(exposurePct, 1)}%` : "0%"}</b></span></div>
-          </div>
-          <div className="hero-foot">
-            <div><span>USDT balance</span><strong>{formatNumber(cash)} <small>{formatApproxBaht(cashThb)}</small></strong></div>
-            <div><span>24h market move</span><strong className={pct24h >= 0 ? "positive" : "negative"}>{pct24h >= 0 ? "+" : ""}{formatNumber(pct24h)}%</strong></div>
+            <div className="hero-allocation-track" role="meter" aria-label="Capital deployed" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(exposurePct)}>
+              <span className="seg-exposure" style={{ width: `${exposurePct}%` }} />
+              <span className="seg-cash" style={{ width: `${cashPct}%` }} />
+            </div>
+            <div className="hero-allocation-legend">
+              <span><i className="dot-cash" />Cash <b>{formatNumber(cash)}{cashThb == null ? "" : <small>{formatApproxBaht(cashThb)}</small>}</b></span>
+              <span><i className="dot-exposure" />Exposure <b>{positionOpen ? <>{formatNumber(exposure)}{exposureThb == null ? "" : <small>{formatApproxBaht(exposureThb)}</small>}</> : "—"}</b></span>
+            </div>
           </div>
         </article>
 
@@ -218,22 +223,6 @@ export default function DashboardPage() {
 
         <MarketContext state={focus} stale={snapshot?.stale} />
 
-        <article className="card portfolio-card">
-          <div className="card-kicker"><span><WalletCards size={15} /> Portfolio</span><span>Live balance</span></div>
-          <div className="portfolio-total">{Number.isFinite(equityNumber) ? formatNumber(equityNumber) : "—"}<small>USDT equity</small><strong>{formatApproxBaht(equityThb)}</strong></div>
-          <div className="allocation-track" aria-label="Portfolio allocation">
-            <span className="allocation-cash" style={{ width: `${cashPct}%` }} />
-            <span className="allocation-exposure" style={{ width: `${exposurePct}%` }} />
-          </div>
-          <div className="allocation-legend"><span><i className="allocation-cash-dot" />USDT cash <strong>{formatNumber(cash)} <small>{formatApproxBaht(cashThb)}</small></strong></span><span><i className="allocation-exposure-dot" />Open exposure <strong>{positionOpen ? `${formatNumber(exposure)} · ${formatApproxBaht(exposureThb)}` : "—"}</strong></span></div>
-          <div className="portfolio-stat-grid">
-            <div><span>{positionOpen ? "Unrealized PnL" : "Last realized PnL"}</span><strong className={pnlTone}>{lastPnlConfirmed || positionOpen ? `${formatSigned(pnl)} · ${formatSignedPercent(pnlPct)}` : "—"}</strong><small>{positionOpen ? formatApproxBaht(pnlThb, true, 2) : ""}</small></div>
-            <div><span>{positionOpen ? "Fees estimated" : "Realized fees"}</span><strong>{positionOpen ? formatNumber(valueAt(position, "estimated_total_fees")) : lastPnlConfirmed ? formatNumber(valueAt(lastClosed ?? {}, "total_fees")) : "—"}</strong></div>
-            <div><span>Margin</span><strong>{positionOpen ? String(valueAt(position, "margin_mode") ?? "—") : "—"}</strong></div>
-            <div><span>PnL source</span><strong>{lastPnlConfirmed && !positionOpen ? `${target?.label ?? "Exchange"} verified` : "Tenant"}</strong></div>
-          </div>
-        </article>
-
         <article className="card signal-card">
           <div className="card-kicker"><span><BotIcon size={15} /> Strategy pulse</span><span>{symbol}</span></div>
           <div className="signal-orb"><BotIcon size={28} /><span>{displaySignal}</span></div>
@@ -248,7 +237,7 @@ export default function DashboardPage() {
         <article className="card market-card">
           <div className="card-kicker"><span><BarChart3 size={15} /> Market snapshot</span><span>{snapshot?.stale ? "Delayed" : "Live"}</span></div>
           <div className="market-price">{formatNumber(price)}<small>USDT</small></div>
-          <div className="market-change"><TrendingUp size={16} /><strong className={pct24h >= 0 ? "positive" : "negative"}>{pct24h >= 0 ? "+" : ""}{formatNumber(pct24h)}%</strong><span>24h change</span></div>
+          <div className={`market-change ${pct24h >= 0 ? "positive" : "negative"}`}>{pct24h >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}<strong className={pct24h >= 0 ? "positive" : "negative"}>{pct24h >= 0 ? "+" : ""}{formatNumber(pct24h)}%</strong><span>24h change</span></div>
           <div className="market-levels"><span><small>24h high</small><strong>{formatNumber(valueAt(focus, "high_24h"))}</strong></span><span><small>24h low</small><strong>{formatNumber(valueAt(focus, "low_24h"))}</strong></span></div>
         </article>
 

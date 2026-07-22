@@ -1,12 +1,20 @@
 # VPS Latency Checks
 
-Use this when the bot feels slow, the TUI lags, or Binance requests time out.
+Use this when the bot feels slow, the TUI lags, or exchange requests time out.
 The goal is to separate network latency from local VPS load or disk I/O.
 
 ## Quick Check
 
 ```bash
 ./venv/bin/python scripts/vps_latency_check.py
+```
+
+The script's default targets are still `api.binance.th` / `www.binance.th`
+(legacy default). The live runtime is OKX (`api.okx.com`), so pass it
+explicitly when checking the actual trading path:
+
+```bash
+./venv/bin/python scripts/vps_latency_check.py --host api.okx.com
 ```
 
 JSON output for logging/comparison:
@@ -17,7 +25,7 @@ JSON output for logging/comparison:
 
 ## What To Look For
 
-- `curl total`: rough HTTPS request time to `api.binance.th` / `www.binance.th`.
+- `curl total`: rough HTTPS request time to the target host(s) (`api.okx.com` for the live path; `api.binance.th` / `www.binance.th` are the script's legacy defaults).
 - `curl ttfb`: time to first byte; high values usually mean routing/API latency.
 - `tcp443`: raw TCP connect time; high values point to network distance/routing.
 - `ping`: ICMP may be blocked or deprioritized, so treat it as a hint only.

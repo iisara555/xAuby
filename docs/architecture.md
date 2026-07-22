@@ -1,6 +1,18 @@
 # Architecture
 
-xAuby is a **single-process, multi-symbol** spot trading system for **Binance Thailand**. Configuration drives behavior; the engine does not hard-code pair lists, strategy choices, or chart overlays.
+xAuby is a **single-process, multi-symbol perpetual-swap** trading system,
+currently committed to **OKX** (`api.okx.com`) routed through the
+exchange-neutral **CCXT** adapter. Configuration drives behavior; the engine
+does not hard-code pair lists, strategy choices, or chart overlays. The native
+Binance.th spot gateway (`xauby/api/exchanges/exchange_binance.py`) still
+exists in the exchange plugin registry but is not the active baseline.
+
+A separate multi-tenant **SaaS control plane** (`xauby/saas/`, FastAPI) hosts
+isolated copies of this same engine for other operators, each in its own OS
+user / systemd unit / config root — see the root
+[README.md#saas-control-plane](../README.md#saas-control-plane). It sits
+outside this diagram; every box below describes one tenant's (or the
+single-owner) engine process.
 
 ## Layered view
 
@@ -30,8 +42,8 @@ flowchart TB
   end
 
   subgraph data [Data plane]
-    CLIENT["Binance.th REST client"]
-    WS["WebSocket tickers"]
+    CLIENT["CCXT REST client (OKX)"]
+    WS["WebSocket tickers (ccxt.pro)"]
     DB[("LiteDB / SQLite")]
   end
 
@@ -109,8 +121,7 @@ Current production-safe pattern:
 
 | Symbol | Strategy baseline | Router state |
 |--------|-------------------|--------------|
-| `XAUTUSDT` | `cdc_action_zone` | Off |
-| `BTCUSDT` | `supertrend_ema200` | Sim soak |
+| `XAU` (XAUUSDT) | `xauby_actionzone` (CDC Action Zone V3) | Off |
 
 ## Notification pipeline
 

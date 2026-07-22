@@ -31,7 +31,7 @@ Current display mapping:
 
 | Strategy | Zones | Lines |
 |----------|-------|-------|
-| `cdc_action_zone` | Blue / Green / Red / Neutral | EMA12, EMA26 |
+| `xauby_actionzone` (CDC Action Zone) | Blue / Green / Red / Neutral | EMA12, EMA26 |
 | `supertrend_ema200` | ST Bull / ST Bear / Neutral | SuperTrend, EMA200 |
 | `bbkc_squeeze` | Compressed / Breakout / Neutral | Bollinger Bands, Keltner Channels |
 | `bbrsi_mean_reversion` | Oversold / Neutral / Overbought | Bollinger Bands |
@@ -39,6 +39,7 @@ Current display mapping:
 | `ict_lite_strategy` | Sweep Low / Reclaim / MSS / Neutral | EMA Fast, EMA Slow, Recent High, Recent Low |
 | `rsi2_meanrev` | Buy Setup / Oversold / Exit / Neutral | EMA200, SMA5 |
 | `vol_breakout` | Breakout / ATR Expansion / Neutral | Range High, Exit EMA |
+| `xauby_donchian_trend` | Trend / Breakout / Neutral | Donchian High, Donchian Low |
 
 If the legend looks like CDC while the pair uses another strategy, check the indicator mapping first.
 
@@ -93,7 +94,7 @@ The UI adapts to terminal width (see `xauby/ui/textual_tui/layout.py`):
 | 75-109 | Single column, full-width panels |
 | < 75 | Compact phone rows, shorter chart |
 
-Charts use each pair's `primary_timeframe` from the whitelist. Current baseline: XAUT uses 4H and BTC uses 1H.
+Charts use each pair's `primary_timeframe` from the whitelist. Current baseline: the single live pair, XAU (OKX XAUUSDT), uses 4H with a 1D confirm timeframe.
 
 ## Position partial TP display
 
@@ -158,12 +159,15 @@ pgrep -af run_xauby
 
 ```text
 +-- xAuby --------------------------------+
-| XAUTUSDT < > BTCUSDT    LIVE / SIM      |
+| XAUUSDT                       LIVE      |
 +-----------------------------------------+
 | strategy-aware chart + legend           |
 +-----------------------------------------+
 | Pair | Price | Mode | Pos | Sig | Regime|
-| XAUT | 4496  | LIVE | IDLE| HOLD| BULL  |
-| BTC  | 72650 | SIM  | IDLE| HOLD| VOL   |
+| XAU  | 4496  | LIVE | IDLE| HOLD|  -    |
 +-----------------------------------------+
 ```
+
+With more than one whitelisted pair, `[`/`]` cycles between them and the table
+grows one row per pair, same as the multi-pair layout used before the XAU-only
+baseline.

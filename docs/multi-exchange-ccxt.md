@@ -1,7 +1,13 @@
 # Multi-Exchange CCXT Adapter
 
-xAuby can use a CCXT REST adapter for exchanges outside the built-in Binance.th
-client. The Binance.th path remains the default for existing deployments.
+xAuby routes exchange access through a pluggable `IExchangeGateway`. The
+**current committed live path is CCXT against OKX** USDT-settled perpetual
+swap (`exchange.provider: ccxt`, `ccxt_id: okx`) — see
+[OKX USDT perpetual and short safety](#okx-usdt-perpetual-and-short-safety)
+below. The native Binance.th REST/WS client (`LiteBinanceClient` /
+`BinanceWebSocket`, `xauby/api/exchanges/exchange_binance.py`) still exists in
+the plugin registry (`provider: binance`) for spot deployments or older
+configs, but it is not the active baseline.
 
 ## Switching exchange from the launcher (no file editing)
 
@@ -35,7 +41,7 @@ exchange:
   base_url: https://api.example.test
   params:
     options:
-      defaultType: spot
+      defaultType: spot   # the live OKX baseline uses `swap` — see below
 ```
 
 Current adapter behavior:
