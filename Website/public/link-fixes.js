@@ -1,16 +1,185 @@
 (() => {
   const sourceUrl = "https://github.com/iisara555/xAuby";
 
-  const rounded = (element, radius = "14px") => {
+  // The product UI (Website/app/globals.css) is built on cut corners, not
+  // rounded rectangles — the landing page's own design agrees, using radius
+  // only for 50% dots. We tag surfaces here and let CSS own the geometry, so
+  // the treatment survives after the MutationObserver disconnects.
+  const CONTROL_TAGS = new Set(["BUTTON", "INPUT", "SELECT", "TEXTAREA"]);
+  // Below this, an element is typography or a chip, not a surface. The old
+  // blanket selector matched inline-gradient text spans, which is exactly how
+  // a corner treatment ends up on a headline.
+  const MIN_SURFACE = 96;
+
+  const tagCutCorners = (element) => {
+    if (element.dataset.xnCut) return;
     const inlineStyle = element.getAttribute("style") || "";
     if (inlineStyle.includes("border-radius: 50%") || element.style.borderRadius === "50%") return;
-    element.style.borderRadius = radius;
+    // Never clip the pinned hero or any scroll-pinned ancestor: clip-path
+    // establishes a containing block and would break sticky positioning.
+    if (element.closest("[data-hero-scrub], .xn-hero-sticky")) return;
+
+    if (CONTROL_TAGS.has(element.tagName)) {
+      element.dataset.xnCut = "control";
+      return;
+    }
+    const rect = element.getBoundingClientRect();
+    if (rect.width < MIN_SURFACE || rect.height < MIN_SURFACE) return;
+    if (window.getComputedStyle(element).position === "sticky") return;
+    element.dataset.xnCut = "card";
   };
 
-  const applyRoundedSystem = () => {
+  const applyCutCornerSystem = () => {
     document
       .querySelectorAll("button, input, select, textarea, [style*='background'], [style*='border:']")
-      .forEach((element) => rounded(element));
+      .forEach((element) => tagCutCorners(element));
+  };
+
+  // Everything visual lives in CSS rather than inline styles: the observer
+  // below disconnects ~15s after load, and CSS keeps working after that.
+  const installPolishStyles = () => {
+    if (document.getElementById("xauby-polish")) return;
+    const style = document.createElement("style");
+    style.id = "xauby-polish";
+    style.textContent = `
+      :root {
+        --xn-card-cut: 14px;
+        --xn-control-cut: 7px;
+        --xn-accent: #ff431a;
+        --xn-ease: cubic-bezier(.22,.61,.36,1);
+      }
+
+      /* --- Cut corners, mirroring globals.css. clip-path also clips the box
+         shadow, so drop it the way the product cards do. --- */
+      @supports (clip-path: polygon(0 0)) {
+        [data-xn-cut="card"] {
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          clip-path: polygon(
+            var(--xn-card-cut) 0, 100% 0,
+            100% calc(100% - var(--xn-card-cut)),
+            calc(100% - var(--xn-card-cut)) 100%,
+            0 100%, 0 var(--xn-card-cut)
+          );
+        }
+        [data-xn-cut="control"] {
+          border-radius: 0 !important;
+          clip-path: polygon(
+            var(--xn-control-cut) 0, 100% 0,
+            100% calc(100% - var(--xn-control-cut)),
+            calc(100% - var(--xn-control-cut)) 100%,
+            0 100%, 0 var(--xn-control-cut)
+          );
+        }
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        /* --- Reveal: crisper easing, and a cascade so a list arrives as a
+           sequence instead of one block. --- */
+        [style*="translateY(14px)"],
+        [style*="translateY(12px)"] {
+          transition-duration: 420ms !important;
+          transition-timing-function: var(--xn-ease) !important;
+        }
+        /* The revealed items carry an inline \`transition\` shorthand, which
+           resets transition-delay to 0s and outranks this sheet — so the
+           cascade has to be !important to land. Scoped to the reveal
+           signature so ordinary lists are untouched. */
+        li[style*="transition"]:nth-child(1) { transition-delay: 0ms !important; }
+        li[style*="transition"]:nth-child(2) { transition-delay: 45ms !important; }
+        li[style*="transition"]:nth-child(3) { transition-delay: 90ms !important; }
+        li[style*="transition"]:nth-child(4) { transition-delay: 135ms !important; }
+        li[style*="transition"]:nth-child(5) { transition-delay: 180ms !important; }
+        li[style*="transition"]:nth-child(6) { transition-delay: 225ms !important; }
+        li[style*="transition"]:nth-child(7) { transition-delay: 270ms !important; }
+        li[style*="transition"]:nth-child(n+8) { transition-delay: 315ms !important; }
+
+        /* --- Hover: quick in, slower out, with a lift and an accent edge. --- */
+        [data-xn-cut="card"], [data-xn-cut="control"] {
+          transition: border-color 200ms var(--xn-ease), background 200ms var(--xn-ease),
+                      transform 200ms var(--xn-ease);
+        }
+        [data-xn-cut="card"]:hover, [data-xn-cut="control"]:hover {
+          transition-duration: 120ms;
+          transform: translateY(-1px);
+        }
+        [data-xn-cut="control"]:hover { border-color: var(--xn-accent) !important; }
+
+        /* --- Signature moment: the regime router re-deciding. The decision
+           panel is the aria-live region; when its text changes the LED pulses,
+           the verdict rises into place and an accent rule sweeps the rule
+           above it. --- */
+        [aria-live="polite"] > span[aria-hidden="true"] {
+          transition: background 260ms var(--xn-ease), box-shadow 260ms var(--xn-ease);
+        }
+        .xn-router-changed > span[aria-hidden="true"] {
+          animation: xn-led-pulse 620ms var(--xn-ease);
+        }
+        .xn-router-changed > div > div > strong {
+          animation: xn-verdict-rise 380ms var(--xn-ease);
+        }
+        .xn-router-changed::before {
+          content: "";
+          position: absolute; left: 0; top: -1px; height: 1px;
+          background: var(--xn-accent);
+          animation: xn-rule-sweep 560ms var(--xn-ease);
+        }
+        @keyframes xn-led-pulse {
+          0%   { transform: scale(1);   box-shadow: 0 0 0 1px rgba(236,233,226,.25); }
+          38%  { transform: scale(1.5); box-shadow: 0 0 0 6px rgba(255,67,26,.16); }
+          100% { transform: scale(1);   box-shadow: 0 0 0 1px rgba(236,233,226,.25); }
+        }
+        @keyframes xn-verdict-rise {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: none; }
+        }
+        @keyframes xn-rule-sweep {
+          from { width: 0; opacity: 1; }
+          to   { width: 100%; opacity: 0; }
+        }
+      }
+
+      /* Pressed regime reads as selected, not merely hovered. */
+      [aria-pressed="true"] {
+        border-color: var(--xn-accent) !important;
+        box-shadow: inset 0 0 0 1px rgba(255,67,26,.35);
+      }
+    `;
+    document.head.appendChild(style);
+  };
+
+  // Flag the decision panel for one animation cycle whenever the router's
+  // verdict actually changes. Text-driven, so it works for any control that
+  // updates the live region.
+  //
+  // This gets its own observer rather than riding the main one: that one is
+  // disconnected ~15s after load, which is precisely when a visitor starts
+  // clicking the regime buttons.
+  let routerVerdict = null;
+  let routerWatched = null;
+
+  const flashRouter = (panel) => {
+    const verdict = panel.textContent?.trim() ?? "";
+    if (!verdict) return;
+    if (routerVerdict === null) { routerVerdict = verdict; return; }
+    if (verdict === routerVerdict) return;
+    routerVerdict = verdict;
+    if (getComputedStyle(panel).position === "static") panel.style.position = "relative";
+    panel.classList.remove("xn-router-changed");
+    void panel.offsetWidth; // restart the animation
+    panel.classList.add("xn-router-changed");
+  };
+
+  const installRouterWatch = () => {
+    const panel = document.querySelector('[aria-live="polite"]');
+    if (!panel || routerWatched === panel) return;
+    routerWatched = panel;
+    routerVerdict = panel.textContent?.trim() || null;
+    new MutationObserver(() => flashRouter(panel)).observe(panel, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
   };
 
   const replaceExactText = (selector, from, to) => {
@@ -228,7 +397,6 @@
     link.textContent = "Research report";
     link.style.cssText =
       "display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:12.5px;font-weight:600;letter-spacing:.02em;color:#ff7a4d;";
-    rounded(link, "10px");
     nav.prepend(link);
   };
 
@@ -326,7 +494,7 @@
         <div style="padding:18px 20px;border:1px solid rgba(255,122,77,.62);background:rgba(255,122,77,.08);"><strong style="font-size:13px;">Honest caveats</strong><p style="margin:7px 0 0;max-width:80ch;font-size:12px;line-height:1.6;color:rgba(236,233,226,.74);">PAXGUSDT is a proxy, not the traded XAUUSDT perpetual. Funding uses a flat 0.004%/8h approximation, not exchange funding history. Drawdown is measured on closed-trade equity; intra-trade excursions run deeper. Past performance is research evidence, not a promise of returns.</p></div>
       </div>`;
     footer.before(section);
-    applyRoundedSystem();
+    applyCutCornerSystem();
   };
 
   const updateLinks = () => {
@@ -354,7 +522,9 @@
     // The login/nav rules must exist even before the hero section streams in,
     // otherwise a slow unpack leaves the header without the mobile fallback.
     installHeroScrollFixStyles();
-    applyRoundedSystem();
+    installPolishStyles();
+    applyCutCornerSystem();
+    installRouterWatch();
     applyHeroScrollFix();
     updateCurrentConfiguration();
     addResearchReport();

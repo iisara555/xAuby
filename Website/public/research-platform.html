@@ -1,43 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="media-src 'none'">
-  <title>Bundled Page</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#060006">
+  <title>xAuby | Gold Trading Research Platform</title>
+  <meta name="description" content="A research-first automated gold trading platform with documented validation before capital deployment.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="xAuby | Research first. Capital second.">
+  <meta property="og:description" content="Gold Trading Research Platform">
+  <meta property="og:image" content="/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="xAuby Gold Trading Research Platform">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="xAuby | Research first. Capital second.">
+  <meta name="twitter:description" content="Gold Trading Research Platform">
+  <meta name="twitter:image" content="/og.png">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #060006; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-    #__bundler_loading { position: fixed; bottom: 20px; right: 20px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; color: #666; background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); z-index: 10000; }
-    #__bundler_thumbnail { position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #060006; z-index: 9999; }
-    #__bundler_thumbnail svg { width: 100%; height: 100%; object-fit: contain; }
-    #__bundler_placeholder { color: #999; font-size: 14px; }
-    /* Shared rounded system for the embedded promotional experience. */
-    button,
-    input,
-    select,
-    textarea,
-    [style*="background"]:not([style*="border-radius: 50%"]),
-    [style*="border:"]:not([style*="border-radius: 50%"]) {
-      border-radius: 14px !important;
+    /* Mirrors the product design tokens in Website/app/globals.css. globals.css
+       cannot be imported here: this is a static file served outside Next. */
+    :root {
+      --xn-bg: #060006;
+      --xn-paper: #ece9e2;
+      --xn-accent: #ff431a;
+      --xn-card-cut: 14px;
+      --xn-control-cut: 7px;
+      --xn-detail-cut: 6px;
+      --xn-grotesque: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
     }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--xn-bg); display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: var(--xn-grotesque); }
+    /* Loader reads as part of the product, not as build tooling. */
+    #__bundler_loading {
+      position: fixed; bottom: 20px; right: 20px; z-index: 10000;
+      padding: 8px 13px;
+      font: 600 12px/1.4 var(--xn-grotesque);
+      letter-spacing: .04em; text-transform: uppercase;
+      color: var(--xn-paper);
+      background: #151514;
+      border: 1px solid rgba(236,233,226,.14);
+      clip-path: polygon(var(--xn-detail-cut) 0, 100% 0, 100% calc(100% - var(--xn-detail-cut)), calc(100% - var(--xn-detail-cut)) 100%, 0 100%, 0 var(--xn-detail-cut));
+    }
+    #__bundler_thumbnail { position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: var(--xn-bg); z-index: 9999; }
+    #__bundler_thumbnail svg { width: 100%; height: 100%; object-fit: contain; }
+    #__bundler_placeholder { color: rgba(236,233,226,.55); font-size: 14px; }
+    @media (prefers-reduced-motion: no-preference) {
+      /* Same rhythm as the bundle's own xn-breathe. */
+      #__bundler_thumbnail .xn-thumb-mark { animation: xn-thumb-breathe 4.5s ease-in-out infinite; }
+    }
+    @keyframes xn-thumb-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
   </style>
   <noscript>
     <style>#__bundler_loading { display: none; }</style>
-    <div style="position:fixed;bottom:12px;left:12px;font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;color:#999;background:rgba(255,255,255,0.9);padding:6px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.08);z-index:10000;">
+    <div style="position:fixed;bottom:12px;left:12px;font:600 12px/1.4 'Space Grotesk',ui-sans-serif,system-ui,sans-serif;color:#ece9e2;background:#151514;border:1px solid rgba(236,233,226,.14);padding:8px 13px;z-index:10000;">
       This page requires JavaScript to display.
     </div>
   </noscript>
 </head>
 <body>
   <div id="__bundler_thumbnail">
-  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="xAuby">
     <rect width="1200" height="800" fill="#060006"></rect>
-    <circle cx="500" cy="360" r="44" fill="#ff431a"></circle>
-    <text x="580" y="400" font-family="sans-serif" font-size="120" font-weight="700" fill="#ece9e2">xAuby</text>
+    <g class="xn-thumb-mark">
+      <circle cx="500" cy="360" r="44" fill="#ff431a"></circle>
+      <text x="580" y="400" font-family="'Space Grotesk', ui-sans-serif, system-ui, sans-serif" font-size="120" font-weight="700" letter-spacing="-6" fill="#ece9e2">xAuby</text>
+    </g>
     <rect x="360" y="480" width="480" height="4" fill="#ece9e2" opacity=".25"></rect>
   </svg>
 </div>
-  <div id="__bundler_loading">Unpacking...</div>
+  <div id="__bundler_loading">Loading research…</div>
 
   <script>
     
@@ -77,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const manifestEl = document.querySelector('script[type="__bundler/manifest"]');
     const templateEl = document.querySelector('script[type="__bundler/template"]');
     if (!manifestEl || !templateEl) {
-      setStatus('Error: missing bundle data');
+      setStatus('Could not load this page. Try refreshing.');
       console.error('[bundler] Missing script tags — manifestEl:', !!manifestEl, 'templateEl:', !!templateEl);
       return;
     }
@@ -86,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     let template = JSON.parse(templateEl.textContent);
 
     const uuids = Object.keys(manifest);
-    setStatus('Unpacking ' + uuids.length + ' assets...');
+    setStatus('Loading research…');
 
     const blobUrls = {};
     const resourceBlobs = {};
@@ -149,7 +182,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // consumers read these Blobs directly. Survives the swap like the error sink.
     window.__resourceBlobs = resourceBlobs;
 
-    setStatus('Rendering...');
+    setStatus('Almost ready…');
     for (const uuid of uuids) template = template.split(uuid).join(blobUrls[uuid]);
 
     // Strip integrity + crossorigin — blob URLs from a file:// document inherit
@@ -182,8 +215,34 @@ document.addEventListener('DOMContentLoaded', async function() {
     // DOMParser/replaceWith are inert per spec — re-create each with
     // createElement so they execute, awaiting onload for src scripts to
     // preserve ordering (React before ReactDOM before Babel before text/babel).
+    // The bundle's own <html> carries no title or lang, so replaceWith would
+    // blank both. Crawlers read the pre-swap markup, but a live visitor would
+    // be left with an untitled tab — carry them across.
+    const pageTitle = document.title;
+    const pageLang = document.documentElement.lang;
+
     const doc = new DOMParser().parseFromString(template, 'text/html');
     document.documentElement.replaceWith(doc.documentElement);
+
+    if (pageLang) document.documentElement.lang = pageLang;
+    if (pageTitle && !document.title) document.title = pageTitle;
+
+    // replaceWith destroys the thumbnail in the same frame, so it cannot be
+    // cross-faded. Instead carry the brand ground into the new document and
+    // fade it off once the first frame has painted, which hides the swap.
+    (function fadeInContent() {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const veil = document.createElement('div');
+      veil.setAttribute('aria-hidden', 'true');
+      veil.style.cssText = 'position:fixed;inset:0;z-index:9998;background:#060006;pointer-events:none;opacity:1;transition:opacity 320ms ease-out;';
+      document.body.appendChild(veil);
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          veil.style.opacity = '0';
+          setTimeout(function () { veil.remove(); }, 400);
+        });
+      });
+    })();
     const dead = Array.from(document.scripts);
     for (const old of dead) {
       const s = document.createElement('script');
@@ -208,7 +267,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       window.Babel.transformScriptTags();
     }
   } catch (err) {
-    setStatus('Error unpacking: ' + err.message);
+    setStatus('Could not load this page. Try refreshing.');
     console.error('Bundle unpack error:', err);
   }
 });
