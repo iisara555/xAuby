@@ -338,6 +338,20 @@ class TestTradingEngineConcurrency(unittest.TestCase):
         self.assertEqual(errors, [], f"Concurrency errors: {errors}")
         self.assertGreater(len(calls), 0)
 
+    def test_invalidated_balance_cache_rejects_inflight_stale_refresh(self):
+        self.engine._balance_cache = {"USDT": {"available": 65.03, "reserved": 0.0}}
+        generation = self.engine._balance_cache_generation
+
+        self.engine._invalidate_balance_cache()
+        stored = self.engine._store_balance_cache(
+            {"USDT": {"available": 65.03, "reserved": 0.0}},
+            expected_generation=generation,
+        )
+
+        self.assertFalse(stored)
+        cached, _age = self.engine._balance_cache_snapshot()
+        self.assertEqual(cached, {})
+
     @patch("xauby.macro.sentiment_guard.evaluate_sentiment_guard")
     def test_guard_thread_no_duplicate(self, mock_evaluate):
         """_refresh_guard_async should not spawn duplicate threads when called rapidly."""

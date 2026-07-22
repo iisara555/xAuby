@@ -492,6 +492,11 @@ execution:
   order_poll_initial_seconds: 0.15
   order_poll_max_seconds: 1.0
   symbol_filters_cache_ttl_seconds: 3600
+  # A stop-and-reverse must use the full configured allocation. After the
+  # close fill, poll OKX directly for released margin; remain flat if it has
+  # not settled within this window and retry on the next strategy tick.
+  reverse_balance_timeout_seconds: 5.0
+  reverse_balance_poll_interval_seconds: 0.25
   # Adverse execution slippage (fill vs quoted price) above this many basis
   # points raises a Telegram alert. Slippage is also attached to ORDER_FILLED /
   # POSITION_OPENED/CLOSED events and the fill log line. 0 disables the alert.

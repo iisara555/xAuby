@@ -39,6 +39,28 @@ class _ShortBroker:
         return SimpleNamespace(success=True, price=price, qty=qty, error="")
 
 
+class _LiveShortClient:
+    capabilities = {"swap": True, "positions": True, "reduce_only": True}
+
+    def __init__(self, available_sequence):
+        self.available_sequence = list(available_sequence)
+        self.balance_calls = 0
+
+    def set_margin_mode(self, symbol, mode):
+        return None
+
+    def set_leverage(self, symbol, leverage):
+        return None
+
+    def get_balances(self):
+        self.balance_calls += 1
+        if len(self.available_sequence) > 1:
+            available = self.available_sequence.pop(0)
+        else:
+            available = self.available_sequence[0]
+        return {"USDT": {"available": available, "reserved": 0.0}}
+
+
 class _ShortEngine(OrderMixin):
     def __init__(self):
         self.config = {
@@ -81,6 +103,7 @@ class _ShortEngine(OrderMixin):
         self.db = _ShortDB()
         self.broker = _ShortBroker()
         self.events = []
+        self.last_log_message = ""
 
     def _sym(self):
         return "XAUUSDT"
@@ -95,6 +118,9 @@ class _ShortEngine(OrderMixin):
 
     def _execution_mode(self, symbol):
         return "sim"
+
+    def _quote_asset(self):
+        return "USDT"
 
     def _strategy_name_for_symbol(self, symbol):
         return "cdc_action_zone"
@@ -177,6 +203,48 @@ class _OrderEngine(OrderMixin):
 
 
 class TestOrderAllocationGuard(unittest.TestCase):
+    def test_reverse_short_waits_for_full_balance_before_opening(self):
+        engine = _ShortEngine()
+        engine.client = _LiveShortClient([30.0, 100.0])
+        engine._execution_mode = lambda symbol: "live"
+        engine.config["execution"] = {
+            "reverse_balance_timeout_seconds": 0.1,
+            "reverse_balance_poll_interval_seconds": 0.001,
+        }
+        signal = SimpleNamespace(stop_loss_distance=0.0, stop_loss_price=0.0)
+
+        ok = engine.execute_open_short(
+            signal,
+            ticker_price=100.0,
+            symbol="XAUUSDT",
+            reverse_entry=True,
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(engine.client.balance_calls, 2)
+        self.assertAlmostEqual(engine.broker.notional, 65.0)
+
+    def test_reverse_short_timeout_does_not_submit_partial_order(self):
+        engine = _ShortEngine()
+        engine.client = _LiveShortClient([30.0])
+        engine._execution_mode = lambda symbol: "live"
+        engine.config["execution"] = {
+            "reverse_balance_timeout_seconds": 0.0,
+            "reverse_balance_poll_interval_seconds": 0.001,
+        }
+        signal = SimpleNamespace(stop_loss_distance=0.0, stop_loss_price=0.0)
+
+        ok = engine.execute_open_short(
+            signal,
+            ticker_price=100.0,
+            symbol="XAUUSDT",
+            reverse_entry=True,
+        )
+
+        self.assertFalse(ok)
+        self.assertIsNone(engine.broker.notional)
+        self.assertTrue(any(event == "reverse_open_deferred" for event, _ in engine.events))
+
     def test_cdc_short_is_capped_by_pair_allocation(self):
         engine = _ShortEngine()
         signal = SimpleNamespace(stop_loss_distance=0.0, stop_loss_price=0.0)

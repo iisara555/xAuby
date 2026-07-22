@@ -695,9 +695,11 @@ class LoopMixin:
     def _refresh_balance_cache(self) -> None:
         if self._all_symbols_sim():
             return
+        with self._balance_lock:
+            generation = int(getattr(self, "_balance_cache_generation", 0) or 0)
         try:
             b = self.client.get_balances()
-            self._store_balance_cache(b)
+            self._store_balance_cache(b, expected_generation=generation)
         except Exception as e:
             logger.debug(f"Background balance refresh failed: {e}")
 
@@ -705,10 +707,28 @@ class LoopMixin:
         with self._balance_lock:
             return dict(self._balance_cache or {}), time.time() - self._balance_last_update
 
-    def _store_balance_cache(self, balances: Dict[str, Any]) -> None:
+    def _store_balance_cache(
+        self,
+        balances: Dict[str, Any],
+        *,
+        expected_generation: Optional[int] = None,
+    ) -> bool:
         with self._balance_lock:
+            current_generation = int(getattr(self, "_balance_cache_generation", 0) or 0)
+            if expected_generation is not None and expected_generation != current_generation:
+                return False
             self._balance_cache = dict(balances or {})
             self._balance_last_update = time.time()
+            return True
+
+    def _invalidate_balance_cache(self) -> None:
+        """Discard balances after a live fill changes available margin."""
+        with self._balance_lock:
+            self._balance_cache_generation = (
+                int(getattr(self, "_balance_cache_generation", 0) or 0) + 1
+            )
+            self._balance_cache = {}
+            self._balance_last_update = 0.0
 
     def _maybe_start_balance_refresh(self) -> None:
         if self._all_symbols_sim():
@@ -2279,6 +2299,11 @@ class LoopMixin:
             reverse_side = str(metadata.get("reverse_to_position_side") or "").upper()
             if reverse_side not in {"LONG", "SHORT"}:
                 return
+            if self._execution_mode(sym) == "live":
+                # The close fill changes isolated available margin. Discard the
+                # pre-close snapshot before exchange-flat confirmation and the
+                # direct settlement polling used by the reverse entry.
+                self._invalidate_balance_cache()
             refreshed = self.db.get_trade_state(sym)
             flat_reason = reverse_flat_block_reason(refreshed)
             if flat_reason:
@@ -2300,7 +2325,12 @@ class LoopMixin:
             reverse_reason = str(metadata.get("reverse_reason") or signal.reason or "")
             logger.info("Stop-and-reverse opening %s on %s: %s", reverse_side, sym, reverse_reason)
             if reverse_side == "SHORT":
-                self.execute_open_short(signal, ticker_price, symbol=sym)
+                self.execute_open_short(
+                    signal,
+                    ticker_price,
+                    symbol=sym,
+                    reverse_entry=True,
+                )
                 return
             self.execute_buy(
                 ticker_price,
@@ -2310,6 +2340,7 @@ class LoopMixin:
                 symbol=sym,
                 risk_pct_override=regime_risk_override,
                 sl_atr_mult_delta=regime_sl_delta,
+                reverse_entry=True,
             )
 
         if self.trading_mode == "semi_auto":

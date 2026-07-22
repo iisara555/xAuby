@@ -45,6 +45,7 @@ class EventType:
     # Orders
     ORDER_SUBMITTED = "order_submitted"
     ORDER_FILLED = "order_filled"
+    REVERSE_OPEN_DEFERRED = "reverse_open_deferred"
 
     # Regime / routing (P2)
     REGIME_CLASSIFIED = "regime_classified"

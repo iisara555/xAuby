@@ -14,6 +14,8 @@ class _IdleDB:
         self.saved_state = None
 
     def get_trade_state(self, symbol):
+        if self.saved_state is not None:
+            return dict(self.saved_state)
         return {"symbol": symbol, "state": "idle", "quantity": 0.0}
 
     def save_trade_state(self, **kwargs):
@@ -77,6 +79,20 @@ class _AccountModeClient(_FallbackClient):
             "okx account mode rejected request",
             raw={"data": [{"sCode": "51010"}]},
         )
+
+
+class _SettlingBalanceClient(_FallbackClient):
+    def __init__(self, available_sequence):
+        super().__init__(fill_limit=True)
+        self.available_sequence = list(available_sequence)
+
+    def get_balances(self):
+        self.balance_calls += 1
+        if len(self.available_sequence) > 1:
+            available = self.available_sequence.pop(0)
+        else:
+            available = self.available_sequence[0]
+        return {"USDT": {"available": available, "reserved": 0.0}}
 
 
 class _FallbackEngine(OrderMixin):
@@ -151,6 +167,81 @@ class _FallbackEngine(OrderMixin):
 
 
 class TestEntryMarketFallback(unittest.TestCase):
+    def test_reverse_buy_polls_direct_balance_and_opens_full_allocation(self):
+        client = _SettlingBalanceClient([65.03, 65.03, 179.55])
+        engine = _FallbackEngine(client, entry_market_fallback=True)
+        engine.config["execution"].update(
+            {
+                "reverse_balance_timeout_seconds": 0.1,
+                "reverse_balance_poll_interval_seconds": 0.001,
+            }
+        )
+        engine.config["strategy"]["config"]["cdc_action_zone"]["position_pct"] = 0.65
+        engine.config["portfolio"]["symbols"] = {
+            "BTCUSDT": {"allocation_pct": 65.0},
+        }
+        engine.get_equity = lambda ticker_price=None, symbol=None: 179.55
+        # A fresh-looking pre-close cache must be ignored by reverse_entry.
+        engine._balance_cache_snapshot = lambda: (
+            {"USDT": {"available": 65.03, "reserved": 0.0}},
+            0.1,
+        )
+        engine._balance_cache_ttl = 30.0
+
+        ok = engine.execute_buy(
+            ticker_price=100.0,
+            atr=1.0,
+            symbol="BTCUSDT",
+            reverse_entry=True,
+        )
+
+        self.assertTrue(ok)
+        self.assertEqual(client.balance_calls, 3)
+        self.assertEqual(len(client.orders), 1)
+        self.assertAlmostEqual(client.orders[0][2], 116.7075, places=4)
+        self.assertAlmostEqual(engine.db.saved_state["quantity"], 1.167075, places=6)
+
+    def test_reverse_buy_timeout_stays_flat_then_next_tick_opens_once(self):
+        client = _SettlingBalanceClient([65.03])
+        engine = _FallbackEngine(client, entry_market_fallback=True)
+        engine.config["execution"].update(
+            {
+                "reverse_balance_timeout_seconds": 0.0,
+                "reverse_balance_poll_interval_seconds": 0.001,
+            }
+        )
+        engine.config["strategy"]["config"]["cdc_action_zone"]["position_pct"] = 0.65
+        engine.config["portfolio"]["symbols"] = {
+            "BTCUSDT": {"allocation_pct": 65.0},
+        }
+        engine.get_equity = lambda ticker_price=None, symbol=None: 179.55
+
+        first = engine.execute_buy(
+            ticker_price=100.0,
+            atr=1.0,
+            symbol="BTCUSDT",
+            reverse_entry=True,
+        )
+
+        self.assertFalse(first)
+        self.assertEqual(client.orders, [])
+        deferred = [
+            payload
+            for event, payload in engine.events
+            if event == "reverse_open_deferred"
+        ]
+        self.assertEqual(len(deferred), 1)
+        self.assertEqual(deferred[0]["available_usdt"], 65.03)
+
+        client.available_sequence = [179.55]
+        second = engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT")
+        third = engine.execute_buy(ticker_price=100.0, atr=1.0, symbol="BTCUSDT")
+
+        self.assertTrue(second)
+        self.assertFalse(third)
+        self.assertEqual(len(client.orders), 1)
+        self.assertAlmostEqual(client.orders[0][2], 116.7075, places=4)
+
     def test_unfilled_limit_falls_back_to_market(self):
         client = _FallbackClient(fill_limit=False)
         engine = _FallbackEngine(client, entry_market_fallback=True)

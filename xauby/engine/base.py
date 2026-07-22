@@ -195,6 +195,11 @@ class BaseEngine:
         self._balance_cache: Dict[str, Any] = {}
         self._balance_lock = threading.Lock()
         self._balance_last_update = 0.0
+        # Incremented whenever order flow invalidates the cache.  Background
+        # refreshes capture the generation before their REST call and may only
+        # publish the result if it is still current; this prevents an in-flight
+        # pre-close snapshot from overwriting a post-close invalidation.
+        self._balance_cache_generation = 0
         self._balance_cache_ttl = float(
             self.config.get("trading", {}).get("balance_cache_ttl_seconds", 30.0)
         )

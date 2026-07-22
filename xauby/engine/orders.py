@@ -76,6 +76,96 @@ class OrderMixin:
                 pass
         return balances
 
+    def _store_direct_balance_snapshot(self, balances: Dict[str, Any]) -> None:
+        store_fn = getattr(self, "_store_balance_cache", None)
+        if callable(store_fn):
+            try:
+                store_fn(balances)
+            except Exception:
+                pass
+
+    def _invalidate_balances_after_fill(self) -> None:
+        invalidate_fn = getattr(self, "_invalidate_balance_cache", None)
+        if callable(invalidate_fn):
+            try:
+                invalidate_fn()
+            except Exception:
+                logger.debug("Balance cache invalidation failed", exc_info=True)
+
+    def _full_live_entry_balances(
+        self,
+        required_usdt: float,
+        symbol: str,
+        *,
+        wait_for_settlement: bool,
+    ) -> Tuple[Dict[str, Any], float, bool]:
+        """Return balances only when the full live-entry notional is available.
+
+        Reverse entries bypass the normal cache and poll the venue briefly so a
+        just-closed position has time to release isolated margin.  Ordinary CDC
+        entries retain the hot cache path, but still fail closed rather than
+        silently shrinking the strategy allocation.
+        """
+        required = max(0.0, float(required_usdt or 0.0))
+        quote = self._quote_asset()
+        cfg = self._execution_cfg()
+        timeout = (
+            max(0.0, float(cfg.get("reverse_balance_timeout_seconds", 5.0) or 0.0))
+            if wait_for_settlement
+            else 0.0
+        )
+        interval = max(
+            0.01,
+            float(cfg.get("reverse_balance_poll_interval_seconds", 0.25) or 0.25),
+        )
+        deadline = time.monotonic() + timeout
+        balances: Dict[str, Any] = {}
+        available = 0.0
+
+        while True:
+            if wait_for_settlement:
+                balances = self.client.get_balances()
+                self._store_direct_balance_snapshot(balances)
+            else:
+                balances = self._fresh_balances_for_order()
+            available = float(
+                (balances.get(quote, {}) or {}).get("available", 0.0) or 0.0
+            )
+            if available + 1e-9 >= required:
+                return balances, available, True
+            remaining = deadline - time.monotonic()
+            if not wait_for_settlement or remaining <= 0:
+                return balances, available, False
+            time.sleep(min(interval, remaining))
+
+    def _report_full_balance_deferral(
+        self,
+        symbol: str,
+        required_usdt: float,
+        available_usdt: float,
+        *,
+        reverse_entry: bool,
+    ) -> None:
+        context = "reverse open deferred" if reverse_entry else "CDC entry deferred"
+        msg = (
+            f"{context} for {symbol}: full allocation requires {required_usdt:.2f} USDT, "
+            f"available balance is {available_usdt:.2f} USDT"
+        )
+        logger.warning(msg)
+        self.last_log_message = msg
+        if reverse_entry:
+            self._emit_event(
+                EventType.REVERSE_OPEN_DEFERRED,
+                symbol=symbol,
+                reason="available balance below full strategy allocation",
+                required_usdt=round(required_usdt, 2),
+                available_usdt=round(available_usdt, 2),
+            )
+        # Ensure the next engine tick cannot reuse the final insufficient
+        # snapshot. This also covers the first ordinary CDC tick after a
+        # reverse timed out and deliberately left the strategy flat.
+        self._invalidate_balances_after_fill()
+
     def _symbol_filters_cached(self, symbol: str) -> Dict[str, Any]:
         """Cache exchange lot/price filters outside the hot order path."""
         sym = symbol.upper().replace("_", "")
@@ -180,6 +270,7 @@ class OrderMixin:
         *,
         manual: bool = False,
         management_mode: str = "strategy",
+        reverse_entry: bool = False,
     ) -> bool:
         """Open an isolated one-way SHORT; live mode is explicit and fail-closed."""
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
@@ -261,6 +352,20 @@ class OrderMixin:
                         raise RuntimeError(
                             f"funding rate {funding_rate:.6f} exceeds guard {max_rate:.6f}"
                         )
+                if disable_sl and not manual:
+                    _balances, available, full_balance = self._full_live_entry_balances(
+                        notional,
+                        sym,
+                        wait_for_settlement=reverse_entry,
+                    )
+                    if not full_balance:
+                        self._report_full_balance_deferral(
+                            sym,
+                            notional,
+                            available,
+                            reverse_entry=reverse_entry,
+                        )
+                        return False
             result = broker.execute_open(sym, "SHORT", qty, ticker_price, notional, leverage)
         except Exception as exc:
             logger.error("SHORT open failed for %s: %s", sym, exc, exc_info=True)
@@ -1336,6 +1441,7 @@ class OrderMixin:
         risk_pct_override: Optional[float] = None,
         sl_atr_mult_delta: float = 0.0,
         management_mode: str = "strategy",
+        reverse_entry: bool = False,
     ) -> bool:
         """Open a position sized so that hitting SL loses ``equity * risk_pct``.
 
@@ -1647,8 +1753,24 @@ class OrderMixin:
                     leverage = float((self.config.get("derivatives") or {}).get("default_leverage", 1) or 1)
                     self.client.set_margin_mode(sym, "isolated")
                     self.client.set_leverage(sym, leverage)
-                b = self._fresh_balances_for_order()
-                avail_usdt = b.get(self._quote_asset(), {}).get("available", 0.0)
+                full_notional_required = reverse_entry or (disable_sl and not manual_management)
+                if full_notional_required:
+                    b, avail_usdt, full_balance = self._full_live_entry_balances(
+                        buy_amount_usdt,
+                        sym,
+                        wait_for_settlement=reverse_entry,
+                    )
+                    if not full_balance:
+                        self._report_full_balance_deferral(
+                            sym,
+                            buy_amount_usdt,
+                            avail_usdt,
+                            reverse_entry=reverse_entry,
+                        )
+                        return False
+                else:
+                    b = self._fresh_balances_for_order()
+                    avail_usdt = b.get(self._quote_asset(), {}).get("available", 0.0)
                 base_coin = self._get_base_asset(sym)
                 existing_base_qty = 0.0 if is_live_swap else self._asset_balance_total(b, base_coin)
                 existing_base_value = existing_base_qty * ticker_price
@@ -1695,7 +1817,7 @@ class OrderMixin:
                         )
                         return False
 
-                if avail_usdt < buy_amount_usdt:
+                if avail_usdt < buy_amount_usdt and not full_notional_required:
                     logger.warning(f"Live USDT balance {avail_usdt:.2f} is less than required {buy_amount_usdt:.2f}. Capping to available.")
                     buy_amount_usdt = avail_usdt * 0.98
                     qty = buy_amount_usdt / ticker_price

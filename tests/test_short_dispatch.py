@@ -196,6 +196,7 @@ class TestShortDispatch(unittest.TestCase):
         calls = self._run_tick(engine, sym, signal, close_to_idle=True)
         calls.sell.assert_called_once()
         calls.open_short.assert_called_once()
+        self.assertTrue(calls.open_short.call_args.kwargs["reverse_entry"])
         calls.buy.assert_not_called()
 
     def test_failed_close_does_not_reverse_open(self):
@@ -344,6 +345,7 @@ class TestShortDispatch(unittest.TestCase):
         calls = self._run_tick(engine, sym, signal, close_to_idle=True)
         calls.close_short.assert_called_once()
         calls.buy.assert_called_once()
+        self.assertTrue(calls.buy.call_args.kwargs["reverse_entry"])
         calls.open_short.assert_not_called()
 
 
