@@ -124,6 +124,9 @@ echo '{"ok":true}'
         commands = self.log.read_text(encoding="utf-8")
         self.assertEqual(commands.count("promote https://fixture-deployment.vercel.app"), 1)
         self.assertIn("deploy --prebuilt --prod --skip-domain", commands)
+        protected_smoke = next(line for line in commands.splitlines() if line.startswith("curl /healthz"))
+        self.assertNotIn("--scope", protected_smoke)
+        self.assertIn("--silent --show-error --fail", protected_smoke)
         self.assertIn("Commit:", result.stdout)
 
     def test_dirty_website_is_rejected_before_vercel_runs(self):

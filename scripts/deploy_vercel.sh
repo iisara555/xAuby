@@ -37,6 +37,14 @@ vc() {
   "$VERCEL_BIN" "${args[@]}"
 }
 
+# Vercel CLI 56 forwards global flags such as --scope to the underlying curl
+# binary. The project link was verified above, and VERCEL_TOKEN is inherited
+# from the environment when present, so protected smoke requests intentionally
+# avoid vc() and pass curl flags only after the separator.
+vc_protected_curl() {
+  "$VERCEL_BIN" curl "$@" -- --silent --show-error --fail
+}
+
 [[ -d "$WEB_ROOT" && -f "$WEB_ROOT/package.json" && -f "$WEB_ROOT/package-lock.json" ]] \
   || fail "Website project files are missing under $WEB_ROOT"
 command -v git >/dev/null || fail "git is required"
@@ -115,11 +123,11 @@ smoke() {
 
 smoke_protected_deployment() {
   local deployment="$1"
-  vc curl / --deployment "$deployment" --yes >/dev/null
-  vc curl /login --deployment "$deployment" --yes >/dev/null
-  vc curl /app --deployment "$deployment" --yes >/dev/null
+  vc_protected_curl / --deployment "$deployment" --yes >/dev/null
+  vc_protected_curl /login --deployment "$deployment" --yes >/dev/null
+  vc_protected_curl /app --deployment "$deployment" --yes >/dev/null
   local health
-  health="$(vc curl /healthz --deployment "$deployment" --yes)"
+  health="$(vc_protected_curl /healthz --deployment "$deployment" --yes)"
   [[ "$health" == *'"ok":true'* || "$health" == *'"ok": true'* ]] \
     || fail "health check did not return ok=true for $deployment"
 }
