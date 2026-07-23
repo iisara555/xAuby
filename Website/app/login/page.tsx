@@ -2,13 +2,12 @@
 
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
 import { AuthCard } from "@/components/auth-card";
-import { api } from "@/lib/api";
+import { api, type User } from "@/lib/api";
 
 function LoginForm() {
-  const router = useRouter();
   const search = useSearchParams();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -19,13 +18,22 @@ function LoginForm() {
     setError("");
     const form = new FormData(event.currentTarget);
     try {
+      const requestedDestination = search.get("next");
+      const destination = requestedDestination === "/app" || requestedDestination?.startsWith("/app/")
+        ? requestedDestination
+        : "/app";
       await api("/auth/login", {
         method: "POST",
         body: JSON.stringify({
           email: form.get("email"), password: form.get("password"), totp_code: form.get("totp") ?? "",
         }),
       });
-      router.replace(search.get("next")?.startsWith("/app") ? search.get("next")! : "/app");
+      // Verify that the browser accepted the session cookie before leaving the
+      // form. A full navigation clears any cached pre-login SWR 401 response;
+      // client-only routing could otherwise send a successful first login back
+      // here and make the operator submit the form twice.
+      await api<User>("/api/v1/me");
+      window.location.replace(destination);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Sign in failed");
     } finally {

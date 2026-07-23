@@ -628,6 +628,38 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(locked.status_code, 429)
         self.assertIn("retry-after", {key.lower() for key in locked.headers})
 
+    def test_password_login_cookie_is_immediately_usable_and_logout_revokes_it(self):
+        self._create_password_user("first-login@example.com", "Sup3rSecurePw!")
+        browser = TestClient(self.app)
+        try:
+            login = browser.post(
+                "/auth/login",
+                json={
+                    "email": "first-login@example.com",
+                    "password": "Sup3rSecurePw!",
+                    "totp_code": "",
+                },
+            )
+            self.assertEqual(login.status_code, 200, login.text)
+            cookie = login.headers.get("set-cookie", "").lower()
+            self.assertIn("xauby_saas_session=", cookie)
+            self.assertIn("httponly", cookie)
+            self.assertIn("samesite=lax", cookie)
+            self.assertIn("path=/", cookie)
+
+            me = browser.get("/api/v1/me")
+            self.assertEqual(me.status_code, 200, me.text)
+            self.assertEqual(me.json()["email"], "first-login@example.com")
+
+            logout = browser.post(
+                "/auth/logout",
+                headers={"X-CSRF-Token": me.json()["csrf_token"]},
+            )
+            self.assertEqual(logout.status_code, 200, logout.text)
+            self.assertEqual(browser.get("/api/v1/me").status_code, 401)
+        finally:
+            browser.close()
+
     def test_recovery_code_replaces_totp_and_is_single_use(self):
         user = self._create_password_user("mfa-user@example.com", "Sup3rSecurePw!")
         self.store.set_totp_secret(user["id"], "JBSWY3DPEHPK3PXP")

@@ -381,6 +381,21 @@ xauby update   # deploy origin/main + controlled restart (with preflight)
 xauby restart  # controlled restart without pulling code
 ```
 
+Deploy the Pilot Workspace to Vercel from any directory with one command:
+
+```bash
+/root/xAuby/scripts/deploy_vercel.sh
+```
+
+The script is pinned to Vercel CLI `56.2.1` and refuses to deploy unless it is
+on `main`, `Website/` is clean, and `HEAD` matches `origin/main`. It repairs the
+local project link when needed, builds a prebuilt production artifact, uploads
+it without changing the production alias, smoke-tests `/`, `/login`, `/app`,
+and `/healthz`, then promotes only the verified deployment. Authenticate once
+per machine with `vercel login`, or set `VERCEL_TOKEN` in non-interactive CI.
+Use the `Rollback` deployment ID printed by the command with
+`vercel rollback <deployment-id> --scope itsara-kaewruangs-projects`.
+
 The controlled restart path accepts positions already tracked by the bot and
 blocks unknown balances or untracked open orders.
 

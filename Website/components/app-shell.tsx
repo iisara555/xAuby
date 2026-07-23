@@ -37,10 +37,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: user, error, isLoading } = useMe();
 
   useEffect(() => {
-    if (error && "status" in error && error.status === 401) {
+    if (!user && error && "status" in error && error.status === 401) {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
     }
-  }, [error, pathname, router]);
+  }, [error, pathname, router, user]);
 
   if (isLoading || !user) {
     return (
@@ -51,8 +51,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   async function logout() {
-    await api("/auth/logout", { method: "POST", headers: csrfHeaders(user!) });
-    router.replace("/login");
+    try {
+      await api("/auth/logout", { method: "POST", headers: csrfHeaders(user!) });
+    } finally {
+      router.replace("/login");
+    }
   }
 
   const items = user.role === "platform_admin"
