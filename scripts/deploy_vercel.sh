@@ -95,7 +95,10 @@ rollback_id="$(vc inspect xauby.vercel.app --format=json 2>/dev/null \
 
 echo "[5/7] Uploading without changing the production alias..."
 deployment_url="$(vc deploy --prebuilt --prod --skip-domain --yes --cwd "$WEB_ROOT" \
-  --meta "gitCommitSha=$local_sha" | tail -1)"
+  --meta "gitCommitSha=$local_sha" \
+  | tr '\r' '\n' \
+  | grep -Eo 'https://[^[:space:]]+\.vercel\.app' \
+  | head -1)"
 [[ "$deployment_url" == https://* ]] || fail "Vercel did not return a deployment URL"
 vc inspect "$deployment_url" --wait --timeout 3m >/dev/null
 

@@ -52,7 +52,9 @@ case "${1:-}" in
   --version) echo "Vercel CLI 56.2.1" ;;
   whoami) echo "test-user" ;;
   build) [[ "${FAKE_BUILD_FAIL:-0}" != "1" ]] ;;
-  deploy) echo "https://fixture-deployment.vercel.app" ;;
+  deploy)
+    printf '\033[2KProduction https://fixture-deployment.vercel.app\rCompleting…\n'
+    ;;
   inspect) echo '{"id":"dpl_previous","readyState":"READY"}' ;;
   link|pull|promote) ;;
   *) ;;
