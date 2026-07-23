@@ -1,0 +1,17 @@
+# Production-workflow graph scope. Keep runtime source, Website, deployment,
+# config, and operational scripts; omit tests, prose, generated state, and
+# assistant metadata from the persistent code graph.
+/.agents/
+/.claude/
+/.codex/
+/.cursor/
+/.github/
+/assets/
+/backups/
+/bin/
+/core/
+/docs/
+/research_data/
+/tests/
+/venv/
+/weekly_reviews/
