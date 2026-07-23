@@ -10,6 +10,7 @@ SCOPE="itsara-kaewruangs-projects"
 ORG_ID="team_bVwJhoMi3IPSnRxtu3fageUS"
 PRODUCTION_URL="https://xauby.vercel.app"
 PINNED_VERCEL_VERSION="56.2.1"
+AUTHORIZED_GIT_EMAIL="${VERCEL_GIT_AUTHOR_EMAIL:-iisara555@gmail.com}"
 VERCEL_BIN="${VERCEL_CLI_BIN:-vercel}"
 CURL="${CURL_BIN:-curl}"
 
@@ -58,6 +59,9 @@ local_sha="$(git rev-parse HEAD)"
 remote_sha="$(git rev-parse origin/main)"
 [[ "$local_sha" == "$remote_sha" ]] \
   || fail "HEAD does not match origin/main; push or pull before deploying"
+commit_email="$(git show -s --format='%ae' HEAD)"
+[[ "$commit_email" == "$AUTHORIZED_GIT_EMAIL" ]] \
+  || fail "HEAD author $commit_email is not the Vercel-authorized identity $AUTHORIZED_GIT_EMAIL; create the commit with the authorized Git author"
 
 echo "[2/7] Verifying Vercel authentication and project link..."
 vc whoami >/dev/null || fail "Vercel authentication failed; run 'vercel login' or export VERCEL_TOKEN"

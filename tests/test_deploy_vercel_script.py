@@ -98,6 +98,7 @@ echo '{"ok":true}'
                 "FAKE_COMMAND_LOG": str(self.log),
                 "FAKE_BUILD_FAIL": "1" if build_fail else "0",
                 "FAKE_SMOKE_FAIL": "1" if smoke_fail else "0",
+                "VERCEL_GIT_AUTHOR_EMAIL": "tests@example.com",
             }
         )
         return subprocess.run(
@@ -138,6 +139,27 @@ echo '{"ok":true}'
         self.assertIn("build --prod", commands)
         self.assertNotIn("deploy --prebuilt", commands)
         self.assertNotIn("promote ", commands)
+
+    def test_unauthorized_commit_author_is_rejected_before_vercel(self):
+        env = os.environ.copy()
+        env.update(
+            {
+                "VERCEL_CLI_BIN": str(self.fake_vercel),
+                "CURL_BIN": str(self.fake_curl),
+                "FAKE_COMMAND_LOG": str(self.log),
+                "VERCEL_GIT_AUTHOR_EMAIL": "owner@example.com",
+            }
+        )
+
+        result = subprocess.run(
+            [str(self.script)], cwd="/", env=env, text=True, capture_output=True
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not the Vercel-authorized identity", result.stderr)
+        commands = self.log.read_text(encoding="utf-8")
+        self.assertNotIn("whoami", commands)
+        self.assertNotIn("deploy --prebuilt", commands)
 
     def test_smoke_failure_never_promotes(self):
         result = self._deploy(smoke_fail=True)

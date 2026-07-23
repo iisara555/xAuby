@@ -24,6 +24,9 @@ Two user-facing reliability issues were fixed in this change:
    state.** `scripts/deploy_vercel.sh` now resolves the repository path itself,
    validates branch/commit/project/CLI, uploads a prebuilt artifact without
    moving the alias, smoke-tests it, and only then promotes it.
+3. **Vercel silently blocked commits made by a non-member Git identity.** The
+   deploy command now validates the HEAD author email before spending time on
+   a build; the repository identity on this VPS is set to the authorized owner.
 
 ## Workflow and worst-case matrix
 
