@@ -113,8 +113,19 @@ smoke() {
     || fail "health check did not return ok=true for $base"
 }
 
+smoke_protected_deployment() {
+  local deployment="$1"
+  vc curl / --deployment "$deployment" --yes >/dev/null
+  vc curl /login --deployment "$deployment" --yes >/dev/null
+  vc curl /app --deployment "$deployment" --yes >/dev/null
+  local health
+  health="$(vc curl /healthz --deployment "$deployment" --yes)"
+  [[ "$health" == *'"ok":true'* || "$health" == *'"ok": true'* ]] \
+    || fail "health check did not return ok=true for $deployment"
+}
+
 echo "[6/7] Smoke-testing the immutable deployment..."
-smoke "$deployment_url"
+smoke_protected_deployment "$deployment_url"
 
 echo "[7/7] Promoting the verified artifact and checking the production alias..."
 vc promote "$deployment_url" --yes >/dev/null

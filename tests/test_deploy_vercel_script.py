@@ -55,6 +55,12 @@ case "${1:-}" in
   deploy)
     printf '\033[2KProduction https://fixture-deployment.vercel.app\rCompleting…\n'
     ;;
+  curl)
+    if [[ "${FAKE_SMOKE_FAIL:-0}" == "1" && "$*" == *"/healthz"* ]]; then
+      exit 22
+    fi
+    echo '{"ok":true}'
+    ;;
   inspect) echo '{"id":"dpl_previous","readyState":"READY"}' ;;
   link|pull|promote) ;;
   *) ;;
