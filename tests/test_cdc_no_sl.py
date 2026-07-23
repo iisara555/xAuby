@@ -22,7 +22,7 @@ class TestCdcNoStopLossConfig(unittest.TestCase):
         )
 
         self.assertTrue(effective.strategy["require_fresh_zone"])
-        self.assertEqual(effective.strategy["fresh_zone_window"], 1)
+        self.assertEqual(effective.strategy["fresh_zone_window"], 3)
         self.assertTrue(effective.strategy["disable_stop_loss"])
         self.assertEqual(effective.strategy["position_pct"], 0.95)
         self.assertEqual(effective.strategy["fixed_tp_pct"], 0.0)

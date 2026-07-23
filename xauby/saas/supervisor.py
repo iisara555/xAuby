@@ -225,6 +225,16 @@ class TenantSupervisor:
             if sizing.get("max_position_per_trade_pct") is not None
             else trading.get("max_position_per_trade_pct", 10.0)
         )
+
+        def pair_position_cap(pair_cfg: dict[str, Any]) -> float:
+            pair_sizing = (pair_cfg or {}).get("position_sizing") or {}
+            value = pair_sizing.get("max_position_per_trade_pct")
+            if value is None:
+                value = sizing.get("max_position_per_trade_pct")
+            if value is None:
+                value = trading.get("max_position_per_trade_pct", 10.0)
+            return float(value)
+
         return {
             "simulate_only": bool(cfg.get("simulate_only", True)),
             "max_open_positions": int(trading.get("max_open_positions", 1)),
@@ -247,6 +257,11 @@ class TenantSupervisor:
                 for pair, pair_cfg in (portfolio.get("symbols") or {}).items()
                 if isinstance(pair_cfg, dict)
                 and (pair_cfg or {}).get("allocation_pct") is not None
+            },
+            "pair_position_caps": {
+                str(pair).upper().replace("_", ""): pair_position_cap(pair_cfg)
+                for pair, pair_cfg in (portfolio.get("symbols") or {}).items()
+                if isinstance(pair_cfg, dict)
             },
             "assets": whitelist.get("assets") or [],
         }

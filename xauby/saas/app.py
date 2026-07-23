@@ -285,12 +285,18 @@ def create_app(
             raise HTTPException(status_code=403, detail="origin is not allowed")
         return user
 
-    def admin_user(user: dict[str, Any] = Depends(csrf_user)) -> dict[str, Any]:
+    def require_admin(user: dict[str, Any]) -> dict[str, Any]:
         if user.get("role") != "platform_admin":
             raise HTTPException(status_code=403, detail="platform admin required")
         if (not user.get("totp_enabled") or not user.get("mfa_verified")) and not settings.dev_login_enabled:
             raise HTTPException(status_code=403, detail="verified TOTP is required for admin actions")
         return user
+
+    def admin_read_user(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+        return require_admin(user)
+
+    def admin_user(user: dict[str, Any] = Depends(csrf_user)) -> dict[str, Any]:
+        return require_admin(user)
 
     def own_tenant(user: dict[str, Any]) -> dict[str, Any]:
         if user.get("account_status") != "active":
@@ -1310,11 +1316,7 @@ def create_app(
         return {"items": items}
 
     @app.get("/api/v1/admin/users")
-    def admin_users(user: dict[str, Any] = Depends(current_user)):
-        if user.get("role") != "platform_admin":
-            raise HTTPException(status_code=403, detail="platform admin required")
-        if (not user.get("totp_enabled") or not user.get("mfa_verified")) and not settings.dev_login_enabled:
-            raise HTTPException(status_code=403, detail="verified TOTP is required for admin actions")
+    def admin_users(user: dict[str, Any] = Depends(admin_read_user)):
         return {"items": store.list_users(), "capacity": settings.max_users}
 
     @app.post("/api/v1/admin/invites", status_code=201)
@@ -1374,11 +1376,7 @@ def create_app(
         return {"ok": True, "user": updated, "tenant": store.tenant_for_user(user_id)}
 
     @app.get("/api/v1/admin/tenants")
-    def admin_tenants(user: dict[str, Any] = Depends(current_user)):
-        if user.get("role") != "platform_admin":
-            raise HTTPException(status_code=403, detail="platform admin required")
-        if (not user.get("totp_enabled") or not user.get("mfa_verified")) and not settings.dev_login_enabled:
-            raise HTTPException(status_code=403, detail="verified TOTP is required for admin actions")
+    def admin_tenants(user: dict[str, Any] = Depends(admin_read_user)):
         return {"items": store.list_tenants(), "capacity": settings.max_active_engines,
                 "active": store.active_count()}
 

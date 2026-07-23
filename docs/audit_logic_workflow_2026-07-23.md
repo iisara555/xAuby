@@ -43,66 +43,73 @@ Two user-facing reliability issues were fixed in this change:
 | Login cookie is accepted but UI still has a cached pre-login 401 | Verify `/api/v1/me`; clear client cache through a full navigation | fixed and regression-tested in this change |
 | Build, upload or smoke test fails during Vercel deploy | Production alias remains on the previous deployment | new deploy-script tests — covered |
 
-## Findings still open
+## Findings resolved in the follow-up
 
-### P1 — VPS checkout permissions can stop an engine after deployment
+### P1 — VPS checkout permissions can stop an engine after deployment — RESOLVED
 
 A prior `git pull` under a restrictive umask left tracked Python files at mode
 `0600`; the tenant engine then raised `PermissionError` importing
 `xauby/observability/events.py`. The live file is currently normalized to
-`0644`, but `scripts/deploy_from_github.sh` does not assert readable modes after
-checkout. Worst case: control plane remains healthy while a tenant engine is
-down after an otherwise successful update. Recommended minimal fix: add a
-post-checkout readability preflight (and fail before restart) rather than a
-recursive chmod. This was not changed here because it affects the live VPS
-deployment path and should be reviewed as a separate production change.
+`0644`. `scripts/deploy_from_github.sh` now sets a code-safe `0022` checkout
+umask, normalizes only files/directories represented by the Git index, verifies
+service-user read/execute bits, and refuses restart if the preflight fails.
+This is intentionally scoped to tracked source paths rather than a recursive
+chmod over runtime/config/credential data.
 
-### P1 — VPS deploy helper persists a GitHub token in the remote URL
+### P1 — VPS deploy helper persists a GitHub token in the remote URL — RESOLVED
 
 When `GITHUB_TOKEN` is present, `scripts/deploy_from_github.sh` writes it into
 the repository's persistent `origin` URL. That credential can then appear in
-configuration backups or diagnostic output, and the unauthenticated branch of
-the script does not remove a token previously stored there. Recommended
-minimal fix: use an ephemeral HTTP authorization header/credential helper for
-the fetch and keep the configured remote credential-free. Rotate the existing
-token if it has ever been stored or copied outside this host.
+configuration backups or diagnostic output. The helper now always normalizes
+`origin` to a credential-free URL and supplies a token only to a mode-0700,
+short-lived `GIT_ASKPASS` process. It also reads `.env` as literal data instead
+of sourcing it. The current `origin` contains no embedded credentials.
 
-### P1 — the documented public sslip HTTPS health endpoint is not listening
+### P1 — the documented public sslip HTTPS health endpoint is not listening — RESOLVED
 
 At audit time both systemd services were `active`, and the engine continuously
 evaluated BTC and XAU signals, but
 `https://188.166.253.203.sslip.io/healthz` refused port 443. The committed
-`deploy/Caddyfile` declares only `http://188.166.253.203.sslip.io`; therefore
-that HTTPS URL cannot be the authoritative production health probe. The Vercel
-frontend still reached the API in control-plane logs. Choose one supported
-origin (TLS via Funnel or a real domain) and make the Caddyfile, Vercel
-`XAUBY_API_ORIGIN`, README, and monitor use that same endpoint.
+`deploy/Caddyfile` declares only `http://188.166.253.203.sslip.io`; that hostname
+is now explicitly a compatibility redirect, not a TLS origin. The authoritative
+API origin is `https://xauby-vps.tailfcdd3a.ts.net` in Vercel and documentation.
+A hardened systemd timer checks both that origin and `https://xauby.vercel.app`
+every five minutes through `scripts/check_production_health.sh`.
 
-### P2 — repository-wide test/config drift
+### P2 — repository-wide test/config drift — RESOLVED
 
-The current `unittest discover` run has 1,035 passes and two failures: tests
-still expect an XAU-only whitelist and CDC `fresh_zone_window=1`, while the
+The audit baseline `unittest discover` run had 1,035 passes and two failures:
+tests expected an XAU-only whitelist and CDC `fresh_zone_window=1`, while the
 deployed configuration intentionally includes BTC and uses window 3. The full
 pytest run had 1,093 passes and five failures: those same two plus incomplete
 quick-config fixtures for the deployed strategy/regime and the secret scanner
 flagging a tracked test passphrase fixture. These are not current live-order
-failures, but they make a red suite ambiguous and could hide a regression. CI
-currently runs only the secret scan and gives less coverage than the local
-suite.
+failures, but they made a red suite ambiguous. The whitelist/CDC expectations,
+strict quick-config fixture, current strategy identifier, and test-secret
+placeholder classification were corrected. GitHub Actions now runs the full
+pytest suite and the production frontend build in addition to tracked/history
+secret scanning.
 
-### P2 — displayed settings still flatten per-pair sizing
+Follow-up verification completed with 1,103 pytest tests passing and no
+failures; the admin read-policy regression added immediately afterward also
+passed its targeted run. The Next.js production build and TypeScript check
+completed successfully.
+
+### P2 — displayed settings still flatten per-pair sizing — RESOLVED
 
 The Settings summary exposes the focus pair's
 `max_position_per_trade_pct` as one portfolio number even though enforcement is
 per pair. This is display drift, not a sizing bypass, but it can mislead an
-operator comparing BTC and XAU. Preserve per-pair enforcement and render a
-small pair-to-allocation table instead of introducing another global setting.
+operator comparing BTC and XAU. The compiled profile now exposes
+`pair_position_caps` beside `pair_allocations`, and Settings renders one sizing
+cell per selected symbol with allocation and maximum-per-trade percentages.
 
-### P3 — duplicated admin authorization logic
+### P3 — duplicated admin authorization logic — RESOLVED
 
 Two admin read endpoints repeat role/TOTP checks instead of using the shared
-`admin_user` dependency. The outcome matches today, but future changes could
-drift. Consolidate when that module is next edited; it is not urgent.
+`admin_user` dependency. Both read and write dependencies now call one
+`require_admin` policy; reads retain correct GET semantics without requiring a
+CSRF header, while writes still pass through CSRF and origin validation.
 
 ## Production evidence sampled
 

@@ -47,6 +47,7 @@ def test_secret_scan_allows_env_names_and_placeholders():
             "TELEGRAM_BOT_TOKEN=FRESH123456",
             "XAUBY_SAAS_SESSION_SECRET=replace-with-at-least-32-random-bytes",
             "google_client_secret=client-secret-456",
+            'OKX_API_PASSPHRASE="p-value"',
             '"UPDATE users SET pending_totp_secret=NULL,totp_enabled=1 WHERE id=?"',
             "url = f'https://example.test?api_key={api_key}'",
         ]

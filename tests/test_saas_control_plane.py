@@ -56,6 +56,8 @@ class SaaSControlPlaneTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["role"], "platform_admin")
         self.assertEqual(payload["tenant"]["slug"], "owner-itsara")
+        self.assertEqual(self.client.get("/api/v1/admin/users").status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/admin/tenants").status_code, 200)
 
     def test_profile_appearance_updates_name_and_private_avatar(self):
         png = base64.b64encode(
@@ -120,6 +122,9 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(compiled["max_drawdown_pct"], 25.0)
         self.assertEqual(
             compiled["pair_allocations"], {"XAUUSDT": 65.0, "BTCUSDT": 30.0}
+        )
+        self.assertEqual(
+            compiled["pair_position_caps"], {"XAUUSDT": 25.0, "BTCUSDT": 25.0}
         )
 
     def test_runtime_snapshot_is_tenant_scoped_and_fail_closed(self):
@@ -659,6 +664,22 @@ class SaaSControlPlaneTests(unittest.TestCase):
             self.assertEqual(browser.get("/api/v1/me").status_code, 401)
         finally:
             browser.close()
+
+    def test_admin_read_policy_rejects_non_admin_without_requiring_csrf_for_owner(self):
+        self._create_password_user("pilot-reader@example.com", "Sup3rSecurePw!")
+        pilot = TestClient(self.app)
+        try:
+            login = pilot.post(
+                "/auth/login",
+                json={"email": "pilot-reader@example.com", "password": "Sup3rSecurePw!"},
+            )
+            self.assertEqual(login.status_code, 200, login.text)
+            self.assertEqual(pilot.get("/api/v1/admin/users").status_code, 403)
+            self.assertEqual(pilot.get("/api/v1/admin/tenants").status_code, 403)
+            self.assertEqual(self.client.get("/api/v1/admin/users").status_code, 200)
+            self.assertEqual(self.client.get("/api/v1/admin/tenants").status_code, 200)
+        finally:
+            pilot.close()
 
     def test_recovery_code_replaces_totp_and_is_single_use(self):
         user = self._create_password_user("mfa-user@example.com", "Sup3rSecurePw!")

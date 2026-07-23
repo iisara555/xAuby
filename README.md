@@ -73,6 +73,11 @@ curl -fsS https://xauby.vercel.app/healthz
 curl -fsS https://xauby-vps.tailfcdd3a.ts.net/healthz
 ```
 
+`188.166.253.203.sslip.io` is HTTP-only compatibility input and redirects to
+the Funnel hostname; it is not a TLS origin. The production host runs the same
+two probes every five minutes through `xauby-healthcheck.timer` and
+[`scripts/check_production_health.sh`](scripts/check_production_health.sh).
+
 ![xAuby Pilot Workspace — trading settings with certified presets](docs/screenshots/pilot-settings.png)
 
 What the console gives an operator:
@@ -380,6 +385,11 @@ Day-to-day operations:
 xauby update   # deploy origin/main + controlled restart (with preflight)
 xauby restart  # controlled restart without pulling code
 ```
+
+The VPS update helper keeps `origin` credential-free, uses an ephemeral
+`GIT_ASKPASS` process when `GITHUB_TOKEN` is needed, and normalizes/verifies
+only Git-tracked code permissions before any service restart. Runtime and
+credential directories remain untouched.
 
 Deploy the Pilot Workspace to Vercel from any directory with one command:
 

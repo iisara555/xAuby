@@ -1,0 +1,13 @@
+[Unit]
+Description=xAuby public production health check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+ExecStart=/opt/xauby/current/scripts/check_production_health.sh
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict

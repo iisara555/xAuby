@@ -187,7 +187,7 @@ async def test_global_trading_max_open_positions_matches_runtime_resolver(temp_c
 
     from xauby.runtime.trading_config import resolve_trading_config
 
-    eff = resolve_trading_config(cfg, symbol="XAUTUSDT", project_root=str(temp_config))
+    eff = resolve_trading_config(cfg, symbol="XAUUSDT", project_root=str(temp_config))
     assert eff.portfolio["max_open_positions"] == 7
 
 
@@ -308,12 +308,12 @@ async def test_regime_mapping_write(temp_config):
         ol.action_select()
         await pilot.pause()
         cl = app.screen.query_one("#qc-choice-list", OptionList)
-        cl.highlighted = cl.get_option_index("cdc_action_zone")
+        cl.highlighted = cl.get_option_index("xauby_actionzone")
         await pilot.pause()
         cl.action_select()
         await pilot.pause()
         await pilot.pause()
-    assert _load_cfg(temp_config)["regime_router"]["mapping"][reg] == "cdc_action_zone"
+    assert _load_cfg(temp_config)["regime_router"]["mapping"][reg] == "xauby_actionzone"
 
 
 @pytest.mark.asyncio

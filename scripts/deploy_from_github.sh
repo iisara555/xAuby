@@ -28,23 +28,48 @@ echo "║   xAuby Deploy from GitHub           ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
-# Load GITHUB_TOKEN if available
+# Load GITHUB_TOKEN as literal data if available. Never source .env: a token
+# value must not be evaluated as shell code.
 if [[ -z "${GITHUB_TOKEN:-}" ]] && [[ -f "$ROOT/.env" ]] && grep -q '^GITHUB_TOKEN=' "$ROOT/.env"; then
-  set -a
-  source <(grep '^GITHUB_TOKEN=' "$ROOT/.env")
-  set +a
+  GITHUB_TOKEN="$(sed -n 's/^GITHUB_TOKEN=//p' "$ROOT/.env" | tail -1)"
+  if [[ "$GITHUB_TOKEN" == \"*\" || "$GITHUB_TOKEN" == \'*\' ]]; then
+    GITHUB_TOKEN="${GITHUB_TOKEN:1:${#GITHUB_TOKEN}-2}"
+  fi
 fi
 
-# Set remote URL with token if available
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  REMOTE_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
-  git remote set-url origin "$REMOTE_URL" 2>/dev/null || true
-else
-  REMOTE_URL="https://github.com/${GITHUB_REPO}.git"
-  git remote set-url origin "$REMOTE_URL" 2>/dev/null || true
-fi
+# Keep the persistent remote credential-free. Authentication is supplied to
+# git fetch through a short-lived askpass process, never a URL or command arg.
+REMOTE_URL="${GITHUB_REMOTE_URL:-https://github.com/${GITHUB_REPO}.git}"
+git remote set-url origin "$REMOTE_URL"
+ASKPASS_DIR=""
+cleanup() {
+  if [[ -n "$ASKPASS_DIR" && -d "$ASKPASS_DIR" ]]; then
+    rm -r -- "$ASKPASS_DIR"
+  fi
+}
+trap cleanup EXIT
 
-echo "[1/5] Checking for local changes..."
+fetch_branch() {
+  if [[ -z "${GITHUB_TOKEN:-}" || "$REMOTE_URL" != https://github.com/* ]]; then
+    git fetch origin "$BRANCH"
+    return
+  fi
+  if [[ -z "$ASKPASS_DIR" ]]; then
+    ASKPASS_DIR="$(mktemp -d)"
+    chmod 700 "$ASKPASS_DIR"
+    printf '%s\n' \
+      '#!/bin/sh' \
+      'case "$1" in' \
+      '  *Username*) printf "%s\\n" "x-access-token" ;;' \
+      '  *) printf "%s\\n" "$XAUBY_GIT_TOKEN" ;;' \
+      'esac' > "$ASKPASS_DIR/askpass"
+    chmod 700 "$ASKPASS_DIR/askpass"
+  fi
+  GIT_ASKPASS="$ASKPASS_DIR/askpass" XAUBY_GIT_TOKEN="$GITHUB_TOKEN" \
+    GIT_TERMINAL_PROMPT=0 git -c credential.helper= fetch origin "$BRANCH"
+}
+
+echo "[1/6] Checking for local changes..."
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "[WARN] You have uncommitted changes. Stashing them..."
   git stash push -m "deploy-backup-$(date +%Y%m%d-%H%M%S)"
@@ -53,10 +78,10 @@ else
   STASHED=false
 fi
 
-echo "[2/5] Fetching latest from origin/$BRANCH..."
+echo "[2/6] Fetching latest from origin/$BRANCH..."
 MAX_RETRIES=4
 for attempt in $(seq 1 $MAX_RETRIES); do
-  if git fetch origin "$BRANCH"; then
+  if fetch_branch; then
     break
   fi
   if [ "$attempt" -eq "$MAX_RETRIES" ]; then
@@ -80,14 +105,54 @@ else
   echo ""
 fi
 
-echo "[3/5] Merging origin/$BRANCH..."
+echo "[3/6] Merging origin/$BRANCH..."
+# Git creates new checkout paths through the process umask. systemd deliberately
+# uses 0077 for runtime secrets, so deployment must establish a code-safe umask.
+umask 0022
 git merge "origin/$BRANCH" --ff-only || {
   echo "[ERR] Fast-forward merge failed. Manual intervention needed."
   echo "      Run: git merge origin/$BRANCH"
   exit 1
 }
 
-echo "[4/5] Checking Python syntax of changed files..."
+echo "[4/6] Normalizing and verifying tracked checkout permissions..."
+while IFS= read -r -d '' entry; do
+  index_mode="${entry%% *}"
+  path="${entry#*$'\t'}"
+  [[ -f "$path" && ! -L "$path" ]] || continue
+  parent="$(dirname "$path")"
+  while [[ "$parent" != "." ]]; do
+    chmod go+rx "$parent"
+    parent="$(dirname "$parent")"
+  done
+  if [[ "$index_mode" == "100755" ]]; then
+    chmod u+rw,go+r,ugo+x,go-w "$path"
+  elif [[ "$index_mode" == "100644" ]]; then
+    chmod a-x,u+rw,go+r,go-w "$path"
+  fi
+done < <(git ls-files -s -z)
+
+PERMISSIONS_OK=true
+while IFS= read -r -d '' entry; do
+  index_mode="${entry%% *}"
+  path="${entry#*$'\t'}"
+  [[ -f "$path" && ! -L "$path" ]] || continue
+  other_digit="$(stat -c '%a' "$path")"
+  other_digit="${other_digit: -1}"
+  required=4
+  [[ "$index_mode" == "100755" ]] && required=5
+  if (( (8#$other_digit & required) != required )); then
+    echo "  [ERR] Service users cannot read/execute tracked file: $path" >&2
+    PERMISSIONS_OK=false
+  fi
+done < <(git ls-files -s -z)
+[[ "$PERMISSIONS_OK" == true ]] || {
+  echo "[ERR] Checkout permissions are unsafe; refusing to restart services." >&2
+  exit 1
+}
+echo "  Tracked files are readable by isolated service users."
+
+echo "[5/6] Checking Python syntax of changed files..."
 CHANGED=$(git diff --name-only "$LOCAL..HEAD" -- '*.py' 2>/dev/null || true)
 if [[ -n "$CHANGED" ]]; then
   PY="${PYTHON:-./venv/bin/python}"
@@ -112,7 +177,7 @@ else
   echo "  No Python files changed."
 fi
 
-echo "[5/5] Deploy complete."
+echo "[6/6] Deploy complete."
 echo "  Before: ${LOCAL:0:7}"
 echo "  After:  $(git rev-parse --short HEAD)"
 echo ""
