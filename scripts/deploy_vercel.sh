@@ -42,7 +42,10 @@ vc() {
 # from the environment when present, so protected smoke requests intentionally
 # avoid vc() and pass curl flags only after the separator.
 vc_protected_curl() {
-  "$VERCEL_BIN" curl "$@" -- --silent --show-error --fail
+  (
+    cd "$WEB_ROOT"
+    "$VERCEL_BIN" curl "$@" -- --silent --show-error --fail
+  )
 }
 
 [[ -d "$WEB_ROOT" && -f "$WEB_ROOT/package.json" && -f "$WEB_ROOT/package-lock.json" ]] \
