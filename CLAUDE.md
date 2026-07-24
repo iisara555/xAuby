@@ -53,7 +53,7 @@ coin_whitelist.json Active pairs: strategy, timeframes, mode, router gates (comm
 health_check.py     Standalone health check
 bin/xauby           CLI wrapper script
 scripts/            Ops + R&D scripts (backtest, optimize, deploy, replay, restart, screenshots)
-tests/              65 unittest modules (test_*.py)
+tests/              138 unittest modules (test_*.py), ~1043 tests
 docs/               Operator/contributor docs (architecture, trading-flow, configuration, tui, telegram)
 weekly_reviews/     Generated weekly review markdown
 xauby/
@@ -205,7 +205,7 @@ position is LONG or SHORT so it can pick the right exit.
 Plain `unittest`, no extra runner. Always set `PYTHONPATH=.`.
 
 ```bash
-# Full suite (65 modules)
+# Full suite (138 modules)
 PYTHONPATH=. python3 -m unittest discover -s tests -q
 
 # Targeted architecture suite (fast confidence check)
@@ -250,7 +250,7 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
   `simulate_only`/`read_only`, env `LIVE_TRADING`/`SIMULATE_ONLY`/`BOT_READ_ONLY`,
   and per-asset `mode`. Live trading requires `--live` AND `LIVE_TRADING=true` AND
   `simulate_only: false` AND per-asset `mode: live`. **Default to simulation.**
-- `risk_pct` is kept aligned (currently `0.03`) across `trading`,
+- `risk_pct` is kept aligned (currently `0.02`) across `trading`,
   `portfolio.position_sizing`, and per-symbol sizing. Keep these consistent — live
   reads `portfolio.position_sizing.risk_pct` while the backtest reads
   `trading.risk_pct`, so a mismatch breaks live/backtest parity. The startup
