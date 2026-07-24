@@ -44,6 +44,7 @@ type CandleResponse = {
 type CandleChartProps = {
   symbol: string;
   currentPrice: unknown;
+  marketChange24h?: unknown;
   strategyName: string;
   primaryTimeframe?: string;
   confirmTimeframe?: string;
@@ -92,6 +93,7 @@ function formatCandleTime(timestamp: unknown, selectedTimeframe: Timeframe): str
 export function CandleChart({
   symbol,
   currentPrice,
+  marketChange24h,
   strategyName,
   marketMarker = "—",
 }: CandleChartProps) {
@@ -201,10 +203,10 @@ export function CandleChart({
     return { width, height, plot, plotWidth, plotHeight, y, x, labels, floor, ceiling, linePaths };
   }, [candles, containerWidth, livePrice, renderedLines, selectedTimeframe, zoneColors, zoneColumn]);
 
-  const lastCandle = candles[candles.length - 1];
-  const lastClose = number(lastCandle?.close);
-  const previousClose = number(candles[candles.length - 2]?.close);
-  const change = lastClose != null && previousClose ? ((lastClose - previousClose) / previousClose) * 100 : null;
+  // Keep the chart summary aligned with the instrument-level market card.
+  // The previous implementation compared the last two candles, which can be
+  // almost flat even while the instrument has a meaningful 24h move.
+  const change = number(marketChange24h);
   const indicatorLabel = lines.length ? lines.map((line) => line.label).join(" / ") : "Price";
   const selectedCandle = selectedIndex == null ? null : candles[selectedIndex];
 
@@ -261,6 +263,14 @@ export function CandleChart({
             return <g key={step}><line x1={chart.plot.left} x2={chart.width - chart.plot.right} y1={chart.y(value)} y2={chart.y(value)} className="chart-grid-line" /><text x={chart.width - chart.plot.right + 8} y={chart.y(value) + 4} className="chart-axis-label">{formatNumber(value, 0)}</text></g>;
           })}
           {chart.labels.map((item, index) => <text key={`${item.label}-${index}`} x={item.x} y={chart.height - 6} textAnchor={index === 0 ? "start" : index === chart.labels.length - 1 ? "end" : "middle"} className="chart-axis-label">{item.label}</text>)}
+          {selectedIndex != null && selectedCandle && (() => {
+            const close = number(selectedCandle.close);
+            if (close == null) return null;
+            return <g className="chart-crosshair" aria-hidden="true">
+              <line x1={chart.x(selectedIndex)} x2={chart.x(selectedIndex)} y1={chart.plot.top} y2={chart.height - chart.plot.bottom} />
+              <line x1={chart.plot.left} x2={chart.width - chart.plot.right} y1={chart.y(close)} y2={chart.y(close)} />
+            </g>;
+          })()}
           {candles.map((candle, index) => {
             const open = number(candle.open) ?? candle.close;
             const close = number(candle.close) ?? open;
@@ -277,16 +287,18 @@ export function CandleChart({
             </g>;
           })}
           {chart.linePaths.map((line) => line.segments.length
-            ? line.segments.map((segment, index) => <polyline key={`${line.key}-${index}`} points={segment.points} className="strategy-line" style={{ stroke: segment.color }} data-indicator-key={line.key} />)
-            : <polyline key={line.key} points={line.points} className="strategy-line" style={{ stroke: rgb(line.color) }} data-indicator-key={line.key} />)}
+            ? line.segments.map((segment, index) => <polyline key={`${line.key}-${selectedTimeframe}-${index}`} points={segment.points} pathLength={1} className="strategy-line strategy-line-draw" style={{ stroke: segment.color }} data-indicator-key={line.key} />)
+            : <polyline key={`${line.key}-${selectedTimeframe}`} points={line.points} pathLength={1} className="strategy-line strategy-line-draw" style={{ stroke: rgb(line.color) }} data-indicator-key={line.key} />)}
           {livePrice != null && (() => {
             const lineY = chart.y(livePrice);
             const labelY = Math.max(chart.plot.top + 10, Math.min(chart.height - chart.plot.bottom - 10, lineY));
             const labelX = chart.width - chart.plot.right + 5;
             return <g className={priceData?.stale ? "current-price stale" : "current-price"}>
               <line x1={chart.plot.left} x2={chart.width - chart.plot.right} y1={lineY} y2={lineY} className="current-price-line" />
-              <rect x={labelX} y={labelY - 10} width={chart.plot.right - 10} height="20" rx="4" className="current-price-badge" />
-              <text x={labelX + (chart.plot.right - 10) / 2} y={labelY + 4} textAnchor="middle" className="current-price-label">{formatNumber(livePrice, 2)}</text>
+              <g className="current-price-badge-wrap">
+                <rect x={labelX} y={labelY - 10} width={chart.plot.right - 10} height="20" rx="4" className="current-price-badge" />
+                <text x={labelX + (chart.plot.right - 10) / 2} y={labelY + 4} textAnchor="middle" className="current-price-label">{formatNumber(livePrice, 2)}</text>
+              </g>
             </g>;
           })()}
         </svg>

@@ -213,6 +213,7 @@ export default function DashboardPage() {
         <CandleChart
           symbol={symbol}
           currentPrice={price}
+          marketChange24h={pct24h}
           strategyName={activeStrategy}
           primaryTimeframe={pairPreset?.primary_timeframe ?? String(valueAt(focus, "primary_timeframe") ?? "4h")}
           confirmTimeframe={pairPreset?.confirm_timeframe ?? String(valueAt(focus, "confirm_timeframe") ?? "")}

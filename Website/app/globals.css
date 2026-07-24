@@ -154,6 +154,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .hero-value { margin-top: 24px; font-size: clamp(46px, 5.6vw, 68px); line-height: .95; letter-spacing: -.06em; font-variant-numeric: tabular-nums; }.hero-value small, .market-price small { margin-left: 8px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 .hero-card .hero-value { position: relative; z-index: 1; color: var(--cream-ink); font-weight: 580; letter-spacing: -.055em; }
 .hero-card .hero-value small { color: var(--cream-muted); }
+.positive { color: #90b99a; }.negative { color: #e07a6d; }
 .metric-change { margin-top: 12px; font-size: 12px; }.metric-change.positive { color: #90b99a; }.metric-change.negative { color: #e07a6d; }
 .hero-card .metric-change.positive { color: #3f6f4d; }.hero-card .metric-change.negative { color: #9d3f33; }
 .hero-foot { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid rgba(22,22,20,.14); }
@@ -219,7 +220,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 @media (max-width: 640px) {
   .tenant-list > div { grid-template-columns: 1fr; gap: 6px; padding: 10px 0; }
 }
-.invite-result { margin: 18px 0 0 !important; padding: 16px; display: grid; gap: 13px; border: 1px solid rgba(255,67,26,.32); border-radius: 10px; background: rgba(255,67,26,.07); }.invite-result > div:first-child { margin: 0; display: grid; gap: 4px; }.invite-result strong { font-size: var(--fs-value); }.invite-result small { color: var(--label); font-size: var(--fs-label); }.invite-link-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }.invite-link-row input { min-width: 0; font-family: var(--font-mono), monospace; font-size: var(--fs-value); }.invite-link-row button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.invite-result { margin: 18px 0 0 !important; padding: 16px; display: grid; gap: 13px; border: 1px solid rgba(255,67,26,.32); border-radius: 10px; background: rgba(255,67,26,.07); }.invite-result > div:first-child { margin: 0; display: grid; gap: 4px; }.invite-result strong { font-size: var(--fs-value); }.invite-result small { color: var(--label); font-size: var(--fs-label); }.invite-link-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }.invite-link-row input { min-width: 0; font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace; font-size: var(--fs-value); }.invite-link-row button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 
 @media (max-width: 900px) {
   .desktop-rail { width: 78px; align-items: center; padding-inline: 12px; }.desktop-rail .wordmark { margin-inline: 0; font-size: 0; }.desktop-rail .wordmark > span { width: 17px; height: 17px; }.rail-link { width: 48px; justify-content: center; }.rail-link span, .rail-account div, .rail-account button { display: none; }.rail-account { grid-template-columns: 1fr; }.console-main { margin-left: 78px; }
@@ -233,7 +234,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
   .mobile-nav { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; height: calc(64px + env(safe-area-inset-bottom)); padding: 5px 10px env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: rgba(11,10,10,.94); backdrop-filter: blur(18px); }.mobile-nav a { display: grid; place-items: center; align-content: center; gap: 4px; color: var(--label); font-size: 10px; }.mobile-nav a.active { color: var(--paper); }.mobile-nav a.active svg { color: var(--accent); }
   .dashboard-grid { gap: 12px; }.dashboard-grid .card { padding: 18px; }.hero-card { min-height: 330px; }.hero-value { margin-top: 20px; font-size: 48px; }.position-card { min-height: 0; }.signal-card, .control-card, .market-card, .recent-card { min-height: 235px; }.chart-toolbar { flex-direction: column; }.chart-timeframes { width: 100%; }.chart-timeframes button { flex: 1; }.candle-chart-svg { height: 230px; }.chart-empty { min-height: 230px; }.strategy-mini-grid { grid-template-columns: 1fr; }.strategy-mini-grid span { min-height: 43px; }.market-price { font-size: 33px; }
   .setup-banner { align-items: center; }.setup-banner small { display: none; }.signal-layout { gap: 12px; }.signal-layout > .card { padding: 18px; }.signal-focus { min-height: 355px; }.signal-title { margin-top: 28px; }.signal-title h2 { font-size: 50px; }.explanation-card { margin-top: 12px; }
-  .tab-list { width: 100%; }.tab-list button { flex: 1; justify-content: center; padding-inline: 8px; }.settings-panel { padding: 18px; }.risk-summary { grid-template-columns: 1fr 1fr; }.risk-summary > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }.risk-summary > div:nth-child(4) { border-top: 1px solid var(--line); }.two-column-form { grid-template-columns: 1fr; }.full-field { grid-column: auto; }.live-zone { align-items: flex-start; flex-direction: column; }.live-zone button { width: 100%; }.toast-message { left: 15px; right: 15px; bottom: 82px; }
+  .tab-list { width: 100%; }.tab-list button { flex: 1; justify-content: center; padding-inline: 8px; }.settings-panel { padding: 18px; }.risk-summary { grid-template-columns: 1fr 1fr; }.two-column-form { grid-template-columns: 1fr; }.full-field { grid-column: auto; }.live-zone { align-items: flex-start; flex-direction: column; }.live-zone button { width: 100%; }.toast-message { left: 15px; right: 15px; bottom: 82px; }
   .auth-card { padding: 27px 22px; }.auth-wordmark { margin-bottom: 42px; }.invite-form { grid-template-columns: 1fr; }.dialog-content { padding: 22px; }
   .admin-mfa-form, .invite-link-row { grid-template-columns: 1fr; }.invite-link-row button { justify-content: center; }
 }
@@ -513,7 +514,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 
 /* Focus-pair toggle inside a selected preset card */
 .focus-toggle { margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: var(--fs-label); letter-spacing: .04em; text-transform: uppercase; color: var(--label); cursor: pointer; }
-.focus-toggle:hover { border-color: rgba(255,67,26,.5); color: var(--fg); }
+.focus-toggle:hover { border-color: rgba(255,67,26,.5); color: var(--paper); }
 .focus-toggle.active { border-color: var(--accent); background: var(--accent); color: #161614; }
 
 /* Persistent pair view (Home / Activity) */
@@ -611,3 +612,35 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
   .pair-switcher button { min-width: 138px; min-height: 50px; padding-inline: 8px; }
   .pair-button-state { padding-inline: 4px; }
 }
+
+/* Workspace motion language: reveal the dashboard in sequence, then keep
+   live chart signals moving without competing with the data. */
+.pair-view > .card { opacity: 0; animation: cardRise .56s cubic-bezier(.22, 1, .36, 1) both; }
+.pair-view > .card:nth-child(1) { animation-delay: .04s; }
+.pair-view > .card:nth-child(2) { animation-delay: .1s; }
+.pair-view > .card:nth-child(3) { animation-delay: .16s; }
+.pair-view > .card:nth-child(4) { animation-delay: .22s; }
+.pair-view > .card:nth-child(5) { animation-delay: .28s; }
+.pair-view > .card:nth-child(6) { animation-delay: .34s; }
+.pair-view > .card:nth-child(7) { animation-delay: .4s; }
+.pair-view > .card:nth-child(8) { animation-delay: .46s; }
+.pair-view > .card:nth-child(9) { animation-delay: .52s; }
+.pair-view > .card:nth-child(10) { animation-delay: .58s; }
+.pair-view > .card:nth-child(11) { animation-delay: .64s; }
+
+.candle-chart-svg { cursor: crosshair; }
+.strategy-line-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: chartLineDraw .9s cubic-bezier(.22, 1, .36, 1) both; }
+.chart-crosshair { pointer-events: none; }
+.chart-crosshair line { stroke: rgba(236, 233, 226, .42); stroke-width: 1; stroke-dasharray: 2 4; }
+.current-price-line { animation: dashMarch 1.8s linear infinite; }
+.current-price-badge-wrap { transform-box: fill-box; transform-origin: center; animation: livePricePulse 2.6s ease-in-out infinite; }
+
+.context-meter-track span, .macro-factor-track span { transform-origin: left center; animation: meterSlide .72s cubic-bezier(.22, 1, .36, 1) both; }
+.macro-factor:nth-child(2) span { animation-delay: .08s; }
+.macro-factor:nth-child(3) span { animation-delay: .16s; }
+
+@keyframes cardRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes chartLineDraw { from { stroke-dashoffset: 1; opacity: .2; } to { stroke-dashoffset: 0; opacity: 1; } }
+@keyframes dashMarch { to { stroke-dashoffset: -16; } }
+@keyframes livePricePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+@keyframes meterSlide { from { transform: scaleX(0); } to { transform: scaleX(1); } }
