@@ -44,6 +44,36 @@ python3 scripts/scan_secrets.py --tracked --history
 cd Website && npm run build                # only if you touched Website/
 ```
 
+Run these where there is room for them — see below before running any of them on
+the VPS.
+
+### Resource limits on the VPS
+
+The trading VPS is a **1 vCPU / 2 GB** droplet, and the live engine shares it with
+whatever an agent runs. The engine's systemd unit caps it at `MemoryHigh=330M`,
+`MemoryMax=420M`, `CPUQuota=30%` — and `CPUQuota` is a **ceiling, not a
+reservation**, so a heavy job alongside it can still starve the engine of CPU and
+make it miss ticks or drop its WebSocket while a position is open.
+
+Do **not** run these on the VPS:
+
+- `npm run build` / `npm ci` in `Website/` — a Next.js build alone can exceed the
+  free memory on a 2 GB box
+- the full `pytest -q` suite
+- the optimizer or a backtest (`scripts/optimize_pair_configs.py`,
+  `scripts/replay_backtest.py`)
+
+Let CI do that work: `secret-scan` and `test` already run both the full suite and
+the frontend build on a GitHub runner for every PR. On the VPS, keep to targeted
+checks:
+
+```bash
+PYTHONPATH=. python3 -m pytest -q tests/test_<the_thing_you_changed>.py
+```
+
+If something heavy genuinely has to run on the VPS, do it when no position is
+open.
+
 ### Deploying
 
 - **Vercel** (`Website/`) is wired up in the Vercel dashboard, not in this repo —
