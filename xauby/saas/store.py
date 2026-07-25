@@ -84,6 +84,15 @@ class ControlPlaneStore:
                     status TEXT NOT NULL DEFAULT 'stored',
                     capabilities_json TEXT NOT NULL DEFAULT '{}', updated_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS telegram_connections (
+                    tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+                    chat_id TEXT NOT NULL, token_last4 TEXT NOT NULL,
+                    bot_username TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'stored',
+                    enabled INTEGER NOT NULL DEFAULT 1, credential_blob TEXT,
+                    key_version INTEGER NOT NULL DEFAULT 1,
+                    tested_at REAL, updated_at REAL NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS config_revisions (
                     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id),
                     revision INTEGER NOT NULL, author_user_id TEXT NOT NULL REFERENCES users(id),
@@ -710,6 +719,71 @@ class ControlPlaneStore:
         if not row or not row["credential_blob"]:
             return None
         return str(row["target_id"]), str(row["credential_blob"])
+
+    # --- Telegram alert connection -------------------------------------------
+    # New columns on this table must be double-written: once into the CREATE
+    # script above and once into a PRAGMA table_info additions block, the way
+    # exchange_connections does it.
+
+    @staticmethod
+    def _telegram_view(row: sqlite3.Row) -> dict[str, Any]:
+        """Masked read model. The bot token never leaves this module."""
+        result = dict(row)
+        result.pop("credential_blob", None)
+        result["enabled"] = bool(result.get("enabled"))
+        return result
+
+    def set_telegram_connection(self, tenant_id: str, chat_id: str, token_last4: str, *,
+                                status: str = "stored", enabled: bool = True,
+                                bot_username: str = "",
+                                credential_blob: str | None = None) -> dict[str, Any]:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO telegram_connections
+                (tenant_id,chat_id,token_last4,bot_username,status,enabled,
+                 credential_blob,key_version,tested_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,1,?,?)
+                ON CONFLICT(tenant_id) DO UPDATE SET
+                  chat_id=excluded.chat_id,token_last4=excluded.token_last4,
+                  bot_username=excluded.bot_username,status=excluded.status,
+                  enabled=excluded.enabled,
+                  credential_blob=coalesce(excluded.credential_blob,telegram_connections.credential_blob),
+                  key_version=excluded.key_version,tested_at=excluded.tested_at,
+                  updated_at=excluded.updated_at
+                """,
+                (tenant_id, chat_id, token_last4, bot_username, status, int(bool(enabled)),
+                 credential_blob, time.time() if status == "tested" else None, time.time()),
+            )
+            row = conn.execute(
+                "SELECT * FROM telegram_connections WHERE tenant_id=?", (tenant_id,)
+            ).fetchone()
+        # Payload carries no chat id and no token fragment: the audit log is
+        # append-only and hash-chained, so partial disclosure there is forever.
+        self.audit("telegram_connection_updated", tenant_id=tenant_id,
+                   payload={"status": status, "enabled": bool(enabled)})
+        return self._telegram_view(row)
+
+    def telegram_connection(self, tenant_id: str) -> dict[str, Any] | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM telegram_connections WHERE tenant_id=?", (tenant_id,)
+            ).fetchone()
+        return None if row is None else self._telegram_view(row)
+
+    def encrypted_telegram_token(self, tenant_id: str) -> str | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT credential_blob FROM telegram_connections WHERE tenant_id=?",
+                (tenant_id,),
+            ).fetchone()
+        if not row or not row["credential_blob"]:
+            return None
+        return str(row["credential_blob"])
+
+    def delete_telegram_connection(self, tenant_id: str) -> None:
+        with self.connection() as conn:
+            conn.execute("DELETE FROM telegram_connections WHERE tenant_id=?", (tenant_id,))
 
     def record_config_revision(self, tenant_id: str, user_id: str,
                                config: dict[str, Any]) -> int:

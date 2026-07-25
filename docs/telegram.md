@@ -1,5 +1,15 @@
 # Telegram integration
 
+Two ways to wire this up, depending on how you run xAuby:
+
+- **Single operator / self-hosted** — set the env vars and YAML keys yourself. See [Setup](#setup) below.
+- **Pilot Workspace (multi-tenant SaaS)** — each tenant connects their own bot from the
+  web UI. See [Pilot Workspace](#pilot-workspace) at the end.
+
+Either way the engine is the same: it reads `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID` from its environment once at startup, plus the `notifications:` block
+from its `bot_config.yaml`.
+
 ## Setup
 
 1. Create a bot via [@BotFather](https://t.me/BotFather)
@@ -115,3 +125,46 @@ engine forces that pair to sim and sends an operator warning.
 | Markdown parse errors | Check `telegram_failures.log` if enabled |
 | Stop spam on restart | Engine sends stop only after loop started; avoid duplicate processes |
 | Mode looks wrong | Check per-asset `mode` and RegimeRouter live-confirmation gate |
+
+## Pilot Workspace
+
+In the multi-tenant workspace each tenant brings **their own bot** (BYO). A shared
+platform bot is not possible: Telegram's `getUpdates` is exclusive per token, so
+several tenant engines polling one token would fight over updates (409 Conflict) and
+steal each other's commands.
+
+**Operator flow:** Settings → **Alerts** tab → paste the @BotFather token and the chat
+id → *Encrypt & save* → *Send test message* → restart the engine.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/telegram/connect` | Validate, encrypt and store the token |
+| `POST /api/v1/telegram/test` | Server-side `getMe` + `sendMessage` (throttled) |
+| `PATCH /api/v1/telegram/preferences` | Alert-category toggles |
+| `DELETE /api/v1/telegram` | Disconnect and disable alerts |
+
+The bot token is encrypted at rest with AES-256-GCM (`xauby/saas/credentials.py`), bound
+to the tenant by an AAD of `xauby:<tenant_id>:telegram:v1`, and is **never returned by any
+endpoint** — only `token_last4` and the bot username are exposed. It reaches the engine
+through the 0600 tmpfs env file written by `TenantSupervisor.materialize_credentials`,
+which systemd loads via `EnvironmentFile=`.
+
+The workspace toggles map onto the same YAML keys documented above:
+
+| Workspace toggle | bot_config.yaml |
+|------------------|-----------------|
+| Trade lifecycle | `notifications.notify_position_updates` |
+| Risk & safety | `notifications.notify_guard_blocks`, `notify_regime_changes` |
+| System health | `monitoring.heartbeat_interval_minutes` (60 / 0) |
+| Periodic reports | `weekly_review.send_telegram`, `daily_digest.send_telegram` |
+| Allow commands | `notifications.telegram_command_polling_enabled` |
+
+Notes:
+
+- **Critical alerts always send**, bypassing every toggle (`xauby/engine/alerts.py:12`).
+- Credential *and* preference changes need an **engine restart** — both are read once at
+  construction. The UI prompts; it never restarts a running engine for you.
+- Commands are disabled automatically for `@channel` ids: `getUpdates` reports numeric
+  chat ids, so the poller's exact-match authorization can never succeed for one.
+- For a **group** chat id (leading `-`), any group member can run commands including
+  `/pause`. The UI warns about this.

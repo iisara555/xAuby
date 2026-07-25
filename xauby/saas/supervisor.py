@@ -32,11 +32,17 @@ class TenantSupervisor:
     def __init__(self, settings: SaaSSettings):
         self.settings = settings
         self._credential_loader: Callable[[str], tuple[str, dict[str, str]] | None] | None = None
+        self._telegram_loader: Callable[[str], dict[str, str] | None] | None = None
 
     def set_credential_loader(
         self, loader: Callable[[str], tuple[str, dict[str, str]] | None]
     ) -> None:
         self._credential_loader = loader
+
+    def set_telegram_loader(
+        self, loader: Callable[[str], dict[str, str] | None]
+    ) -> None:
+        self._telegram_loader = loader
 
     def credential_path(self, slug: str) -> Path:
         root = self.settings.credential_runtime_root or (self.settings.data_root / "credentials")
@@ -299,6 +305,83 @@ class TenantSupervisor:
         self._set_config_permissions(self.config_dir(slug))
         return self.read_curated_config(slug)
 
+    # Heartbeat cadence used when the "system health" category is switched on.
+    HEARTBEAT_ON_MINUTES = 60
+
+    def read_notification_config(self, slug: str) -> dict[str, Any]:
+        """Invert the tenant YAML back into the workspace alert categories.
+
+        Missing keys fall back to the engine defaults in
+        xauby/notifications/settings.py so a tenant provisioned from an older
+        template still renders correctly.
+        """
+        cfg_path = self.config_dir(slug) / "bot_config.yaml"
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {} if cfg_path.exists() else {}
+        notifications = cfg.get("notifications") or {}
+        weekly = cfg.get("weekly_review") or {}
+        daily = cfg.get("daily_digest") or {}
+        monitoring = cfg.get("monitoring") or {}
+        return {
+            "alerts_enabled": bool(notifications.get("send_alerts", True)),
+            "alert_channel": str(notifications.get("alert_channel", "telegram")).lower(),
+            "trade_lifecycle": bool(notifications.get("notify_position_updates", True)),
+            "risk_safety": bool(notifications.get("notify_guard_blocks", True)),
+            "system_health": int(monitoring.get("heartbeat_interval_minutes", 0) or 0) > 0,
+            "periodic_reports": bool(weekly.get("send_telegram", True))
+            or bool(daily.get("send_telegram", True)),
+            "commands_enabled": bool(
+                notifications.get("telegram_command_polling_enabled", False)
+            ),
+        }
+
+    def update_notification_config(self, slug: str, changes: dict[str, Any]) -> dict[str, Any]:
+        """Bounded write of the alert categories into the tenant YAML.
+
+        Kept separate from update_curated_config: that one is a float-range
+        validator tied to the risk-config revision trail, and notification
+        toggles are booleans spanning four different top-level blocks.
+        """
+        self.provision(slug)
+        cfg_path = self.config_dir(slug) / "bot_config.yaml"
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        notifications = cfg.setdefault("notifications", {})
+        supported = {
+            "alerts_enabled", "alert_channel", "trade_lifecycle", "risk_safety",
+            "system_health", "periodic_reports", "commands_enabled",
+        }
+        unknown = set(changes) - supported
+        if unknown:
+            raise ValueError(f"unsupported notification setting: {sorted(unknown)[0]}")
+        if "alert_channel" in changes:
+            channel = str(changes["alert_channel"]).lower()
+            if channel not in {"telegram", "console"}:
+                raise ValueError("alert_channel must be telegram or console")
+            notifications["alert_channel"] = channel
+        if "alerts_enabled" in changes:
+            # send_alerts gates every level before the per-category checks
+            # (xauby/engine/alerts.py:18), so it belongs to the connection
+            # itself rather than to any one category toggle.
+            notifications["send_alerts"] = bool(changes["alerts_enabled"])
+        if "trade_lifecycle" in changes:
+            notifications["notify_position_updates"] = bool(changes["trade_lifecycle"])
+        if "risk_safety" in changes:
+            enabled = bool(changes["risk_safety"])
+            notifications["notify_guard_blocks"] = enabled
+            notifications["notify_regime_changes"] = enabled
+        if "commands_enabled" in changes:
+            notifications["telegram_command_polling_enabled"] = bool(changes["commands_enabled"])
+        if "system_health" in changes:
+            cfg.setdefault("monitoring", {})["heartbeat_interval_minutes"] = (
+                self.HEARTBEAT_ON_MINUTES if changes["system_health"] else 0
+            )
+        if "periodic_reports" in changes:
+            enabled = bool(changes["periodic_reports"])
+            cfg.setdefault("weekly_review", {})["send_telegram"] = enabled
+            cfg.setdefault("daily_digest", {})["send_telegram"] = enabled
+        cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+        self._set_config_permissions(self.config_dir(slug))
+        return self.read_notification_config(slug)
+
     def apply_profile(
         self,
         slug: str,
@@ -469,32 +552,54 @@ class TenantSupervisor:
             passphrase_env = f"{prefix}_API_PASSPHRASE"
         return key_env, secret_env, passphrase_env
 
+    def _telegram_env_lines(self, slug: str) -> list[str]:
+        """Env lines the engine reads at xauby/engine/base.py:302-304.
+
+        A disconnected tenant still gets an explicit TELEGRAM_ENABLED=false so
+        the rewritten file can never carry a stale token forward.
+        """
+        loaded = self._telegram_loader(slug) if self._telegram_loader else None
+        if not loaded:
+            return [self._environment_line("TELEGRAM_ENABLED", "false")]
+        if any("\n" in value or "\r" in value for value in loaded.values()):
+            raise ValueError("telegram credentials may not contain line breaks")
+        return [
+            self._environment_line("TELEGRAM_ENABLED", "true"),
+            self._environment_line("TELEGRAM_BOT_TOKEN", loaded["bot_token"]),
+            self._environment_line("TELEGRAM_CHAT_ID", loaded["chat_id"]),
+        ]
+
     def materialize_credentials(self, slug: str) -> Path | None:
-        if self._credential_loader is None:
+        tenant = validate_tenant_slug(slug)
+        loaded = self._credential_loader(tenant) if self._credential_loader else None
+        telegram_lines = self._telegram_env_lines(tenant)
+        # A Telegram-only tenant (no exchange keys yet) still needs an env file,
+        # so the exchange block is optional rather than an early return.
+        if loaded is None and len(telegram_lines) == 1:
             return None
-        loaded = self._credential_loader(validate_tenant_slug(slug))
-        if loaded is None:
-            return None
-        _target_id, credentials = loaded
-        if any("\n" in value or "\r" in value for value in credentials.values()):
-            raise ValueError("exchange credentials may not contain line breaks")
         cfg = yaml.safe_load(
             (self.config_dir(slug) / "bot_config.yaml").read_text(encoding="utf-8")
         ) or {}
-        key_env, secret_env, passphrase_env = self._credential_env_names(cfg)
-        lines = [
-            self._environment_line(key_env, credentials.get("api_key", "")),
-            self._environment_line(secret_env, credentials.get("api_secret", "")),
-        ]
-        if credentials.get("passphrase"):
-            lines.append(
-                self._environment_line(passphrase_env, credentials["passphrase"])
-            )
+        lines: list[str] = []
+        if loaded is not None:
+            _target_id, credentials = loaded
+            if any("\n" in value or "\r" in value for value in credentials.values()):
+                raise ValueError("exchange credentials may not contain line breaks")
+            key_env, secret_env, passphrase_env = self._credential_env_names(cfg)
+            lines.extend([
+                self._environment_line(key_env, credentials.get("api_key", "")),
+                self._environment_line(secret_env, credentials.get("api_secret", "")),
+            ])
+            if credentials.get("passphrase"):
+                lines.append(
+                    self._environment_line(passphrase_env, credentials["passphrase"])
+                )
         live = not bool(cfg.get("simulate_only", True))
         lines.extend([
             f"LIVE_TRADING={'true' if live else 'false'}",
             f"SIMULATE_ONLY={'false' if live else 'true'}",
         ])
+        lines.extend(telegram_lines)
         path = self.credential_path(slug)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")

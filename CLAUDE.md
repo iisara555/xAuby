@@ -53,7 +53,7 @@ coin_whitelist.json Active pairs: strategy, timeframes, mode, router gates (comm
 health_check.py     Standalone health check
 bin/xauby           CLI wrapper script
 scripts/            Ops + R&D scripts (backtest, optimize, deploy, replay, restart, screenshots)
-tests/              138 unittest modules (test_*.py), ~1043 tests
+tests/              139 unittest modules (test_*.py), ~1067 tests
 docs/               Operator/contributor docs (architecture, trading-flow, configuration, tui, telegram)
 weekly_reviews/     Generated weekly review markdown
 xauby/
@@ -205,7 +205,7 @@ position is LONG or SHORT so it can pick the right exit.
 Plain `unittest`, no extra runner. Always set `PYTHONPATH=.`.
 
 ```bash
-# Full suite (138 modules)
+# Full suite (139 modules)
 PYTHONPATH=. python3 -m unittest discover -s tests -q
 
 # Targeted architecture suite (fast confidence check)

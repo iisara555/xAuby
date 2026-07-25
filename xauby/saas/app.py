@@ -39,6 +39,9 @@ from xauby.utils.atomic_io import atomic_bytes_write
 SESSION_COOKIE = "xauby_saas_session"
 OAUTH_STATE_COOKIE = "xauby_saas_oauth_state"
 TRADE_PIN_PATTERN = r"^[0-9]{8,12}$"
+TELEGRAM_TOKEN_PATTERN = r"^[0-9]{5,16}:[A-Za-z0-9_-]{35}$"
+TELEGRAM_CHAT_PATTERN = r"^(-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
+TELEGRAM_API_ROOT = "https://api.telegram.org"
 # Legacy consoles accepted a broader secret for the old/current value. Accept
 # it only during rotation; every newly saved PIN and sensitive action keeps the
 # stronger 8-12 digit requirement.
@@ -50,6 +53,19 @@ class ExchangeConnectBody(BaseModel):
     api_secret: str = Field(min_length=4, max_length=512)
     passphrase: str = Field(default="", max_length=512)
     withdraw_disabled_attested: bool
+
+
+class TelegramConnectBody(BaseModel):
+    bot_token: str = Field(pattern=TELEGRAM_TOKEN_PATTERN, max_length=128)
+    chat_id: str = Field(pattern=TELEGRAM_CHAT_PATTERN, max_length=64)
+
+
+class TelegramPreferencesBody(BaseModel):
+    trade_lifecycle: bool | None = None
+    risk_safety: bool | None = None
+    system_health: bool | None = None
+    periodic_reports: bool | None = None
+    commands_enabled: bool | None = None
 
 
 class InviteBody(BaseModel):
@@ -225,12 +241,28 @@ def create_app(
         target_id, envelope = encrypted
         return target_id, cipher.decrypt(tenant["id"], target_id, envelope)
 
+    def load_telegram(slug: str) -> dict[str, str] | None:
+        tenant = store.tenant_by_slug(slug)
+        if not tenant:
+            return None
+        row = store.telegram_connection(tenant["id"])
+        if not row or not row.get("enabled"):
+            return None
+        envelope = store.encrypted_telegram_token(tenant["id"])
+        if not envelope:
+            return None
+        token = cipher.decrypt(tenant["id"], "telegram", envelope)["bot_token"]
+        return {"bot_token": token, "chat_id": str(row["chat_id"])}
+
     supervisor.set_credential_loader(load_credentials)
+    supervisor.set_telegram_loader(load_telegram)
     mailer = mailer or Mailer(settings)
     runtime = runtime or RuntimeGateway(settings, supervisor)
     login_throttle = AttemptThrottle(max_attempts=8, window_seconds=300, lockout_seconds=900)
     email_throttle = AttemptThrottle(max_attempts=5, window_seconds=900, lockout_seconds=900)
     trade_pin_reset_throttle = AttemptThrottle(max_attempts=5, window_seconds=300, lockout_seconds=900)
+    # The only tenant-triggered outbound HTTP in the app besides OAuth.
+    telegram_test_throttle = AttemptThrottle(max_attempts=5, window_seconds=300, lockout_seconds=300)
     app = FastAPI(title="xAuby SaaS Control Plane", version="0.1.0")
     app.state.settings = settings
     app.state.store = store
@@ -849,6 +881,7 @@ def create_app(
             "service_status": supervisor.status(tenant["slug"]),
             "state": supervisor.read_state(tenant["slug"]),
             "exchange_connection": store.exchange_connection(tenant["id"]),
+            "telegram_connection": store.telegram_connection(tenant["id"]),
             "api_whitelist_ips": settings.whitelist_ip_list(),
         }
 
@@ -1066,6 +1099,137 @@ def create_app(
             target_id=connection["target_id"], status="tested", capabilities=capabilities,
         )
         return {"ok": True, "connection": updated, "probe": result}
+
+    def _telegram_error(exc: Exception, status: int | None, body: dict[str, Any]) -> str:
+        """Fixed message map — never surface the raw exception.
+
+        The bot token travels in the Telegram URL path, and requests embeds the
+        URL in its exception strings, so str(exc) here would leak the whole
+        token into the response body and into any log that captured it.
+        """
+        description = str(body.get("description") or "").lower()
+        if status in {401, 404}:
+            return "Telegram rejected this bot token."
+        if status == 400 and "chat not found" in description:
+            return "Telegram could not find that chat id. Send /start to your bot first."
+        if status == 403:
+            return "Your bot is blocked or is not a member of that chat."
+        if isinstance(exc, requests.Timeout) or isinstance(exc, requests.ConnectionError):
+            return "Could not reach Telegram. Try again."
+        return "Telegram test failed."
+
+    @app.post("/api/v1/telegram/connect")
+    def telegram_connect(body: TelegramConnectBody,
+                         user: dict[str, Any] = Depends(csrf_user)):
+        tenant = own_tenant(user)
+        # The regex cannot be trusted to reject a trailing newline ($ matches
+        # before it), and an injected line would land in the 0600 env file.
+        if any("\n" in value or "\r" in value for value in (body.bot_token, body.chat_id)):
+            raise HTTPException(
+                status_code=422, detail="telegram credentials may not contain line breaks"
+            )
+        envelope = cipher.encrypt(tenant["id"], "telegram", {"bot_token": body.bot_token})
+        # getUpdates reports numeric chat ids, so the poller's exact-match
+        # authorization can never succeed for an @channel id.
+        commands_supported = body.chat_id.lstrip("-").isdigit()
+        connection = store.set_telegram_connection(
+            tenant["id"], body.chat_id, body.bot_token[-4:],
+            status="stored", enabled=True, credential_blob=envelope,
+        )
+        preferences = supervisor.update_notification_config(tenant["slug"], {
+            # alert_channel must be forced: "console" short-circuits delivery
+            # entirely (xauby/engine/alerts.py:15).
+            "alert_channel": "telegram",
+            "alerts_enabled": True,
+            "commands_enabled": commands_supported,
+        })
+        store.audit("telegram_connected", tenant_id=tenant["id"], user_id=str(user["id"]))
+        return {"ok": True, "connection": connection, "preferences": preferences,
+                "commands_supported": commands_supported, "restart_required": True}
+
+    @app.post("/api/v1/telegram/test")
+    def telegram_test(request: Request, user: dict[str, Any] = Depends(csrf_user)):
+        tenant = own_tenant(user)
+        connection = store.telegram_connection(tenant["id"])
+        if not connection:
+            raise HTTPException(status_code=409, detail="telegram is not connected")
+        throttle_key = f"tg-test:{tenant['id']}:{request.client.host if request.client else '-'}"
+        retry_after = telegram_test_throttle.retry_after(throttle_key)
+        if retry_after:
+            raise HTTPException(
+                status_code=429, detail="too many telegram tests",
+                headers={"Retry-After": str(int(retry_after))},
+            )
+        envelope = store.encrypted_telegram_token(tenant["id"])
+        if not envelope:
+            raise HTTPException(status_code=409, detail="telegram token is missing")
+        token = cipher.decrypt(tenant["id"], "telegram", envelope)["bot_token"]
+        status_code: int | None = None
+        payload: dict[str, Any] = {}
+        try:
+            identity = requests.get(f"{TELEGRAM_API_ROOT}/bot{token}/getMe", timeout=10)
+            status_code, payload = identity.status_code, (identity.json() or {})
+            if not identity.ok or not payload.get("ok"):
+                raise RuntimeError("getMe rejected")
+            bot_username = str((payload.get("result") or {}).get("username") or "")
+            sent = requests.post(
+                f"{TELEGRAM_API_ROOT}/bot{token}/sendMessage",
+                json={
+                    "chat_id": connection["chat_id"],
+                    "text": "xAuby: Telegram alerts are connected. "
+                            "Critical safety alerts are always delivered here.",
+                },
+                timeout=10,
+            )
+            status_code, payload = sent.status_code, (sent.json() or {})
+            if not sent.ok or not payload.get("ok"):
+                raise RuntimeError("sendMessage rejected")
+        except Exception as exc:
+            telegram_test_throttle.record_failure(throttle_key)
+            store.set_telegram_connection(
+                tenant["id"], connection["chat_id"], connection["token_last4"],
+                status="failed", enabled=bool(connection["enabled"]),
+                bot_username=str(connection.get("bot_username") or ""),
+            )
+            raise HTTPException(
+                status_code=502, detail=_telegram_error(exc, status_code, payload)
+            ) from None
+        telegram_test_throttle.clear(throttle_key)
+        updated = store.set_telegram_connection(
+            tenant["id"], connection["chat_id"], connection["token_last4"],
+            status="tested", enabled=True, bot_username=bot_username,
+        )
+        store.audit("telegram_tested", tenant_id=tenant["id"], user_id=str(user["id"]))
+        return {"ok": True, "connection": updated}
+
+    @app.delete("/api/v1/telegram")
+    def telegram_disconnect(user: dict[str, Any] = Depends(csrf_user)):
+        tenant = own_tenant(user)
+        store.delete_telegram_connection(tenant["id"])
+        preferences = supervisor.update_notification_config(tenant["slug"], {
+            "alerts_enabled": False, "commands_enabled": False,
+        })
+        store.audit("telegram_disconnected", tenant_id=tenant["id"], user_id=str(user["id"]))
+        return {"ok": True, "preferences": preferences, "restart_required": True}
+
+    @app.get("/api/v1/telegram/preferences")
+    def telegram_preferences(user: dict[str, Any] = Depends(current_user)):
+        return supervisor.read_notification_config(own_tenant(user)["slug"])
+
+    @app.patch("/api/v1/telegram/preferences")
+    def telegram_preferences_patch(body: TelegramPreferencesBody,
+                                   user: dict[str, Any] = Depends(csrf_user)):
+        tenant = own_tenant(user)
+        changes = body.model_dump(exclude_none=True)
+        if not changes:
+            raise HTTPException(status_code=422, detail="no supported settings supplied")
+        try:
+            preferences = supervisor.update_notification_config(tenant["slug"], changes)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        store.audit("telegram_preferences_updated", tenant_id=tenant["id"],
+                    user_id=str(user["id"]), payload=changes)
+        return {"ok": True, "preferences": preferences, "restart_required": True}
 
     @app.post("/api/v1/live/request")
     def live_request(user: dict[str, Any] = Depends(csrf_user)):

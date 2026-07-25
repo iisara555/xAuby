@@ -54,11 +54,32 @@ export type ExchangeConnection = {
   tested_at?: number | null;
 };
 
+export type TelegramConnection = {
+  chat_id: string;
+  token_last4: string;
+  bot_username: string;
+  status: string;
+  enabled: boolean;
+  tested_at?: number | null;
+  updated_at?: number | null;
+};
+
+export type TelegramPreferences = {
+  alerts_enabled: boolean;
+  alert_channel: string;
+  trade_lifecycle: boolean;
+  risk_safety: boolean;
+  system_health: boolean;
+  periodic_reports: boolean;
+  commands_enabled: boolean;
+};
+
 export type Bot = {
   tenant: Tenant;
   service_status: string;
   state: Record<string, unknown>;
   exchange_connection: ExchangeConnection | null;
+  telegram_connection: TelegramConnection | null;
   api_whitelist_ips?: string[];
 };
 

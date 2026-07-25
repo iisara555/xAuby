@@ -332,6 +332,15 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .profile-fields { grid-template-columns: 1fr 1fr; }.profile-fields input:disabled { color: var(--label); cursor: not-allowed; }
 .profile-save-row { display: flex; align-items: center; gap: 14px; }.profile-save-row .field-help { margin: 0; }
 
+/* Telegram alerts */
+.telegram-settings { display: grid; gap: 18px; }
+.telegram-settings .form-stack { max-width: 480px; }
+.form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.telegram-onboarding { padding: 16px 18px; border: 1px dashed var(--line-strong); border-radius: 10px; background: #0f0f0e; }.telegram-onboarding p { margin: 0 0 9px; }.telegram-onboarding p:last-child { margin: 9px 0 0; }.telegram-onboarding ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }.telegram-onboarding code { padding: 1px 5px; border-radius: 4px; color: #d8b675; background: #090908; font-size: 11px; }
+.telegram-preferences { padding-top: 18px; display: grid; gap: 14px; border-top: 1px solid var(--line); }.telegram-preferences h3 { margin: 0; font-size: var(--fs-value); }.telegram-preferences .checkbox-field span { display: grid; gap: 3px; }.telegram-preferences .checkbox-field strong { color: var(--paper); font-size: 13px; }.telegram-preferences .checkbox-field small { color: var(--label); font-size: var(--fs-label); }
+.telegram-settings .field-help { display: flex; align-items: flex-start; gap: 7px; margin: 0; }.telegram-settings .field-help svg { flex: none; margin-top: 2px; }
+.telegram-restart { padding: 12px 14px; border: 1px solid rgba(214,185,111,.32); border-radius: 9px; background: rgba(214,185,111,.07); color: #d6b96f !important; }
+
 .preset-option { display: block; padding: 16px; }
 .preset-option-head { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; text-align: left; }
 .preset-option-head .status-pill { justify-self: end; }

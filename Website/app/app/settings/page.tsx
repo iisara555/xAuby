@@ -2,7 +2,7 @@
 
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Check, KeyRound, Radio, ShieldAlert, SlidersHorizontal, UserRound } from "lucide-react";
+import { Bell, Check, KeyRound, Radio, ShieldAlert, SlidersHorizontal, UserRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { PageHeading } from "@/components/page-heading";
 import { StatusPill } from "@/components/status-pill";
@@ -10,6 +10,7 @@ import { useCurrentUser } from "@/components/app-shell";
 import { api, csrfHeaders } from "@/lib/api";
 import { useBot, useCatalog, useProfile } from "@/lib/hooks";
 import { ProfileSettings } from "@/components/profile-settings";
+import { TelegramSettings } from "@/components/telegram-settings";
 
 const PENDING_BACKTEST = {
   status: "pending" as const,
@@ -327,6 +328,7 @@ export default function SettingsPage() {
           <Tabs.Trigger value="profile"><UserRound size={17} />Profile</Tabs.Trigger>
           <Tabs.Trigger value="trading"><SlidersHorizontal size={17} />Trading</Tabs.Trigger>
           <Tabs.Trigger value="exchange"><Radio size={17} />Exchange</Tabs.Trigger>
+          <Tabs.Trigger value="alerts"><Bell size={17} />Alerts</Tabs.Trigger>
           <Tabs.Trigger value="security"><KeyRound size={17} />Security</Tabs.Trigger>
         </Tabs.List>
 
@@ -439,6 +441,10 @@ export default function SettingsPage() {
             {!savedCertified && savedProfile && <p className="form-error" role="status">All saved pairs are SIM-only. Live activation needs at least one live-certified preset.</p>}
             {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={openLiveDialog} disabled={busy || !exchangeTestFresh || !savedCertified}>Review & activate</button>}
           </div>
+        </Tabs.Content>
+
+        <Tabs.Content value="alerts" className="settings-panel card">
+          <TelegramSettings />
         </Tabs.Content>
 
         <Tabs.Content value="security" className="settings-panel card">

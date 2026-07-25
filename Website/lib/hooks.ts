@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { api, Bot, Catalog, RuntimeSnapshot, TradingProfile, User } from "./api";
+import { api, Bot, Catalog, RuntimeSnapshot, TelegramPreferences, TradingProfile, User } from "./api";
 
 const visibleRefresh = (milliseconds: number) =>
   typeof document === "undefined" || document.visibilityState === "visible" ? milliseconds : 0;
@@ -34,4 +34,11 @@ export function useCatalog() {
 
 export function useProfile() {
   return useSWR<TradingProfile>("/api/v1/profile", api, { revalidateOnFocus: false });
+}
+
+export function useTelegramPreferences() {
+  return useSWR<TelegramPreferences>("/api/v1/telegram/preferences", api, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
 }

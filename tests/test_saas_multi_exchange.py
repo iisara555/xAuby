@@ -291,6 +291,60 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
             if target_id == "okx-swap":
                 self.assertIn('OKX_API_PASSPHRASE="p-value"', body)
 
+    def test_telegram_env_names_align_with_engine_reader(self):
+        """The three names the engine reads at xauby/engine/base.py:302-304.
+
+        A rename on either side must fail the build rather than silently stop
+        delivering alerts.
+        """
+        source = (Path(__file__).resolve().parents[1]
+                  / "xauby" / "engine" / "base.py").read_text(encoding="utf-8")
+        for name in ("TELEGRAM_ENABLED", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+            self.assertIn(f'os.environ.get("{name}"', source)
+
+        tenant = self._tenant()
+        self.assertEqual(self._save_profile(["okx-xau-actionzone-v1"]).status_code, 200)
+        self.supervisor.set_telegram_loader(
+            lambda slug: {"bot_token": "fixture-token", "chat_id": "-1009999"}
+        )
+        body = self.supervisor.materialize_credentials(tenant["slug"]).read_text(encoding="utf-8")
+        self.assertIn('TELEGRAM_ENABLED="true"', body)
+        self.assertIn('TELEGRAM_BOT_TOKEN="fixture-token"', body)
+        self.assertIn('TELEGRAM_CHAT_ID="-1009999"', body)
+
+    def test_materialize_credentials_writes_telegram_without_exchange_keys(self):
+        """A sim-only tenant with no exchange keys still gets an env file."""
+        tenant = self._tenant()
+        self.assertEqual(self._save_profile(["okx-xau-actionzone-v1"]).status_code, 200)
+        self.supervisor.set_credential_loader(lambda slug: None)
+        self.supervisor.set_telegram_loader(
+            lambda slug: {"bot_token": "fixture-token", "chat_id": "42"}
+        )
+        env_path = self.supervisor.materialize_credentials(tenant["slug"])
+        self.assertIsNotNone(env_path)
+        body = env_path.read_text(encoding="utf-8")
+        self.assertIn('TELEGRAM_BOT_TOKEN="fixture-token"', body)
+        self.assertIn("LIVE_TRADING=false", body)
+        self.assertNotIn("OKX_API_KEY", body)
+
+    def test_materialize_credentials_marks_telegram_disabled_when_absent(self):
+        tenant = self._tenant()
+        self.assertEqual(self._save_profile(["okx-xau-actionzone-v1"]).status_code, 200)
+        self.supervisor.set_credential_loader(
+            lambda slug: ("okx-swap", {"api_key": "k", "api_secret": "s"})
+        )
+        self.supervisor.set_telegram_loader(lambda slug: None)
+        body = self.supervisor.materialize_credentials(tenant["slug"]).read_text(encoding="utf-8")
+        self.assertIn('TELEGRAM_ENABLED="false"', body)
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", body)
+
+    def test_materialize_credentials_returns_none_without_either_source(self):
+        tenant = self._tenant()
+        self.assertEqual(self._save_profile(["okx-xau-actionzone-v1"]).status_code, 200)
+        self.supervisor.set_credential_loader(lambda slug: None)
+        self.supervisor.set_telegram_loader(lambda slug: None)
+        self.assertIsNone(self.supervisor.materialize_credentials(tenant["slug"]))
+
 
 if __name__ == "__main__":
     unittest.main()
