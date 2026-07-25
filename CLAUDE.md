@@ -283,6 +283,20 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
 
 ## Git workflow for this environment
 
+**`AGENTS.md` holds the shared multi-agent rules — read it before pushing.** It is
+the single source of truth for both Claude and Codex; the essentials:
+
+- `main` is what CI validates, what Vercel deploys, **and what the live trading
+  engine pulls and restarts on** (`scripts/deploy_from_github.sh` defaults to it).
+- **Never force-push `main`** — the VPS deploys with `git merge --ff-only`, so a
+  rewritten history makes deployment refuse to proceed.
+- One branch, one agent. Prefix Claude's work `claude/*`.
+- On the VPS, never edit `/opt/xauby/current`; `xauby update` stashes uncommitted
+  changes silently and restarts a live engine. Work in a separate clone.
+- VPS deploys are manual and position-aware. Vercel deploys from `main` on its own.
+
+Then, for this environment specifically:
+
 - Develop on the designated feature branch; create it locally if missing.
 - Commit with clear messages; push with `git push -u origin <branch>` (retry with
   exponential backoff on network errors).
