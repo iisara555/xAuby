@@ -52,8 +52,9 @@ so a backtest result cannot diverge from live.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BINANCE_API_KEY` | - | Binance.th REST / WS auth |
-| `BINANCE_API_SECRET` | - | HMAC secret |
+| `OKX_API_KEY` | - | Active OKX REST / WebSocket API key |
+| `OKX_API_SECRET` | - | Active OKX API secret |
+| `OKX_API_PASSPHRASE` | - | Active OKX API passphrase |
 | `LIVE_TRADING` | `false` | Additional gate for real orders |
 | `SIMULATE_ONLY` | from YAML | CLI `--live` / `--simulate` override |
 | `BOT_READ_ONLY` | `false` | Skip order placement |
@@ -61,10 +62,13 @@ so a backtest result cannot diverge from live.
 | `TELEGRAM_BOT_TOKEN` | - | Bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | - | Authorized chat for commands |
 | `DEFAULT_SYMBOL` | - | Optional single-pair override |
-| `XAUBY_DEFAULT_SYMBOL` | `XAUTUSDT` | Last-resort dashboard symbol when the whitelist is empty/unreadable (asset-neutral) |
+| `XAUBY_DEFAULT_SYMBOL` | `XAUTUSDT` | Legacy dashboard fallback when the whitelist is empty/unreadable; the current whitelist supplies `XAUUSDT` and `BTCUSDT` |
 | `XAUBY_HOME` | `core` | Base directory for runtime data (DB, lock, sim balances). Relocate to run instances side by side |
 | `XAUBY_INSTANCE_ID` | - | Optional sub-namespace under the runtime root (e.g. a tenant/account id) for multi-instance isolation |
-| `BINANCE_WS_URL` | auto | WS endpoint override; see YAML header |
+
+`BINANCE_API_KEY`, `BINANCE_API_SECRET`, and `BINANCE_WS_URL` are retained only
+for the optional legacy `provider: binance` plugin; they are not used by the
+committed OKX baseline.
 
 ### Regime macro weights
 
@@ -81,12 +85,15 @@ macro_sentiment_guard:
 
 ## Current pair baseline
 
-| Symbol | Mode | Strategy | Primary TF | Confirm TF | Router | Notes |
-|--------|------|----------|------------|------------|--------|-------|
-| `XAUUSDT` | `live` | `xauby_actionzone` | `4h` | `1d` | Off | `PAXGUSDT` backtest proxy |
-| `BTCUSDT` | `live` | `supertrend_ema200` | `4h` | none | Off | Certified OKX 4H preset |
+| Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Leverage | Router | Notes |
+|--------|------|----------|------------|------------|-------|----------|--------|-------|
+| `XAUUSDT` | `live` | `xauby_actionzone` | `4h` | `1d` | Long + short | 1x | Off | `PAXGUSDT` backtest proxy |
+| `BTCUSDT` | `live` | `supertrend_ema200` | `4h` | none | Long + short | 1x | Off | Certified OKX 4H preset |
 
-`risk_pct` is intentionally kept at `0.01` (1%) in both trading and portfolio sizing.
+`risk_pct` is intentionally kept at `0.02` (2%) in trading, portfolio, and
+per-symbol sizing. `trading.max_open_positions`, `risk.max_open_positions`, and
+`portfolio.max_open_positions` are all `2` so neither live pair is silently
+blocked by a lower concurrency cap.
 
 ## Partial take-profit
 
@@ -118,12 +125,15 @@ ride until CDC exits. UI surfaces show the target as `PTP`, `Partial TP`, or
   "quote_asset": "USDT",
   "assets": [
     {
-      "symbol": "BTC",
+      "symbol": "SOL",
       "enabled": true,
       "primary_timeframe": "1h",
       "confirm_timeframe": "",
       "strategy": "supertrend_ema200",
       "mode": "sim",
+      "allowed_sides": ["long"],
+      "leverage": 1.0,
+      "short_live_enabled": false,
       "regime_router_enabled": true,
       "regime_router_live_confirmed": false,
       "sim_fee_pct": 0.1
@@ -141,6 +151,9 @@ ride until CDC exits. UI surfaces show the target as `PTP`, `Partial TP`, or
 | `strategy` | plugin id | Required when `architecture.whitelist_strict: true` |
 | `strategy_params` | object | Per-pair overrides merged into strategy config |
 | `mode` | `sim`, `live` | Requires `per_symbol_execution_mode: true` |
+| `allowed_sides` | list of `long`, `short` | Explicit position sides allowed for the pair |
+| `leverage` | number | Pair leverage; committed live pairs use 1x |
+| `short_live_enabled` | bool | Additional fail-closed gate required before live short orders |
 | `regime_router_enabled` | bool | Pair-level RegimeRouter gate |
 | `regime_router_live_confirmed` | bool | Required before a live pair may route strategies |
 | `sim_fee_pct` | number | Percent, e.g. `0.1` = 0.1% |
@@ -160,10 +173,10 @@ architecture:
   per_symbol_execution_mode: true
   sim_broker_enabled: true
   regime_router_enabled: true
-  regime_confidence_filter: false
+  regime_confidence_filter: true
   event_bus_enabled: true
   strategy_chart_indicators:
-    cdc_action_zone: [cdc_action_zone]
+    xauby_actionzone: [xauby_actionzone]
     supertrend_ema200: [supertrend, ema200]
     btc_ema_pullback: [btc_ema_pullback]
     ict_lite_strategy: [ict_lite]
@@ -177,7 +190,7 @@ architecture:
 | `indicator_registry_enabled` | Chart uses `IndicatorRegistry` instead of hard-coded CDC lines |
 | `sync_yaml_pairs_from_whitelist` | Keeps `data.pairs` synced from whitelist assets |
 | `tui_indicator_registry` | TUI checklist/legend comes from registry adapter |
-| `per_symbol_execution_mode` | Allows BTC sim while XAUT stays live |
+| `per_symbol_execution_mode` | Allows each whitelisted pair to select `sim` or `live` independently |
 | `sim_broker_enabled` | Sim orders use persistent SimBroker ledger |
 | `regime_router_enabled` | Master RegimeRouter switch |
 | `regime_confidence_filter` | Optional confidence gate after enough history exists |
@@ -192,16 +205,16 @@ regime_router:
   debounce_candles: 3
   recovery_candles: 3
   force_close_candles: 6
-  confidence_threshold: 0.7
+  confidence_threshold: 0.65
   mapping:
-    BULL_BREAKOUT: cdc_action_zone
-    BULL_TREND_STRONG: cdc_action_zone
-    BULL_TREND_WEAK: cdc_action_zone
-    LOW_VOL_ACCUMULATION: bbkc_squeeze
-    LOW_VOL_RANGE: bbkc_squeeze
-    VOLATILITY_EXPANSION: supertrend_ema200
+    BULL_BREAKOUT: xauby_donchian_trend
+    BULL_TREND_STRONG: xauby_donchian_trend
+    BULL_TREND_WEAK: xauby_donchian_trend
+    LOW_VOL_ACCUMULATION: bbrsi_mean_reversion
+    LOW_VOL_RANGE: bbrsi_mean_reversion
+    VOLATILITY_EXPANSION: xauby_donchian_trend
     SIDEWAYS_CHOP: bbrsi_mean_reversion
-    BEAR_TREND_WEAK: donchian_trend
+    BEAR_TREND_WEAK:
     PANIC_SELL:
     BEAR_BREAKDOWN:
     BEAR_TREND_STRONG:
@@ -240,11 +253,11 @@ These should be consistent before live trading:
 
 | Key | Current / typical value |
 |-----|--------------------------|
-| `trading.risk_pct` | `0.45` |
-| `portfolio.position_sizing.risk_pct` | `0.45` |
-| `portfolio.symbols.<SYMBOL>.position_sizing.risk_pct` | `0.45` |
+| `trading.risk_pct` | `0.02` |
+| `portfolio.position_sizing.risk_pct` | `0.02` |
+| `portfolio.symbols.<SYMBOL>.position_sizing.risk_pct` | `0.02` |
 | `trading.max_position_per_trade_pct` | `25.0` |
-| `portfolio.symbols.BTCUSDT.position_sizing.max_position_per_trade_pct` | `20.0` |
+| `portfolio.symbols.<SYMBOL>.position_sizing.max_position_per_trade_pct` | `25.0` |
 
 Global risk guards still apply across all symbols. Per-symbol strategy/risk state is isolated; portfolio capital is shared by design.
 
@@ -253,7 +266,7 @@ Global risk guards still apply across all symbols. Per-symbol strategy/risk stat
 Backtest commands:
 
 ```bash
-python scripts/replay_backtest.py --symbol XAUTUSDT --config bot_config.yaml
+python scripts/replay_backtest.py --symbol XAUUSDT --config bot_config.yaml
 python scripts/replay_backtest.py --symbol BTCUSDT --config bot_config.yaml
 ```
 

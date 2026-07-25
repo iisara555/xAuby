@@ -138,8 +138,9 @@ The certified derivatives path uses `market_type: swap`, `margin_mode: isolated`
 converts base quantity to contracts using `contractSize`.
 
 Short signals use semantic `OPEN/CLOSE + SHORT`; the adapter maps these to SELL
-and reduce-only BUY. Leverage defaults to 1x and is capped at 3x. A short strategy
-must be explicitly allowed per pair and remains paper-only unless
+and reduce-only BUY. The committed baseline defaults to and caps leverage at 1x
+(the runtime hard safety ceiling is 3x). A short strategy must be explicitly
+allowed per pair and remains paper-only unless
 `short_live_enabled` is set. Startup fails closed when the selected adapter does
 not expose swap, positions, and reduce-only capabilities.
 

@@ -280,6 +280,10 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
   `core/` and is gitignored; don't commit it. TUI screenshots use stable names in
   `docs/screenshots/*.svg`.
 - Match surrounding code style; comments only for non-obvious constraints.
+- Check local disk space (`df -h`) before heavy runs — backtest data fetch,
+  optimizer sweeps, `regime_strategy_eval.py --grid`, full test suite. Backtest
+  cache + JSONL logs under `core/` fill disk fast and aren't gitignored from
+  disk usage, just from git.
 
 ## Git workflow for this environment
 

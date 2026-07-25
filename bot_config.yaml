@@ -784,9 +784,9 @@ architecture:
   per_symbol_execution_mode: true
   sim_broker_enabled: true
   # Master switch for regime routing. Only pairs that ALSO set
-  # regime_router_enabled: true in coin_whitelist.json are routed — currently
-  # BTCUSDT only (XAUT/SOL keep it false, so the shared mapping below is
-  # effectively BTC-only).
+  # regime_router_enabled: true in coin_whitelist.json are routed. Both current
+  # live pairs (XAUUSDT and BTCUSDT) keep their pair-level gate false and run
+  # their configured strategy directly.
   regime_router_enabled: true
   # Suppress regime switches when the classifier confidence is below
   # regime_router.confidence_threshold (guarded by a 30-sample warmup). Keeps the
@@ -819,11 +819,10 @@ regime_router:
   # routing to a single strategy in chop on the churn matrix). See
   # docs/regime_churn_report.md.
   confidence_threshold: 0.65
-  # Automated strategy router matrix (BTCUSDT only — the only router-enabled
-  # pair). Trend/breakout regimes -> DONCHIAN (xauby_donchian_trend); low-vol /
-  # range-bound regimes -> BBRSI mean-reversion; bearish / high-risk regimes ->
-  # NO_TRADE (empty target). Spot account is LONG-only, so bearish regimes are
-  # risk-off (flat to cash) rather than short.
+  # Dormant shared strategy router matrix (no current live pair enables its
+  # pair-level router gate). Trend/breakout regimes -> DONCHIAN
+  # (xauby_donchian_trend); low-vol/range-bound regimes -> BBRSI mean-reversion;
+  # bearish/high-risk regimes -> NO_TRADE (empty target) by policy.
   mapping:
     # Bullish — Trend-Following / Breakout
     BULL_BREAKOUT: xauby_donchian_trend
@@ -835,7 +834,7 @@ regime_router:
     SIDEWAYS_CHOP: bbrsi_mean_reversion
     # High volatility — catch the explosive momentum
     VOLATILITY_EXPANSION: xauby_donchian_trend
-    # Bearish / high-risk — risk-off (LONG-only spot: no shorting → NO_TRADE)
+    # Bearish / high-risk — risk-off by router policy → NO_TRADE
     BEAR_TREND_WEAK:
     PANIC_SELL:
     BEAR_BREAKDOWN:

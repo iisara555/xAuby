@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+from scripts.vps_latency_check import DEFAULT_HOSTS
 from xauby.api.client import LiteBinanceClient
 from xauby.api.websocket import LiteBinanceWebSocket
 from xauby.observability.emitter import EventEmitter
@@ -11,6 +12,9 @@ from xauby.observability.state import StateExporter
 
 
 class TestVpsLatencyConfig(unittest.TestCase):
+    def test_latency_check_defaults_to_active_okx_endpoint(self):
+        self.assertEqual(DEFAULT_HOSTS, ("api.okx.com",))
+
     def test_binance_client_uses_api_config(self):
         with patch("xauby.api.client.ClockSync.sync", return_value=0.0):
             client = LiteBinanceClient(

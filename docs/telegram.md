@@ -63,16 +63,16 @@ Only the configured `TELEGRAM_CHAT_ID` is authorized.
 
 When multiple pairs are active, messages show portfolio totals first and then per-pair lines.
 
-`/status` example (current baseline: OKX XAUUSDT + BTCUSDT, both live):
+`/status` example (current OKX XAU + BTC baseline):
 
 ```text
 xAuby Status - 2 active pair(s)
 Equity: 85.00 USDT | Global: LIVE
 - XAUUSDT 4h | LIVE | xauby_actionzone | 4496.84 | IDLE | HOLD
-- BTCUSDT 4h | LIVE | supertrend_ema200 | 98120.50 | IDLE | HOLD
+- BTCUSDT 4h | LIVE | supertrend_ema200 | 118420.00 | IDLE | HOLD
 ```
 
-Additional whitelisted pairs stack the same way, one line per active pair.
+Each additional whitelisted pair stacks the same way, one line per active pair.
 
 `/pnl` shows a portfolio block first, then `SYMBOL: trades | net` per pair.
 
@@ -104,8 +104,8 @@ acknowledgement in chat only.
 
 ## RegimeRouter operator note
 
-The current live XAU pair keeps `regime_router_enabled: false` — it runs its
-single strategy (`xauby_actionzone`) directly, no router. A live routed pair
+The current live XAU and BTC pairs keep `regime_router_enabled: false` — each
+runs its configured strategy directly, without the router. A live routed pair
 requires explicit per-asset `regime_router_live_confirmed: true`; otherwise the
 engine forces that pair to sim and sends an operator warning.
 

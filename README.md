@@ -4,7 +4,7 @@
 
 **Alternative Store of Value Trading System**
 
-Automated trading for the **OKX XAUUSDT perpetual swap**, operated from a
+Automated trading for **OKX XAUUSDT and BTCUSDT perpetual swaps**, operated from a
 browser: a multi-tenant **web SaaS console** (xAuby Pilot) in front of a
 plugin-driven Python engine with simulation-first execution, guarded risk,
 full observability, and Telegram/TUI fallbacks.
@@ -33,9 +33,8 @@ full observability, and Telegram/TUI fallbacks.
 
 xAuby is an event-driven trading system for store-of-value markets. The
 committed baseline trades **XAUUSDT** and **BTCUSDT** on **OKX USDT-settled
-perpetual swap** via CCXT — long and short at 1x leverage — using the CDC
-ActionZone strategy (`xauby_actionzone`) for gold and SuperTrend + EMA200
-(`supertrend_ema200`) for BTC.
+perpetual swaps** via CCXT — both long and short at 1x leverage. XAU uses CDC
+ActionZone (`xauby_actionzone`); BTC uses `supertrend_ema200`.
 
 The engine loop:
 
@@ -117,8 +116,8 @@ Security posture and audit notes live in
 
 Exchange: **OKX USDT-settled swap** (`exchange.provider: ccxt`, `ccxt_id: okx`,
 `market_type: swap`, `margin_mode: isolated`, `position_mode: one_way`), fee
-assumption `0.05%` taker. CCXT maps `XAUUSDT` to the OKX gold perpetual
-`XAU/USDT:USDT`.
+assumption `0.05%` taker. CCXT maps compact engine symbols to OKX contracts,
+including `XAUUSDT` → `XAU/USDT:USDT` and `BTCUSDT` → `BTC/USDT:USDT`.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides |
 |--------|------|----------|------------|------------|-------|
@@ -155,7 +154,7 @@ Risk defaults (`bot_config.yaml`):
 | Per-trade risk (`risk_pct`) | `2%` |
 | Max allocation per trade | `25%` |
 | Max daily loss | `6%` |
-| Max open positions | `1` |
+| Max open positions | `2` |
 | Max leverage | `1x` |
 | Drawdown guard kill-switch | `25%` below equity high-water mark |
 
@@ -164,7 +163,7 @@ Backtests proxy XAU to `PAXGUSDT` (deep history on Global Binance) via
 
 **Router safety gate:** a pair with `mode: live` and `regime_router_enabled:
 true` is forced to **sim** unless it also has `regime_router_live_confirmed:
-true`. The XAU baseline runs with the RegimeRouter off. NO_TRADE regimes block
+true`. Both live baseline pairs run with the RegimeRouter off. NO_TRADE regimes block
 new entries, keep stop protection, tighten trailing to 1x ATR, and can force
 close after a configured number of candles.
 
@@ -316,8 +315,8 @@ aliased in `xauby/strategies/registry.py` (`cdc_action_zone` →
 
 Shorts: strategies emit `open_short` / `close_short`; execution is gated
 per-pair by `allowed_sides` + `short_live_enabled` plus the swap adapter's
-capabilities. On the current baseline the XAU pair runs long + short
-stop-and-reverse in live.
+capabilities. On the current baseline both XAU and BTC run long + short in live;
+XAU uses stop-and-reverse signals.
 
 Research plugins (tagged `research`, e.g. `donchian_short`,
 `supertrend_short`, `rsi2_short`, `rsi2_meanrev`, `vol_breakout`) are
