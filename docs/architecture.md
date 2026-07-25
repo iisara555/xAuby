@@ -117,11 +117,12 @@ RegimeRouter is opt-in per pair:
 
 If a live asset enables router without live confirmation, the engine forces that asset to sim.
 
-Current production-safe pattern:
+Current committed pattern:
 
-| Symbol | Strategy baseline | Router state |
-|--------|-------------------|--------------|
-| `XAU` (XAUUSDT) | `xauby_actionzone` (CDC Action Zone V3) | Off |
+| Symbol | Mode | Strategy baseline | Sides | Router state |
+|--------|------|-------------------|-------|--------------|
+| `XAU` (XAUUSDT) | Live | `xauby_actionzone` (CDC Action Zone V3) | Long + short | Off |
+| `BTC` (BTCUSDT) | Live | `supertrend_ema200` | Long + short | Off |
 
 ## Notification pipeline
 

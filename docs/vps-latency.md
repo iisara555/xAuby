@@ -9,12 +9,10 @@ The goal is to separate network latency from local VPS load or disk I/O.
 ./venv/bin/python scripts/vps_latency_check.py
 ```
 
-The script's default targets are still `api.binance.th` / `www.binance.th`
-(legacy default). The live runtime is OKX (`api.okx.com`), so pass it
-explicitly when checking the actual trading path:
+The script defaults to the active OKX REST endpoint (`api.okx.com`):
 
 ```bash
-./venv/bin/python scripts/vps_latency_check.py --host api.okx.com
+./venv/bin/python scripts/vps_latency_check.py
 ```
 
 JSON output for logging/comparison:
@@ -25,11 +23,11 @@ JSON output for logging/comparison:
 
 ## What To Look For
 
-- `curl total`: rough HTTPS request time to the target host(s) (`api.okx.com` for the live path; `api.binance.th` / `www.binance.th` are the script's legacy defaults).
+- `curl total`: rough HTTPS request time to the target host (`api.okx.com` for the live path).
 - `curl ttfb`: time to first byte; high values usually mean routing/API latency.
 - `tcp443`: raw TCP connect time; high values point to network distance/routing.
 - `ping`: ICMP may be blocked or deprioritized, so treat it as a hint only.
-- `clock`: `NTPSynchronized=yes` matters because signed Binance requests use timestamps.
+- `clock`: `NTPSynchronized=yes` matters because signed OKX requests use timestamps.
 - `loadavg`: sustained load above available CPU cores can make the bot/TUI lag.
 - `disk_used` / `free`: low free space or slow disk can hurt SQLite/event/state writes.
 

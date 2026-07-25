@@ -58,14 +58,14 @@ python scripts/incident_explorer.py list
 python scripts/incident_explorer.py show <run_id>
 
 # Replay validation: re-run strategy at logged ticks, diff signal_evaluated
-python scripts/replay_validate.py <run_id> --symbol XAUTUSDT
+python scripts/replay_validate.py <run_id> --symbol XAUUSDT
 python scripts/replay_validate.py <run_id> --symbol BTCUSDT --json
 
 # Legacy incident trace
 python scripts/replay_incident.py <run_id>
 
 # Strategy-plugin replay backtest
-python scripts/replay_backtest.py --symbol XAUTUSDT
+python scripts/replay_backtest.py --symbol XAUUSDT
 python scripts/replay_backtest.py --symbol BTCUSDT
 ```
 
@@ -102,6 +102,18 @@ For each `signal_evaluated` event in a run, validation:
 5. Reports PASS if event integrity is OK and every replayed action matches the recorded action.
 
 Limitations: validation checks strategy output before macro guard, cooldown, RegimeRouter execution overrides, and order placement. Candle snapshots must cover the event time with enough bars for the strategy.
+
+The validated run must also contain durable `tick` events. The committed
+baseline keeps `observability.durable_high_frequency_events: false` to limit
+write volume, so enable it temporarily before a controlled replay-validation
+run and restore it afterwards. A historical run without durable ticks cannot be
+backfilled; every signal will be skipped with `no_tick_pair`.
+
+Short-side parity is not certified by the current validator: persisted
+`signal_evaluated` events contain the legacy BUY/SELL dispatch action but not
+semantic `intent` + `position_side`, and replay validation does not restore the
+position side into `MarketContext`. Add those fields and side-aware comparison
+before using replay output as evidence for increasing live capital.
 
 ## Storage
 

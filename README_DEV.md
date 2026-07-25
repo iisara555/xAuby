@@ -2,8 +2,8 @@
 
 ## Current architecture state
 
-The committed baseline is OKX USDT-settled perpetual swap via CCXT, **two live
-pairs (XAU, BTC), both long + short**, 1x leverage. The current runtime uses:
+The committed baseline is OKX USDT-settled perpetual swap via CCXT, with two
+live pairs (XAU and BTC), long + short, at 1x leverage. The current runtime uses:
 
 | Capability | Current state |
 |------------|---------------|
@@ -11,7 +11,7 @@ pairs (XAU, BTC), both long + short**, 1x leverage. The current runtime uses:
 | Indicator registry | Enabled for terminal chart and TUI legend |
 | Per-symbol execution mode | Enabled so each pair can be `sim` or `live` |
 | SimBroker | Enabled for per-symbol sim orders |
-| RegimeRouter | Globally enabled, but gated per asset — both XAU and BTC keep it off |
+| RegimeRouter | Globally available, but gated per asset — both live pairs keep it off |
 | Event bus | Enabled |
 | Regime confidence filter | Enabled after a 30-sample warmup |
 | Statistical regime crosscheck | Disabled (advisory-only when armed) |
@@ -20,8 +20,8 @@ Current pair state (`coin_whitelist.json`):
 
 | Symbol | Mode | Strategy | Sides | Router |
 |--------|------|----------|-------|--------|
-| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` (CDC Action Zone V3) | `long` + `short` | Off |
-| `BTC` (BTCUSDT) | `live` | `supertrend_ema200` | `long` + `short` | Off |
+| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` (CDC Action Zone V3) | Long + short | Off |
+| `BTC` (BTCUSDT) | `live` | `supertrend_ema200` | Long + short | Off |
 
 A live pair cannot use RegimeRouter unless the asset has both `regime_router_enabled: true` and `regime_router_live_confirmed: true`. Without live confirmation the engine forces that pair to sim and emits an operator warning.
 
@@ -102,13 +102,13 @@ supports (per-symbol `mode`, isolated `SymbolContext`, RegimeRouter gating):
 2. Review the SimBroker ledger, trade frequency, PnL, regime switch history, and replay validation.
 3. Keep `regime_confidence_filter` conservative until at least 30 useful `regime_history` rows exist for the new pair.
 4. If router behavior is acceptable, set that pair's `regime_router_live_confirmed: true` only after explicit operator sign-off.
-5. Do not touch the XAU live pair's config while validating a new one.
+5. Do not touch either live pair's config while validating a new one.
 
 ## Whitelist per-asset fields
 
 ```json
 {
-  "symbol": "BTC",
+  "symbol": "SOL",
   "strategy": "supertrend_ema200",
   "mode": "sim",
   "primary_timeframe": "1h",
@@ -138,6 +138,18 @@ supports (per-symbol `mode`, isolated `SymbolContext`, RegimeRouter gating):
 
 Backtest, live engine, replay validation, TUI indicators, and optimizer should resolve config through the same strategy/portfolio resolver. Avoid adding strategy-impacting values in engine-only config blocks.
 
+Replay validation needs durable `tick` events from the run being checked. For a
+controlled validation run, temporarily set
+`observability.durable_high_frequency_events: true`, capture the complete
+position lifecycle, run `scripts/replay_validate.py`, then restore the normal
+retention setting. Existing runs recorded while it was `false` cannot be
+backfilled and will report `no_tick_pair`.
+
+Short-side certification also requires `signal_evaluated` to persist semantic
+`intent` and `position_side`, and replay validation to restore that side into
+`MarketContext`. The current event payload and validator do neither, so a
+BUY/SELL-only replay result must not be used to approve more live capital.
+
 Values that affect signal or exits belong under:
 
 - `strategy.config.<strategy_id>`
@@ -166,10 +178,10 @@ PYTHONPATH=. python3 -m unittest \
   -v
 ```
 
-Full suite:
+Full suite (the same command used by CI for every pull request):
 
 ```bash
-PYTHONPATH=. python3 -m unittest discover -s tests -q
+python3 -m pytest -q
 ```
 
 SaaS control plane suite (`xauby/saas/`, separate FastAPI service):

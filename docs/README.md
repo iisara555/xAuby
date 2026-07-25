@@ -4,10 +4,14 @@ English reference for operators and contributors. The root [README.md](../README
 
 ## Current baseline
 
-| Symbol | Mode | Strategy | Router |
-|--------|------|----------|--------|
-| `XAUTUSDT` | `live` | `cdc_action_zone` | Off |
-| `BTCUSDT` | `sim` | `supertrend_ema200` | Auto-regime sim soak |
+The committed runtime uses OKX USDT-settled perpetual swaps through CCXT. Both
+active pairs are live-enabled for long and short at 1x leverage; their
+RegimeRouter gates remain off.
+
+| Symbol | Mode | Strategy | Sides | Router |
+|--------|------|----------|-------|--------|
+| `XAUUSDT` | `live` | `xauby_actionzone` | Long + short | Off |
+| `BTCUSDT` | `live` | `supertrend_ema200` | Long + short | Off |
 
 ## Documents
 

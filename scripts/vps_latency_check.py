@@ -2,7 +2,7 @@
 """Read-only VPS latency and host health checks for xAuby.
 
 The script is intentionally dependency-free and safe to run on production VPSes.
-It reports rough network timings to Binance Thailand endpoints plus local load,
+It reports rough network timings to the active OKX endpoint plus local load,
 disk, and clock-sync hints that commonly explain bot lag.
 """
 
@@ -18,7 +18,7 @@ import time
 from typing import Any, Dict, List
 
 
-DEFAULT_HOSTS = ("api.binance.th", "www.binance.th")
+DEFAULT_HOSTS = ("api.okx.com",)
 
 
 def _run(cmd: List[str], timeout: float = 10.0) -> Dict[str, Any]:
@@ -106,7 +106,7 @@ def collect(hosts: List[str], project_root: str) -> Dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check VPS latency to Binance Thailand.")
+    parser = argparse.ArgumentParser(description="Check VPS latency to OKX.")
     parser.add_argument("--host", action="append", dest="hosts", help="Extra host to test")
     parser.add_argument("--json", action="store_true", help="Print JSON only")
     parser.add_argument("--project-root", default=".", help="Path for disk usage check")
