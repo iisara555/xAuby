@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 
-const apiOrigin = (process.env.XAUBY_API_ORIGIN ?? "http://127.0.0.1:8790").replace(/\/$/, "");
 const appScriptSource = process.env.NODE_ENV === "development"
   ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:"
   : "script-src 'self' 'unsafe-inline' blob:";
@@ -44,13 +43,6 @@ const nextConfig: NextConfig = {
       contentSecurityPolicy("/forgot-password", appCsp),
       contentSecurityPolicy("/reset-password", appCsp),
       contentSecurityPolicy("/invite/:path*", appCsp),
-    ];
-  },
-  async rewrites() {
-    return [
-      { source: "/api/v1/:path*", destination: `${apiOrigin}/api/v1/:path*` },
-      { source: "/auth/:path*", destination: `${apiOrigin}/auth/:path*` },
-      { source: "/healthz", destination: `${apiOrigin}/healthz` },
     ];
   },
 };
