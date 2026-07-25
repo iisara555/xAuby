@@ -94,7 +94,7 @@ The UI adapts to terminal width (see `xauby/ui/textual_tui/layout.py`):
 | 75-109 | Single column, full-width panels |
 | < 75 | Compact phone rows, shorter chart |
 
-Charts use each pair's `primary_timeframe` from the whitelist. Current baseline: the single live pair, XAU (OKX XAUUSDT), uses 4H with a 1D confirm timeframe.
+Charts use each pair's `primary_timeframe` from the whitelist. Current baseline: two live pairs — XAU (OKX XAUUSDT) on 4H with a 1D confirm timeframe, and BTC (OKX BTCUSDT) on 4H with no confirm timeframe.
 
 ## Position partial TP display
 

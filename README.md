@@ -32,9 +32,10 @@ full observability, and Telegram/TUI fallbacks.
 ## Overview
 
 xAuby is an event-driven trading system for store-of-value markets. The
-committed baseline trades **XAUUSDT** on **OKX USDT-settled perpetual swap**
-via CCXT — long and short at 1x leverage — using the CDC ActionZone strategy
-(`xauby_actionzone`).
+committed baseline trades **XAUUSDT** and **BTCUSDT** on **OKX USDT-settled
+perpetual swap** via CCXT — long and short at 1x leverage — using the CDC
+ActionZone strategy (`xauby_actionzone`) for gold and SuperTrend + EMA200
+(`supertrend_ema200`) for BTC.
 
 The engine loop:
 
@@ -122,8 +123,12 @@ assumption `0.05%` taker. CCXT maps `XAUUSDT` to the OKX gold perpetual
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides |
 |--------|------|----------|------------|------------|-------|
 | `XAUUSDT` | `live` | `xauby_actionzone` (CDC ActionZone) | `4h` | `1d` | `long` + `short` (stop-and-reverse) |
+| `BTCUSDT` | `live` | `supertrend_ema200` | `4h` | — | `long` + `short` |
 
-The pair runs **CDC-pure**: `disable_stop_loss: true`, so exits are zone-flip
+Both pairs run with the regime router off (`regime_router_enabled: false`) and
+`max_open_positions: 2`. They are configured differently on purpose:
+
+**XAUUSDT** runs **CDC-pure**: `disable_stop_loss: true`, so exits are zone-flip
 driven rather than exchange-stop driven, and sizing uses a fixed fraction of
 equity (`position_pct: 0.95`) instead of an SL-distance formula. Layered exits:
 
@@ -133,6 +138,11 @@ equity (`position_pct: 0.95`) instead of an SL-distance formula. Layered exits:
 - **Minimal ROI decay** — take-profit floor decays with holding time: `8%`
   immediately, `5%` after 24h, `3%` after 72h.
 - **CDC flip** — a zone flip closes (and reverses) the position.
+
+**BTCUSDT** keeps a real exchange-side stop (`sl_atr_mult: 3.0`,
+`trailing_atr_mult: 2.0`, `breakeven_sl_enabled: true`), so it uses the standard
+risk-based sizing formula and exits on a SuperTrend flip or an EMA200 loss. It
+has no partial take-profit.
 
 Entries place a **LIMIT** at the ticker and, with `entry_market_fallback`,
 top up any unfilled remainder with a MARKET order after the timeout. Exits use

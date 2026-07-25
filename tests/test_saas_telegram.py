@@ -302,6 +302,38 @@ class TelegramWorkspaceTests(unittest.TestCase):
             self.assertNotIn("xxxx", payload_json)
             json.loads(payload_json)
 
+    # --- restart (applies settings the engine reads only at startup) ------
+    def test_restart_rematerializes_credentials_and_audits(self):
+        self.connect()
+        calls: list[str] = []
+        original = self.supervisor.materialize_credentials
+        self.supervisor.materialize_credentials = lambda slug: (
+            calls.append(slug) or original(slug)
+        )
+        response = self.client.post("/api/v1/bot/restart", headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        # The restart must rebuild the env file, otherwise the engine would come
+        # back without the token that was just saved.
+        self.assertEqual(calls, [self.tenant["slug"]])
+
+        with sqlite3.connect(str(self.settings.database_path)) as conn:
+            events = [row[0] for row in conn.execute(
+                "SELECT event_type FROM audit_events WHERE tenant_id=?",
+                (self.tenant["id"],),
+            )]
+        self.assertIn("engine_restarted", events)
+
+    def test_restart_does_not_consume_an_engine_slot(self):
+        self.connect()
+        for _ in range(3):
+            self.assertEqual(
+                self.client.post("/api/v1/bot/restart", headers=self.headers).status_code,
+                200,
+            )
+
+    def test_restart_is_csrf_protected(self):
+        self.assertEqual(self.client.post("/api/v1/bot/restart").status_code, 403)
+
     def test_writes_are_csrf_protected(self):
         self.assertEqual(
             self.client.post(

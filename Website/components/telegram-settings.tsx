@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Send, Trash2, TriangleAlert } from "lucide-react";
+import { Check, RotateCw, Send, Trash2, TriangleAlert } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { api, csrfHeaders, TelegramPreferences } from "@/lib/api";
 import { useCurrentUser } from "@/components/app-shell";
@@ -167,9 +167,18 @@ export function TelegramSettings() {
       </p>
     </div>}
 
-    {restartNeeded && <p className="field-help telegram-restart" role="status">
-      Restart the engine from the Home page to apply these changes — the bot reads its
-      notification settings at startup.
-    </p>}
+    {restartNeeded && <div className="telegram-restart" role="status">
+      <span>The bot reads its notification settings at startup, so these changes
+        apply on the next restart.</span>
+      <button type="button" className="button-secondary" disabled={busy !== ""}
+              onClick={() => run("restart", async () => {
+                await api("/api/v1/bot/restart", { method: "POST", headers: csrfHeaders(user) });
+                setRestartNeeded(false);
+                setStatus("Engine restarted. Your alert settings are live.");
+                return {};
+              })}>
+        <RotateCw size={16} />{busy === "restart" ? "Restarting…" : "Restart engine"}
+      </button>
+    </div>}
   </div>;
 }

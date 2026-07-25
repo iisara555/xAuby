@@ -2,8 +2,8 @@
 
 ## Current architecture state
 
-The committed baseline is OKX USDT-settled perpetual swap via CCXT, single
-live pair (XAU), long-only, 1x leverage. The current runtime uses:
+The committed baseline is OKX USDT-settled perpetual swap via CCXT, **two live
+pairs (XAU, BTC), both long + short**, 1x leverage. The current runtime uses:
 
 | Capability | Current state |
 |------------|---------------|
@@ -11,16 +11,17 @@ live pair (XAU), long-only, 1x leverage. The current runtime uses:
 | Indicator registry | Enabled for terminal chart and TUI legend |
 | Per-symbol execution mode | Enabled so each pair can be `sim` or `live` |
 | SimBroker | Enabled for per-symbol sim orders |
-| RegimeRouter | Globally enabled, but gated per asset — XAU keeps it off |
+| RegimeRouter | Globally enabled, but gated per asset — both XAU and BTC keep it off |
 | Event bus | Enabled |
 | Regime confidence filter | Enabled after a 30-sample warmup |
 | Statistical regime crosscheck | Disabled (advisory-only when armed) |
 
 Current pair state (`coin_whitelist.json`):
 
-| Symbol | Mode | Strategy | Router |
-|--------|------|----------|--------|
-| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` (CDC Action Zone V3) | Off |
+| Symbol | Mode | Strategy | Sides | Router |
+|--------|------|----------|-------|--------|
+| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` (CDC Action Zone V3) | `long` + `short` | Off |
+| `BTC` (BTCUSDT) | `live` | `supertrend_ema200` | `long` + `short` | Off |
 
 A live pair cannot use RegimeRouter unless the asset has both `regime_router_enabled: true` and `regime_router_live_confirmed: true`. Without live confirmation the engine forces that pair to sim and emits an operator warning.
 

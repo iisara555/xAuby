@@ -63,16 +63,16 @@ Only the configured `TELEGRAM_CHAT_ID` is authorized.
 
 When multiple pairs are active, messages show portfolio totals first and then per-pair lines.
 
-`/status` example (current single-pair baseline: OKX XAUUSDT, `xauby_actionzone`):
+`/status` example (current baseline: OKX XAUUSDT + BTCUSDT, both live):
 
 ```text
-xAuby Status - 1 active pair(s)
+xAuby Status - 2 active pair(s)
 Equity: 85.00 USDT | Global: LIVE
 - XAUUSDT 4h | LIVE | xauby_actionzone | 4496.84 | IDLE | HOLD
+- BTCUSDT 4h | LIVE | supertrend_ema200 | 98120.50 | IDLE | HOLD
 ```
 
-With more than one whitelisted pair, additional lines stack the same way, one
-per active pair.
+Additional whitelisted pairs stack the same way, one line per active pair.
 
 `/pnl` shows a portfolio block first, then `SYMBOL: trades | net` per pair.
 

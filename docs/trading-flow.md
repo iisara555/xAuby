@@ -100,7 +100,7 @@ Current NO_TRADE regimes are `PANIC_SELL`, `BEAR_BREAKDOWN`, and `BEAR_TREND_STR
 
 | Setting | Effect |
 |---------|--------|
-| `trading.max_open_positions` | Counts `bought` states across all symbols when configured (currently `1`, single-pair XAU baseline) |
+| `trading.max_open_positions` | Counts `bought` states across all symbols when configured (currently `2`, for the live XAU + BTC baseline) |
 | `risk_pct` | Per-entry deploy fraction; engine caps by deploy slots |
 | Independent `SymbolContext` | Each whitelisted pair gets its own signal state, so pairs never share strategy state |
 | Per-symbol `mode` | Any pair can run `sim` while another stays `live` |

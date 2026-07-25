@@ -969,6 +969,24 @@ def create_app(
         store.audit("engine_stopped", tenant_id=tenant["id"], user_id=user["id"])
         return result
 
+    @app.post("/api/v1/bot/restart")
+    def bot_restart(user: dict[str, Any] = Depends(csrf_user)):
+        """Apply config the engine only reads at construction (e.g. Telegram).
+
+        supervisor.restart re-runs materialize_credentials first, so the engine
+        comes back with the current env file. Unlike start this does not reserve
+        a slot: a restart keeps the slot the tenant already holds.
+        """
+        tenant = own_tenant(user)
+        try:
+            result = supervisor.restart(tenant["slug"])
+        except Exception as exc:
+            store.update_tenant(tenant["id"], status="error")
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        store.update_tenant(tenant["id"], status="running")
+        store.audit("engine_restarted", tenant_id=tenant["id"], user_id=user["id"])
+        return result
+
     @app.get("/api/v1/bot/config")
     def config_get(user: dict[str, Any] = Depends(current_user)):
         return supervisor.read_curated_config(own_tenant(user)["slug"])

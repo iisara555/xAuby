@@ -119,35 +119,48 @@ Exchange is **OKX perpetual swap** (`exchange.provider: ccxt`, `ccxt_id: okx`,
 `name: okx`, `market_type: swap`, `margin_mode: isolated`, `position_mode:
 one_way`) via the CCXT adapter, at **1x leverage** (`derivatives.max_leverage: 1`)
 with the funding guard (`max_abs_funding_rate`) and `min_liquidation_distance_pct`
-active. The gold slot trades **XAUUSDT** (perpetual); backtests proxy XAU to
-`PAXGUSDT` (deep history on Global Binance) via
-`strategy_params.backtest_data_proxy`.
+active. The gold slot trades **XAUUSDT** and the crypto slot **BTCUSDT** (both
+perpetual); backtests proxy XAU to `PAXGUSDT` (deep history on Global Binance)
+via `strategy_params.backtest_data_proxy`.
 
-The single live pair (XAU) runs CDC ActionZone **long + short** as a
-stop-and-reverse (`allowed_sides: [long, short]`, `short_live_enabled: true`,
-`enable_short: true`); live shorts execute because the swap adapter advertises
-`swap` / `positions` / `reduce_only` capabilities (`xauby/api/ccxt_client.py`).
-Order flow: entries place a **LIMIT** at the ticker (`execution.order_type: limit`)
-and, when `execution.entry_market_fallback: true`, top up any unfilled remainder
-with a **MARKET** order after the timeout instead of cancelling (keeps live in
-parity with the market-fill backtest). Exits use MARKET on urgent triggers (CDC
-red / NO_TRADE / force close) and LIMIT otherwise. The current XAU pair is
-**CDC-pure** (`disable_stop_loss: true`), so there is no exchange-side stop —
-exits are zone-flip driven, and sizing uses fixed-fraction `position_pct` of
-equity rather than an SL-distance. CDC also has one-shot partial TP enabled:
-`partial_tp_pct: 12.0`, `partial_tp_fraction: 0.5`; the engine banks half the
-position at +12%, marks `trade_states.partial_tp_taken`, and lets the remainder
-exit on CDC.
+**Two pairs run live** (`max_open_positions: 2`, `data.pairs: [XAUUSDT,
+BTCUSDT]`), both **long + short** (`allowed_sides: [long, short]`,
+`short_live_enabled: true`, `enable_short: true`) at 1x with the regime router
+off (`regime_router_enabled: false`) on both. Live shorts execute because the
+swap adapter advertises `swap` / `positions` / `reduce_only` capabilities
+(`xauby/api/ccxt_client.py`).
 
-| Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides |
-|--------|------|----------|-----------|-----------|-------|
-| `XAU` (XAUUSDT) | `live` | `cdc_action_zone` | `4h` | `1d` | `long` + `short` (backtest proxy `PAXGUSDT`) |
+| Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Stop |
+|--------|------|----------|-----------|-----------|-------|------|
+| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` | `4h` | `1d` | `long` + `short` (backtest proxy `PAXGUSDT`) | none — CDC-pure |
+| `BTC` (BTCUSDT) | `live` | `supertrend_ema200` | `4h` | — | `long` + `short` | ATR (`sl_atr_mult: 3.0`) |
 
-> Doc drift warning: this file and `README.md` reflect the current OKX swap
-> baseline, but `README_DEV.md` and several files under `docs/` still describe the
-> older Binance.th spot / multi-pair state. Treat `coin_whitelist.json` +
-> `bot_config.yaml` as ground truth, and prefer updating stale docs when you
-> touch the baseline.
+The two pairs are deliberately **not** configured alike, and the difference
+matters when you touch sizing or exits:
+
+- **XAU is CDC-pure** (`disable_stop_loss: true`) — there is no exchange-side
+  stop. Exits are zone-flip driven, and sizing uses fixed-fraction
+  `position_pct: 0.95` of equity rather than an SL-distance. It also has one-shot
+  partial TP: `partial_tp_pct: 12.0`, `partial_tp_fraction: 0.5` — the engine
+  banks half the position at +12%, marks `trade_states.partial_tp_taken`, and
+  lets the remainder exit on the zone flip.
+- **BTC keeps a real stop** (`sl_atr_mult: 3.0`, `trailing_atr_mult: 2.0`,
+  `breakeven_sl_enabled: true`), so it takes the normal risk-based sizing path
+  (`qty = equity × risk_pct / sl_distance`) and exits on SuperTrend flip or EMA200
+  loss. No partial TP.
+
+Order flow (both pairs): entries place a **LIMIT** at the ticker
+(`execution.order_type: limit`) and, when `execution.entry_market_fallback:
+true`, top up any unfilled remainder with a **MARKET** order after the timeout
+instead of cancelling (keeps live in parity with the market-fill backtest). Exits
+use MARKET on urgent triggers (zone flip / NO_TRADE / force close) and LIMIT
+otherwise.
+
+> `coin_whitelist.json` + `bot_config.yaml` are the ground truth for the pair
+> table above — update this file whenever they change. Binance.th references
+> under `docs/` are **not** drift: the native `LiteBinanceClient` gateway still
+> ships and `binance-th-spot` is still a live-certified target in the SaaS
+> catalog (`xauby/saas/catalog.py`), so those docs are describing real support.
 
 **Router safety gate:** a pair with `mode: live` and `regime_router_enabled:
 true` is forced to **sim** unless it also has `regime_router_live_confirmed:
@@ -189,9 +202,11 @@ Production note: the `*_short` strategies (`donchian_short`, `supertrend_short`,
 only (tagged `research`). The engine hard-blocks any `research`-tagged strategy
 from a `live` pair (`_load_strategy_for_symbol`), so they are sim/backtest only —
 never map them in `regime_router.mapping` for production. On the current OKX swap
-baseline the XAU pair runs CDC ActionZone **long + short** (stop-and-reverse), so
-the short path is **active** in live; the `research`-tagged `*_short` plugins still
-stay sim/backtest only.
+baseline **both live pairs run long + short** — XAU on `xauby_actionzone`
+(stop-and-reverse) and BTC on `supertrend_ema200` — so the short path is
+**active** in live on two pairs; the `research`-tagged `*_short` plugins still
+stay sim/backtest only. (`cdc_action_zone` is a legacy alias for
+`xauby_actionzone`, resolved in `STRATEGY_ID_ALIASES`.)
 
 Shorts in general: a strategy emits `open_short`/`close_short`
 (`xauby/strategies/signal.py`); the engine routes them to
