@@ -24,6 +24,8 @@ RegimeRouter gates remain off.
 | [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
 | [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
 | [roadmap_2026H2.md](roadmap_2026H2.md) | CTO roadmap for H2 2026: phased plan, findings, exit criteria (Thai) |
+| [research/xau_4strategy_comparison_2026-07-13.md](research/xau_4strategy_comparison_2026-07-13.md) | **Certificate for the live XAU config** — 4-strategy comparison, WFA + bootstrap |
+| [research/btc_supertrend_ema200_certificate_2026-07.md](research/btc_supertrend_ema200_certificate_2026-07.md) | Certificate for the live BTC config |
 | [screenshots/](screenshots/) | TUI captures in SVG format |
 
 ## Regenerate TUI screenshots

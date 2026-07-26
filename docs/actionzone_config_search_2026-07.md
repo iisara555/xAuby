@@ -1,5 +1,22 @@
 # xAuby ActionZone (XAU) — institutional-grade config search, July 2026
 
+> **SUPERSEDED (2026-07-13).** The current XAU certificate is
+> [`research/xau_4strategy_comparison_2026-07-13.md`](research/xau_4strategy_comparison_2026-07-13.md).
+>
+> This study evaluated the config that was live on 2026-07-12, which used
+> `fresh_zone_window: 1`. Its headline finding — "current live config: **0/5**
+> profitable walk-forward folds" — describes **a configuration that is no longer
+> deployed.** `fresh_zone_window: 3` was applied afterwards, resolving the
+> phase-lock hazard documented in finding 1 below; the newer study measures the
+> post-`fz3` config and reports **4/5** profitable folds, PF 2.00, and
+> P(PF<1.0) = 0.2%.
+>
+> **Do not use this document's `enable_short: false` / `use_d1_regime_filter:
+> true` recommendations to "correct" `coin_whitelist.json`.** They were derived
+> against `fz1`, where shorts phase-lock. The phase-lock analysis (finding 1) and
+> the protocol description remain accurate and useful reading; the config
+> recommendation and the comparative numbers do not apply to the live config.
+
 Goal: find the best `xauby_actionzone` config for **win rate (WR)** and **profit
 factor (PF)** on the XAU pair, using an evaluation protocol comparable to an
 institutional strategy review — not a single lucky backtest window.
