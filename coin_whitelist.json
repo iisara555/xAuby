@@ -16,7 +16,8 @@
         "backtest_data_proxy": "PAXGUSDT",
         "enable_short": true,
         "ap_smoothing": 2,
-        "use_d1_regime_filter": false,
+        "use_d1_regime_filter": true,
+        "use_d1_regime_filter_long": false,
         "require_fresh_zone": true,
         "fresh_zone_window": 3,
         "rsi_min": 0.0,
@@ -38,6 +39,7 @@
           "4320": 3.0
         }
       },
+      "_config_note": "XAU D1 gating is asymmetric (2026-07-26): use_d1_regime_filter gates SHORT entries only; use_d1_regime_filter_long false lets longs enter on the 4H flip. Measured PF 1.38 / net 56.54% / MDD 14.42% (OKX XAUT-USDT 4.02y), best cell in the 2026-03..06 gold drawdown (+22.61%). NOT CERTIFIED: fails backtest.acceptance by -7.87pp. Deployed on an explicit operator decision. See docs/research/xau_per_side_d1_test_2026-07-26.md",
       "mode": "live",
       "allowed_sides": [
         "long",

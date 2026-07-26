@@ -132,7 +132,7 @@ swap adapter advertises `swap` / `positions` / `reduce_only` capabilities
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Stop |
 |--------|------|----------|-----------|-----------|-------|------|
-| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` | `4h` | `1d` | `long` + `short` (backtest proxy `PAXGUSDT`) | none — CDC-pure |
+| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` | `4h` | `1d` (gates **shorts only**) | `long` + `short` (backtest proxy `PAXGUSDT`) | none — CDC-pure |
 | `BTC` (BTCUSDT) | `live` | `supertrend_ema200` | `4h` | — | `long` + `short` | ATR (`sl_atr_mult: 3.0`) |
 
 The two pairs are deliberately **not** configured alike, and the difference
@@ -148,6 +148,21 @@ matters when you touch sizing or exits:
   were removed once it was proven they could never fire beneath an 8% ladder —
   `validate_exit_config` (`xauby/runtime/exits.py`) now refuses that combination
   at startup.
+- **XAU's D1 gate is asymmetric** (2026-07-26): `use_d1_regime_filter: true` with
+  `use_d1_regime_filter_long: false`, so the daily zone gates **SHORT entries
+  only** while longs enter on the 4H flip alone. `xauby_actionzone` supports
+  per-side gating via `use_d1_regime_filter_long` / `_short` (both default to
+  `None` = follow the shared flag). Measured PF 1.38 / net 56.54% / MDD 14.42%
+  over 4.02y of OKX XAUT-USDT, and the strongest cell in the 2026-03..06 gold
+  drawdown (+22.61% vs buy-and-hold's -23.21%) —
+  `docs/research/xau_per_side_d1_test_2026-07-26.md`.
+  **This config is NOT certified:** it fails `backtest.acceptance` by -7.87pp,
+  and `long-only + D1 on` beats it on PF (1.96) and MDD (9.22%). It ships on an
+  explicit operator decision. Do not describe it as certified, and do not "fix"
+  the acceptance failure by loosening `min_profit_edge_pp` — that threshold is
+  the pre-registered bar the whole XAU investigation rests on.
+  Note the D1 gate also controls whether the engine loads 1d candles at all
+  (`SymbolContext.timeframe_regime`), so turning it off stops that fetch.
 - **BTC keeps a real stop** (`sl_atr_mult: 3.0`, `trailing_atr_mult: 2.0`,
   `breakeven_sl_enabled: true`), so it takes the normal risk-based sizing path
   (`qty = equity × risk_pct / sl_distance`) and exits on SuperTrend flip or EMA200

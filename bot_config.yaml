@@ -201,7 +201,23 @@ strategy:
       timeframe: 4h
       primary_timeframe: 4h
       confirm_timeframe: 1d
-      use_d1_regime_filter: false
+      # Asymmetric D1 gating (2026-07-26): the daily zone gates SHORT entries
+      # only; longs enter on the 4H flip alone. Set here to match
+      # coin_whitelist.json — the whitelist wins in the resolver, but leaving a
+      # contradictory value in both places is what broke startup during the
+      # partial-TP removal, so they are kept in sync deliberately.
+      #
+      # Measured on OKX XAUT-USDT 4.02y (docs/research/xau_per_side_d1_test_2026-07-26.md):
+      # PF 1.38, net 56.54%, MDD 14.42%, Sharpe 0.89 — better than the previous
+      # live config on every axis (PF 1.17 / 31.04% / 17.66%) and the strongest
+      # cell in the current gold drawdown (+22.61% over 2026-03..06).
+      #
+      # NOT CERTIFIED: this FAILS backtest.acceptance (edge -7.87pp vs the
+      # long-only D1-on baseline, which requires >= +5.0pp), and long-only+D1
+      # beats it on PF (1.96) and MDD (9.22%). Deployed on an explicit operator
+      # decision that accepts that trade-off. Do not describe it as certified.
+      use_d1_regime_filter: true
+      use_d1_regime_filter_long: false
       ap_smoothing: 2
       # CDC ActionZone V3 2020 on OKX perpetual: fresh GREEN opens LONG,
       # fresh RED opens SHORT, opposite zone exits.
