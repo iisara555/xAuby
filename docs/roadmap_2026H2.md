@@ -225,13 +225,24 @@ config ที่ backtest บอกว่าดี** — ปิดสองช�
 
 ข้อ 1 แตะ `coin_whitelist.json` จึงต้องไม่มี position ค้างก่อน deploy
 
-**P0.1 — แก้ backtest data path**
-เพิ่ม OKX klines ใน `xauby/backtest/data.py` — `scripts/fetch_okx_xau_history.py`
-มีรูปแบบ `/api/v5` ที่ถูกต้องอยู่แล้ว ให้ reuse อย่าเขียน client ตัวที่สอง
-ทำให้ `data_source` ที่ไม่รู้จัก **raise แทนที่จะ return frame ว่าง** — การพังเงียบ
-แย่กว่าการไม่รองรับ venue เพิ่ม branch `okx` ใน `_source_tag_from_url`
-(`data.py:21`) เพื่อไม่ให้ cache ของ OKX ชนกับ tag ของ Binance.TH และเพิ่ม
-`backtest` เข้า `GUARDED_DIRS` ใน `tests/test_no_binance_coupling.py`
+**P0.1 — แก้ backtest data path** ✅ **ทำแล้ว 2026-07-26**
+
+- ย้าย OKX candle primitives จาก `scripts/fetch_okx_xau_history.py` ไปเป็น
+  `xauby/backtest/okx_data.py` (ทิศ dependency ถูกต้อง: `scripts -> xauby`)
+  แล้วให้สคริปต์ re-export กลับเพื่อไม่ให้ `evaluate_okx_xau_migration.py` พัง
+- `download_klines` route ไป OKX v5 เมื่อ base_url เป็น OKX และ
+  **host ที่ไม่รู้จัก raise** แทนที่จะ fall through ไป `/api/v1/klines` แล้ว return
+  frame ว่าง
+- `_source_tag_from_url` มี tag `okx` แยกแล้ว — เดิม cache ของ OKX ถูกแท็กเป็น
+  `th` และชนกับไฟล์ Binance.TH ของ symbol/timeframe เดียวกัน
+- เพิ่ม `xauby/backtest` เข้า `GUARDED_DIRS` — การที่มันไม่อยู่ในลิสต์คือสาเหตุที่
+  data layer รอดจากการย้ายมา OKX มาได้
+- host matching ใช้ `urlsplit` เทียบ hostname จริง ไม่ใช่ substring — ตอนทดสอบพบว่า
+  `okx.com.evil.invalid` ผ่าน substring check ได้ (จะส่ง instId ไปให้เจ้าของโดเมนนั้น)
+
+**ยืนยันปลายทางจริงแล้ว:** ดึง XAU-USDT-SWAP ได้ 249 แท่ง 4h ถึงวันนี้ (close ~4065)
+และ BTC-USDT-SWAP 119 แท่ง — path ที่เคยคืน frame ว่างเงียบ ๆ ใช้งานได้จริงแล้ว
+18 เทสต์ใหม่ใน `tests/test_backtest_okx_data.py`
 
 **P0.2 — Re-validate ทั้งสองคู่บนข้อมูล venue จริง**
 หลัง P0.1 เสร็จ รัน BTC บนข้อมูล OKX swap และ XAU บน OKX XAU-USDT-SWAP ตรง ๆ

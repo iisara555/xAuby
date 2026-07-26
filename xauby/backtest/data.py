@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from typing import Dict, Any, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +19,48 @@ from xauby.runtime.candle_utils import drop_forming_bar, timeframe_seconds
 from xauby.runtime.pair_registry import _normalize_tf
 
 
+def _host_of(base_url: str) -> str:
+    """Hostname of ``base_url``, tolerating a scheme-less value."""
+    raw = str(base_url or "").strip()
+    if "//" not in raw:
+        raw = f"//{raw}"
+    return (urlsplit(raw).hostname or "").lower()
+
+
+def _host_matches(base_url: str, domain: str) -> bool:
+    """True when the URL's host IS ``domain`` or a subdomain of it.
+
+    Deliberately not a substring test: ``okx.com.example.net`` contains
+    "okx.com" but is a different host, and routing it to the OKX client would
+    send an instId to whoever owns that domain.
+    """
+    host = _host_of(base_url)
+    return host == domain or host.endswith(f".{domain}")
+
+
+def is_okx_url(base_url: str) -> bool:
+    """True when ``base_url`` points at OKX rather than a Binance host."""
+    return _host_matches(base_url, "okx.com")
+
+
+def is_binance_url(base_url: str) -> bool:
+    """True for any Binance host (global ``binance.com`` or regional)."""
+    return _host_matches(base_url, "binance.com") or _host_matches(
+        base_url, "binance.th"
+    )
+
+
 def _source_tag_from_url(base_url: str) -> str:
-    """Short identifier for the data source used in cache filenames."""
-    return "global" if "binance.com" in str(base_url) else "th"
+    """Short identifier for the data source used in cache filenames.
+
+    OKX needs its own tag: without it OKX candles were cached as ``th`` and
+    collided with Binance.TH files for the same symbol/timeframe, so a cached
+    Binance frame could be served to an OKX-configured backtest (and vice versa).
+    """
+    url = str(base_url)
+    if is_okx_url(url):
+        return "okx"
+    return "global" if "binance.com" in url else "th"
 
 
 def _finalize_candles(df: pd.DataFrame, timeframe: str, symbol: str) -> pd.DataFrame:
@@ -64,25 +104,48 @@ def download_klines(
     *,
     base_url: str = "",
 ) -> pd.DataFrame:
-    """Download historical candles from a Binance public klines endpoint.
+    """Download historical candles from a public candles endpoint.
 
-    ``base_url`` selects the exchange:
+    ``base_url`` selects the venue:
     - Global Binance (``https://api.binance.com``) → ``/api/v3/klines``  — data since 2017
     - Binance Thailand (``https://api.binance.th``) → ``/api/v1/klines`` — live trading exchange
+    - OKX (``https://www.okx.com``) → ``/api/v5/market/history-candles`` via
+      :mod:`xauby.backtest.okx_data` — the venue the swap engine trades
 
     When ``base_url`` is empty the ``BINANCE_BASE_URL`` environment variable is
     used (defaults to ``https://api.binance.th``).
+
+    An unrecognised host raises instead of being pointed at a Binance path. It
+    used to fall through to ``/api/v1/klines``, so ``data_source: okx`` produced a
+    request to ``https://www.okx.com/api/v1/klines`` that failed into an empty
+    frame with no error — every backtest then silently used stale cache. A loud
+    failure on an unknown venue is the whole point of this branch.
     """
     if not base_url:
         base_url = os.environ.get("BINANCE_BASE_URL", "https://api.binance.th").rstrip("/")
     else:
         base_url = base_url.rstrip("/")
 
+    if is_okx_url(base_url):
+        from xauby.backtest.okx_data import download_okx_klines
+
+        return download_okx_klines(
+            symbol, timeframe, limit=limit, base_url=base_url
+        )
+
     # Global Binance uses /api/v3; Thailand and other regional exchanges use /api/v1.
-    if "binance.com" in base_url:
+    if _host_matches(base_url, "binance.com"):
         url = f"{base_url}/api/v3/klines"
-    else:
+    elif is_binance_url(base_url):
         url = f"{base_url}/api/v1/klines"
+    else:
+        raise ValueError(
+            f"unsupported backtest data host: {base_url!r}. Supported: Binance "
+            "Global/TH and OKX. Set backtest.data_base_url (or BINANCE_BASE_URL) "
+            "to a supported venue, or add a branch in xauby/backtest/data.py — "
+            "do not let this fall through, an empty candle frame reads as "
+            "'no history' and silently invalidates the run."
+        )
 
     sym = symbol.upper().replace("_", "")
     all_klines: List[List[Any]] = []
