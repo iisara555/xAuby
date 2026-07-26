@@ -23,6 +23,7 @@ RegimeRouter gates remain off.
 | [multi-exchange-ccxt.md](multi-exchange-ccxt.md) | CCXT REST adapter setup and current multi-exchange limitations |
 | [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
 | [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
+| [roadmap_2026H2.md](roadmap_2026H2.md) | CTO roadmap for H2 2026: phased plan, findings, exit criteria (Thai) |
 | [screenshots/](screenshots/) | TUI captures in SVG format |
 
 ## Regenerate TUI screenshots
