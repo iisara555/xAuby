@@ -2619,6 +2619,7 @@ class LoopMixin:
         self._release_account_lock()
 
     def start(self):
+        from xauby.runtime.exits import validate_exit_config
         from xauby.runtime.trading_config import (
             validate_open_positions_config,
             validate_risk_config,
@@ -2631,6 +2632,10 @@ class LoopMixin:
             if getattr(spec, "execution_mode", "sim") == "live"
         )
         validate_open_positions_config(self.config, live_pair_count=live_pairs)
+        # Every active pair, not just live ones: a dead partial-TP key misreports
+        # what a sim pair does too, and sim is where a config is vetted first.
+        for sym in self._pair_registry.active_symbols():
+            validate_exit_config(self._get_strategy_config(sym), symbol=sym)
         active_syms = ", ".join(self._pair_registry.active_symbols()) or self.focus_symbol
         logger.info(
             f"Starting Lite Trading Engine. Pairs: {active_syms}, "

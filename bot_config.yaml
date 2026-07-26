@@ -230,12 +230,22 @@ strategy:
       # >= baseline (see scripts/compare_cdc_ab.py).
       require_slow_slope: true
       slow_slope_bars: 3
-      # One-shot partial take-profit: bank 50% of the position at +12%, let
-      # the rest ride to the CDC exit. Enabled 2026-07-03 after 6y PAXGUSDT
-      # A/B: PF 1.66->1.78, T3 DD 19.7->12.1%, smooth grid, trade count
-      # unchanged (win rate untouched by design — see compare_cdc_ab.py).
-      partial_tp_pct: 12.0
-      partial_tp_fraction: 0.5
+      # One-shot partial take-profit — REMOVED 2026-07-26, and the reason is
+      # worth keeping. It was enabled 2026-07-03 on real evidence (6y PAXGUSDT
+      # A/B: PF 1.66->1.78, T3 DD 19.7->12.1%, smooth grid — see
+      # scripts/compare_cdc_ab.py) and worked at the time, because minimal_roi
+      # was empty. Once the per-symbol ladder below was introduced with a rung
+      # at +8% from entry, the partial at +12% became unreachable: the ladder
+      # closes the whole position first and a full exit always wins the tick, on
+      # both the live and replay paths. So the +12% partial silently stopped
+      # happening while config, CLAUDE.md and the SaaS catalog all still claimed
+      # it did. validate_exit_config (xauby/runtime/exits.py) now refuses that
+      # combination at startup.
+      #
+      # To bring the partial back, the ladder's entry rung has to move above the
+      # trigger — which changes the strategy and re-opens certification
+      # (docs/research/xau_4strategy_comparison_2026-07-13.md certified the
+      # ladder as it stands). Do not re-add these keys under an 8% rung.
       # Minimal ROI ladder (freqtrade-style, engine-managed exit shared with
       # backtest): {position age in minutes: required ROI %}. Example:
       # minimal_roi:

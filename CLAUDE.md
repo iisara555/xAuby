@@ -139,15 +139,19 @@ The two pairs are deliberately **not** configured alike, and the difference
 matters when you touch sizing or exits:
 
 - **XAU is CDC-pure** (`disable_stop_loss: true`) — there is no exchange-side
-  stop. Exits are zone-flip driven, and sizing uses fixed-fraction
-  `position_pct: 0.95` of equity rather than an SL-distance. It also has one-shot
-  partial TP: `partial_tp_pct: 12.0`, `partial_tp_fraction: 0.5` — the engine
-  banks half the position at +12%, marks `trade_states.partial_tp_taken`, and
-  lets the remainder exit on the zone flip.
+  stop, and sizing uses fixed-fraction `position_pct: 0.95` of equity rather than
+  an SL-distance. Exits are the zone flip plus the **`minimal_roi` ladder**
+  (`{"0": 8.0, "1440": 5.0, "4320": 3.0}` — take +8% from entry, settle for +5%
+  after a day, +3% after three). The ladder is part of what the July 2026
+  certificate measured (`docs/research/xau_4strategy_comparison_2026-07-13.md`),
+  so **changing it re-opens certification**. XAU has **no partial TP**: the keys
+  were removed once it was proven they could never fire beneath an 8% ladder —
+  `validate_exit_config` (`xauby/runtime/exits.py`) now refuses that combination
+  at startup.
 - **BTC keeps a real stop** (`sl_atr_mult: 3.0`, `trailing_atr_mult: 2.0`,
   `breakeven_sl_enabled: true`), so it takes the normal risk-based sizing path
   (`qty = equity × risk_pct / sl_distance`) and exits on SuperTrend flip or EMA200
-  loss. No partial TP.
+  loss. No ROI ladder, no partial TP.
 
 Order flow (both pairs): entries place a **LIMIT** at the ticker
 (`execution.order_type: limit`) and, when `execution.entry_market_fallback:
@@ -255,8 +259,14 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
   mutates trades.
 - Exactly one engine instance; `core/.engine.lock` guards against doubles.
 - Engine stays strategy-agnostic; signal/exit logic belongs to plugins/config.
-- The TUI and the Pilot Workspace surface partial TP as `PTP` / `Partial TP`
-  with `pending` or `banked` state from the exported position.
+- Where a pair enables partial TP, the TUI and the Pilot Workspace surface it as
+  `PTP` / `Partial TP` with `pending` or `banked` state from the exported
+  position; both hide the field when `partial_tp_pct` is 0. No current pair
+  enables it — see the XAU note above.
+- A partial TP under a `minimal_roi` rung is unreachable, because a full exit
+  always wins the tick on both the live and replay paths. `validate_exit_config`
+  enforces this at startup; do not "fix" it by raising the ladder, which changes
+  the strategy.
 - Strategy + indicator plugins ship together.
 
 ## Conventions

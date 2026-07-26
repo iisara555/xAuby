@@ -127,3 +127,60 @@ def minimal_roi_pct(
         else:
             break
     return active
+
+
+# --------------------------------------------------------------------------- #
+# Cross-key validation                                                        #
+# --------------------------------------------------------------------------- #
+
+def validate_exit_config(
+    strategy_cfg: Optional[Dict[str, Any]],
+    *,
+    symbol: str = "",
+) -> None:
+    """Refuse startup when ``minimal_roi`` makes ``partial_tp_pct`` unreachable.
+
+    Both keys live in the same strategy config but are consumed by different
+    stages of the exit pipeline, and the ROI ladder always wins: the engine
+    runs ``_apply_minimal_roi_exit`` before ``_maybe_take_partial_tp``, whose
+    first guard is ``action == "SELL"`` (xauby/engine/loop.py) — and the
+    backtest ``PositionSimulator`` returns straight out of the bar after a
+    minimal-ROI close (xauby/observability/replay.py). So when the ladder's
+    first rung sits at or below the partial-TP trigger, any move that reaches
+    the trigger has already crossed the rung and been closed in full. The
+    partial can never fire, on either path.
+
+    The July 2026 XAU config had exactly this shape: ``minimal_roi {"0": 8.0}``
+    with ``partial_tp_pct: 12.0``, so the documented "bank half at +12%"
+    behaviour never occurred once, and the SaaS catalog advertised it to
+    tenants. Silent dead config is worse than a refused start.
+
+    Only a rung active **from entry** (age 0) makes the partial unreachable. A
+    ladder whose first rung starts later — ``{"1440": 5.0}`` — leaves a real
+    window in which the partial can fire, which is a legitimate "bank half if it
+    moons early, otherwise settle" design and is left alone. Deciding whether
+    that window is *usefully* long is a strategy question, not a startup check.
+
+    Raises ValueError when the rung active at entry is <= ``partial_tp_pct``.
+    """
+    cfg = strategy_cfg or {}
+    trigger_pct, _fraction = resolve_partial_tp(cfg)
+    if trigger_pct <= 0:
+        return
+    steps = resolve_minimal_roi(cfg)
+    if not steps:
+        return
+
+    entry_rung_pct = minimal_roi_pct(steps, 0.0)
+    if entry_rung_pct <= 0 or entry_rung_pct > trigger_pct:
+        return
+
+    where = f"{symbol}: " if symbol else ""
+    raise ValueError(
+        f"{where}partial_tp_pct={trigger_pct:g}% is unreachable — the "
+        f"minimal_roi ladder closes the whole position at {entry_rung_pct:g}% "
+        "from entry, and a full exit always wins the tick. Either remove "
+        "partial_tp_pct/partial_tp_fraction, or raise the ladder's entry rung "
+        "above the partial-TP trigger (note: changing the ladder changes the "
+        "strategy and re-opens certification)."
+    )

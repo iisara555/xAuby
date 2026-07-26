@@ -4,9 +4,43 @@ Markdown companion to `xauby_4strategy_gold_comparison_2026-07-13.pdf` (same
 directory). The PDF is the presentation copy; this file exists so the numbers are
 greppable, diffable, and citable from config and code review.
 
-**This is the certificate for the live XAU configuration.** It supersedes the
-config-search recommendations in `../actionzone_config_search_2026-07.md` — see
-"Relationship to the earlier study" below.
+> ## ⚠️ The "live config" label in this report is wrong
+>
+> Verified 2026-07-26 by reproducing every headline metric with this repo's own
+> `run_plugin_replay` on `research_data/backtest_candles_4h_paxgusdt_full.csv`
+> (the same 12,810 bars): the ActionZone row measures
+> **`enable_short: false` + `use_d1_regime_filter: true`** — long-only with the
+> D1 regime filter ON. The deployed config is long+short with D1 **off**.
+>
+> | Metric | Report ("live config") | Reproduced long-only + D1 ON | Reproduced **deployed** config |
+> |---|---|---|---|
+> | Trades | 133 | 132 | 421 |
+> | Profit factor | 2.00 | 2.00 | **1.28** |
+> | Win rate | 45.9% | 46.2% | 34.4% |
+> | Net | +95.9% | +96.4% | +73.7% |
+> | Max drawdown | 8.3% | 7.6% | **29.2%** |
+> | IS PF | 1.75 | 1.76 | **1.02** |
+> | OOS PF | 2.27 | 2.26 | 1.74 |
+>
+> Seven metrics across two independent windows match long-only+D1 and none match
+> the deployed config. (Small residuals come from reproducing the daily regime
+> frame by resampling the 4h series rather than using true daily bars.)
+>
+> **Consequences:**
+> 1. **The deployed XAU config is not certified by this report.** Its measured
+>    profile is PF 1.28 at 29.2% max drawdown — and 29.2% exceeds the 25%
+>    `risk.drawdown_guard.max_drawdown_pct` kill-switch.
+> 2. This report does **not** supersede `../actionzone_config_search_2026-07.md`;
+>    it independently **confirms** it. Both find long-only + D1 to be the good
+>    configuration.
+> 3. The comparison against Donchian / SMC Pro / SuperTrend is unaffected and
+>    remains valid — those three lose on this data under any reading.
+>
+> Everything below is the report as delivered, with the ActionZone row understood
+> as long-only + D1 ON.
+
+The four-strategy comparison itself is sound work; only the ActionZone row's
+config label is wrong. See the box above before citing any number here.
 
 ## Protocol
 
@@ -76,35 +110,84 @@ protocol, and (3) checked specifically for edge outside the recent bull leg.
 
 ## Relationship to the earlier study
 
-`../actionzone_config_search_2026-07.md` (2026-07-12) evaluated the
-then-live config, which used `fresh_zone_window: 1`, and reported **0/5**
-profitable walk-forward folds along with a phase-lock hazard: with
-`enable_short: true` and `fz1` the reversal entry is always blocked, so the
-strategy locks into whichever side it entered first.
+`../actionzone_config_search_2026-07.md` (2026-07-12) recommended **long-only
+with the D1 regime filter on**, and reported that the then-live long+short /
+`fresh_zone_window: 1` config lost money in all five walk-forward folds. It also
+documented the phase-lock hazard: with `enable_short: true` and `fz1` the
+reversal entry is always blocked, so the strategy locks into one side.
 
-`fresh_zone_window: 3` was applied to `coin_whitelist.json` after that study,
-which resolves the phase-lock. **This report measures the post-`fz3` config and
-finds 4/5 profitable folds** — so the earlier "0/5" figure describes a
-configuration that is no longer deployed, and its long-only / D1-filter
-recommendations do not apply to the current one.
+Given the reproduction in the box at the top of this file, this report's
+ActionZone row **is** that recommended config. The two studies therefore agree
+rather than conflict, and they agree using different protocols — a 144-combo
+config search with 5-fold WFA, and a 4-strategy comparison with bootstrap CI.
+That is a stronger result than either alone.
 
-## Open items against this certificate
+`fresh_zone_window: 3` was applied to `coin_whitelist.json` after the earlier
+study, and it does fix the phase-lock. What it does **not** do is close the gap
+to long-only+D1: the deployed long+short config still measures PF 1.28 at 29.2%
+max drawdown against 2.00 at 7.6%. Neither study certifies it.
+
+## Open items
 
 Recorded here so the caveats travel with the numbers:
 
-1. **Proxy asset.** The data is PAXGUSDT 4h spot standing in for XAUUSDT-SWAP.
+1. **The config label is wrong** — see the box at the top. This is the item that
+   matters: the deployed XAU config has no passing certificate, and its measured
+   29.2% max drawdown exceeds the 25% `drawdown_guard` threshold. The decision
+   this forces (switch the live config to long-only+D1, or accept the deployed
+   config's real profile explicitly) is tracked as P0.3 in
+   `../roadmap_2026H2.md`.
+2. **Proxy asset.** The data is PAXGUSDT 4h spot standing in for XAUUSDT-SWAP.
    The PDF notes an OKX cross-check in an earlier round of the same session, but
    that cross-check is not committed. Re-running this protocol on OKX
-   XAU-USDT-SWAP data is tracked as P0.1/P0.2 in `../roadmap_2026H2.md`.
-2. **Exit-table assumption not stated.** The report does not list the strategy
-   parameters it ran with. The top-5-winner stress test drops net by 39.8pp
-   (95.9 → 56.1), i.e. ~8.0% per winner — which matches the live
-   `minimal_roi` rung-1 cap of 8.0% closely enough to indicate the ladder was
-   active in this run. That is good news for parity, and it means **the
-   `minimal_roi` ladder is part of what was certified: changing it re-opens
-   certification.** Worth confirming directly against the run's config rather
-   than inferring it from the stress-test delta.
-3. **`partial_tp_pct: 12.0` is unreachable** in both live and replay, because
-   `minimal_roi` rung 1 (8.0%) sits below it and a full exit always wins the
-   tick. It therefore contributed nothing to these results and should be removed
-   from the config as dead settings — see P0.0 in `../roadmap_2026H2.md`.
+   XAU-USDT-SWAP data is tracked as P0.1/P0.2.
+3. **The run's parameters are not listed in the report**, which is why the label
+   error survived. Whatever the certification pipeline in P1.4 produces must emit
+   the full resolved strategy config alongside the metrics — a certificate that
+   does not state what it measured cannot be checked, and this one wasn't for
+   two weeks.
+4. **`partial_tp_pct: 12.0` was unreachable** in both live and replay, because
+   the `minimal_roi` rung at 8.0% pre-empts it and a full exit always wins the
+   tick. It contributed nothing to any result here and has been removed from
+   `coin_whitelist.json` and `bot_config.yaml`; `validate_exit_config`
+   (`xauby/runtime/exits.py`) now refuses the combination at startup.
+
+## Reproducing this
+
+```bash
+pip install -r requirements-dev.txt
+PYTHONPATH=. python3 - <<'PY'
+import pandas as pd, yaml
+from xauby.backtest.data import normalize_ohlcv_df
+from xauby.backtest.replay import run_plugin_replay
+from xauby.runtime.trading_config import split_legacy_runtime_config
+
+cfg = yaml.safe_load(open('bot_config.yaml'))
+base, trading = split_legacy_runtime_config(
+    cfg, "xauby_actionzone", symbol="XAUUSDT", for_live=False)
+merged = dict(cfg); merged["trading"] = trading
+df4 = normalize_ohlcv_df(
+    pd.read_csv('research_data/backtest_candles_4h_paxgusdt_full.csv'))
+d = df4.copy(); d['dt'] = pd.to_datetime(d['timestamp'], unit='s')
+df1 = normalize_ohlcv_df(d.set_index('dt').resample('1D').agg(
+    {'timestamp':'first','open':'first','high':'max','low':'min',
+     'close':'last','volume':'sum'}).dropna().reset_index(drop=True))
+
+for label, ov, rg in [
+    ("deployed (long+short, D1 off)", {}, None),
+    ("long-only + D1 on", {"enable_short": False,
+                           "use_d1_regime_filter": True}, df1),
+]:
+    s = run_plugin_replay(df4.copy(), strategy_config={**dict(base), **ov},
+        engine_config=merged, symbol="XAUUSDT",
+        strategy_name="xauby_actionzone", primary_timeframe="4h",
+        df_regime=rg, regime_timeframe="1d" if rg is not None else None)
+    print(f"{label:32s} trades={s['total_trades']:>4} "
+          f"PF={s['profit_factor']:.2f} WR={s['win_rate']:.1f} "
+          f"net={s['net_profit_pct']:+.1f} MDD={s['max_drawdown_pct']:.1f}")
+PY
+```
+
+The daily frame is resampled from the 4h series rather than fetched, which is why
+reproduced numbers sit within a fraction of a percent of the report rather than
+exactly on it. Fetching true daily PAXG bars would tighten it further.

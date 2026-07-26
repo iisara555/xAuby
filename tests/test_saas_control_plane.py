@@ -86,6 +86,18 @@ class SaaSControlPlaneTests(unittest.TestCase):
         xau = presets["okx-xau-actionzone-v1"]["backtest"]
         self.assertEqual(xau["score_label"], "PF 1.7")
         self.assertEqual(xau["duration"], "2.6 years · full cycle")
+        # Guard against re-importing the 2026-07-13 report's headline: that run
+        # measured long-only + D1-on, not this preset's long+short + D1-off.
+        self.assertNotEqual(xau["score_label"], "PF 2.00")
+        # The catalog must not advertise a partial TP the engine cannot execute:
+        # the preset's ROI ladder opens at 8%, which pre-empts any partial above it.
+        self.assertNotIn(
+            "partial_tp_pct", presets["okx-xau-actionzone-v1"]["execution_profile"]
+        )
+        self.assertFalse(
+            [t for t in presets["okx-xau-actionzone-v1"]["strategy_traits"]
+             if "Partial TP" in t]
+        )
         self.assertEqual(presets["okx-xau-actionzone-v1"]["allowed_sides"], ["long", "short"])
         self.assertTrue(presets["okx-xau-actionzone-v1"]["cdc_pure_certified"])
         self.assertFalse(presets["okx-xau-actionzone-v1"]["stop_loss_required"])

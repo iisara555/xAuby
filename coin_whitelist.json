@@ -32,8 +32,6 @@
         "fixed_tp_pct": 0.0,
         "require_slow_slope": true,
         "slow_slope_bars": 3,
-        "partial_tp_pct": 12.0,
-        "partial_tp_fraction": 0.5,
         "minimal_roi": {
           "0": 8.0,
           "1440": 5.0,
