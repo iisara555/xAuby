@@ -50,6 +50,12 @@ class CDCActionZoneStrategy(Strategy):
             "rsi_max": 70.0,
             "vol_min_ratio": 1.0,
             "use_d1_regime_filter": False,
+            # Per-side overrides for the D1 gate. None = follow
+            # use_d1_regime_filter. Set the short side False to keep the daily
+            # confirmation on longs while letting shorts fire on the 4H flip —
+            # the daily zone lags, so gating shorts on it enters declines late.
+            "use_d1_regime_filter_long": None,
+            "use_d1_regime_filter_short": None,
             "require_fresh_zone": True,
             "fresh_zone_window": 3,
             "ap_smoothing": 2,
@@ -113,6 +119,8 @@ class CDCActionZoneStrategy(Strategy):
             "rsi_max": {"type": "float", "default": 70.0, "description": "Maximum RSI for entry"},
             "vol_min_ratio": {"type": "float", "default": 1.0, "description": "Minimum volume ratio vs 20-SMA"},
             "use_d1_regime_filter": {"type": "bool", "default": False, "description": "Require D1 regime confirmation"},
+            "use_d1_regime_filter_long": {"type": "bool", "default": None, "description": "Override the D1 gate for LONG entries only (None = follow use_d1_regime_filter)"},
+            "use_d1_regime_filter_short": {"type": "bool", "default": None, "description": "Override the D1 gate for SHORT entries only (None = follow use_d1_regime_filter)"},
             "require_fresh_zone": {"type": "bool", "default": True, "description": "Require fresh GREEN transition"},
             "fresh_zone_window": {"type": "int", "default": 3, "description": "Max bars since GREEN crossover still counted as fresh (2-3 recommended)"},
             "ap_smoothing": {"type": "int", "default": 2, "description": "EMA source smoothing for CDC V3 (AP=ema(close,n)); 1 = raw close, 2 = Piriya V3 original"},
@@ -304,6 +312,22 @@ class CDCActionZoneStrategy(Strategy):
                 return value
             return str(value).lower() in ("true", "1", "yes", "on")
 
+        def cfg_optional_bool(key: str, fallback: bool) -> bool:
+            """Read a bool that may legitimately be unset.
+
+            `cfg_bool` cannot be used here: the per-side D1 keys default to None
+            in `default_config`, so `runtime_cfg.get(key, fallback)` returns that
+            None rather than the fallback, and `str(None)` is not truthy — which
+            would silently disable the D1 gate on BOTH sides of every existing
+            config. None means "not set, follow the shared flag".
+            """
+            value = runtime_cfg.get(key, None)
+            if value is None:
+                return fallback
+            if isinstance(value, bool):
+                return value
+            return str(value).lower() in ("true", "1", "yes", "on")
+
         def cfg_int(key: str, default: int) -> int:
             try:
                 return max(1, int(runtime_cfg.get(key, default)))
@@ -314,6 +338,19 @@ class CDCActionZoneStrategy(Strategy):
         rsi_max = cfg_float("rsi_max", 70.0)
         vol_min_ratio = cfg_float("vol_min_ratio", 1.0)
         use_d1_regime = cfg_bool("use_d1_regime_filter", False)
+        # Per-side D1 gating. Both default to `use_d1_regime_filter`, so an
+        # existing config behaves exactly as before. Splitting them matters
+        # because the daily zone LAGS: gating shorts on D1 means entering a
+        # decline only after the daily zone has already flipped, while gating
+        # longs on D1 is what suppresses bull whipsaw. The two sides do not
+        # want the same treatment.
+        use_d1_long = cfg_optional_bool("use_d1_regime_filter_long", use_d1_regime)
+        use_d1_short = cfg_optional_bool("use_d1_regime_filter_short", use_d1_regime)
+        # The D1 zone must be COMPUTED whenever either side gates on it —
+        # otherwise an asymmetric config (long gated, short not) would ask for a
+        # zone that was never calculated and read UNKNOWN, silently blocking
+        # every long instead of filtering them.
+        use_d1_any = use_d1_long or use_d1_short
         require_fresh_zone = cfg_bool("require_fresh_zone", True)
         fresh_zone_window = cfg_int("fresh_zone_window", 3)
         ap_smoothing = cfg_int("ap_smoothing", 2)
@@ -324,12 +361,12 @@ class CDCActionZoneStrategy(Strategy):
             ctx.df_primary,
             ctx.df_regime,
             ap_smoothing,
-            use_d1_regime=use_d1_regime,
+            use_d1_regime=use_d1_any,
             last_bar_is_forming=bool(ctx.extras.get("last_bar_is_forming", True)),
             slope_bars=slow_slope_bars,
         )
         atr = float(indicators.get("atr_4h", 0.0))
-        d1_status = indicators["cdc_zone_d1"] if use_d1_regime else "OFF"
+        d1_status = indicators["cdc_zone_d1"] if use_d1_any else "OFF"
 
         status = (
             f"D1: {d1_status} | "
@@ -344,7 +381,9 @@ class CDCActionZoneStrategy(Strategy):
             rsi_min=rsi_min,
             rsi_max=rsi_max,
             vol_min_ratio=vol_min_ratio,
-            use_d1_regime=use_d1_regime,
+            use_d1_regime=use_d1_any,
+            use_d1_long=use_d1_long,
+            use_d1_short=use_d1_short,
             require_fresh_zone=require_fresh_zone,
             fresh_zone_window=fresh_zone_window,
         )
@@ -435,7 +474,7 @@ class CDCActionZoneStrategy(Strategy):
             )
             if not ema_ok:
                 return hold(f"EMA cross check failed: {ema_reason}", **common)
-            if use_d1_regime:
+            if use_d1_long:
                 d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
                 if d1_zone not in ("GREEN", "YELLOW", "ORANGE"):
                     return hold(f"Daily regime filter blocked (D1 zone: {d1_zone})", **common)
@@ -469,7 +508,7 @@ class CDCActionZoneStrategy(Strategy):
             )
             if not ema_ok:
                 return hold(f"Bearish EMA cross check failed: {ema_reason}", **common)
-            if use_d1_regime:
+            if use_d1_short:
                 d1_zone = indicators.get("cdc_zone_d1", "UNKNOWN")
                 if d1_zone not in ("RED", "BLUE", "LBLUE"):
                     return hold(f"Daily regime filter blocked for short (D1 zone: {d1_zone})", **common)
@@ -604,6 +643,8 @@ class CDCActionZoneStrategy(Strategy):
         use_d1_regime: bool,
         require_fresh_zone: bool = True,
         fresh_zone_window: int = 1,
+        use_d1_long: Optional[bool] = None,
+        use_d1_short: Optional[bool] = None,
     ) -> List[Dict[str, Any]]:
         h4_zone = indicators.get("cdc_zone_4h", "UNKNOWN")
         rsi = float(indicators.get("rsi_4h", 0.0))
@@ -784,7 +825,12 @@ class CDCActionZoneStrategy(Strategy):
                 }
             )
 
-        if use_d1_regime:
+        # Show the D1 row only when the side currently in play is actually gated:
+        # with an asymmetric config a "D1 Regime" row against an ungated short
+        # would report a blocker that does not exist.
+        gated_long = use_d1_regime if use_d1_long is None else use_d1_long
+        gated_short = use_d1_regime if use_d1_short is None else use_d1_short
+        if gated_short if short_bias else gated_long:
             allowed_d1 = ("RED", "BLUE", "LBLUE") if short_bias else ("GREEN", "YELLOW", "ORANGE")
             items.append(
                 {

@@ -54,12 +54,31 @@ CONFIGS: Dict[str, Dict[str, Any]] = {
     "long-only D1 on": {"enable_short": False, "use_d1_regime_filter": True},
     "long+short D1 off": {"enable_short": True, "use_d1_regime_filter": False},
     "long+short D1 on": {"enable_short": True, "use_d1_regime_filter": True},
+    # Asymmetric: keep the daily confirmation on longs, let shorts fire on the
+    # 4H flip. Rationale is D1 lag — gating shorts on the daily zone enters a
+    # decline only after it has already turned.
+    "L:D1on S:D1off": {
+        "enable_short": True,
+        "use_d1_regime_filter": True,
+        "use_d1_regime_filter_short": False,
+    },
+    # The mirror, included so the asymmetry is tested in both directions rather
+    # than only the one that sounds right.
+    "L:D1off S:D1on": {
+        "enable_short": True,
+        "use_d1_regime_filter": True,
+        "use_d1_regime_filter_long": False,
+    },
 }
 
 # Which long-only config each long+short config must clear by min_profit_edge_pp.
+# The asymmetric cells gate longs the same way "long-only D1 on" does, so that is
+# the honest baseline for them; L:D1off gates longs like "long-only D1 off".
 GATE_PAIRS = [
     ("long+short D1 on", "long-only D1 on"),
     ("long+short D1 off", "long-only D1 off"),
+    ("L:D1on S:D1off", "long-only D1 on"),
+    ("L:D1off S:D1on", "long-only D1 off"),
 ]
 
 BOOTSTRAP_SAMPLES = 10000
