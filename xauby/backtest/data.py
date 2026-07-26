@@ -156,6 +156,14 @@ def download_klines(
     end_time = int(time.time() * 1000)
     chunk_size = 1000
 
+    # Why a failure reason is tracked rather than just breaking: Binance answers a
+    # geo-block with HTTP 200 and a JSON *object* ({"code":0,"msg":"Service
+    # unavailable from a restricted location..."}), not a list. The old code broke
+    # out and returned an empty frame, so a blocked region looked exactly like "this
+    # symbol has no history". Partial data still returns (a mid-pagination error is
+    # just an early stop), but zero data with a known cause now raises.
+    failure: Optional[str] = None
+
     while len(all_klines) < limit:
         params = {
             "symbol": sym,
@@ -166,9 +174,19 @@ def download_klines(
         try:
             r = requests.get(url, params=params, timeout=10)
             if r.status_code != 200:
+                failure = f"HTTP {r.status_code} from {url}"
                 break
             data = r.json()
-            if not data or not isinstance(data, list):
+            if isinstance(data, dict):
+                msg = str(data.get("msg") or "").strip()
+                failure = f"{url} returned an error object: {msg or data}"
+                break
+            if not isinstance(data, list):
+                failure = f"{url} returned {type(data).__name__}, expected a list"
+                break
+            if not data:
+                # An empty list is a real answer — the symbol has no candles in
+                # this range. Leave `failure` unset so it stays a quiet empty frame.
                 break
 
             existing_ts = {k[0] for k in all_klines}
@@ -184,7 +202,8 @@ def download_klines(
 
             if len(data) < chunk_size:
                 break
-        except Exception:
+        except Exception as exc:
+            failure = f"{type(exc).__name__}: {exc}"
             break
 
     all_klines.sort(key=lambda x: x[0])
@@ -192,6 +211,10 @@ def download_klines(
         all_klines = all_klines[-limit:]
 
     if not all_klines:
+        if failure:
+            raise RuntimeError(
+                f"backtest candle download failed for {sym} {timeframe}: {failure}"
+            )
         return pd.DataFrame()
 
     df = pd.DataFrame(

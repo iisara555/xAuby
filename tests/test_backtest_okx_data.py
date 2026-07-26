@@ -69,9 +69,15 @@ class TestUnknownHostFailsLoudly(unittest.TestCase):
     def test_binance_hosts_still_route(self):
         seen = {}
 
+        class EmptyOk:
+            status_code = 200
+
+            def json(self):
+                return []  # valid "no candles", so the call returns quietly
+
         def fake_get(url, params=None, timeout=None, **kw):
             seen["url"] = url
-            raise RuntimeError("stop here — only the URL matters")
+            return EmptyOk()
 
         with mock.patch("xauby.backtest.data.requests.get", fake_get):
             download_klines("BTCUSDT", "4h", limit=1, base_url="https://api.binance.com")
@@ -80,6 +86,73 @@ class TestUnknownHostFailsLoudly(unittest.TestCase):
         with mock.patch("xauby.backtest.data.requests.get", fake_get):
             download_klines("BTCUSDT", "4h", limit=1, base_url="https://api.binance.th")
         self.assertTrue(seen["url"].endswith("/api/v1/klines"))
+
+
+class TestBinanceFailuresAreNotSilent(unittest.TestCase):
+    """A venue that refuses to serve us must not look like an empty symbol."""
+
+    def _resp(self, status=200, payload=None):
+        class R:
+            status_code = status
+
+            def json(self):
+                return payload
+
+        return R()
+
+    def test_geo_block_error_object_raises(self):
+        # Binance answers a restricted region with HTTP 200 and a JSON object.
+        blocked = {"code": 0, "msg": "Service unavailable from a restricted location"}
+        with mock.patch(
+            "xauby.backtest.data.requests.get",
+            lambda *a, **k: self._resp(200, blocked),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                download_klines("PAXGUSDT", "4h", limit=10,
+                                base_url="https://api.binance.com")
+        self.assertIn("restricted location", str(ctx.exception))
+
+    def test_http_error_status_raises(self):
+        with mock.patch(
+            "xauby.backtest.data.requests.get",
+            lambda *a, **k: self._resp(451, None),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                download_klines("BTCUSDT", "4h", limit=10,
+                                base_url="https://api.binance.com")
+        self.assertIn("451", str(ctx.exception))
+
+    def test_genuinely_empty_history_still_returns_empty(self):
+        # An empty *list* is a real answer: the symbol has no candles. That must
+        # stay a quiet empty frame, not an exception.
+        with mock.patch(
+            "xauby.backtest.data.requests.get",
+            lambda *a, **k: self._resp(200, []),
+        ):
+            df = download_klines("NEWCOINUSDT", "4h", limit=10,
+                                 base_url="https://api.binance.com")
+        self.assertTrue(df.empty)
+
+    def test_partial_pagination_keeps_what_it_got(self):
+        # First page succeeds, second fails: return page one rather than raising,
+        # since a mid-walk error is just an early stop.
+        calls = {"n": 0}
+        page = [
+            [1_600_000_000_000 + i * 14_400_000, "1", "2", "0.5", "1.5", "10",
+             1_600_000_000_000 + i * 14_400_000 + 14_399_999, "15", 3, "5", "7", "0"]
+            for i in range(1000)
+        ]
+
+        def fake_get(*a, **k):
+            calls["n"] += 1
+            return self._resp(200, page if calls["n"] == 1 else
+                              {"code": -1, "msg": "rate limited"})
+
+        with mock.patch("xauby.backtest.data.requests.get", fake_get):
+            df = download_klines("BTCUSDT", "4h", limit=5000,
+                                 base_url="https://api.binance.com")
+        self.assertFalse(df.empty)
+        self.assertEqual(len(df), 1000)
 
 
 class TestOkxRouting(unittest.TestCase):
