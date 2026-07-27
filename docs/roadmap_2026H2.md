@@ -515,11 +515,31 @@ venue ที่ติดต่อไม่ได้ต้องพังแบ�
 แคตตาล็อกสินค้า — วันนี้มันคือ boolean ที่แก้ด้วยมือ 8 ตัวใน `xauby/saas/catalog.py`
 ซึ่ง 6 ตัวยังเป็น `pending` หรือ `insufficient`
 
-**P1.1 — ยก walk-forward เข้า library**
+**P1.1 — ยก walk-forward เข้า library** ✅ **เสร็จ 2026-07-27**
 `grep -rn "walk_forward" xauby/` เจอแค่คอมเมนต์เดียว ความสามารถ WFA ทั้งหมดอยู่ใน
 สคริปต์ใช้แล้วทิ้ง 2 ไฟล์ที่ไม่มีเทสต์ (`scripts/btc_wfa_multi_strategy.py`,
 `scripts/actionzone_wfa_sweep.py`) — ทั้งที่สองไฟล์นี้ผลิตงานวิจัยที่ดีที่สุดของรีโป
 ทำให้เป็น API ระดับหนึ่งใน `xauby/backtest/` พร้อมเทสต์ และเรียกใช้เป็นด่านได้
+
+- `xauby/backtest/walkforward.py` + 21 เทสต์ — `WindowSlice` ผูก "จำนวนแท่ง warmup"
+  กับ "จำนวนแท่งที่ห้ามเทรด" ไว้ด้วยกัน และ `run_slice` ส่ง `min_bars_override`
+  ให้เสมอ (ลืมไม่ได้เพราะไม่มีพารามิเตอร์ให้ลืม) ส่วน `resolve_variant` ปฏิเสธ
+  variant ที่ตั้งค่าคีย์ใน control group ไม่ครบ
+- `scripts/xau_harness.py` + 18 เทสต์ — ตาราง variant ชุดเดียวสำหรับงานวิจัย XAU
+  ทั้งหมด และ `deployed_variant_name()` อ่านจาก config ว่าตัวไหนคือตัวที่รันจริง
+  แทนการเขียนป้าย "deployed" ตายตัวไว้ในเอกสาร
+- harness เดิมทั้งสาม (`certify_xau_candidate`, `xau_phase_breakdown`,
+  `xau_d1_short_matrix`) รันผ่าน library แล้ว — รันซ้ำได้ตัวเลขเดียวกับ
+  `xau_windowed_regen` ทุกตัว และตาราง continuous ยังตรงกับที่ตีพิมพ์
+- `scripts/actionzone_wfa_sweep.py` **มีบั๊กเดียวกัน** (เจอตอนตรวจ ไม่ใช่ตอนเดา) —
+  แก้ให้ `_run` รับ `skip_bars` เป็น positional แล้ว วัดผลกระทบจริงบน config ที่
+  เอกสารแนะนำ: OOS net +47.78% → **+43.29%**, fold3 PF 1.07 → **1.50**,
+  fold ที่กำไร 4/5 ทั้งสองแบบ, OOS PF 2.26 เท่าเดิม — **ข้อสรุปของเอกสารไม่เปลี่ยน**
+  เพราะ window ของมันใหญ่กว่าส่วนที่ทับกันราว 13 เท่า (ต่างจาก window รายเดือนที่
+  ส่วนทับใหญ่กว่าตัว window เอง) `scripts/btc_wfa_multi_strategy.py` ส่ง
+  `min_bars_override` ถูกต้องอยู่แล้ว — BTC certificate ไม่กระทบ (รันซ้ำยืนยันแล้ว)
+- **ยังเหลือ:** ทั้งสองสคริปต์ยังมี loop ของตัวเองไม่ได้ย้ายมาใช้ library และยังไม่ได้
+  ทำให้ certification เรียกเป็นด่านอัตโนมัติ — อยู่ใน P1.4
 
 **P1.2 — แก้ความซื่อสัตย์เชิงสถิติของ optimizer**
 `backtest.optimizer` รัน `max_runs: 4` บน `max_bars: 300`

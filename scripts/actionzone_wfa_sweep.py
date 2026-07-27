@@ -130,17 +130,29 @@ def _init_worker() -> None:
     merged = dict(cfg)
     merged["trading"] = trading_cfg
     split = int(len(df4) * SPLIT_RATIO)
+    oos_lo = max(0, split - WARMUP)
     _G.update(
         df4=df4,
         df1=df1,
         base_cfg=dict(strat_cfg),
         merged=merged,
         is_df=df4.iloc[:split].reset_index(drop=True),
-        oos_df=df4.iloc[max(0, split - WARMUP):].reset_index(drop=True),
+        oos_df=df4.iloc[oos_lo:].reset_index(drop=True),
+        oos_skip=split - oos_lo,
     )
 
 
-def _run(df, override):
+def _run(df, override, skip_bars: int):
+    """Replay `df`, treating its first `skip_bars` bars as warmup only.
+
+    `skip_bars` is a required positional because omitting it is the whole bug:
+    the frames below prepend a 300-bar lead-in, and without the override the
+    replay skips only the strategy's own `min_bars` (100) and trades the other
+    200 — bars that belong to the PREVIOUS window. Measured on this study's
+    config, that leak moved OOS net from +43.29% to +47.78% and fold 3's PF from
+    1.50 to 1.07; the published conclusions survive it, but nothing else should
+    inherit it. See xauby/backtest/walkforward.py.
+    """
     from xauby.backtest.replay import run_plugin_replay
 
     stats = run_plugin_replay(
@@ -152,6 +164,7 @@ def _run(df, override):
         df_regime=_G["df1"],
         primary_timeframe="4h",
         regime_timeframe="1d",
+        min_bars_override=skip_bars,
     )
     keys = (
         "net_profit_pct", "win_rate", "profit_factor", "max_drawdown_pct",
@@ -162,12 +175,14 @@ def _run(df, override):
 
 
 def _fold_frames():
+    """(frame, skip_bars) per fold — the count travels with the frame."""
     df4 = _G["df4"]
     seg = len(df4) // N_FOLDS
     for f in range(N_FOLDS):
-        start = max(0, f * seg - WARMUP)
+        fold_start = f * seg
+        start = max(0, fold_start - WARMUP)
         end = len(df4) if f == N_FOLDS - 1 else (f + 1) * seg
-        yield df4.iloc[start:end].reset_index(drop=True)
+        yield df4.iloc[start:end].reset_index(drop=True), fold_start - start
 
 
 def eval_is_oos(item):
@@ -176,8 +191,8 @@ def eval_is_oos(item):
         return {
             "id": combo_id,
             "override": override,
-            "is": _run(_G["is_df"], override),
-            "oos": _run(_G["oos_df"], override),
+            "is": _run(_G["is_df"], override, 0),
+            "oos": _run(_G["oos_df"], override, _G["oos_skip"]),
         }
     except Exception as exc:
         return {"id": combo_id, "override": override, "error": str(exc)}
@@ -187,8 +202,8 @@ def eval_full(item):
     combo_id, override = item
     try:
         out = eval_is_oos(item)
-        out["full"] = _run(_G["df4"], override)
-        out["folds"] = [_run(df, override) for df in _fold_frames()]
+        out["full"] = _run(_G["df4"], override, 0)
+        out["folds"] = [_run(df, override, skip) for df, skip in _fold_frames()]
         return out
     except Exception as exc:
         return {"id": combo_id, "override": override, "error": str(exc)}
