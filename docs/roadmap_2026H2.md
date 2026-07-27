@@ -559,12 +559,42 @@ venue ที่ติดต่อไม่ได้ต้องพังแบ�
 - **ยังเหลือ:** ทั้งสองสคริปต์ยังมี loop ของตัวเองไม่ได้ย้ายมาใช้ library และยังไม่ได้
   ทำให้ certification เรียกเป็นด่านอัตโนมัติ — อยู่ใน P1.4
 
-**P1.2 — แก้ความซื่อสัตย์เชิงสถิติของ optimizer**
+**P1.2 — แก้ความซื่อสัตย์เชิงสถิติของ optimizer** ✅ **ทำแล้ว 2026-07-27**
 `backtest.optimizer` รัน `max_runs: 4` บน `max_bars: 300`
 (`bot_config.yaml:619-621`) — มันเรียง Cartesian product ตามระยะห่างจาก baseline
 แล้วสุ่มตรวจ 4 จุด ดีไซน์ OOS-split (`optimizer.py:54-130`) ถูกต้อง แต่ข้อมูลน้อยเกิน
 ที่ 300 bars การแบ่ง 70/30 แทบไม่ผ่านเกณฑ์ขั้นต่ำของตัวเอง — เลือกเอาว่าจะเพิ่ม
 budget แล้วรันนอก VPS เทรด (ตามข้อจำกัดใน `AGENTS.md`) หรือเลิกเรียกมันว่า optimization
+
+**ที่จริงมันแย่กว่าที่เขียนไว้ — และวัดแล้ว ไม่ใช่เดา** บน config ที่ ship อยู่
+(300 bars, split 0.7, warmup 100) **ทั้งสองคู่ live เลือกอะไรไม่ได้เลย**:
+
+- `supertrend_ema200` ต้องใช้ **240 แท่ง** ก่อนออกสัญญาณ แต่ IS ได้ 210 และ OOS
+  ได้ 190 → **ทุก combo ได้ 0.0 ทุก metric** ตัวกรอง "กำไรทั้งสองหน้าต่าง" จึงว่าง
+  แล้ว `pool.sort` บนค่าที่เท่ากันหมด → **ผู้ชนะคือ tuple ที่บังเอิญเรียงมาก่อน**
+  แล้วถูก `_save_best()` เก็บเป็น best parameters ของคู่นั้น
+- `xauby_actionzone` ได้ **1 เทรดต่อหน้าต่าง** และ selection จัดอันดับด้วย
+  Sharpe แบบ annualize ที่คำนวณจากเทรดเดียวนั้น (IS 5.75 / OOS 4.75)
+
+ทั้งสองเคสไม่มีอะไรฟ้อง เพราะ return dict ที่มีข้อมูลครบและ save สำเร็จ
+
+**สิ่งที่แก้:**
+- `OptimizerVerdict` + `_admissibility()` — ถ้าตัวอย่างรองรับการเลือกไม่ได้
+  **จะปฏิเสธพร้อมเหตุผล** แทนที่จะคืนแถวบนสุดของอันดับที่ใช้ไม่ได้ เกณฑ์ใช้
+  `MIN_IS_TRADES / MIN_OOS_TRADES = 40 / 18` ซึ่ง**คัดมาจาก
+  `scripts/actionzone_wfa_sweep.py` ของรีโปเอง** ไม่ได้ตั้งใหม่ (มีเทสต์ล็อกไว้ว่า
+  ต้องตรงกัน)
+- `run_replay_from_bundle` รับ `min_bars_override` แล้ว และ OOS window ส่ง
+  `split - lo` เข้าไป → เริ่มเทรดที่จุด split พอดีไม่ว่า `min_bars` ของกลยุทธ์จะ
+  เป็นเท่าไร เดิมมันถูกเฉพาะตอน `oos_warmup_bars` บังเอิญ = `min_bars` (100 ของ
+  `xauby_actionzone`) ส่วน 240 ของ supertrend ยาวกว่าทั้ง slice จึงไม่เทรดเลย
+- `scripts/optimize_pair_configs.py` แสดง `DECLINED <sym>: <reason>` แทนการเงียบ
+- `scripts/select_pair_strategy.py` แก้ multiple testing แล้ว: แต่ละ candidate ได้
+  bootstrap p-value ด้าน "mean return <= 0" แล้วผ่าน Benjamini-Hochberg ทั้ง family
+  · `--apply` ต้องผ่าน **ทั้ง gate เดิมและการ correction** (ปิดข้อที่ค้างจาก P1.3)
+
+**คำตอบต่อ either/or ของ roadmap:** ตอนนี้เป็นโค้ด ไม่ใช่การเปลี่ยนชื่อ — ด้วย
+budget ปัจจุบันมันจะปฏิเสธและบอกว่าต้องขยับ `max_bars` แล้วรันนอกเครื่องเทรด
 
 **P1.3 — เพิ่มการทดสอบนัยสำคัญทางสถิติ** ✅ **ทำแล้ว 2026-07-27**
 ยังไม่มี bootstrap, Monte Carlo, trade-shuffle, deflated Sharpe หรือการแก้ปัญหา

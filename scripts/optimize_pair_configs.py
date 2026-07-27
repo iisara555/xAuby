@@ -75,6 +75,14 @@ def main() -> None:
         if not best:
             print(f"No results for {sym}")
             continue
+        if best.get("admissible") is False:
+            # The optimizer declined: the sample could not support a selection.
+            # Reported rather than skipped silently, because "no result" and
+            # "the result was a coin flip" used to look identical from here.
+            verdict = best.get("verdict") or {}
+            print(f"DECLINED {sym}: {verdict.get('reason', 'unspecified')}", flush=True)
+            report[sym] = {"declined": verdict}
+            continue
 
         params = _persist_params(sym, best)
         verify = run_focused_backtest(sym)

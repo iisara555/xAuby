@@ -43,6 +43,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from xauby.analytics.risk import equity_relative_returns
 from xauby.backtest.service import _prepare_backtest_config, resolve_strategy_name
 from xauby.backtest.significance import (
     OrderInvariantStatistic,
@@ -117,21 +118,13 @@ def _equity_relative_returns(stats: Dict[str, Any]) -> List[float]:
     Not ``pnl_pct``. That field is the return on the trade — on the position's
     own notional — and compounding a list of them treats every trade as if it
     had been the whole account. On this BTC preset that turned a real 9.8%
-    max drawdown into a reported 35.4% and a bootstrap interval of ±316%: all
+    max drawdown into a reported 35.4% and a bootstrap interval of +/-316%: all
     the right arithmetic on the wrong series.
     """
-    initial = float(stats.get("initial_balance") or 0.0)
-    if initial <= 0:
-        return []
-    equity = initial
-    out: List[float] = []
-    for trade in stats.get("trades") or []:
-        pnl = float(trade.get("pnl") or 0.0)
-        if equity <= 0:
-            break
-        out.append(pnl / equity * 100.0)
-        equity += pnl
-    return out
+    return equity_relative_returns(
+        [float(t.get("pnl") or 0.0) for t in (stats.get("trades") or [])],
+        float(stats.get("initial_balance") or 0.0),
+    )
 
 
 def _significance(
