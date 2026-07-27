@@ -35,7 +35,12 @@ install -m 0755 "$repo/deploy/xauby-materialize-credentials" /usr/local/libexec/
 install -m 0440 "$repo/deploy/xauby-control.sudoers" /etc/sudoers.d/xauby-control
 visudo -cf /etc/sudoers.d/xauby-control >/dev/null
 
-for unit in xauby-control.service xauby-engine@.service xauby.target xauby-backup.service xauby-backup.timer; do
+# xauby-healthcheck.* and xauby-deadman@.* were previously authored but never
+# installed by this loop, so a fresh host had no external monitoring at all.
+for unit in xauby-control.service xauby-engine@.service xauby.target \
+            xauby-backup.service xauby-backup.timer \
+            xauby-healthcheck.service xauby-healthcheck.timer \
+            xauby-deadman@.service xauby-deadman@.timer; do
   sed "s#/opt/xauby/current#$install_root#g" "$repo/deploy/systemd/$unit" > "/etc/systemd/system/$unit"
 done
 
@@ -56,7 +61,9 @@ fi
 "$install_root/venv/bin/pip" install -e "$install_root"
 
 systemctl daemon-reload
-systemctl enable xauby.target xauby-backup.timer
+install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/deadman
+
+systemctl enable xauby.target xauby-backup.timer xauby-healthcheck.timer
 
 echo "Host installation complete."
 echo "1. Edit /etc/xauby/control.env (domain, SMTP and Google OAuth credentials)."

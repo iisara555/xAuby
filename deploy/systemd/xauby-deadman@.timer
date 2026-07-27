@@ -1,0 +1,17 @@
+[Unit]
+Description=Run the xAuby dead-man's switch for %i every two minutes
+
+[Timer]
+# Two minutes against a 5-minute silence threshold: an outage is caught within
+# roughly one threshold window, and the check itself is a file stat plus at most
+# one HTTP POST.
+OnBootSec=90s
+OnUnitActiveSec=2min
+AccuracySec=15s
+# Persistent so a host that was down catches up on the next boot instead of
+# silently skipping the window it missed.
+Persistent=true
+Unit=xauby-deadman@%i.service
+
+[Install]
+WantedBy=timers.target
