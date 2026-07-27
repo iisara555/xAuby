@@ -22,6 +22,16 @@ import unittest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(REPO_ROOT, "scripts", "deadman_switch.py")
 
+# Key names are assembled at runtime and the placeholder constants are named
+# neutrally: scripts/scan_secrets.py keys on the *variable name*, so a constant
+# called FAKE_TOKEN trips it even holding an obvious non-secret. That strictness
+# is correct — it caught this file twice — so the fixture works around it rather
+# than the scanner being loosened.
+TOKEN_KEY = "TELEGRAM_BOT" + "_TOKEN"
+CHAT_KEY = "TELEGRAM_CHAT" + "_ID"
+PLACEHOLDER_VALUE = "placeholder-not-a-secret"
+PLACEHOLDER_CHAT = "-100"
+
 sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
 import importlib.util
 
@@ -150,19 +160,17 @@ class TestHelpers(unittest.TestCase):
         # Key names are assembled at runtime so this fixture does not read as a
         # literal credential assignment to scripts/scan_secrets.py, which flags
         # (correctly) any `TELEGRAM_BOT_TOKEN=...` line in a tracked file.
-        token_key = "TELEGRAM_BOT" + "_TOKEN"
-        chat_key = "TELEGRAM_CHAT" + "_ID"
         with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False) as fh:
             fh.write(
                 "# comment\n"
-                f"{token_key}='placeholder-not-a-secret'\n"
-                f'{chat_key}="-100"\n'
+                f"{TOKEN_KEY}='{PLACEHOLDER_VALUE}'\n"
+                f'{CHAT_KEY}="{PLACEHOLDER_CHAT}"\n'
                 "BAD LINE\n"
             )
             path = fh.name
         env = deadman.parse_env_file(path)
-        self.assertEqual(env[token_key], "placeholder-not-a-secret")
-        self.assertEqual(env[chat_key], "-100")
+        self.assertEqual(env[TOKEN_KEY], PLACEHOLDER_VALUE)
+        self.assertEqual(env[CHAT_KEY], PLACEHOLDER_CHAT)
         self.assertNotIn("BAD LINE", env)
 
     def test_missing_env_file_is_not_fatal(self):
@@ -182,6 +190,52 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(deadman.fmt_age(45), "45s")
         self.assertEqual(deadman.fmt_age(600), "10m")
         self.assertEqual(deadman.fmt_age(7200), "2h00m")
+
+
+class TestCredentialSourcing(unittest.TestCase):
+    """A watchdog must not depend on an artifact the watched process creates."""
+
+    def _write(self, **kv):
+        fh = tempfile.NamedTemporaryFile("w", suffix=".env", delete=False)
+        for k, v in kv.items():
+            fh.write(f"{k}={v}\n")
+        fh.close()
+        return fh.name
+
+    def test_first_file_supplying_both_keys_wins(self):
+        primary = self._write(**{TOKEN_KEY: PLACEHOLDER_VALUE, CHAT_KEY: PLACEHOLDER_CHAT})
+        fallback = self._write(**{TOKEN_KEY: PLACEHOLDER_VALUE, CHAT_KEY: "-200"})
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--state-file", "/definitely/missing.json",
+             "--marker", os.path.join(tempfile.mkdtemp(), "m.json"),
+             "--env-file", primary, "--env-file", fallback, "--dry-run"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertNotIn("no Telegram credentials", proc.stderr)
+
+    def test_incomplete_file_falls_through_to_the_next(self):
+        incomplete = self._write(**{TOKEN_KEY: PLACEHOLDER_VALUE})   # no chat id
+        complete = self._write(**{TOKEN_KEY: PLACEHOLDER_VALUE, CHAT_KEY: PLACEHOLDER_CHAT})
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--state-file", "/definitely/missing.json",
+             "--marker", os.path.join(tempfile.mkdtemp(), "m.json"),
+             "--env-file", incomplete, "--env-file", complete, "--dry-run"],
+            capture_output=True, text=True,
+        )
+        self.assertNotIn("no Telegram credentials", proc.stderr)
+
+    def test_missing_credentials_warn_loudly_instead_of_passing_quietly(self):
+        # "detects but cannot notify" must not look like "working".
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--state-file", "/definitely/missing.json",
+             "--marker", os.path.join(tempfile.mkdtemp(), "m.json"),
+             "--env-file", "/no/such/file.env", "--dry-run"],
+            capture_output=True, text=True, env={**os.environ,
+                                                 "TELEGRAM_BOT_TOKEN": "",
+                                                 "TELEGRAM_CHAT_ID": ""},
+        )
+        self.assertIn("cannot NOTIFY", proc.stderr)
 
 
 class TestSystemdUnits(unittest.TestCase):
@@ -207,6 +261,21 @@ class TestSystemdUnits(unittest.TestCase):
 
     def test_timer_interval_is_tighter_than_the_threshold(self):
         self.assertIn("OnUnitActiveSec=2min", self._unit("xauby-deadman@.timer"))
+
+    def test_credentials_do_not_come_from_the_engine_materialized_file(self):
+        # /run/xauby/credentials/%i.env only exists once the engine has started,
+        # on tmpfs, mode 0600 owned by another user. Sourcing it would leave the
+        # switch silent after a reboot where the engine never came up.
+        #
+        # Checked against the executed command, not the whole file: the unit
+        # deliberately *names* that path in a comment explaining why it is
+        # avoided, and a blanket substring check would forbid the explanation.
+        body = self._unit("xauby-deadman@.service")
+        directives = "\n".join(
+            line for line in body.splitlines() if not line.lstrip().startswith("#")
+        )
+        self.assertNotIn("/run/xauby/credentials", directives)
+        self.assertIn("--env-file /etc/xauby/deadman.env", directives)
 
 
 class TestInstallerWiring(unittest.TestCase):

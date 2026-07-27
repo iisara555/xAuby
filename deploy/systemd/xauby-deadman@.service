@@ -14,9 +14,16 @@ User=xauby-control
 Group=xauby-control
 WorkingDirectory=/opt/xauby/current
 Environment=XAUBY_INSTANCE_ID=%i
+# Credentials come from a persistent, watchdog-owned file — deliberately NOT
+# from /run/xauby/credentials/%i.env, which the engine unit materializes at
+# start. That file lives on tmpfs, is mode 0600 owned by another user, and only
+# exists once the engine has already started; depending on it would leave this
+# unit silent in exactly the case it exists for (host reboots, engine never
+# comes up). The tenant secrets file is listed second only as a fallback.
 ExecStart=/opt/xauby/current/venv/bin/python /opt/xauby/current/scripts/deadman_switch.py \
     --state-file /var/lib/xauby/runtime/%i/logs/xauby_bot_state.json \
     --marker /var/lib/xauby/deadman/%i.json \
+    --env-file /etc/xauby/deadman.env \
     --env-file /etc/xauby/tenants/%i/secrets.env \
     --label %i
 NoNewPrivileges=true
