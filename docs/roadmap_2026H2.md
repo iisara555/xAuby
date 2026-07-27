@@ -466,7 +466,25 @@ config** มาด้วยเสมอ นั่นคือสิ่งเด�
   arm ต่อ tenant ตอน provisioning แทน
 
 **state file หายไป = ถือว่าเงียบ** (path ผิดหลัง deploy / engine ไม่เคยขึ้น
-ล้วนคือ "ไม่ได้ทำงาน") — 23 เทสต์ใน `tests/test_deadman_switch.py`
+ล้วนคือ "ไม่ได้ทำงาน") — 30 เทสต์ใน `tests/test_deadman_switch.py`
+
+**ยืนยันปลายทางบน production แล้ว 2026-07-27** — รัน `deadman_switch.py` ตัวจริง
+ในนาม `xauby-control` ใต้ sandbox เดียวกับ unit (`PrivateTmp`,
+`ProtectSystem=strict`, `NoNewPrivileges`) ได้ข้อความ 🔴 เข้า Telegram จริง
+และ production check กลับมา `[OK] engine ticking, state age 1s` โดย engine
+ไม่ถูก restart (PID 543863) timer `xauby-deadman@owner-itsara.timer` armed
+**จนถึงจุดนี้ P0.6 ถึงจะปิดได้จริง** — ก่อนหน้านี้มันตรวจจับได้แต่แจ้งเตือนไม่ได้
+
+การยืนยันรอบนั้นเปิดข้อบกพร่องจริงในโค้ดสองตัว แก้แล้วทั้งคู่:
+- `parse_env_file` ใช้ `os.path.isfile` ซึ่งแค่ stat — ไฟล์ credential ที่เป็น
+  `root:root 0600` จึงผ่านด่านนั้นแล้วไป **raise `PermissionError` ตอน open**
+  ทำให้ watchdog ตายทุกครั้งที่ timer ยิง ซึ่งแยกไม่ออกจาก "ระบบปกติดี"
+  ตอนนี้ degrade เป็น "ไม่พบ credential" แล้วเตือน แทนที่จะตาย
+- unit ใช้ `EnvironmentFile=-/etc/xauby/deadman.env` แล้ว — systemd อ่านในฐานะ
+  PID 1 **ก่อน** ลดสิทธิ์เป็น `User=`, ไฟล์จึงคง `root:root 0600` ได้และ
+  `xauby-control` ไม่ต้องมีสิทธิ์อ่าน bot token เลย (ดีกว่าที่ออกแบบไว้เดิม)
+  พร้อมกันนี้ทำให้ environment **ชนะขาด** เมื่อมีคีย์ครบ ไฟล์ fallback จะ
+  override ไม่ได้ — กันไม่ให้ watchdog ไหลกลับไปใช้ credential ของ engine เอง
 
 **P0.7 — เปิด API circuit breaker** ✅ **ทำแล้ว 2026-07-27**
 

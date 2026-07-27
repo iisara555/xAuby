@@ -20,6 +20,13 @@ Environment=XAUBY_INSTANCE_ID=%i
 # exists once the engine has already started; depending on it would leave this
 # unit silent in exactly the case it exists for (host reboots, engine never
 # comes up). The tenant secrets file is listed second only as a fallback.
+#
+# EnvironmentFile is read by systemd as PID 1, BEFORE it drops to User= — so the
+# token never has to be readable by xauby-control. Keep /etc/xauby/deadman.env
+# at root:root 0600. The leading `-` tolerates a missing file: the script then
+# warns that it can detect but not notify, which is the honest failure, whereas
+# refusing to start would take the watchdog down over a missing notifier.
+EnvironmentFile=-/etc/xauby/deadman.env
 ExecStart=/opt/xauby/current/venv/bin/python /opt/xauby/current/scripts/deadman_switch.py \
     --state-file /var/lib/xauby/runtime/%i/logs/xauby_bot_state.json \
     --marker /var/lib/xauby/deadman/%i.json \
