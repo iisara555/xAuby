@@ -167,7 +167,11 @@ PRESETS = [
         "execution_profile": {
             "name": "cdc_pure",
             "enable_short": True,
-            "use_d1_regime_filter": False,
+            # Asymmetric D1 gating (2026-07-26): the daily zone gates SHORT
+            # entries only; longs enter on the 4H flip alone. Keep in sync with
+            # coin_whitelist.json — the tenant whitelist is what runs.
+            "use_d1_regime_filter": True,
+            "use_d1_regime_filter_long": False,
             "fresh_zone_window": 3,
             "disable_stop_loss": True,
             "breakeven_sl_enabled": False,
@@ -179,28 +183,40 @@ PRESETS = [
         },
         "strategy_traits": [
             "Long + short · stop-and-reverse",
-            "D1 regime filter: off",
+            "D1 regime filter: shorts only · longs enter on the 4H flip",
             "Slope filter: on (EMA26, 3 bars)",
             "Exit: CDC zone flip / ROI ladder 8→5→3% · no exchange stop",
         ],
-        # NOTE (2026-07-26): do NOT copy the PF 2.00 / MDD 8.3% headline from
-        # docs/research/xau_4strategy_comparison_2026-07-13.md into this block.
-        # That report is labelled "live config" but reproduction shows it measured
-        # enable_short=false + use_d1_regime_filter=true. This preset ships
-        # long+short with the D1 filter OFF, whose measured full-period profile is
-        # materially worse (PF ~1.28, MDD ~29%). The figures below predate that
-        # finding and are themselves unverified — the preset needs a re-run of the
-        # certification protocol against its own execution_profile before any
-        # headline here can be trusted. Tracked as P0.2 in docs/roadmap_2026H2.md.
+        # These figures are measured against THIS preset's own execution_profile
+        # on OKX venue data — not carried over from a report that measured a
+        # different config. Two earlier headlines were wrong and are recorded
+        # here so neither comes back:
+        #   * PF 2.00 / MDD 8.3% (xau_4strategy_comparison_2026-07-13.md) is
+        #     labelled "live config" but reproduction shows it measured
+        #     long-only + D1 on — not what this preset ships.
+        #   * PF 1.7 / MDD 8.4% over "2.6 years" was this block's previous
+        #     content and was never tied to any reproducible run.
+        #
+        # status is "insufficient", not "validated", and that is deliberate: the
+        # config is measured but NOT certified. It fails the pre-registered
+        # backtest.acceptance gate by -7.87pp (long+short must beat the matching
+        # long-only config by >= 5.0pp; it loses to it), and long-only + D1 on
+        # scores better on PF (1.96) and MDD (9.22%). It ships on an explicit
+        # operator decision. See docs/research/xau_certification_2026-07-26.md
+        # and xau_per_side_d1_test_2026-07-26.md.
         "backtest": {
-            "status": "validated",
-            "score_label": "PF 1.7",
-            "period": "Jan 2024 – Jul 2026",
-            "duration": "2.6 years · full cycle",
-            "win_rate_pct": 44.6,
-            "max_drawdown_pct": 8.4,
-            "trades": 166,
-            "source": "July 2026 study · PAXGUSDT proxy · 4H · long+short · net of fee/funding",
+            "status": "insufficient",
+            "score_label": "PF 1.37",
+            "period": "Jul 2022 – Jul 2026",
+            "duration": "4.0 years · one gold cycle",
+            "win_rate_pct": 35.9,
+            "max_drawdown_pct": 14.4,
+            "trades": 217,
+            "source": (
+                "OKX XAUT-USDT 4H (proxy for XAU-USDT-SWAP, corr 0.99) · "
+                "this preset's execution_profile · net of fee/slippage/funding · "
+                "measured 2026-07-27 · NOT certified: fails acceptance by -7.87pp"
+            ),
         },
     },
     {

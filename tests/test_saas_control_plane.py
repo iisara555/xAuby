@@ -84,11 +84,31 @@ class SaaSControlPlaneTests(unittest.TestCase):
             item["id"]: item for item in self.client.get("/api/v1/catalog").json()["presets"]
         }
         xau = presets["okx-xau-actionzone-v1"]["backtest"]
-        self.assertEqual(xau["score_label"], "PF 1.7")
-        self.assertEqual(xau["duration"], "2.6 years · full cycle")
-        # Guard against re-importing the 2026-07-13 report's headline: that run
-        # measured long-only + D1-on, not this preset's long+short + D1-off.
+        self.assertEqual(xau["score_label"], "PF 1.37")
+        self.assertEqual(xau["duration"], "4.0 years · one gold cycle")
+        # Two headlines have been wrong here; neither may return.
+        # PF 2.00 came from the 2026-07-13 report, which measured long-only +
+        # D1-on rather than what this preset ships.
         self.assertNotEqual(xau["score_label"], "PF 2.00")
+        # PF 1.7 / "2.6 years" was this block's own previous content and was
+        # never tied to a reproducible run.
+        self.assertNotEqual(xau["score_label"], "PF 1.7")
+        self.assertNotIn("2.6 years", xau["duration"])
+        # Measured but NOT certified: it fails the pre-registered acceptance
+        # gate by -7.87pp, so the customer-facing status must not read green.
+        self.assertEqual(xau["status"], "insufficient")
+        self.assertIn("NOT certified", xau["source"])
+
+        # The preset must describe the asymmetric D1 gate that actually runs:
+        # shorts gated on the daily zone, longs entering on the 4H flip.
+        xau_exec = presets["okx-xau-actionzone-v1"]["execution_profile"]
+        self.assertTrue(xau_exec["use_d1_regime_filter"])
+        self.assertFalse(xau_exec["use_d1_regime_filter_long"])
+        self.assertFalse(
+            [t for t in presets["okx-xau-actionzone-v1"]["strategy_traits"]
+             if "D1 regime filter: off" in t.lower()],
+            "traits still claim the D1 filter is off",
+        )
         # The catalog must not advertise a partial TP the engine cannot execute:
         # the preset's ROI ladder opens at 8%, which pre-empts any partial above it.
         self.assertNotIn(
