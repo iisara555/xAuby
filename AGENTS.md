@@ -102,6 +102,35 @@ open.
   fails.
 - `core/` is gitignored runtime state (DB, logs, equity peak, locks). Never commit it.
 
+### Config is not in the repo
+
+The engine reads `bot_config.yaml` and `coin_whitelist.json` from
+`/etc/xauby/tenants/<tenant>/`, not from the checkout: `config_root()` returns
+`XAUBY_CONFIG_DIR`, and `whitelist_json_path` is joined onto it. **Editing the
+repo's config files changes nothing in production** — deploying code and changing
+config are two separate operations against two separate locations.
+
+A single strategy key can therefore live in four places: repo YAML, repo
+whitelist, tenant YAML (often twice — `strategy.config.<id>` and
+`mode_indicator_profiles`), and the tenant whitelist, which wins at runtime.
+Change a subset and the value silently fails to apply.
+
+Before shipping a **startup guard**, check it against the *tenant* config.
+`validate_exit_config` raises inside `LiteTradingEngine.start()` before either
+lock is taken, so a guard that passes on repo config and fails on tenant config
+turns a routine deploy into an outage.
+
+Tenant files carry their own owner and ACLs. Back up with `cp -p` and edit in
+place; never overwrite them with a copy from the repo.
+
+### Two locks
+
+`core/.engine.lock` is per-checkout and does not see an engine started elsewhere.
+`/var/lib/xauby/account_locks/account_<hash>.lock` is per exchange account and is
+the one that protects capital — a second live engine launched from a work clone
+fails closed there within seconds, before placing any order (confirmed
+2026-07-27). That is a backstop, not a licence to start one.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
