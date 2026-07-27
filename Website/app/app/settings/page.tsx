@@ -147,6 +147,25 @@ export default function SettingsPage() {
   const dailyTradeCap = Number(profile?.compiled?.max_daily_trades ?? 3);
   const drawdownGuardEnabled = profile?.compiled?.drawdown_guard_enabled !== false;
   const maxDrawdownPct = Number(profile?.compiled?.max_drawdown_pct ?? 25);
+  // The D1 regime gate is per-side: use_d1_regime_filter is the shared default,
+  // and use_d1_regime_filter_long / _short override it (null/undefined = follow
+  // the shared flag). XAU ships gated on shorts only, so a plain On/Off would
+  // misreport what actually runs.
+  const d1FilterLabel = (() => {
+    const profileCfg = focusPreset?.execution_profile;
+    if (!profileCfg) return "—";
+    const shared = profileCfg.use_d1_regime_filter;
+    if (typeof shared !== "boolean") return "—";
+    const side = (key: string) => {
+      const value = profileCfg[key];
+      return typeof value === "boolean" ? value : shared;
+    };
+    const longGated = side("use_d1_regime_filter_long");
+    const shortGated = side("use_d1_regime_filter_short");
+    if (longGated && shortGated) return "On";
+    if (!longGated && !shortGated) return "Off";
+    return longGated ? "Longs only" : "Shorts only";
+  })();
   const cdcPure = Boolean(savedProfile?.presets?.some((item) => item.cdc_pure_certified) ?? focusPreset?.cdc_pure_certified);
   const connectionMismatch = Boolean(
     bot?.exchange_connection?.target_id && savedTargetId
@@ -363,6 +382,11 @@ export default function SettingsPage() {
                   <span className="preset-option-head">
                     <span className="radio-dot">{checked && <Check size={13} />}</span>
                     <span className="preset-copy"><strong>{preset.label}</strong><small>{preset.symbol} · {preset.strategy.replaceAll("_", " ")}</small></span>
+                    {preset.certification_status === "certified"
+                      ? <StatusPill label="Certified" tone="good" />
+                      : preset.certification_status === "failed"
+                        ? <StatusPill label="Not certified" tone="warn" />
+                        : <StatusPill label="Unassessed" tone="neutral" />}
                     {preset.live_certified === false ? <StatusPill label="SIM only" tone="warn" /> : saved ? <StatusPill label={bot?.tenant.live_status === "active" ? "Active" : "Saved"} tone="good" /> : checked ? <StatusPill label="Ready" tone="good" /> : null}
                     <em>{preset.confirm_timeframe ? `${preset.primary_timeframe} / ${preset.confirm_timeframe}` : `${preset.primary_timeframe} · single TF`}</em>
                   </span>
@@ -376,6 +400,9 @@ export default function SettingsPage() {
                     <span>{backtest.max_drawdown_pct == null ? "Max DD —" : `Max DD ${backtest.max_drawdown_pct}%`}</span>
                     <span>{backtest.trades == null ? "Trades —" : `${backtest.trades} trades`}</span>
                     <small>{backtest.source}</small>
+                    {preset.certification_status === "failed" && preset.certification_note && (
+                      <small className="preset-certification-warn">Not certified — {preset.certification_note}</small>
+                    )}
                   </span>
                   {preset.strategy_traits && preset.strategy_traits.length > 0 && (
                     <span className="preset-traits">
@@ -398,7 +425,7 @@ export default function SettingsPage() {
             })}
           </div>
           <div className="risk-summary">
-            <div><span>Strategy sides</span><strong>{focusPreset?.cdc_pure_certified ? "CDC Pure · " : ""}{(focusPreset?.allowed_sides ?? ["long"]).map((side) => side.toUpperCase()).join(" / ")}</strong></div><div><span>D1 filter</span><strong>{focusPreset?.execution_profile?.use_d1_regime_filter === true ? "On" : focusPreset?.execution_profile?.use_d1_regime_filter === false ? "Off" : "—"}</strong></div><div><span>Partial TP</span><strong>{typeof focusPreset?.execution_profile?.partial_tp_pct === "number" && Number(focusPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(focusPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${focusPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{focusPreset?.cdc_pure_certified ? "CDC signal / ROI" : "Stop loss"}</strong></div>{selectedPresets.map((item) => <div key={`sizing-${item.id}`}><span>{item.symbol} sizing</span><strong>{allocationForPreset(item) ?? "—"}% alloc · {positionCapForPreset(item) ?? "—"}% max/trade</strong></div>)}<div><span>Unallocated cash</span><strong>{unallocatedCashPct}%</strong></div><div><span>Open positions</span><strong>{maxOpenPositions} max</strong></div><div><span>Daily loss cap</span><strong>{dailyLossCapPct}%</strong></div><div><span>Daily trade cap</span><strong>{dailyTradeCap} trades</strong></div><div><span>Drawdown guard</span><strong>{drawdownGuardEnabled ? `${maxDrawdownPct}%` : "Off"}</strong></div>
+            <div><span>Strategy sides</span><strong>{focusPreset?.cdc_pure_certified ? "CDC Pure · " : ""}{(focusPreset?.allowed_sides ?? ["long"]).map((side) => side.toUpperCase()).join(" / ")}</strong></div><div><span>Certification</span><strong>{focusPreset?.certification_status === "certified" ? "Certified" : focusPreset?.certification_status === "failed" ? "Not certified" : "Unassessed"}</strong></div><div><span>D1 filter</span><strong>{d1FilterLabel}</strong></div><div><span>Partial TP</span><strong>{typeof focusPreset?.execution_profile?.partial_tp_pct === "number" && Number(focusPreset.execution_profile.partial_tp_pct) > 0 ? `${Number(focusPreset.execution_profile.partial_tp_fraction ?? 0) * 100}% @ +${focusPreset.execution_profile.partial_tp_pct}%` : "—"}</strong></div><div><span>Manual sides</span><strong>{selectedTarget?.manual_allowed_sides.map((side) => side.toUpperCase()).join(" / ") ?? "—"}</strong></div><div><span>Exit protection</span><strong>{focusPreset?.cdc_pure_certified ? "CDC signal / ROI" : "Stop loss"}</strong></div>{selectedPresets.map((item) => <div key={`sizing-${item.id}`}><span>{item.symbol} sizing</span><strong>{allocationForPreset(item) ?? "—"}% alloc · {positionCapForPreset(item) ?? "—"}% max/trade</strong></div>)}<div><span>Unallocated cash</span><strong>{unallocatedCashPct}%</strong></div><div><span>Open positions</span><strong>{maxOpenPositions} max</strong></div><div><span>Daily loss cap</span><strong>{dailyLossCapPct}%</strong></div><div><span>Daily trade cap</span><strong>{dailyTradeCap} trades</strong></div><div><span>Drawdown guard</span><strong>{drawdownGuardEnabled ? `${maxDrawdownPct}%` : "Off"}</strong></div>
           </div>
           {selectionDirty && selectedIds.length > 0 && (
             <p className="field-help preset-switch-hint" role="status">

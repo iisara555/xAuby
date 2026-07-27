@@ -63,6 +63,19 @@ fi
 systemctl daemon-reload
 install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/deadman
 
+# The dead-man's switch needs Telegram credentials that survive a reboot and do
+# not depend on the engine having started. Seeded empty; fill it in to arm the
+# alert channel. Without it the switch still detects silence, but can only log.
+if [[ ! -f /etc/xauby/deadman.env ]]; then
+  printf '%s\n' \
+    '# Alert channel for xauby-deadman@.service. Must NOT be the engine-materialized' \
+    '# /run/xauby/credentials/<tenant>.env — that only exists after the engine starts.' \
+    'TELEGRAM_BOT_TOKEN=' \
+    'TELEGRAM_CHAT_ID=' > /etc/xauby/deadman.env
+fi
+chown root:xauby-control /etc/xauby/deadman.env
+chmod 0640 /etc/xauby/deadman.env
+
 systemctl enable xauby.target xauby-backup.timer xauby-healthcheck.timer
 
 echo "Host installation complete."

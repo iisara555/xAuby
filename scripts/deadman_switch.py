@@ -36,8 +36,17 @@ Usage:
     scripts/deadman_switch.py --env-file /etc/xauby/tenants/owner-itsara/secrets.env --dry-run
 
 Credentials: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, from the environment or
-`--env-file`. Without them the check still runs and still exits non-zero; it just
-cannot notify, and says so.
+`--env-file` (repeatable; the first file that supplies both wins). Without them
+the check still runs and still exits non-zero; it just cannot notify, and says so.
+
+**A watchdog must never source its credentials from an artifact the watched
+process creates.** The engine's own Telegram credentials are materialized to
+/run/xauby/credentials/<tenant>.env by the engine unit's ExecStartPre — which
+means they exist only after the engine has started, on a tmpfs that a reboot
+clears, at mode 0600 owned by another user. Pointing here at that file would
+leave the switch unable to alert in exactly the case it exists for: host reboots,
+engine never starts, no credentials file, silence. Give it its own persistent
+file instead (deploy/systemd uses /etc/xauby/deadman.env).
 """
 from __future__ import annotations
 
@@ -192,8 +201,11 @@ def main() -> int:
     ap.add_argument("--realert-sec", type=float, default=DEFAULT_REALERT_SEC,
                     help=f"minimum gap between repeat alerts (default {DEFAULT_REALERT_SEC:g})")
     ap.add_argument("--marker", default="", help="debounce state file")
-    ap.add_argument("--env-file", default=os.environ.get("XAUBY_DEADMAN_ENV", ""),
-                    help="KEY=VALUE file holding TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID")
+    ap.add_argument("--env-file", action="append", default=None,
+                    help="KEY=VALUE file holding TELEGRAM_BOT_TOKEN / "
+                         "TELEGRAM_CHAT_ID. Repeatable: the first file that "
+                         "supplies both wins, so a persistent watchdog-owned "
+                         "file can be listed ahead of any fallback.")
     ap.add_argument("--label", default=os.environ.get("XAUBY_INSTANCE_ID", "engine"),
                     help="tenant/instance name shown in the alert")
     ap.add_argument("--dry-run", action="store_true", help="never send; print instead")
@@ -208,10 +220,27 @@ def main() -> int:
 
     marker_path = args.marker or f"{state_path}.deadman"
 
+    env_files = args.env_file if args.env_file is not None else [
+        f for f in [os.environ.get("XAUBY_DEADMAN_ENV", "")] if f
+    ]
     env = dict(os.environ)
-    env.update(parse_env_file(args.env_file))
+    creds_from = "environment" if env.get("TELEGRAM_BOT_TOKEN") else ""
+    for candidate in env_files:
+        parsed = parse_env_file(candidate)
+        if parsed.get("TELEGRAM_BOT_TOKEN") and parsed.get("TELEGRAM_CHAT_ID"):
+            env.update(parsed)
+            creds_from = candidate
+            break
+        env.update({k: v for k, v in parsed.items() if k not in ("TELEGRAM_BOT_TOKEN",)})
     token = env.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = env.get("TELEGRAM_CHAT_ID", "")
+    if not (token and chat_id):
+        print(
+            "[WARN] no Telegram credentials found in "
+            f"{env_files or 'the environment'} — this check can DETECT silence "
+            "but cannot NOTIFY anyone about it",
+            file=sys.stderr,
+        )
 
     state, mtime = read_state(state_path)
     now = time.time()

@@ -145,6 +145,24 @@ def exchange_profile(target_id: str) -> dict[str, Any]:
         raise ValueError("unknown exchange target")
     return deepcopy(profile)
 
+# Three independent things kept in three fields, because collapsing them is how
+# the July 2026 XAU preset ended up advertising a certificate it did not have:
+#
+#   backtest.status        EVIDENCE  — do we have a measurement, and is it any
+#                                      good?  pending / insufficient / validated
+#   certification_status   VERDICT   — did that measurement clear the
+#                                      pre-registered backtest.acceptance gate?
+#                                      certified / failed / not_assessed
+#   live_certified         APPROVAL  — may an operator activate this live?  This
+#                                      is a switch, not a research result: it
+#                                      gates canGoLive in the SaaS UI.
+#
+# They genuinely disagree in practice. XAU has solid evidence (4 years of OKX
+# venue data, reproducible), a FAILED verdict (-7.87pp against the gate), and
+# operator approval to run anyway. All three facts are true at once and the UI
+# must be able to say so.
+CERTIFICATION_STATUSES = ("certified", "failed", "not_assessed")
+
 PRESETS = [
     {
         "id": "okx-xau-actionzone-v1",
@@ -161,13 +179,30 @@ PRESETS = [
         "max_leverage": 1,
         "allocation_pct": 65.0,
         "max_position_per_trade_pct": 25.0,
+        # APPROVAL: the operator chose to run this live on 2026-07-26, knowing
+        # the verdict below. Kept true so the SaaS UI can still activate it.
         "live_certified": True,
+        # VERDICT: measured and it did not clear the bar.
+        "certification_status": "failed",
+        "certification_note": (
+            "Fails the pre-registered backtest.acceptance gate by -7.87pp: "
+            "long+short must beat the matching long-only config by >= 5.0pp and "
+            "instead loses to it. long-only + D1 on scores better on both PF "
+            "(1.96 vs 1.37) and max drawdown (9.22% vs 14.4%). Running live on "
+            "an explicit operator decision, because it is the strongest cell in "
+            "a falling gold market and gold has been falling since 2026-02. "
+            "See docs/research/xau_certification_2026-07-26.md."
+        ),
         "cdc_pure_certified": True,
         "stop_loss_required": False,
         "execution_profile": {
             "name": "cdc_pure",
             "enable_short": True,
-            "use_d1_regime_filter": False,
+            # Asymmetric D1 gating (2026-07-26): the daily zone gates SHORT
+            # entries only; longs enter on the 4H flip alone. Keep in sync with
+            # coin_whitelist.json — the tenant whitelist is what runs.
+            "use_d1_regime_filter": True,
+            "use_d1_regime_filter_long": False,
             "fresh_zone_window": 3,
             "disable_stop_loss": True,
             "breakeven_sl_enabled": False,
@@ -179,28 +214,40 @@ PRESETS = [
         },
         "strategy_traits": [
             "Long + short · stop-and-reverse",
-            "D1 regime filter: off",
+            "D1 regime filter: shorts only · longs enter on the 4H flip",
             "Slope filter: on (EMA26, 3 bars)",
             "Exit: CDC zone flip / ROI ladder 8→5→3% · no exchange stop",
         ],
-        # NOTE (2026-07-26): do NOT copy the PF 2.00 / MDD 8.3% headline from
-        # docs/research/xau_4strategy_comparison_2026-07-13.md into this block.
-        # That report is labelled "live config" but reproduction shows it measured
-        # enable_short=false + use_d1_regime_filter=true. This preset ships
-        # long+short with the D1 filter OFF, whose measured full-period profile is
-        # materially worse (PF ~1.28, MDD ~29%). The figures below predate that
-        # finding and are themselves unverified — the preset needs a re-run of the
-        # certification protocol against its own execution_profile before any
-        # headline here can be trusted. Tracked as P0.2 in docs/roadmap_2026H2.md.
+        # These figures are measured against THIS preset's own execution_profile
+        # on OKX venue data — not carried over from a report that measured a
+        # different config. Two earlier headlines were wrong and are recorded
+        # here so neither comes back:
+        #   * PF 2.00 / MDD 8.3% (xau_4strategy_comparison_2026-07-13.md) is
+        #     labelled "live config" but reproduction shows it measured
+        #     long-only + D1 on — not what this preset ships.
+        #   * PF 1.7 / MDD 8.4% over "2.6 years" was this block's previous
+        #     content and was never tied to any reproducible run.
+        #
+        # status is "validated" because it describes the EVIDENCE, and the
+        # evidence is good: four years of venue data, reproducible, measured
+        # against this preset's own execution_profile. Whether that evidence
+        # clears the acceptance bar is a separate question, answered by
+        # certification_status above — which says it does not. Do not fold the
+        # verdict back into this field; that conflation is what let the preset
+        # advertise a certificate it never had.
         "backtest": {
             "status": "validated",
-            "score_label": "PF 1.7",
-            "period": "Jan 2024 – Jul 2026",
-            "duration": "2.6 years · full cycle",
-            "win_rate_pct": 44.6,
-            "max_drawdown_pct": 8.4,
-            "trades": 166,
-            "source": "July 2026 study · PAXGUSDT proxy · 4H · long+short · net of fee/funding",
+            "score_label": "PF 1.37",
+            "period": "Jul 2022 – Jul 2026",
+            "duration": "4.0 years · one gold cycle",
+            "win_rate_pct": 35.9,
+            "max_drawdown_pct": 14.4,
+            "trades": 217,
+            "source": (
+                "OKX XAUT-USDT 4H (proxy for XAU-USDT-SWAP, corr 0.99) · "
+                "this preset's execution_profile · net of fee/slippage/funding · "
+                "measured 2026-07-27"
+            ),
         },
     },
     {
@@ -217,6 +264,9 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": True,
+        # VERDICT: never run through the certification protocol.
+        "certification_status": "not_assessed",
+        "certification_note": "Not yet assessed against backtest.acceptance.",
         "backtest": {
             "status": "insufficient",
             "score_label": "Insufficient",
@@ -242,6 +292,9 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": True,
+        # VERDICT: never run through the certification protocol.
+        "certification_status": "not_assessed",
+        "certification_note": "Not yet assessed against backtest.acceptance.",
         "backtest": {
             "status": "pending",
             "score_label": "Pending",
@@ -270,6 +323,19 @@ PRESETS = [
         "risk_pct": 0.02,
         "max_position_per_trade_pct": 25.0,
         "live_certified": True,
+        # VERDICT: the one preset with a real certificate. Re-validated on OKX
+        # venue data 2026-07-26 — replaying the certificate's own window
+        # produced 111 trades, the identical count it reports, and the venue
+        # change moved the return up (+16.39% vs the +9.8% claimed on Binance
+        # spot). That closes caveat #1 of the certificate.
+        "certification_status": "certified",
+        "certification_note": (
+            "Certified out-of-sample over 66 fixed-config months "
+            "(docs/research/btc_supertrend_ema200_certificate_2026-07.md) and "
+            "re-validated on OKX swap data in "
+            "docs/research/venue_data_revalidation_2026-07-26.md. The "
+            "selection-on-OOS caveat in the original certificate still stands."
+        ),
         "stop_loss_required": True,
         "execution_profile": {
             "enable_short": True,
@@ -325,6 +391,9 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": False,
+        # VERDICT: never run through the certification protocol.
+        "certification_status": "not_assessed",
+        "certification_note": "Not yet assessed against backtest.acceptance.",
         "stop_loss_required": True,
         "backtest": {
             "status": "pending",
@@ -351,6 +420,9 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": False,
+        # VERDICT: never run through the certification protocol.
+        "certification_status": "not_assessed",
+        "certification_note": "Not yet assessed against backtest.acceptance.",
         "stop_loss_required": True,
         "backtest": {
             "status": "pending",
@@ -377,6 +449,9 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": False,
+        # VERDICT: never run through the certification protocol.
+        "certification_status": "not_assessed",
+        "certification_note": "Not yet assessed against backtest.acceptance.",
         "stop_loss_required": True,
         "backtest": {
             "status": "pending",
@@ -403,6 +478,9 @@ PRESETS = [
         "allowed_sides": ["long"],
         "max_leverage": 1,
         "live_certified": False,
+        # VERDICT: never run through the certification protocol.
+        "certification_status": "not_assessed",
+        "certification_note": "Not yet assessed against backtest.acceptance.",
         "stop_loss_required": True,
         "backtest": {
             "status": "pending",
