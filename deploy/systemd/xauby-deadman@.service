@@ -1,0 +1,33 @@
+[Unit]
+# Dead-man's switch for one tenant engine. Alerts when the engine goes SILENT.
+#
+# Deliberately NOT ordered After= or bound to xauby-engine@%i.service: this must
+# still run — and alert — when that unit is dead, failed, or was never started.
+# Coupling it to the engine would make it stop exactly when it is needed.
+Description=xAuby dead-man's switch (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=xauby-control
+Group=xauby-control
+WorkingDirectory=/opt/xauby/current
+Environment=XAUBY_INSTANCE_ID=%i
+ExecStart=/opt/xauby/current/venv/bin/python /opt/xauby/current/scripts/deadman_switch.py \
+    --state-file /var/lib/xauby/runtime/%i/logs/xauby_bot_state.json \
+    --marker /var/lib/xauby/deadman/%i.json \
+    --env-file /etc/xauby/tenants/%i/secrets.env \
+    --label %i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/xauby/deadman
+UMask=0077
+# Exit 1 means "engine is silent", which is a real finding, not a unit fault we
+# want systemd to retry — the timer is the retry mechanism.
+SuccessExitStatus=1
+
+[Install]
+WantedBy=multi-user.target

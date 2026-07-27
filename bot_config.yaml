@@ -827,10 +827,27 @@ architecture:
   regime_statistical_crosscheck: false
   event_bus_enabled: true
   # Wrap outbound exchange REST calls in a token-bucket rate limiter + circuit
-  # breaker (xauby/api/resilience.py). Off by default — flip to true to arm;
-  # rollback is a flag flip, no code revert. CCXT's own enable_rate_limit stays
-  # independent of this guard.
-  api_circuit_breaker_enabled: false
+  # breaker (xauby/api/resilience.py). Armed 2026-07-27 (P0.7). Rollback is a
+  # flag flip, no code revert. CCXT's own enable_rate_limit stays independent.
+  #
+  # Order-mutating calls (create_order / cancel_order / cancel_all_orders) are
+  # deliberately NOT gated by the breaker — see DEFAULT_ALWAYS_ALLOW. The breaker
+  # sits on the same chokepoint as order placement, so an OPEN breaker would also
+  # refuse the order that closes a position, and XAU runs disable_stop_loss: true
+  # (the bot is the stop). Pausing a polling loop is protective; standing between
+  # the engine and an exit is not.
+  #
+  # Sizing: the engine ticks every 60s across 2 pairs, so steady-state outbound
+  # rate is far below 10/s — the limiter should never bite in normal operation.
+  # It exists for reconnect storms and backfill bursts.
+  api_circuit_breaker_enabled: true
+  api_resilience:
+    rate: 10.0              # tokens/sec sustained
+    capacity: 20            # burst allowance
+    failure_threshold: 3    # consecutive failures before the breaker opens
+    recovery_timeout: 60.0  # seconds OPEN before probing again (HALF)
+    acquire_timeout: 30.0   # max wait for a token on a NON-critical call
+    # always_allow: []      # extra CCXT methods to exempt from the breaker
   # DEPRECATED / vestigial: the exchange gateway + websocket always route
   # through the plugin registries (xauby/api/exchanges/) now — the legacy
   # hardcoded factory was removed. This flag no longer gates anything; kept

@@ -31,3 +31,12 @@ setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant
 setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"
 setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
 setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"
+
+# Arm the dead-man's switch for this tenant. Deliberately enabled here, at
+# provisioning, rather than exposed through xauby-service-control: that wrapper
+# is what the control plane may call via sudo, and a monitor the monitored
+# system can switch off is not a monitor. Turning this off is a root action.
+install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/deadman
+if [[ -f /etc/systemd/system/xauby-deadman@.timer ]]; then
+  systemctl enable --now "xauby-deadman@${tenant}.timer"
+fi

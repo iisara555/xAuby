@@ -87,9 +87,11 @@ class CCXTExchangeClient(IExchangeGateway):
 
         # Optional outbound resilience (token bucket + circuit breaker). Gated by
         # architecture.api_circuit_breaker_enabled; None when off (no-op path).
-        from xauby.api.resilience import build_guard
+        from xauby.api.resilience import always_allow_methods, build_guard
 
         self._resilience = build_guard(self.config)
+        # Order-mutating calls bypass the breaker gate — see ResilienceGuard.run.
+        self._resilience_always_allow = always_allow_methods(self.config)
 
         capabilities = exchange_cfg.get("capabilities") or {}
         # Explicit config wins; otherwise probe the venue's real ccxt `has` map so
@@ -157,7 +159,11 @@ class CCXTExchangeClient(IExchangeGateway):
         t0 = time.time()
         try:
             if self._resilience is not None:
-                result = self._resilience.run(fn, *args, label=method, **kwargs)
+                result = self._resilience.run(
+                    fn, *args, label=method,
+                    critical=method in self._resilience_always_allow,
+                    **kwargs,
+                )
             else:
                 result = fn(*args, **kwargs)
             self.last_request = {"method": method, "args": args, "kwargs": kwargs}

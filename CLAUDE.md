@@ -336,6 +336,54 @@ the single source of truth for both Claude and Codex; the essentials:
   keep the previous release/config as rollback targets and roll back if service,
   health, or reconciliation checks fail.
 
+### Production config is NOT in the repo checkout
+
+Deploying code and changing config are **two separate operations against two
+separate locations**. Editing `bot_config.yaml` or `coin_whitelist.json` in the
+repo changes nothing in production, no matter how many times you deploy.
+
+| what | where |
+|------|-------|
+| code | `/opt/xauby/current` → active release symlink |
+| **config** | **`/etc/xauby/tenants/<tenant>/`** (`bot_config.yaml`, `coin_whitelist.json`, `secrets.env`) |
+| runtime data | `XAUBY_HOME` (+ `XAUBY_INSTANCE_ID`), default `core/` |
+
+The mechanism is `config_root()` in `xauby/runtime/paths.py`: it returns
+`XAUBY_CONFIG_DIR` (or the cwd), and `PairRegistry` **joins
+`whitelist_json_path` onto it** — so a tenant reads its own whitelist from its
+own directory. `runtime_root()` relocates mutable data independently.
+
+Consequences that have already caused incidents:
+
+- **One strategy key can live in four places**: repo YAML, repo whitelist, tenant
+  YAML (often *twice* — under `strategy.config.<id>` and again under
+  `mode_indicator_profiles`), and the tenant whitelist, which wins at runtime.
+  Changing a subset is how a value silently fails to take effect, or takes effect
+  for one code path only.
+- **A startup guard written against repo config is enforced against tenant
+  config.** `validate_exit_config` raises inside `LiteTradingEngine.start()`
+  before either lock is acquired, so a guard that passes locally and fails on the
+  tenant's config converts a routine deploy into an outage. Check the tenant
+  files *before* shipping a guard, not after.
+- Tenant files carry their own owner and ACLs (`xauby-owner-<tenant>`). Back them
+  up with `cp -p` and edit in place; overwriting them with a copy from the repo
+  destroys the ownership.
+
+### Two locks, and only one of them is cross-checkout
+
+- `core/.engine.lock` — scoped to a **checkout**. It does not see an engine
+  started from a different directory.
+- `/var/lib/xauby/account_locks/account_<hash>.lock` — scoped to an **exchange
+  account**, and this is the one that actually protects capital. A second live
+  engine started from a work clone fails closed here ("Another LIVE xAuby
+  instance is already trading this exchange account") within seconds, before any
+  order is placed. Confirmed 2026-07-27.
+
+To verify a config change actually reached the strategy, read the status line
+rather than assuming: `D1: OFF` means the gate is inactive, `D1: UNKNOWN` means
+the 1d frame has not arrived yet (shorts blocked — fail-safe), and a real zone
+(`RED`/`GREEN`/…) means it is live.
+
 Then, for this environment specifically:
 
 - Develop on the designated feature branch; create it locally if missing.

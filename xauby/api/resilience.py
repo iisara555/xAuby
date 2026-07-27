@@ -123,6 +123,16 @@ class CircuitBreaker:
                 self._state = self.CLOSED
                 self._half_calls = 0
                 logger.info("CircuitBreaker: HALF -> CLOSED (recovered)")
+            elif self._state == self.OPEN:
+                # Only a call that bypassed the gate (ResilienceGuard critical=True,
+                # i.e. an order) can succeed while OPEN. Real traffic that worked is
+                # stronger evidence of recovery than a HALF probe, and staying OPEN
+                # would keep the engine blind to market data — on a pair with no
+                # exchange-side stop, that is its own risk. Close and let the normal
+                # failure count reopen it if the venue is still flapping.
+                self._state = self.CLOSED
+                self._half_calls = 0
+                logger.info("CircuitBreaker: OPEN -> CLOSED (critical call succeeded)")
 
     def record_failure(self, error_msg: str = "") -> None:
         with self._lock:
@@ -160,14 +170,39 @@ class ResilienceGuard:
         self.breaker = CircuitBreaker(failure_threshold=failure_threshold, recovery_timeout=recovery_timeout)
         self.acquire_timeout = float(acquire_timeout)
 
-    def run(self, fn: Callable[..., Any], *args: Any, label: str = "", **kwargs: Any) -> Any:
-        if not self.breaker.is_available():
-            raise CircuitBreakerOpen(
-                f"Circuit breaker OPEN for {label or 'exchange'} — calls paused until recovery."
-            )
-        if not self.limiter.acquire(blocking=True, timeout=self.acquire_timeout):
-            # Don't trip the breaker on local throttling; just signal saturation.
-            raise CircuitBreakerOpen(f"Rate limit timeout acquiring token for {label or 'exchange'}.")
+    def run(
+        self,
+        fn: Callable[..., Any],
+        *args: Any,
+        label: str = "",
+        critical: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """Run ``fn`` under rate limiting and circuit breaking.
+
+        ``critical=True`` means "this call must not be blocked by *us*": it skips
+        the breaker gate and never waits for a token. It still reports its
+        outcome to the breaker, so breaker state stays accurate.
+
+        This exists because the breaker sits on the same chokepoint as order
+        placement (``CCXTClient._call``). A breaker that is OPEN for 60s while a
+        venue flaps would also refuse the order that closes a position — and XAU
+        runs with ``disable_stop_loss: true``, so the bot *is* the stop. Pausing
+        a polling loop is protective; standing between the engine and an exit is
+        not. The breaker guards the read loop; it never guards an order.
+        """
+        if not critical:
+            if not self.breaker.is_available():
+                raise CircuitBreakerOpen(
+                    f"Circuit breaker OPEN for {label or 'exchange'} — calls paused until recovery."
+                )
+            if not self.limiter.acquire(blocking=True, timeout=self.acquire_timeout):
+                # Don't trip the breaker on local throttling; just signal saturation.
+                raise CircuitBreakerOpen(f"Rate limit timeout acquiring token for {label or 'exchange'}.")
+        else:
+            # Consume a token when one is free so critical traffic still counts
+            # against the bucket, but never block waiting for it.
+            self.limiter.acquire(blocking=False)
         try:
             result = fn(*args, **kwargs)
         except Exception as e:  # noqa: BLE001 - breaker must see every failure
@@ -175,6 +210,24 @@ class ResilienceGuard:
             raise
         self.breaker.record_success()
         return result
+
+
+# CCXT methods that mutate orders. These are never gated by the breaker: they are
+# rare, always urgent, and are not the source of the hammering the breaker exists
+# to stop (that is the per-tick read loop). Blocking one of these can leave a
+# live position unmanaged. Extendable via architecture.api_resilience.always_allow.
+DEFAULT_ALWAYS_ALLOW = frozenset({"create_order", "cancel_order", "cancel_all_orders"})
+
+
+def always_allow_methods(config: Dict[str, Any] | None) -> frozenset:
+    """Method names that bypass the breaker gate, from defaults + config."""
+    cfg = config or {}
+    arch = cfg.get("architecture") or {}
+    rc = arch.get("api_resilience")
+    extra = (rc or {}).get("always_allow") if isinstance(rc, dict) else None
+    if not extra:
+        return DEFAULT_ALWAYS_ALLOW
+    return DEFAULT_ALWAYS_ALLOW | {str(m) for m in extra}
 
 
 def build_guard(config: Dict[str, Any] | None) -> Optional[ResilienceGuard]:
