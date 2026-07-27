@@ -84,8 +84,12 @@ class SaaSControlPlaneTests(unittest.TestCase):
             item["id"]: item for item in self.client.get("/api/v1/catalog").json()["presets"]
         }
         xau = presets["okx-xau-actionzone-v1"]["backtest"]
+        # Both fields are now emitted by scripts/certify_preset.py from an
+        # actual replay of this preset's own execution_profile, so pinning the
+        # exact strings would only pin the day it last ran. What must hold is
+        # that they describe a real four-year measurement of THIS config.
         self.assertEqual(xau["score_label"], "PF 1.37")
-        self.assertEqual(xau["duration"], "4.0 years · one gold cycle")
+        self.assertTrue(xau["duration"].startswith("4.0 years"), xau["duration"])
         # Two headlines have been wrong here; neither may return.
         # PF 2.00 came from the 2026-07-13 report, which measured long-only +
         # D1-on rather than what this preset ships.
@@ -128,15 +132,28 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(xau_preset["backtest"]["status"], "validated")   # EVIDENCE
         self.assertEqual(xau_preset["certification_status"], "failed")    # VERDICT
         self.assertTrue(xau_preset["live_certified"])                     # APPROVAL
-        self.assertIn("-7.87pp", xau_preset["certification_note"])
+        # The margin is measured, not typed, so assert that one is stated
+        # rather than pinning whichever run last produced it.
+        self.assertRegex(xau_preset["certification_note"], r"-\d+\.\d+pp")
+        self.assertIn("acceptance", xau_preset["certification_note"])
+        # Approval despite a failing verdict must name a person and a reason.
+        self.assertTrue(xau_preset["operator_override"]["reason"].strip())
         # The one preset with a real certificate, re-validated on venue data.
         self.assertEqual(presets["okx-btc-supertrend-v1"]["certification_status"], "certified")
 
-        self.assertEqual(presets["binance-btc-supertrend-v1"]["backtest"]["status"], "insufficient")
+        # Never measured on Binance Global futures, so it has no record and
+        # reads as pending — with an override saying why it is still selectable.
+        binance_btc = presets["binance-btc-supertrend-v1"]
+        self.assertEqual(binance_btc["backtest"]["status"], "pending")
+        self.assertEqual(binance_btc["certification_status"], "not_assessed")
+        self.assertTrue(binance_btc["operator_override"]["reason"].strip())
         okx_btc = presets["okx-btc-supertrend-v1"]
         self.assertEqual(okx_btc["primary_timeframe"], "4h")
         self.assertEqual(okx_btc["allowed_sides"], ["long", "short"])
-        self.assertEqual(okx_btc["backtest"]["score_label"], "+9.8% OOS")
+        # Was the hand-typed "+9.8% OOS" from a Binance-spot proxy run; now
+        # measured on the native swap this preset actually trades.
+        self.assertEqual(okx_btc["backtest"]["score_label"], "PF 1.52")
+        self.assertIn("BTC-USDT-SWAP", okx_btc["backtest"]["source"])
         self.assertEqual(okx_btc["allocation_pct"], 30.0)
         self.assertEqual(self.client.get("/api/v1/catalog").json()["risk"]["max_daily_loss_pct"], {
             "default": 6.0,

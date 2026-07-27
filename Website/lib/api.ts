@@ -109,6 +109,16 @@ export type Preset = {
    */
   certification_status?: "certified" | "failed" | "not_assessed";
   certification_note?: string;
+  /**
+   * Present when a preset is approved for live WITHOUT a passing verdict. The
+   * backend refuses to build the catalog otherwise, so its absence on a live
+   * preset means the verdict is "certified".
+   */
+  operator_override?: {
+    decided_by: string;
+    decided_at: string;
+    reason: string;
+  };
   cdc_pure_certified?: boolean;
   stop_loss_required?: boolean;
   execution_profile?: Record<string, unknown>;

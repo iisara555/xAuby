@@ -1,0 +1,34 @@
+{
+  "record_version": 1,
+  "preset_id": "okx-btc-supertrend-v1",
+  "config_fingerprint": "2f8d06566fcc267f",
+  "measured_at": "2026-07-27",
+  "protocol": {
+    "name": "saas-preset-acceptance",
+    "version": "1",
+    "script": "scripts/certify_preset.py"
+  },
+  "data_source": "OKX BTC-USDT-SWAP 4h",
+  "gate": {
+    "criterion": "backtest.acceptance: long+short net > 0 AND beats the matching long-only config by >= 5.00pp",
+    "min_profit_edge_pp": 5.0,
+    "baseline": "same configuration, enable_short=False",
+    "baseline_net_pct": 4.17,
+    "candidate_net_pct": 19.35,
+    "edge_pp": 15.18,
+    "passed": true
+  },
+  "verdict": "certified",
+  "note": "Clears the pre-registered backtest.acceptance gate by +15.18pp on native BTC-USDT-SWAP over 6.6 years, measured against this preset's own execution_profile. Independently, the July 2026 walk-forward certificate (docs/research/btc_supertrend_ema200_certificate_2026-07.md) certified the same strategy out-of-sample over 66 fixed-config months, re-validated on OKX data in docs/research/venue_data_revalidation_2026-07-26.md. Two protocols, same verdict. The selection-on-OOS caveat in the original certificate still stands.",
+  "document": "docs/research/btc_supertrend_ema200_certificate_2026-07.md",
+  "evidence": {
+    "status": "validated",
+    "score_label": "PF 1.52",
+    "period": "Dec 2019 \u2013 Jul 2026",
+    "duration": "6.6 years",
+    "win_rate_pct": 38.1,
+    "max_drawdown_pct": 9.8,
+    "trades": 134,
+    "source": "OKX BTC-USDT-SWAP \u00b7 this preset's execution_profile \u00b7 net of fee/slippage/funding \u00b7 measured 2026-07-27"
+  }
+}
