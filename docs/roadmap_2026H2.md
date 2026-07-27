@@ -436,16 +436,62 @@ config** มาด้วยเสมอ นั่นคือสิ่งเด�
 `tests/test_replay_short_parity.py` — event เก่าที่ไม่มีฟิลด์ใหม่จะ degrade ไปเทียบ
 แบบ action อย่างเดียว ไม่ report mismatch ปลอมย้อนหลัง
 
-**P0.6 — Dead-man's switch**
-ต้องมี heartbeat ภายนอกที่เตือนเมื่อ engine **เงียบ** ไม่ใช่เตือนเมื่อ engine error
-ติดตั้ง `xauby-healthcheck.timer` ใน `install_saas_host.sh` (ตกหล่นจาก loop
-ประมาณบรรทัด 38) และเพิ่มช่องทางแจ้งเตือนที่สองที่ไม่ได้ส่งโดย engine process
-เคสทดสอบแรกคือ weekly review ที่หายไป
+**P0.6 — Dead-man's switch** ✅ **ทำแล้ว 2026-07-27**
 
-**P0.7 — เปิด API circuit breaker**
-`architecture.api_circuit_breaker_enabled: true` — token-bucket limiter +
-circuit breaker เขียนเสร็จและมีเทสต์แล้วใน `xauby/api/resilience.py` แต่ไม่ได้ arm
-คอมเมนต์ในไฟล์เองบอกว่า rollback คือแค่พลิก flag
+`scripts/deadman_switch.py` + `deploy/systemd/xauby-deadman@.{service,timer}`
+
+ยืนยันว่า timer ตกหล่นจริง: `xauby-healthcheck.service/.timer` **มีอยู่ในรีโป**
+แต่ loop ใน `install_saas_host.sh` ไม่ได้ copy และ `systemctl enable` ก็ไม่ได้ใส่
+→ เครื่องที่ติดตั้งใหม่จะ**ไม่มีการเฝ้าระวังจากภายนอกเลย** แก้แล้วทั้งสองจุด
+
+และ healthcheck เดิมตรวจแค่ URL สาธารณะ (frontend + control plane `/healthz`) →
+**เขียวได้ทั้งที่ engine ตายสนิท** ทั้งยังไม่มีช่องแจ้งเตือน แค่ exit non-zero
+ลง journald ที่ไม่มีใครเปิดดู
+
+ตัวใหม่อ่าน state file ที่ engine แตะทุก tick แล้วเตือนเมื่อค่าอายุเกินเกณฑ์
+
+**การตัดสินใจออกแบบที่สำคัญ:**
+- **stdlib ล้วน ไม่ import `xauby` เลย** — ตัวตรวจที่ import แพ็กเกจจะตายไป
+  พร้อมแพ็กเกจ ถ้า deploy พัง import มันจะ raise แล้วเงียบ ซึ่งแยกไม่ออกจาก
+  "ปกติดี" — คือความล้มเหลวที่มันมีไว้จับพอดี (มีเทสต์บังคับ)
+- **POST ตรงแบบ synchronous** ไม่ใช้ `TelegramNotifier` เพราะมัน queue ลง
+  background thread — process แบบ one-shot อาจ exit ก่อน flush แล้วข้อความหาย
+- **debounce + แจ้งตอนกลับมา** — timer 2 นาทีเจอ outage 1 วันจะยิง ~720 ข้อความ
+  ตอนนี้เตือนครั้งแรก แล้วซ้ำทุก `--realert-sec` และแจ้ง 1 ครั้งเมื่อ engine ฟื้น
+- **ไม่ผูกกับ `xauby-engine@%i.service`** (ไม่มี `After=`/`BindsTo=`/`PartOf=`)
+  ถ้าผูกไว้ มันจะหยุดทำงานตอนที่ engine ตาย ซึ่งคือตอนที่ต้องการมันที่สุด
+- **ไม่อยู่ใน `xauby-service-control`** ที่ control plane เรียกผ่าน sudo ได้ —
+  ตัวเฝ้าระวังที่ระบบซึ่งถูกเฝ้าสั่งปิดได้ ไม่ใช่ตัวเฝ้าระวัง การปิดต้องใช้ root
+  arm ต่อ tenant ตอน provisioning แทน
+
+**state file หายไป = ถือว่าเงียบ** (path ผิดหลัง deploy / engine ไม่เคยขึ้น
+ล้วนคือ "ไม่ได้ทำงาน") — 23 เทสต์ใน `tests/test_deadman_switch.py`
+
+**P0.7 — เปิด API circuit breaker** ✅ **ทำแล้ว 2026-07-27**
+
+arm แล้ว (`api_circuit_breaker_enabled: true`) พร้อมบล็อก `api_resilience`
+ที่ระบุค่าจูนไว้ชัดเจน — rollback ยังเป็นการพลิก flag เหมือนเดิม
+
+**แต่มันไม่ใช่แค่พลิก flag** `CCXTClient._call` เป็นคอขวดเดียวของ**ทุก**คอล CCXT
+รวม `create_order` ด้วย → เบรกเกอร์ที่เปิดค้าง 60 วินาทีตอน venue กระตุก
+**จะปฏิเสธคำสั่งปิด position ด้วย** และ XAU รันด้วย `disable_stop_loss: true`
+คือบอทเป็น stop เอง การบล็อกคำสั่งขาออกจึงอันตรายกว่าไม่มีเบรกเกอร์
+
+**กฎที่ตั้งไว้: เบรกเกอร์คุม read loop ไม่คุมคำสั่งซื้อขาย**
+- `DEFAULT_ALWAYS_ALLOW` = `create_order` / `cancel_order` / `cancel_all_orders`
+  ข้ามด่านเบรกเกอร์เสมอ และไม่รอ token (คอลอ่านยังรอได้ถึง `acquire_timeout`)
+- แต่ยัง **record ผลลัพธ์** เข้าเบรกเกอร์ การข้ามด่านไม่ทำให้เบรกเกอร์ตาบอด
+- ต่อขยายได้ทาง `api_resilience.always_allow` (เพิ่มได้ ลดไม่ได้)
+
+**แก้พฤติกรรมการฟื้นตัวด้วย:** เดิม `record_success()` ปิดเบรกเกอร์เฉพาะจาก HALF
+แปลว่าคำสั่งซื้อขายที่**สำเร็จ**ตอนเบรกเกอร์เปิดอยู่ จะไม่ปิดมัน → engine ตาบอด
+ข้อมูลตลาดต่ออีก 60 วินาที ทั้งที่เพิ่งพิสูจน์แล้วว่า venue ติดต่อได้
+ตอนนี้ OPEN → CLOSED เมื่อคอล critical สำเร็จ (มีแต่คอลที่ข้ามด่านเท่านั้นที่
+สำเร็จตอน OPEN ได้ และ traffic จริงที่สำเร็จเป็นหลักฐานแข็งกว่า probe ของ HALF)
+
+การจูน: engine tick ทุก 60 วินาที 2 คู่ → อัตราจริงต่ำกว่า 10/s มาก limiter
+จึงไม่ควรกัดในการทำงานปกติ มีไว้รับ reconnect storm กับ backfill burst
+25 เทสต์ (`tests/test_api_circuit_breaker_armed.py` + ของเดิม)
 
 **เกณฑ์ผ่าน:** ไม่มี config ที่ `minimal_roi` กับ `partial_tp` ขัดกันเองหลุดผ่าน
 startup ได้ และ `CLAUDE.md` อธิบาย exit ของ XAU ตรงกับที่โค้ดทำจริง · backtest ที่ชี้ไป
