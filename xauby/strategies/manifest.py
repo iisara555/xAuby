@@ -5,7 +5,7 @@ import os
 import sys
 from typing import Any, Dict, Type
 
-from xauby.strategies.base import Strategy
+from xauby.strategies.base import Strategy, strategy_maturity
 
 MANIFEST_VERSION = 1
 MANIFEST_FILENAMES = ("strategy.yaml", "strategy.yml", "manifest.yaml")
@@ -58,6 +58,10 @@ def strategy_manifest_from_class(cls: Type[Strategy]) -> Dict[str, Any]:
         "author": getattr(cls, "author", "unknown"),
         "description": getattr(cls, "description", ""),
         "tags": list(getattr(cls, "tags", []) or []),
+        # Resolved, not read raw: a plugin that still marks itself research via
+        # tags must report that here too, or the manifest would disagree with
+        # the gate the engine actually applies.
+        "maturity": strategy_maturity(cls),
         "required_timeframes": list(getattr(cls, "required_timeframes", []) or []),
         "min_bars": int(getattr(cls, "min_bars", 0) or 0),
         "default_config": dict(default_config or {}),

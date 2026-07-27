@@ -573,13 +573,44 @@ multiple testing เลย ทั้งที่มี 17 กลยุทธ์ 
 และยังไม่ติ๊ก — ด้วยจำนวน candidate ขนาดนี้ นี่คือเส้นแบ่งระหว่าง certificate จริง
 กับสิ่งประดิษฐ์จากการขุดข้อมูล
 
-**P1.4 — ให้ certification pipeline generate แคตตาล็อก**
+**P1.4 — ให้ certification pipeline generate แคตตาล็อก** ✅ **ทำแล้ว 2026-07-27**
 คือข้อเสนอแนะข้อ 4 ที่ยังค้างจาก `docs/audit_system_2026-07-21.md` ให้สคริปต์รัน
 protocol จาก P1.1 ออก certificate ลง `docs/research/` แล้ว **generate** บล็อกใน
 `catalog.py` — preset ที่ไม่ผ่านด่านจะถูกมาร์กว่า certified ด้วยมือไม่ได้อีก
 พร้อมกันนี้ให้เพิ่มฟิลด์ maturity ให้ชัด ทุกวันนี้ `research` / `paper-test` /
 production เดาเอาจาก tag ที่เป็น free text และ 16 จาก 17 plugin ยังเป็น `0.1.0`
 โดยไม่มีอะไรกันไม่ให้ถูก whitelist ขึ้น live
+
+- **verdict/evidence ไม่อยู่ใน `catalog.py` แล้ว** — อ่านจาก
+  `xauby/saas/certificates/<preset_id>.json` ที่ `scripts/certify_preset.py`
+  ออกให้จากการรันจริง spec ที่พยายามประกาศฟิลด์พวกนี้เองจะ raise ตอน import
+- **fingerprint คือหัวใจ** — record เก็บลายนิ้วมือของ config ที่วัด ถ้าใครแก้
+  `execution_profile` ทีหลัง fingerprint จะไม่ตรงและ **certificate หยุดมีผลทันที**
+  preset กลับไปเป็น `not_assessed` แทนที่จะถือ verdict ของ config ที่ไม่ได้รันแล้ว
+  (นี่คือความล้มเหลวเดือน ก.ค. ทำให้เป็นกลไก) และถ้า preset นั้น `live_certified`
+  อยู่ด้วย **build จะพังจนกว่าจะ re-certify หรือเซ็น override** — จูน config ที่
+  อนุมัติ live ไว้แบบเงียบ ๆ ไม่ได้อีก
+- **approval ต้องมีคนเซ็น** — `live_certified` ที่ verdict ไม่ใช่ `certified`
+  ต้องมี `operator_override` ระบุ decided_by / decided_at / reason ผลคือพบว่า
+  **2 preset ถูกอนุมัติ live ทั้งที่ไม่เคยวัดบน venue ของตัวเองเลย**
+- certificate จริง 2 ใบออกจากการรัน ไม่ใช่การคัดลอก: XAU **FAILED** −8.90pp
+  (ตัวเลขตรงกับที่เคยพิมพ์มือ PF 1.37 / MDD 14.4 / 217 trades) และ BTC
+  **CERTIFIED** +15.18pp วัดบน **BTC-USDT-SWAP ตัวจริง** ไม่ใช่ proxy สปอต
+  Binance แบบเดิม → MDD ที่ซื่อสัตย์คือ 9.8% ไม่ใช่ 4.8% ที่เคยโฆษณา
+- **maturity ประกาศแล้ว ไม่เดาจาก tag** — `Strategy.maturity` เป็น
+  `research | paper | production`, ไม่ประกาศ = `None` ซึ่ง **ไม่เท่ากับ
+  production** engine ปฏิเสธ plugin ที่ไม่ประกาศบนคู่ที่ `mode: live`
+  ตอนนี้มีแค่ 2 ตัวที่เป็น production คือ `xauby_actionzone` กับ
+  `supertrend_ema200` (ทั้งคู่รันเงินจริงอยู่) legacy tag ยังใช้ได้ พฤติกรรมของ
+  plugin เดิมจึงไม่เปลี่ยน
+- **ผลข้างเคียงที่ต้องรู้ก่อน deploy:** คู่ `mode: live` ที่รัน strategy อื่นนอก
+  จาก 2 ตัวนั้นจะ **สตาร์ตไม่ขึ้น** ตอนนี้ทั้ง whitelist และ SaaS catalog ใช้แค่
+  2 ตัวนี้ จึงไม่กระทบ แต่ tenant ที่แก้ whitelist มือเป็น strategy ตัวที่สาม
+  จะโดนบล็อก — ซึ่งคือสิ่งที่ตั้งใจ
+- **ยังเหลือ:** version ของ plugin ยังเป็น `0.1.0` เกือบทั้งหมด (รวม
+  `supertrend_ema200` ที่มี certificate) — maturity เป็นสัญญาณที่ใช้จริง ส่วน
+  version ยังไม่มีความหมาย · preset ที่ไม่มี data path (Binance Global / TH)
+  ยังออก certificate ไม่ได้ ต้องต่อ data source ก่อน
 
 **P1.5 — รวม metric สองชุดให้ตรงกัน**
 `analytics/calculator.py` (live/UI) คำนวณ Sharpe ราย trade แบบไม่ annualize

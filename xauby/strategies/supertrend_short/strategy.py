@@ -32,6 +32,8 @@ class SuperTrendShortStrategy(Strategy):
     author = "xAuby"
     description = "RESEARCH ONLY short: SuperTrend bear below EMA200 (BUY = open short)."
     tags = ["research", "short", "supertrend", "1h"]
+    # Research short mirror: BUY opens a SHORT.
+    maturity = "research"
     required_timeframes = ["1h"]
     min_bars = 240
 

@@ -28,6 +28,7 @@ logger = logging.getLogger("lite_bot")
 from xauby.database import create_database
 from xauby.meta import PRODUCT_NAME
 from xauby.strategies import load_strategy
+from xauby.strategies.base import strategy_maturity
 from xauby.strategies.sandbox import StrategyRunner
 
 from xauby.api.interface import IExchangeGateway
@@ -513,6 +514,21 @@ class BaseEngine:
             if "research" in tags and is_live:
                 raise ConfigError(
                     f"Research-only strategy {name!r} cannot run live (sim/backtest only)"
+                )
+            # A live pair must name a plugin somebody has explicitly signed off
+            # as production. Until now the only barrier was a `research` string
+            # sitting in `tags` beside `btc` and `4h`, so 16 of 17 plugins —
+            # every one still at version 0.1.0, none with a certificate — could
+            # be promoted to live by editing a whitelist, and nothing would say
+            # a word. Undeclared is NOT treated as production: an unanswered
+            # question must not read as a pass.
+            maturity = strategy_maturity(strategy)
+            if is_live and maturity != "production":
+                raise ConfigError(
+                    f"Strategy {name!r} has maturity "
+                    f"{maturity or 'undeclared'!r} and cannot run on a live "
+                    "pair. Declare maturity = \"production\" on the plugin once "
+                    "it has a certificate, or run this pair in sim."
                 )
             if "research" in tags and "short" not in tags:
                 raise ConfigError(

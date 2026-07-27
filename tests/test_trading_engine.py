@@ -74,6 +74,17 @@ class TestTradingEngineDecoupling(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "cannot run live"):
             self.engine._get_strategy_for_symbol("BTCUSDT")
 
+    def test_undeclared_maturity_cannot_run_on_a_live_pair(self):
+        # bbkc_squeeze is not research-tagged, so the old gate let it through:
+        # any of the 16 uncertified 0.1.0 plugins could reach a live pair by a
+        # whitelist edit. Undeclared maturity must fail closed, not open.
+        self.engine._strategy_names_by_symbol["BTCUSDT"] = "bbkc_squeeze"
+        self.engine._strategies_by_symbol.pop("BTCUSDT", None)
+        self.engine._runners_by_symbol.pop("BTCUSDT", None)
+
+        with self.assertRaisesRegex(ConfigError, "maturity"):
+            self.engine._get_strategy_for_symbol("BTCUSDT")
+
     def test_router_strategy_risk_block_uses_plugin_defaults(self):
         self.engine._strategy_names_by_symbol["BTCUSDT"] = "bbkc_squeeze"
 

@@ -181,6 +181,18 @@ otherwise.
 > ships and `binance-th-spot` is still a live-certified target in the SaaS
 > catalog (`xauby/saas/catalog.py`), so those docs are describing real support.
 
+**A SaaS preset's verdict is derived, never typed.** `xauby/saas/preset_specs.py`
+holds the hand-authored half (identity, `execution_profile`, and `live_certified`
+— approval is genuinely an operator's call). `certification_status`,
+`certification_note` and `backtest` come from
+`xauby/saas/certificates/<preset_id>.json`, emitted by
+`scripts/certify_preset.py`; a spec that declares any of them raises at import.
+Each record fingerprints the config it measured, so editing `execution_profile`
+revokes the certificate — and if the preset is also `live_certified`, the catalog
+refuses to build until someone re-certifies or adds an `operator_override`
+(`decided_by` / `decided_at` / `reason`). Approving something that failed the
+gate is allowed; XAU does it. Doing so silently is not.
+
 **Router safety gate:** a pair with `mode: live` and `regime_router_enabled:
 true` is forced to **sim** unless it also has `regime_router_live_confirmed:
 true`. Never flip `regime_router_live_confirmed` without explicit per-pair
@@ -215,6 +227,15 @@ mapping is incomplete — the dashboard would drift from real behavior.
 3. `bot_config.yaml -> architecture.strategy_chart_indicators.<strategy>: [<indicators>]`
    (defaults also live in `indicators/registry.py:DEFAULT_STRATEGY_CHART_MAP`).
 4. Tests: strategy test, indicator test, and chart legend coverage.
+
+**Maturity gates live.** `Strategy.maturity` is `research | paper | production`,
+declared on the plugin (`xauby/strategies/base.py`). The engine refuses to run
+anything that is not `production` on a `mode: live` pair — and **undeclared is
+not production**, so a new plugin fails closed. Only `xauby_actionzone` and
+`supertrend_ema200` are declared production today; both trade real money. Legacy
+`research` / `paper-test` tags still resolve, so existing plugins are unchanged.
+Adding a live pair on any other strategy will refuse to start, which is the
+point: promote a plugin by certifying it, not by editing a whitelist.
 
 Production note: the `*_short` strategies (`donchian_short`, `supertrend_short`,
 `rsi2_short`) and other R&D plugins (`rsi2_meanrev`, `vol_breakout`) are research

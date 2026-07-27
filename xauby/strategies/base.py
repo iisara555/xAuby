@@ -8,6 +8,38 @@ from typing import Any, Dict, List, Optional
 from xauby.strategies.context import MarketContext
 from xauby.strategies.signal import Signal
 
+#: How far a plugin has actually been taken. Declared, never inferred from a
+#: free-text tag: today `research` and `paper-test` live in ``tags`` beside
+#: `btc` and `4h`, so "is this allowed near real money" is answered by string
+#: matching against a list anyone can append to.
+MATURITIES = ("research", "paper", "production")
+
+#: Legacy tags that already carried this meaning, honoured so no existing plugin
+#: changes behaviour when it has not declared ``maturity`` yet.
+_TAG_MATURITY = {"research": "research", "paper-test": "paper"}
+
+
+def strategy_maturity(strategy: Any) -> Optional[str]:
+    """Resolve a plugin's maturity: declaration first, then legacy tags.
+
+    ``None`` means undeclared, which is deliberately not the same as
+    ``"production"``. Nothing may treat an unanswered question as a pass.
+    """
+    declared = getattr(strategy, "maturity", None)
+    if declared:
+        value = str(declared).lower()
+        if value not in MATURITIES:
+            raise ValueError(
+                f"strategy {getattr(strategy, 'name', '?')!r} declares maturity "
+                f"{declared!r}; expected one of {MATURITIES}"
+            )
+        return value
+    tags = {str(tag).lower() for tag in getattr(strategy, "tags", []) or []}
+    for tag, value in _TAG_MATURITY.items():
+        if tag in tags:
+            return value
+    return None
+
 
 @dataclass
 class StrategyMeta:
@@ -26,6 +58,8 @@ class StrategyMeta:
     required_timeframes: List[str] = field(default_factory=lambda: ["4h"])
     min_bars: int = 100
     config_schema: Optional[Dict[str, Any]] = None
+    #: One of :data:`MATURITIES`, or ``None`` for "nobody has classified this".
+    maturity: Optional[str] = None
 
 
 class Strategy(ABC):
@@ -46,6 +80,10 @@ class Strategy(ABC):
     tags: List[str] = []
     required_timeframes: List[str] = ["4h"]
     min_bars: int = 100
+    #: How far this plugin has been taken: one of :data:`MATURITIES`. Left
+    #: ``None`` it means undeclared, and the engine refuses to run an
+    #: undeclared plugin on a live pair rather than assuming the best.
+    maturity: Optional[str] = None
 
     def __init__(self, config: Dict[str, Any] | None = None) -> None:
         self.config: Dict[str, Any] = dict(config or {})
@@ -120,6 +158,7 @@ class Strategy(ABC):
             required_timeframes=list(self.required_timeframes),
             min_bars=self.min_bars,
             config_schema=self._config_schema(),
+            maturity=strategy_maturity(self),
         )
 
     def _config_schema(self) -> Optional[Dict[str, Any]]:
@@ -143,6 +182,7 @@ class Strategy(ABC):
             "author": meta.author,
             "description": meta.description,
             "tags": meta.tags,
+            "maturity": meta.maturity,
             "required_timeframes": meta.required_timeframes,
             "min_bars": meta.min_bars,
             "config_schema": meta.config_schema,

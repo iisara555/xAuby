@@ -37,6 +37,10 @@ class CDCActionZoneStrategy(Strategy):
         "zones on the 4H timeframe with optional D1 regime filter."
     )
     tags = ["trend", "swing", "4h", "ema"]
+    # Runs live on XAU. Measured over 4 years of venue data; it FAILS the
+    # acceptance gate and ships on an operator override — production here
+    # means 'approved and in service', not 'certified'.
+    maturity = "production"
     required_timeframes = ["4h", "1d"]
     min_bars = 100
 
