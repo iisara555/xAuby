@@ -1989,9 +1989,17 @@ class LoopMixin:
             if sym == self.focus_symbol:
                 self.last_signal_meta = sc.last_signal_meta
 
+        # intent + position_side are emitted alongside action because `action`
+        # alone is ambiguous on the short side: open_short and a long exit are
+        # both SELL, close_short and a long entry are both BUY. Without these
+        # two fields replay can only compare SELL-vs-SELL and cannot tell the
+        # two apart, so replay output is not evidence for half the live
+        # exposure. See docs/roadmap_2026H2.md P0.5.
         self._emit_event(
             EventType.SIGNAL_EVALUATED,
             action=action,
+            intent=str(getattr(signal, "intent", "") or ""),
+            position_side=str(getattr(signal, "position_side", "") or ""),
             reason=(reason or "")[:240],
             confidence=round(float(signal.confidence or 0.0), 3),
         )
@@ -2619,6 +2627,7 @@ class LoopMixin:
         self._release_account_lock()
 
     def start(self):
+        from xauby.runtime.exits import validate_exit_config
         from xauby.runtime.trading_config import (
             validate_open_positions_config,
             validate_risk_config,
@@ -2631,6 +2640,10 @@ class LoopMixin:
             if getattr(spec, "execution_mode", "sim") == "live"
         )
         validate_open_positions_config(self.config, live_pair_count=live_pairs)
+        # Every active pair, not just live ones: a dead partial-TP key misreports
+        # what a sim pair does too, and sim is where a config is vetted first.
+        for sym in self._pair_registry.active_symbols():
+            validate_exit_config(self._get_strategy_config(sym), symbol=sym)
         active_syms = ", ".join(self._pair_registry.active_symbols()) or self.focus_symbol
         logger.info(
             f"Starting Lite Trading Engine. Pairs: {active_syms}, "

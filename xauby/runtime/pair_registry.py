@@ -112,6 +112,27 @@ class PairSpec:
         return _normalize_tf(cf) if cf else None
 
 
+def _needs_d1(cfg: Dict[str, Any]) -> bool:
+    """True when any D1 gate is on: the shared flag or either per-side override.
+
+    The engine only loads 1d candles when this is true (SymbolContext
+    .timeframe_regime), so an asymmetric config that gates just one side must
+    still pull the regime frame — otherwise the gated side reads an UNKNOWN zone
+    and blocks every entry.
+    """
+    for key in (
+        "use_d1_regime_filter",
+        "use_d1_regime_filter_long",
+        "use_d1_regime_filter_short",
+    ):
+        value = cfg.get(key)
+        if value is None:
+            continue
+        if value if isinstance(value, bool) else str(value).lower() in ("true", "1", "yes", "on"):
+            return True
+    return False
+
+
 class PairRegistry:
     """Merge data.pairs with whitelist assets; optional exchange validation."""
 
@@ -158,7 +179,7 @@ class PairRegistry:
             or legacy_config.get("cdc_action_zone")
             or {}
         )
-        use_d1 = bool(strat.get("use_d1_regime_filter", False))
+        use_d1 = _needs_d1(strat)
         return primary, confirm, use_d1
 
     def _whitelist_abs_path(self) -> str:
@@ -264,7 +285,9 @@ class PairRegistry:
             enabled = bool(entry.get("enabled", True))
             ptf = _normalize_tf(entry.get("primary_timeframe") or primary_def)
             ctf = _normalize_tf(entry.get("confirm_timeframe") or confirm_def)
-            u1 = entry.get("use_d1_regime_filter")
+            u1 = _needs_d1(entry.get("strategy_params") or entry) or None
+            if u1 is None:
+                u1 = entry.get("use_d1_regime_filter")
             if u1 is None:
                 u1 = use_d1_def
             strat = self._resolve_strategy_name(sym, entry)
@@ -301,7 +324,9 @@ class PairRegistry:
                 enabled = bool(entry.get("enabled", True))
                 ptf = _normalize_tf(entry.get("primary_timeframe") or primary_def)
                 ctf = _normalize_tf(entry.get("confirm_timeframe") or confirm_def)
-                u1 = entry.get("use_d1_regime_filter")
+                u1 = _needs_d1(entry.get("strategy_params") or entry) or None
+                if u1 is None:
+                    u1 = entry.get("use_d1_regime_filter")
                 if u1 is None:
                     u1 = use_d1_def
                 wl_strat = strategy_name_from_whitelist_entry(entry)

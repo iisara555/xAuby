@@ -176,16 +176,22 @@ PRESETS = [
             "require_slow_slope": True,
             "slow_slope_bars": 3,
             "position_pct": 0.95,
-            "partial_tp_pct": 12.0,
-            "partial_tp_fraction": 0.5,
         },
         "strategy_traits": [
             "Long + short · stop-and-reverse",
             "D1 regime filter: off",
-            "Partial TP: bank 50% at +12%",
             "Slope filter: on (EMA26, 3 bars)",
-            "Exit: CDC zone flip / ROI ladder · no exchange stop",
+            "Exit: CDC zone flip / ROI ladder 8→5→3% · no exchange stop",
         ],
+        # NOTE (2026-07-26): do NOT copy the PF 2.00 / MDD 8.3% headline from
+        # docs/research/xau_4strategy_comparison_2026-07-13.md into this block.
+        # That report is labelled "live config" but reproduction shows it measured
+        # enable_short=false + use_d1_regime_filter=true. This preset ships
+        # long+short with the D1 filter OFF, whose measured full-period profile is
+        # materially worse (PF ~1.28, MDD ~29%). The figures below predate that
+        # finding and are themselves unverified — the preset needs a re-run of the
+        # certification protocol against its own execution_profile before any
+        # headline here can be trusted. Tracked as P0.2 in docs/roadmap_2026H2.md.
         "backtest": {
             "status": "validated",
             "score_label": "PF 1.7",

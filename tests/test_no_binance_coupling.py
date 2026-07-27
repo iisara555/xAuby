@@ -15,6 +15,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GUARDED_DIRS = [
     os.path.join("xauby", "engine"),
     os.path.join("xauby", "observability"),
+    # backtest was missing from this list, which is how the data layer stayed
+    # Binance-only through the OKX swap migration: bot_config.yaml pointed
+    # backtest.data_base_url at OKX while download_klines could only build
+    # Binance URLs, and the failure was swallowed into an empty frame.
+    os.path.join("xauby", "backtest"),
     os.path.join("scripts"),
 ]
 

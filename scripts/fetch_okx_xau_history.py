@@ -16,32 +16,21 @@ sys.path.insert(0, ROOT)
 
 from xauby.backtest.constants import CACHE_DIR
 
-OKX_BASE_URL = "https://www.okx.com"
+# Candle fetching lives in xauby.backtest.okx_data so xauby.backtest.data can
+# use it too; this module keeps the CLI, the caches, and funding history.
+# Re-exported for back-compat with scripts/evaluate_okx_xau_migration.py and
+# tests/test_okx_xau_migration_tools.py.
+from xauby.backtest.okx_data import (  # noqa: E402
+    OKX_BASE_URL,
+    candles_to_cache_df,
+    fetch_candles,
+    normalize_symbol,
+    okx_bar,
+)
+from xauby.backtest.okx_data import get_json as _get_json  # noqa: E402
+from xauby.backtest.okx_data import timeframe_ms as _timeframe_ms  # noqa: E402
+
 DEFAULT_INST_ID = "XAU-USDT-SWAP"
-
-
-def okx_bar(timeframe: str) -> str:
-    tf = str(timeframe or "4h").strip().lower()
-    mapping = {
-        "1m": "1m",
-        "5m": "5m",
-        "15m": "15m",
-        "30m": "30m",
-        "1h": "1H",
-        "2h": "2H",
-        "4h": "4H",
-        "6h": "6H",
-        "12h": "12H",
-        "1d": "1D",
-    }
-    return mapping.get(tf, timeframe)
-
-
-def normalize_symbol(inst_id: str) -> str:
-    raw = str(inst_id or DEFAULT_INST_ID).upper()
-    if raw.endswith("-SWAP"):
-        raw = raw[:-5]
-    return raw.replace("-", "").replace("/", "").replace("_", "")
 
 
 def candle_cache_path(inst_id: str, timeframe: str, *, cache_dir: str = CACHE_DIR) -> str:
@@ -53,109 +42,6 @@ def candle_cache_path(inst_id: str, timeframe: str, *, cache_dir: str = CACHE_DI
 def funding_cache_path(inst_id: str, *, cache_dir: str = CACHE_DIR) -> str:
     sym = normalize_symbol(inst_id).lower()
     return os.path.join(cache_dir, f"funding_okx_{sym}.csv")
-
-
-def _get_json(path: str, params: Dict[str, Any], *, base_url: str = OKX_BASE_URL) -> Dict[str, Any]:
-    url = f"{base_url.rstrip('/')}{path}"
-    headers = {"User-Agent": "xauby-okx-validation/1.0"}
-    last_error: Optional[Exception] = None
-    for attempt in range(5):
-        try:
-            response = requests.get(url, params=params, headers=headers, timeout=20)
-            if response.status_code in (418, 429) or response.status_code >= 500:
-                time.sleep(2.0**attempt)
-                continue
-            response.raise_for_status()
-            payload = response.json()
-            if str(payload.get("code", "0")) != "0":
-                raise RuntimeError(f"OKX error {payload.get('code')}: {payload.get('msg')}")
-            return payload
-        except Exception as exc:  # pragma: no cover - retry branch is timing-dependent
-            last_error = exc
-            time.sleep(2.0**attempt)
-    raise RuntimeError(f"OKX request failed: {last_error}")
-
-
-def fetch_candles(
-    inst_id: str = DEFAULT_INST_ID,
-    timeframe: str = "4h",
-    *,
-    limit: int = 300,
-    pages: int = 1,
-    base_url: str = OKX_BASE_URL,
-) -> List[List[str]]:
-    """Fetch OKX historical candles, oldest first."""
-    rows: List[List[str]] = []
-    cursor: Optional[str] = None
-    remaining = max(1, int(pages))
-    while remaining > 0 and len(rows) < limit:
-        batch_limit = min(300, max(1, limit - len(rows)))
-        params: Dict[str, Any] = {
-            "instId": inst_id,
-            "bar": okx_bar(timeframe),
-            "limit": batch_limit,
-        }
-        if cursor:
-            params["after"] = cursor
-        payload = _get_json("/api/v5/market/history-candles", params, base_url=base_url)
-        data = payload.get("data") or []
-        if not data:
-            break
-        rows.extend(data)
-        oldest_ts = str(data[-1][0])
-        if cursor == oldest_ts:
-            break
-        cursor = oldest_ts
-        remaining -= 1
-        time.sleep(0.12)
-    dedup = {int(row[0]): row for row in rows}
-    return [dedup[key] for key in sorted(dedup)]
-
-
-def candles_to_cache_df(rows: Iterable[List[str]], timeframe: str) -> pd.DataFrame:
-    parsed = []
-    for row in rows:
-        if len(row) < 8:
-            continue
-        confirm = str(row[8]) if len(row) > 8 else "1"
-        if confirm == "0":
-            continue
-        open_time = int(row[0])
-        parsed.append(
-            {
-                "open_time": open_time,
-                "open": float(row[1]),
-                "high": float(row[2]),
-                "low": float(row[3]),
-                "close": float(row[4]),
-                "volume": float(row[6] or 0.0),
-                "close_time": open_time + _timeframe_ms(timeframe) - 1,
-                "quote_volume": float(row[7] or 0.0),
-                "count": 0,
-                "taker_buy_base": 0.0,
-                "taker_buy_quote": 0.0,
-                "ignore": 0,
-                "timestamp": open_time // 1000,
-            }
-        )
-    df = pd.DataFrame(parsed)
-    if df.empty:
-        return df
-    return df.drop_duplicates(subset="open_time").sort_values("open_time").reset_index(drop=True)
-
-
-def _timeframe_ms(timeframe: str) -> int:
-    tf = str(timeframe or "4h").lower()
-    unit = tf[-1]
-    value = int(tf[:-1] or "1")
-    if unit == "m":
-        return value * 60_000
-    if unit == "h":
-        return value * 3_600_000
-    if unit == "d":
-        return value * 86_400_000
-    raise ValueError(f"Unsupported timeframe: {timeframe}")
-
 
 def fetch_funding_history(
     inst_id: str = DEFAULT_INST_ID,

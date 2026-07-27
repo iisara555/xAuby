@@ -201,7 +201,23 @@ strategy:
       timeframe: 4h
       primary_timeframe: 4h
       confirm_timeframe: 1d
-      use_d1_regime_filter: false
+      # Asymmetric D1 gating (2026-07-26): the daily zone gates SHORT entries
+      # only; longs enter on the 4H flip alone. Set here to match
+      # coin_whitelist.json — the whitelist wins in the resolver, but leaving a
+      # contradictory value in both places is what broke startup during the
+      # partial-TP removal, so they are kept in sync deliberately.
+      #
+      # Measured on OKX XAUT-USDT 4.02y (docs/research/xau_per_side_d1_test_2026-07-26.md):
+      # PF 1.38, net 56.54%, MDD 14.42%, Sharpe 0.89 — better than the previous
+      # live config on every axis (PF 1.17 / 31.04% / 17.66%) and the strongest
+      # cell in the current gold drawdown (+22.61% over 2026-03..06).
+      #
+      # NOT CERTIFIED: this FAILS backtest.acceptance (edge -7.87pp vs the
+      # long-only D1-on baseline, which requires >= +5.0pp), and long-only+D1
+      # beats it on PF (1.96) and MDD (9.22%). Deployed on an explicit operator
+      # decision that accepts that trade-off. Do not describe it as certified.
+      use_d1_regime_filter: true
+      use_d1_regime_filter_long: false
       ap_smoothing: 2
       # CDC ActionZone V3 2020 on OKX perpetual: fresh GREEN opens LONG,
       # fresh RED opens SHORT, opposite zone exits.
@@ -230,12 +246,22 @@ strategy:
       # >= baseline (see scripts/compare_cdc_ab.py).
       require_slow_slope: true
       slow_slope_bars: 3
-      # One-shot partial take-profit: bank 50% of the position at +12%, let
-      # the rest ride to the CDC exit. Enabled 2026-07-03 after 6y PAXGUSDT
-      # A/B: PF 1.66->1.78, T3 DD 19.7->12.1%, smooth grid, trade count
-      # unchanged (win rate untouched by design — see compare_cdc_ab.py).
-      partial_tp_pct: 12.0
-      partial_tp_fraction: 0.5
+      # One-shot partial take-profit — REMOVED 2026-07-26, and the reason is
+      # worth keeping. It was enabled 2026-07-03 on real evidence (6y PAXGUSDT
+      # A/B: PF 1.66->1.78, T3 DD 19.7->12.1%, smooth grid — see
+      # scripts/compare_cdc_ab.py) and worked at the time, because minimal_roi
+      # was empty. Once the per-symbol ladder below was introduced with a rung
+      # at +8% from entry, the partial at +12% became unreachable: the ladder
+      # closes the whole position first and a full exit always wins the tick, on
+      # both the live and replay paths. So the +12% partial silently stopped
+      # happening while config, CLAUDE.md and the SaaS catalog all still claimed
+      # it did. validate_exit_config (xauby/runtime/exits.py) now refuses that
+      # combination at startup.
+      #
+      # To bring the partial back, the ladder's entry rung has to move above the
+      # trigger — which changes the strategy and re-opens certification
+      # (docs/research/xau_4strategy_comparison_2026-07-13.md certified the
+      # ladder as it stands). Do not re-add these keys under an 8% rung.
       # Minimal ROI ladder (freqtrade-style, engine-managed exit shared with
       # backtest): {position age in minutes: required ROI %}. Example:
       # minimal_roi:

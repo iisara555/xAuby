@@ -1,5 +1,32 @@
 # xAuby ActionZone (XAU) — institutional-grade config search, July 2026
 
+> **STILL CURRENT — and independently reproduced (verified 2026-07-26).**
+>
+> An earlier revision of this banner claimed this study was superseded by
+> [`research/xau_4strategy_comparison_2026-07-13.md`](research/xau_4strategy_comparison_2026-07-13.md).
+> **That was wrong.** The 13 July report is labelled "ActionZone (live config)"
+> but reproduction against `research_data/backtest_candles_4h_paxgusdt_full.csv`
+> using this repo's own `run_plugin_replay` shows it measured
+> **`enable_short: false` + `use_d1_regime_filter: true`** — the very config
+> *this* document recommends — not the deployed one:
+>
+> | Config | Trades | PF | WR | Net | MDD | IS PF | OOS PF |
+> |---|---|---|---|---|---|---|---|
+> | 13 Jul report, "live config" | 133 | 2.00 | 45.9% | +95.9% | 8.3% | 1.75 | 2.27 |
+> | reproduced long-only + D1 ON | 132 | 2.00 | 46.2% | +96.4% | 7.6% | 1.76 | 2.26 |
+> | reproduced **deployed** config | 421 | 1.28 | 34.4% | +73.7% | 29.2% | 1.02 | 1.74 |
+>
+> So the two studies **agree**: long-only with the D1 regime filter on is the
+> validated configuration. `fresh_zone_window: 3` (applied after this study) does
+> fix the phase-lock described in finding 1, but it does not make the long+short
+> variant match long-only+D1 — the deployed config's measured profile is PF 1.28
+> at 29.2% max drawdown, which also **exceeds the 25% `drawdown_guard`
+> threshold**.
+>
+> **The deployed XAU config therefore has no passing certificate.** Its
+> recommendations below stand. See P0.2/P0.3 in
+> [`roadmap_2026H2.md`](roadmap_2026H2.md).
+
 Goal: find the best `xauby_actionzone` config for **win rate (WR)** and **profit
 factor (PF)** on the XAU pair, using an evaluation protocol comparable to an
 institutional strategy review — not a single lucky backtest window.

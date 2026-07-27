@@ -132,22 +132,41 @@ swap adapter advertises `swap` / `positions` / `reduce_only` capabilities
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Stop |
 |--------|------|----------|-----------|-----------|-------|------|
-| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` | `4h` | `1d` | `long` + `short` (backtest proxy `PAXGUSDT`) | none — CDC-pure |
+| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` | `4h` | `1d` (gates **shorts only**) | `long` + `short` (backtest proxy `PAXGUSDT`) | none — CDC-pure |
 | `BTC` (BTCUSDT) | `live` | `supertrend_ema200` | `4h` | — | `long` + `short` | ATR (`sl_atr_mult: 3.0`) |
 
 The two pairs are deliberately **not** configured alike, and the difference
 matters when you touch sizing or exits:
 
 - **XAU is CDC-pure** (`disable_stop_loss: true`) — there is no exchange-side
-  stop. Exits are zone-flip driven, and sizing uses fixed-fraction
-  `position_pct: 0.95` of equity rather than an SL-distance. It also has one-shot
-  partial TP: `partial_tp_pct: 12.0`, `partial_tp_fraction: 0.5` — the engine
-  banks half the position at +12%, marks `trade_states.partial_tp_taken`, and
-  lets the remainder exit on the zone flip.
+  stop, and sizing uses fixed-fraction `position_pct: 0.95` of equity rather than
+  an SL-distance. Exits are the zone flip plus the **`minimal_roi` ladder**
+  (`{"0": 8.0, "1440": 5.0, "4320": 3.0}` — take +8% from entry, settle for +5%
+  after a day, +3% after three). The ladder is part of what the July 2026
+  certificate measured (`docs/research/xau_4strategy_comparison_2026-07-13.md`),
+  so **changing it re-opens certification**. XAU has **no partial TP**: the keys
+  were removed once it was proven they could never fire beneath an 8% ladder —
+  `validate_exit_config` (`xauby/runtime/exits.py`) now refuses that combination
+  at startup.
+- **XAU's D1 gate is asymmetric** (2026-07-26): `use_d1_regime_filter: true` with
+  `use_d1_regime_filter_long: false`, so the daily zone gates **SHORT entries
+  only** while longs enter on the 4H flip alone. `xauby_actionzone` supports
+  per-side gating via `use_d1_regime_filter_long` / `_short` (both default to
+  `None` = follow the shared flag). Measured PF 1.38 / net 56.54% / MDD 14.42%
+  over 4.02y of OKX XAUT-USDT, and the strongest cell in the 2026-03..06 gold
+  drawdown (+22.61% vs buy-and-hold's -23.21%) —
+  `docs/research/xau_per_side_d1_test_2026-07-26.md`.
+  **This config is NOT certified:** it fails `backtest.acceptance` by -7.87pp,
+  and `long-only + D1 on` beats it on PF (1.96) and MDD (9.22%). It ships on an
+  explicit operator decision. Do not describe it as certified, and do not "fix"
+  the acceptance failure by loosening `min_profit_edge_pp` — that threshold is
+  the pre-registered bar the whole XAU investigation rests on.
+  Note the D1 gate also controls whether the engine loads 1d candles at all
+  (`SymbolContext.timeframe_regime`), so turning it off stops that fetch.
 - **BTC keeps a real stop** (`sl_atr_mult: 3.0`, `trailing_atr_mult: 2.0`,
   `breakeven_sl_enabled: true`), so it takes the normal risk-based sizing path
   (`qty = equity × risk_pct / sl_distance`) and exits on SuperTrend flip or EMA200
-  loss. No partial TP.
+  loss. No ROI ladder, no partial TP.
 
 Order flow (both pairs): entries place a **LIMIT** at the ticker
 (`execution.order_type: limit`) and, when `execution.entry_market_fallback:
@@ -255,8 +274,14 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
   mutates trades.
 - Exactly one engine instance; `core/.engine.lock` guards against doubles.
 - Engine stays strategy-agnostic; signal/exit logic belongs to plugins/config.
-- The TUI and the Pilot Workspace surface partial TP as `PTP` / `Partial TP`
-  with `pending` or `banked` state from the exported position.
+- Where a pair enables partial TP, the TUI and the Pilot Workspace surface it as
+  `PTP` / `Partial TP` with `pending` or `banked` state from the exported
+  position; both hide the field when `partial_tp_pct` is 0. No current pair
+  enables it — see the XAU note above.
+- A partial TP under a `minimal_roi` rung is unreachable, because a full exit
+  always wins the tick on both the live and replay paths. `validate_exit_config`
+  enforces this at startup; do not "fix" it by raising the ladder, which changes
+  the strategy.
 - Strategy + indicator plugins ship together.
 
 ## Conventions
