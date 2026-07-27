@@ -1,5 +1,19 @@
 # Per-side D1 gating on XAU — hypothesis tested and falsified
 
+> **CORRECTION 2026-07-27.** Every windowed figure below was regenerated. The
+> original harness traded its 300-bar warmup lead-in (it sliced the warmup but
+> passed no `min_bars_override`, so the replay skipped only the strategy's
+> default 100 bars), which made consecutive monthly windows overlap by roughly a
+> month and inflated every per-month number. The drawdown figures were about
+> **double** what they should have been — the headline read +22.61% and is
+> **+11.22%**.
+>
+> **The conclusion is unchanged and the ranking is identical**: the requested
+> variant still loses, the mirror still wins, and the mechanism still holds.
+> Regenerated through `xauby.backtest.walkforward`, which makes the mistake
+> structurally impossible (`scripts/xau_windowed_regen.py`). Continuous
+> full-frame figures never used windowing and are untouched.
+
 **Date:** 2026-07-26. **Harness:** `scripts/certify_xau_candidate.py`.
 **Code:** per-side D1 gating added to `xauby_actionzone` (commit `d77cc81`).
 **Data:** OKX XAUT-USDT 4h + 1d, 8809 bars, 2022-07-19 → 2026-07-26 (4.02y).
@@ -36,26 +50,30 @@ edge of any cell** — worse even than the deployed config.
 2026-03 → 2026-06, gold peaked 2026-02 and fell 22.9%. This is precisely where
 "free the shorts so they catch declines earlier" was supposed to pay.
 
-| config | compounded | +months | worst month | n |
-|---|---|---|---|---|
-| **L:D1off S:D1on** *(mirror)* | **+22.61%** | 3/4 | −3.57% | 49 |
-| long+short D1 off *(deployed)* | +17.76% | 3/4 | −3.04% | 57 |
-| long+short D1 on *(symmetric)* | +13.73% | 3/4 | −5.18% | 35 |
-| **L:D1on S:D1off** ← **requested** | **+9.23%** | 2/4 | −4.66% | 43 |
-| long-only D1 off | +9.15% | 2/4 | −1.20% | 27 |
-| long-only D1 on | +1.24% | 1/4 | −2.85% | 13 |
-| *buy & hold gold* | *−23.21%* | — | — | — |
+| config | compounded | +months | n |
+|---|---|---|---|
+| **L:D1off S:D1on** *(mirror)* | **+11.22%** | 2/4 | 23 |
+| long+short D1 off | +8.75% | 2/4 | 25 |
+| long+short D1 on *(symmetric)* | +6.50% | 2/4 | 16 |
+| **L:D1on S:D1off** ← **requested** | **+4.12%** | 1/4 | 18 |
+| long-only D1 off | −0.51% | 2/4 | 10 |
+| long-only D1 on | −4.74% | 0/4 | 3 |
+| *buy & hold gold* | *−23.21%* | — | — |
+
+Superseded figures, recorded so the inflated set cannot be reintroduced:
++22.61 / +17.76 / +13.73 / +9.23 / +9.15 / +1.24.
 
 **The requested variant fails at the thing it was designed for.** In the actual
-decline it returned +9.23% — behind the deployed config (+17.76%), behind
-symmetric D1-on (+13.73%), and less than half the mirror (+22.61%). Freeing the
-shorts did not catch the decline earlier; it caught more noise.
+decline it returned +4.12% — behind long+short D1-off (+8.75%), behind symmetric
+D1-on (+6.50%), and about a third of the mirror (+11.22%). Freeing the shorts did
+not catch the decline earlier; it caught more noise. Halving every figure did not
+change a single position in this ranking.
 
 ## What the mirror reveals — the mechanism
 
 Gating shorts on D1 and freeing longs beats the requested variant on **every**
-axis: PF 1.38 vs 1.23, net 56.54% vs 37.78%, Sharpe 0.89 vs 0.63, and +22.61% vs
-+9.23% in the drawdown.
+axis: PF 1.38 vs 1.23, net 56.54% vs 37.78%, Sharpe 0.89 vs 0.63 (all continuous,
+unaffected by the correction), and +11.22% vs +4.12% in the drawdown.
 
 **D1 confirmation matters MORE for shorts than for longs — including during
 declines.** That is the opposite of the lag intuition, and the trade counts show
@@ -73,8 +91,8 @@ The reason the lag argument fails: in a *real* decline the daily zone flips and
 **stays** RED, so the gate barely delays the good shorts. What it blocks is the
 4H flipping RED and back on counter-trend bounces — which happens both in
 uptrends and inside declines. The gate removes churn, not opportunity. The
-+22.61% mirror result is the cleanest evidence: shorts filtered by D1 did better
-during the decline than shorts running free.
+mirror's +11.22% against the requested variant's +4.12% is the cleanest evidence:
+shorts filtered by D1 did better during the decline than shorts running free.
 
 Note also that **both** asymmetric cells lose to symmetric D1-on (PF 1.51). The
 asymmetry does not help in either direction — the daily filter is worth having on
@@ -107,10 +125,13 @@ mechanism. Measuring only the direction that sounded right would have yielded
 
 - Same as the certification run: one gold cycle, **one** complete bear month, a
   proxy instrument (XAUT-USDT, correlation 0.99/1.00 to XAU-USDT-SWAP), flat
-  funding approximation, and a 37/40 bull-month sample.
+  funding approximation, and a sample of 48 months in which only 1 is a labelled
+  bear month and 37 are bull.
 - The drawdown window is **4 months**. It is the live-relevant slice, not a
   statistically sufficient one, and it is where the mirror's advantage is largest
-  — treat the +22.61% as suggestive.
+  — treat the +11.22% as suggestive.
+- The first published version of this document overstated every windowed figure
+  by roughly 2x. The cause and the fix are in `xauby/backtest/walkforward.py`.
 - The mirror is *not* being proposed. It fails the gate (−7.87pp) and has worse
   MDD (14.42% vs 9.22%) than the certified long-only config. It is reported
   because it explains the mechanism, not as a candidate.

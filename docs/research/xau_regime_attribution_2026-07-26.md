@@ -1,7 +1,26 @@
 # XAU deployed config — what is actually wrong with it, by regime
 
+> **CORRECTION 2026-07-27.** Every table here was regenerated. The original
+> harness traded its 300-bar warmup lead-in, so consecutive monthly windows
+> overlapped by roughly a month and every per-month figure was inflated — the
+> "deployed" config was double-counting trades (533 reported, 311 real). It also
+> covered 40 months rather than the 48 available, because unlabelled early months
+> were dropped entirely instead of counted in the total.
+>
+> **Note this document compares "deployed" against "cert", and at the time both
+> labels meant different configs than they do now** — "deployed" was
+> `long+short, D1 off`, which was replaced on 2026-07-26. Rows are relabelled
+> accordingly. Regenerated via `scripts/xau_windowed_regen.py`; continuous
+> figures never used windowing and are untouched.
+>
+> The largest single change: `long-only + D1 on` monthly-compounded was reported
+> at **+163.55%** and is **+69.22%**. It trades least, so the warmup overlap
+> inflated it most. The monthly view no longer shows a large gap between the two
+> configs; the continuous view still does, and always did.
+
 **Date:** 2026-07-26. **Harness:** `scripts/xau_phase_breakdown.py`.
-**Data:** OKX XAUT-USDT 4h/1d, 40 complete months (2023-03 → 2026-06).
+**Data:** OKX XAUT-USDT 4h/1d, 48 complete months (2022-07 → 2026-06).
+**Regenerated:** 2026-07-27 via `scripts/xau_windowed_regen.py`.
 **Question asked:** the deployed config scores well in bear trends — shouldn't it
 be certified?
 
@@ -24,17 +43,18 @@ close vs EMA200 + slope, from closes strictly before each month, no look-ahead).
 
 | config | phase | months | +months | compounded % | avg mo % | worst mo % | trades |
 |---|---|---|---|---|---|---|---|
-| deployed | bull | 37 | 19 | **+26.75** | 0.83 | **-12.01** | 506 |
-| deployed | bear | 1 | 1 | **+9.52** | 9.52 | +9.52 | 8 |
-| deployed | sideways | 2 | 2 | **+17.18** | 8.28 | +5.87 | 19 |
-| deployed | ALL | 40 | 22 | +62.66 | 1.42 | -12.01 | 533 |
-| cert | bull | 37 | 24 | **+164.38** | 2.74 | -3.36 | 200 |
-| cert | bear | 1 | 1 | **+1.83** | 1.83 | +1.83 | 4 |
-| cert | sideways | 2 | 0 | **-2.10** | -1.05 | -2.10 | 3 |
-| cert | ALL | 40 | 25 | +163.55 | 2.53 | -3.36 | 207 |
+| long+short D1 off | bull | 37 | 18 | **+5.54** | — | **-12.02** | 249 |
+| long+short D1 off | bear | 1 | 1 | **+5.99** | — | +5.99 | 4 |
+| long+short D1 off | sideways | 2 | 2 | **+17.67** | — | +2.28 | 9 |
+| long+short D1 off | ALL | 48 | 25 | +39.37 | — | -12.02 | 311 |
+| long-only D1 on | bull | 37 | 21 | **+53.60** | — | -2.85 | 96 |
+| long-only D1 on | bear | 1 | 1 | **+3.30** | — | +3.30 | 2 |
+| long-only D1 on | sideways | 2 | 0 | **-1.42** | — | -1.42 | 2 |
+| long-only D1 on | ALL | 48 | 25 | +69.22 | — | -2.85 | 116 |
 
-Head-to-head, compounded: **bear +7.69pp to deployed, sideways +19.28pp to
-deployed, bull -137.63pp to deployed.**
+Head-to-head, compounded: **bear +2.69pp to long+short, sideways +19.09pp to
+long+short, bull -48.06pp to long+short.** The direction of every comparison is
+the same as first published; only the magnitudes shrank.
 
 ## 1. The bear/chop claim is real — and it is happening now
 
@@ -44,20 +64,22 @@ the current market.
 
 | 2026-03 → 2026-06 | compounded | +months | trades |
 |---|---|---|---|
-| **deployed** | **+17.76%** | 3/4 | 57 |
-| cert | +1.24% | 1/4 | 13 |
+| **long+short D1 off** | **+8.75%** | 2/4 | 25 |
+| long-only D1 on | -4.74% | 0/4 | 3 |
 | **buy & hold gold** | **-22.88%** | — | — |
 
-| month | phase | deployed | cert |
+| month | phase | long+short D1 off | long-only D1 on |
 |---|---|---|---|
-| 2026-03 | bull | +8.02% (n=15) | +4.58% (n=7) |
-| 2026-04 | bull | +1.58% (n=14) | -0.35% (n=4) |
-| 2026-05 | bull | -3.04% (n=16) | -2.85% (n=2) |
-| 2026-06 | sideways | **+10.69%** (n=12) | 0.00% (n=0) |
+| 2026-03 | bull | +0.12% | -1.95% |
+| 2026-04 | bull | -3.02% | -2.85% |
+| 2026-05 | bull | -2.66% | 0.00% |
+| 2026-06 | sideways | **+15.05%** | 0.00% |
 
-In 2026-06 the cert config took **zero trades** — the D1 filter kept it out. The
-deployed config made +10.69%. In the four-month decline it beat buy-and-hold by
-about **40 percentage points**. That is genuine crisis alpha, not noise.
+In 2026-05 and 2026-06 the long-only config took **no trades at all** — the D1
+filter kept it out — while long+short made +15.05% in June. Across the decline it
+beat buy-and-hold by about **31 percentage points**. That is genuine crisis
+alpha, not noise. (First published as +17.76% vs +1.24% and "40 percentage
+points"; the direction held, the magnitude did not.)
 
 **So the answer to "shouldn't this be certified?" is: yes, but for this.** The
 evidence supports certifying it as a **falling/choppy-market specialist**. It
@@ -73,24 +95,26 @@ PF 1.17 / MDD 17.66% over 4 years. The defect is the document, not the strategy.
 **(b) Over the full sample it loses to holding gold.** This is the strongest
 argument against a general-purpose certificate:
 
-| 2023-03 → 2026-06 | return | max DD |
-|---|---|---|
-| deployed | +62.66% | — |
-| cert | +163.55% | — |
-| **buy & hold gold** | **+121.86%** | -25.11% |
+| monthly-compounded, 48 months | return |
+|---|---|
+| long+short D1 off | +39.37% |
+| long-only D1 on | +69.22% |
+| *buy & hold gold, 2023-03 → 2026-06* | *+121.86% (max DD -25.11%)* |
 
-The deployed config captured roughly **half** of what doing nothing captured. The
-cert config beat buy-and-hold, but note most of that is beta: gold itself rose
-+190.94% over the bull stretch, so long-only trend-following in a historic gold
-bull is largely tracking the asset.
+Both configs captured well under what doing nothing captured. The corrected
+figures make this **worse**, not better: `long-only D1 on` was reported at
++163.55%, comfortably ahead of buy-and-hold, and is actually +69.22% — barely
+half of it. The claim that the cert config beat buy-and-hold does not survive
+the correction on this measure. (The continuous 4-year run tells the same story:
++72.86% against gold's +136.68%.)
 
-**(c) Its damage is concentrated in bull, which dominates gold's history.** All
-four of the deployed config's worst months are bull months: -12.01% (2024-07),
--11.53% (2024-06), -7.02% (2023-04), -6.44% (2023-07). Bull was 37 of 40 months
-(90%) here. A config whose failure mode
-is "sustained uptrend" is structurally expensive on an asset that trends up.
+**(c) Its damage is concentrated in bull, which dominates gold's history.** Its
+worst month is -12.02%, in bull, and its bull-phase total is +5.54% against the
+long-only config's +53.60%. Bull is 37 of the 40 labelled months here. A config
+whose failure mode is "sustained uptrend" is structurally expensive on an asset
+that trends up.
 
-Turnover compounds this: 533 trades vs 207 for the same period, so ~2.6x the
+Turnover compounds this: 311 trades vs 116 for the same period, so ~2.7x the
 fee, slippage, and funding drag.
 
 ## 3. Why a bear certificate cannot be issued on statistics alone
@@ -108,9 +132,9 @@ XAU-USDT-SWAP starts 2025-04, XAUT-USDT starts 2022-07.
 
 | regime | winner | margin |
 |---|---|---|
-| bull | cert (long-only + D1) | +137.63pp |
-| bear | deployed (long+short) | +7.69pp |
-| sideways | deployed (long+short) | +19.28pp |
+| bull | long-only + D1 | +48.06pp |
+| bear | long+short | +2.69pp |
+| sideways | long+short | +19.09pp |
 
 This is not "one config is better." It is two specialists with opposite
 strengths — which is precisely the case the **regime router** in this codebase
@@ -127,9 +151,9 @@ router's live path is gated behind `regime_router_live_confirmed` per pair.
 - **The monthly-reset method is for regime attribution, not for headline
   returns.** Each month restarts at balance 1000 and closes flat, so positions do
   not carry across month boundaries. The continuous 4-year run of the same
-  deployed config returns **+31.02%** (`venue_data_revalidation_2026-07-26.md`),
-  not the +62.66% that monthly compounding produces here. The spans also differ
-  (40 months vs 4.02 years). **Use +31.02% / PF 1.17 as the headline; use this
+  `long+short D1 off` config returns **+31.02%**
+  (`venue_data_revalidation_2026-07-26.md`), not the +39.37% that monthly
+  compounding produces here. **Use the continuous figures as headlines; use this
   document only for the by-regime comparison.**
 - **n=1 bear month, n=2 sideways months.** Stated again because it is the single
   biggest constraint on every conclusion above.

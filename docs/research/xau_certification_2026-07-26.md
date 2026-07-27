@@ -1,5 +1,14 @@
 # XAU certification run — shorts fail the pre-registered gate
 
+> **CORRECTION 2026-07-27.** Stage 2 (walk-forward) and Stage 3 (bootstrap) were
+> regenerated: the original harness traded its 300-bar warmup lead-in, so monthly
+> windows overlapped and every per-month figure was inflated. **Stage 1 — the
+> acceptance gate, and the verdict of this document — is unaffected**, because it
+> uses continuous full-frame replays with no windowing. The gate edges, the PF /
+> MDD / Sharpe table, and the conclusion that no long+short config is certifiable
+> all stand exactly as published. Regenerated via
+> `scripts/xau_windowed_regen.py` through `xauby.backtest.walkforward`.
+
 **Date:** 2026-07-26. **Harness:** `scripts/certify_xau_candidate.py`.
 **Data:** OKX XAUT-USDT 4h + 1d, 8809 bars, 2022-07-19 → 2026-07-26 (4.02y).
 **Cross-check:** `scripts/evaluate_okx_xau_migration.py` on native XAU-USDT-SWAP.
@@ -55,36 +64,46 @@ in `xau_regime_attribution_2026-07-26.md`.
 `long-only D1 on` wins every risk-adjusted axis. **The deployed config is last on
 every axis.**
 
-## Stage 2 — walk-forward, frozen config, 40 months
+## Stage 2 — walk-forward, frozen config, 48 months
 
 `long-only D1 on`, no per-window re-optimization, 300-bar warmup lead-in per month:
 
 | phase | months | +months | compounded % | worst month % | trades |
 |---|---|---|---|---|---|
-| bull | 37 | 24 | +164.38 | -3.36 | 200 |
-| bear | 1 | 1 | +1.83 | +1.83 | 4 |
-| sideways | 2 | 0 | -2.10 | -2.10 | 3 |
-| **ALL** | **40** | **25** | **+163.55** | **-3.36** | 207 |
+| bull | 37 | 21 | +53.60 | -2.85 | 96 |
+| bear | 1 | 1 | +3.30 | +3.30 | 2 |
+| sideways | 2 | 0 | -1.42 | -1.42 | 2 |
+| **ALL** | **48** | **25** | **+69.22** | **-2.85** | 116 |
 
-25 of 40 months positive (62.5%); worst month -3.36%.
+25 of 48 months positive (52%); worst month -2.85%.
 
-For reference, `long-only D1 off` scores 27/40 and +167.25% compounded with a
-worse worst-month (-6.50%) and 282 trades — close on return, worse on tails and
-cost. The D1 filter is buying tail protection, not return.
+For reference, `long-only D1 off` scores 30/48 and +67.71% compounded with a
+worse worst-month (-6.33%) and 163 trades — near-identical on return, worse on
+tails and cost. The D1 filter is buying tail protection, not return.
+
+*(Published as +163.55% over 40 months. That figure was inflated by the traded
+warmup and by dropping the 8 months whose phase could not be labelled; it is
+recorded here so it cannot be reintroduced.)*
 
 ## Stage 3 — bootstrap, 10,000 resamples of monthly returns
 
 | config | median | 90% CI | P(profitable) |
 |---|---|---|---|
-| long-only D1 on | +161.03% | [+77.96%, +295.69%] | 100.00% |
-| long-only D1 off | +165.44% | [+67.99%, +332.01%] | 99.98% |
+| long-only D1 on | +68.65% | [+29.42%, +125.10%] | 99.96% |
+| long-only D1 off | +68.27% | [+20.84%, +134.99%] | 99.63% |
+| *long+short D1 off* | *+39.58%* | *[-14.82%, +127.76%]* | *86.79%* |
+| *L:D1off S:D1on (now live)* | *+67.33%* | *[+4.75%, +164.11%]* | *96.46%* |
 
-**Read this with the caveat, not the headline.** P(profitable) ≈ 100% is *not*
-evidence of safety. The bootstrap resamples months i.i.d. from a window that was
-**37/40 bull months** while gold rose 137%, so every resample is another
+**Read this with the caveat, not the headline.** A P(profitable) near 100% is
+*not* evidence of safety. Note the corrected spread is far more informative than
+the original: the config now running live has a 90% lower bound of **+4.75%** —
+close to zero — where the long-only configs sit near +20-29%.
+
+The bootstrap resamples months i.i.d. from a window in which **37 of the 40
+labelled months are bull** while gold rose 137%, so every resample is another
 bull-heavy sequence. It measures sampling variability *within this regime mix*;
 it says nothing about a sustained bear market, and it discards autocorrelation
-and drawdown path. A 100% figure here mostly restates that gold went up.
+and drawdown path. A near-100% figure here mostly restates that gold went up.
 
 ## What this means for the deployed config
 
@@ -96,9 +115,11 @@ keeping it.**
 ## What is being given up by dropping shorts
 
 Stated plainly, because it is real: in the current gold decline (2026-03 → 06,
-peak 2026-02) `long-only D1 on` returned **+1.24%** while `long+short D1 off`
-returned **+17.76%** and `long+short D1 on` **+13.73%** (buy-and-hold -23.21%).
-Switching to long-only forfeits that.
+peak 2026-02) `long-only D1 on` returned **-4.74%** while `long+short D1 off`
+returned **+8.75%** and the now-live `L:D1off S:D1on` **+11.22%** (buy-and-hold
+-23.21%). Switching to long-only forfeits that. *(First published as +1.24% /
++17.76% / +13.73% — inflated by the traded warmup; the ordering is unchanged and
+the long-only config is now negative rather than merely flat.)*
 
 The pre-registered gate still wins, and the reason matters more than the result:
 using a favorable 4-month window to overturn a criterion fixed in advance over
@@ -127,9 +148,10 @@ criterion, then re-run this harness unchanged.
   anything optimistic.
 - **One gold cycle, one clean bear month.** The single largest limitation on
   every number above.
-- **Monthly-reset inflation.** WFA compounding (+163.55%) exceeds the continuous
-  run (+72.86%) because each month restarts flat. Use the continuous table for
-  headline claims; WFA for stability and phase attribution.
+- **Monthly-reset difference.** WFA compounding (+69.22%) and the continuous run
+  (+72.86%) are close here but are not the same measure — each WFA month restarts
+  flat. Use the continuous table for headline claims; WFA for stability and phase
+  attribution.
 - **Bootstrap is i.i.d. and regime-bound** — see Stage 3.
 - Buy-and-hold is always invested, measured on 1d closes: a benchmark, not a
   matched-exposure comparison. With `max_leverage: 1` there is no headroom to
