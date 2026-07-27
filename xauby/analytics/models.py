@@ -1,5 +1,7 @@
-from dataclasses import dataclass
-from typing import Dict, Any
+from dataclasses import dataclass, field
+from typing import Dict, Any, Optional
+
+from xauby.analytics.risk import MetricBasis
 
 @dataclass
 class TradingPerformanceMetrics:
@@ -18,6 +20,10 @@ class TradingPerformanceMetrics:
     sortino_ratio: float
     consecutive_wins: int
     consecutive_losses: int
+    #: What sharpe_ratio / sortino_ratio / max_drawdown_pct were computed from.
+    #: Present so a live number is never silently compared with a backtest one
+    #: measured on a different sampling unit — see xauby/analytics/risk.py.
+    basis: Optional[MetricBasis] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -36,4 +42,5 @@ class TradingPerformanceMetrics:
             "sortino_ratio": self.sortino_ratio,
             "consecutive_wins": self.consecutive_wins,
             "consecutive_losses": self.consecutive_losses,
+            "basis": self.basis.to_dict() if self.basis else None,
         }

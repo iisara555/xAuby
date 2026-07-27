@@ -566,12 +566,36 @@ venue ที่ติดต่อไม่ได้ต้องพังแบ�
 ที่ 300 bars การแบ่ง 70/30 แทบไม่ผ่านเกณฑ์ขั้นต่ำของตัวเอง — เลือกเอาว่าจะเพิ่ม
 budget แล้วรันนอก VPS เทรด (ตามข้อจำกัดใน `AGENTS.md`) หรือเลิกเรียกมันว่า optimization
 
-**P1.3 — เพิ่มการทดสอบนัยสำคัญทางสถิติ**
+**P1.3 — เพิ่มการทดสอบนัยสำคัญทางสถิติ** ✅ **ทำแล้ว 2026-07-27**
 ยังไม่มี bootstrap, Monte Carlo, trade-shuffle, deflated Sharpe หรือการแก้ปัญหา
 multiple testing เลย ทั้งที่มี 17 กลยุทธ์ × grid search
 `docs/agent-strategy-checklist-indicator.md:718` ระบุข้อนี้เป็นสิ่งที่ต้องมีอยู่แล้ว
 และยังไม่ติ๊ก — ด้วยจำนวน candidate ขนาดนี้ นี่คือเส้นแบ่งระหว่าง certificate จริง
 กับสิ่งประดิษฐ์จากการขุดข้อมูล
+
+- `xauby/backtest/significance.py` + 34 เทสต์ — bootstrap (มี block option),
+  trade-shuffle, PSR/deflated Sharpe (Bailey & López de Prado) และ
+  Bonferroni / Benjamini-Hochberg เขียนด้วย stdlib ล้วน (ไม่มี scipy) จึง import
+  ได้ทุกที่ที่ engine ไปถึง
+- **ปฏิเสธคำถามที่ตอบไม่ได้ 2 แบบ** เพราะความล้มเหลวของงานสถิติคือ "ตัวเลขที่ดู
+  สมเหตุสมผล": `shuffle_pvalue` จะ raise ถ้า statistic ขยับไม่ได้เมื่อสลับลำดับ
+  (compounded return กับ total PnL ไม่ขยับ เพราะการคูณ/บวกสลับที่ได้) — เดิมมัน
+  จะคืน p ≈ 1.0 แล้วอ่านว่า "ไม่มีนัยสำคัญ" ทั้งที่ไม่ได้ทดสอบอะไรเลย ·
+  `deflated_sharpe_ratio` บังคับให้ส่ง n_trials กับ sharpe_variance เอง
+- **certificate ทุกใบมีบล็อก `significance` แล้ว** และผลที่ได้เปลี่ยนวิธีอ่าน
+  ตัวเลขหัวข่าวจริง ๆ: BTC bootstrap 90% CI **[−2.17%, +49.02%]** P(profit)
+  92.6% · shuffle drawdown **p = 0.91** แปลว่าเส้นทุนจริงแย่กว่าการสลับลำดับ
+  เทรดตัวเองถึง 91% — ไม่ใช่หลักฐานว่าคุมความเสี่ยงได้ · XAU CI
+  **[+1.41%, +141.97%]** shuffle p = 0.38
+- **บั๊กที่จับได้ระหว่างต่อของจริง** (ทั้งคู่คือ "เลขสวยแต่ผิด" ที่เทสต์ของผมเอง
+  เขียนไว้กันแต่ผมก็เดินเข้าไปตอน integration): ใช้ `pnl_pct` ซึ่งเป็นผลตอบแทน
+  **ต่อ notional ของเทรด** ไม่ใช่ต่อพอร์ต ทำให้ MDD จริง 9.8% กลายเป็น 35.4%
+  และ CI กว้าง ±316% · และ default `sharpe_variance=0.25` คนละหน่วยกับ Sharpe
+  ราย trade ทำให้ deflated Sharpe ออกมา 0.0 พอดี ดูเหมือนผลร้ายแรงทั้งที่เป็น
+  หน่วยไม่ตรง — ตอนนี้ถ้าไม่ส่งค่ามาจะ **ไม่คำนวณ** แล้วบันทึกเหตุผลแทน
+- **ยังเหลือ:** `scripts/select_pair_strategy.py` เลือกผู้ชนะจากหลาย candidate
+  โดยยังไม่แก้ multiple testing (primitive พร้อมแล้ว ยังไม่ได้ต่อ) ·
+  `sharpe_variance` ของ sweep จริงยังไม่ได้วัด certificate จึงยังไม่มี DSR
 
 **P1.4 — ให้ certification pipeline generate แคตตาล็อก** ✅ **ทำแล้ว 2026-07-27**
 คือข้อเสนอแนะข้อ 4 ที่ยังค้างจาก `docs/audit_system_2026-07-21.md` ให้สคริปต์รัน
@@ -612,13 +636,37 @@ production เดาเอาจาก tag ที่เป็น free text แ�
   version ยังไม่มีความหมาย · preset ที่ไม่มี data path (Binance Global / TH)
   ยังออก certificate ไม่ได้ ต้องต่อ data source ก่อน
 
-**P1.5 — รวม metric สองชุดให้ตรงกัน**
+**P1.5 — รวม metric สองชุดให้ตรงกัน** ✅ **ทำแล้ว 2026-07-27**
 `analytics/calculator.py` (live/UI) คำนวณ Sharpe ราย trade แบบไม่ annualize
 เทียบกับ `initial_balance=1000.0` ที่ hardcode ไว้ และวัด drawdown แบบ
 close-to-close ส่วน `backtest/metrics.py` annualize และมี Calmar/CAGR ด้วย
 แปลว่า Sharpe บนแดชบอร์ด **เทียบกับ** Sharpe ใน backtest ไม่ได้ และไม่มีเทสต์ไหน
 ยืนยันว่าสองอันนี้ตรงกัน ยิ่งกับคู่ที่รัน `disable_stop_loss: true` การวัด drawdown
 แบบ close-to-close ยังซ่อน intra-trade excursion ซึ่งเป็นสิ่งที่ต้องเห็นที่สุดพอดี
+
+- `xauby/analytics/risk.py` เป็นนิยามเดียวของ Sharpe / Sortino / drawdown
+  ทั้ง `analytics/calculator.py` (live/UI) และ `backtest/metrics.py` เรียกตัวนี้
+  ตอนนี้ + 18 เทสต์ใน `tests/test_metric_parity.py` ที่ป้อนประวัติเดียวกันเข้า
+  ทั้งสองทางแล้วยืนยันว่าได้เลขเท่ากันเป๊ะ — ช่องที่ roadmap บอกว่า "ไม่มีเทสต์ไหน
+  ยืนยัน"
+- **มันต่างกัน 4 แกน ไม่ใช่แกนเดียว**: หน่วยตัวอย่าง (ราย trade vs ราย bar) ·
+  annualize หรือไม่ · ฐานผลตอบแทน (`net_pnl_pct` = ผลตอบแทนต่อ **notional ของ
+  เทรด** ไม่ใช่ต่อพอร์ต) · นิยาม downside deviation ฝั่ง live เดิม clip ค่าบวก
+  เป็น 0 แล้วหารด้วยจำนวน **ทั้งหมด** ดังนั้น **ยิ่งมีเทรดกำไร Sortino ยิ่งสูงขึ้น
+  โดยที่ความเสี่ยงขาลงไม่เปลี่ยน**
+- ฝั่ง backtest ก็มีบั๊กของตัวเอง: Sortino เดิมใช้ `pstdev` ของผลตอบแทนติดลบ ซึ่ง
+  คือการกระจายรอบ**ค่าเฉลี่ยของการขาดทุน** ไม่ใช่ deviation ต่ำกว่าเป้า —
+  เส้นทุนที่ขาดทุนเท่ากันทุกแท่งจึงมี downside spread = 0 และรายงานว่า
+  "ไม่มีความเสี่ยงขาลง" (มีเทสต์ครอบแล้ว)
+- **สิ่งที่ซ่อมจากข้อมูลไม่ได้ ก็ติดป้ายแทน** — drawdown ฝั่ง live มาจากราคาปิด
+  เทรดเท่านั้น ส่วนที่ลอยติดลบระหว่างถือไม่มีในข้อมูล ทุกผลลัพธ์จึงพก
+  `MetricBasis` บอกว่าวัดจากอะไร (`trade-close` vs `mark-to-market`,
+  annualize หรือยัง) และมี `comparable_to()` ให้เช็คก่อนเอาไปเทียบกัน
+- **ยังเหลือ:** call site ใน TUI/track record ยังเรียก `calculate_metrics(trades)`
+  โดยไม่ส่ง `initial_balance` จริงและไม่ส่ง `years` → `total_return_pct` ยังอิง
+  1000.0 ที่ hardcode ไว้ และ ratio ยังไม่ annualize (`basis.annualised: false`
+  บอกไว้แล้ว) · การเก็บ MAE/MFE ต่อเทรดเพื่อวัด intra-trade excursion จริง ๆ
+  ยังไม่มี
 
 **P1.6 — ปลุก self-audit กลับมา**
 แก้ `audit_track_record` ให้รองรับหลายคู่ (`active_position` แยกตาม symbol,

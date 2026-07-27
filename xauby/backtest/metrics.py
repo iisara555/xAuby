@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import math
-import statistics
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+from xauby.analytics import risk
 
 
 @dataclass
@@ -130,18 +130,17 @@ def compute_risk_metrics(
         if prev > 0:
             rets.append((cur - prev) / prev)
 
-    ann = math.sqrt(periods_per_year) if periods_per_year > 0 else 0.0
-    if len(rets) > 1 and ann > 0:
-        mean = statistics.fmean(rets)
-        sd = statistics.pstdev(rets)
-        if sd > 0:
-            out["sharpe"] = round(mean / sd * ann, 3)
-        downside = [r for r in rets if r < 0]
-        dsd = statistics.pstdev(downside) if len(downside) > 1 else (
-            abs(downside[0]) if downside else 0.0
-        )
-        if dsd > 0:
-            out["sortino"] = round(mean / dsd * ann, 3)
+    # Delegated to xauby.analytics.risk so the dashboard and the backtest are
+    # the same estimator (roadmap P1.5). The previous local Sortino divided by
+    # the standard deviation *about the mean of the negative returns*, which is
+    # a spread around a loss rather than a deviation below target — a series of
+    # uniformly bad returns scored an infinite Sortino because its negatives had
+    # no spread at all.
+    if periods_per_year > 0 and len(rets) > 1:
+        out["sharpe"] = round(
+            risk.sharpe(rets, periods_per_year=periods_per_year), 3)
+        out["sortino"] = round(
+            risk.sortino(rets, periods_per_year=periods_per_year), 3)
 
     if periods_per_year > 0 and len(curve) > 1 and initial_balance > 0 and final_balance > 0:
         years = len(curve) / periods_per_year

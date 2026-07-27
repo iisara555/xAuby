@@ -86,9 +86,12 @@ class SaaSControlPlaneTests(unittest.TestCase):
         xau = presets["okx-xau-actionzone-v1"]["backtest"]
         # Both fields are now emitted by scripts/certify_preset.py from an
         # actual replay of this preset's own execution_profile, so pinning the
-        # exact strings would only pin the day it last ran. What must hold is
-        # that they describe a real four-year measurement of THIS config.
-        self.assertEqual(xau["score_label"], "PF 1.37")
+        # exact strings only pins the day it last ran — a single new candle
+        # moved PF from 1.37 to 1.36. What must hold is that they describe a
+        # real four-year measurement of THIS config, in the right neighbourhood.
+        self.assertRegex(xau["score_label"], r"^PF \d+\.\d+$")
+        self.assertAlmostEqual(float(xau["score_label"].removeprefix("PF ")),
+                               1.37, delta=0.15)
         self.assertTrue(xau["duration"].startswith("4.0 years"), xau["duration"])
         # Two headlines have been wrong here; neither may return.
         # PF 2.00 came from the 2026-07-13 report, which measured long-only +
@@ -152,7 +155,10 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(okx_btc["allowed_sides"], ["long", "short"])
         # Was the hand-typed "+9.8% OOS" from a Binance-spot proxy run; now
         # measured on the native swap this preset actually trades.
-        self.assertEqual(okx_btc["backtest"]["score_label"], "PF 1.52")
+        self.assertRegex(okx_btc["backtest"]["score_label"], r"^PF \d+\.\d+$")
+        self.assertAlmostEqual(
+            float(okx_btc["backtest"]["score_label"].removeprefix("PF ")),
+            1.52, delta=0.15)
         self.assertIn("BTC-USDT-SWAP", okx_btc["backtest"]["source"])
         self.assertEqual(okx_btc["allocation_pct"], 30.0)
         self.assertEqual(self.client.get("/api/v1/catalog").json()["risk"]["max_daily_loss_pct"], {

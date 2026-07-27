@@ -1,11 +1,32 @@
-import math
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from xauby.analytics.models import TradingPerformanceMetrics
+from xauby.analytics.risk import MetricBasis, risk_from_trade_pnls
 
-def calculate_metrics(trades: List[Dict[str, Any]], initial_balance: float = 1000.0) -> TradingPerformanceMetrics:
+def calculate_metrics(
+    trades: List[Dict[str, Any]],
+    initial_balance: float = 1000.0,
+    *,
+    years: Optional[float] = None,
+) -> TradingPerformanceMetrics:
     """Calculate 15 trading performance metrics from a list of closed trades.
-    
+
     Trades must be sorted chronologically by closed_at (oldest first).
+
+    Sharpe, Sortino and drawdown come from :mod:`xauby.analytics.risk`, the same
+    module the backtest uses, and the result carries a ``basis`` describing what
+    was measured (roadmap P1.5). They were three separate implementations here
+    before, none of which matched the backtest's:
+
+    * returns were taken from ``net_pnl_pct`` — the return on the *trade*, not
+      on the account — so the ratio was scaled by position sizing;
+    * downside deviation clipped positive returns to zero and divided by the
+      count of all returns, so profitable trades inflated Sortino;
+    * nothing was annualised, while the backtest annualises, so the two Sharpes
+      differed by a factor of sqrt(periods per year) before any of the above.
+
+    ``years`` is the span the trades cover. Supply it to annualise; without it
+    the ratios stay per-trade and ``basis.annualised`` says so, rather than
+    being annualised by a guessed periodicity.
     """
     # Initialize default metrics if there are no trades
     if not trades:
@@ -24,7 +45,11 @@ def calculate_metrics(trades: List[Dict[str, Any]], initial_balance: float = 100
             sharpe_ratio=0.0,
             sortino_ratio=0.0,
             consecutive_wins=0,
-            consecutive_losses=0
+            consecutive_losses=0,
+            basis=MetricBasis(
+                sampling="per-trade", annualised=False,
+                return_basis="equity-relative", drawdown_source="trade-close",
+            ),
         )
 
     # Sort trades chronologically to ensure correct drawdown and streak calculations
@@ -80,35 +105,14 @@ def calculate_metrics(trades: List[Dict[str, Any]], initial_balance: float = 100
     avg_loss = gross_loss / losses if losses > 0 else 0.0
     risk_reward_ratio = avg_win / avg_loss if avg_loss > 0 else 0.0
 
-    # Drawdown calculations
-    equity = initial_balance
-    equity_curve = [equity]
-    for pnl in pnl_list:
-        equity += pnl
-        equity_curve.append(equity)
-
-    peak = initial_balance
-    max_dd_pct = 0.0
-    for eq in equity_curve:
-        if eq > peak:
-            peak = eq
-        dd = ((peak - eq) / peak) * 100.0 if peak > 0 else 0.0
-        if dd > max_dd_pct:
-            max_dd_pct = dd
-
-    # Sharpe and Sortino ratios (using returns pct list)
-    mean_return = sum(return_pct_list) / len(return_pct_list) if return_pct_list else 0.0
-    
-    # Standard deviation of returns
-    variance = sum((r - mean_return) ** 2 for r in return_pct_list) / len(return_pct_list) if return_pct_list else 0.0
-    std_dev = math.sqrt(variance) if variance > 0 else 0.0
-    sharpe_ratio = mean_return / std_dev if std_dev > 0 else 0.0
-
-    # Downside deviation (for Sortino, using 0 as target return)
-    downside_returns = [min(0.0, r) for r in return_pct_list]
-    downside_variance = sum(r ** 2 for r in downside_returns) / len(downside_returns) if downside_returns else 0.0
-    downside_std_dev = math.sqrt(downside_variance) if downside_variance > 0 else 0.0
-    sortino_ratio = mean_return / downside_std_dev if downside_std_dev > 0 else 0.0
+    # Risk metrics through the shared module, so "Sharpe" on the dashboard and
+    # "Sharpe" in a backtest are the same estimator on the same return basis.
+    # Drawdown here is still trade-close only — the excursion between entry and
+    # exit is not in this data — which `basis` states rather than glossing over.
+    risk = risk_from_trade_pnls(pnl_list, initial_balance, years=years)
+    max_dd_pct = risk.max_drawdown_pct
+    sharpe_ratio = risk.sharpe
+    sortino_ratio = risk.sortino
 
     # Consecutive wins & losses
     consecutive_wins = 0
@@ -150,5 +154,6 @@ def calculate_metrics(trades: List[Dict[str, Any]], initial_balance: float = 100
         sharpe_ratio=sharpe_ratio,
         sortino_ratio=sortino_ratio,
         consecutive_wins=consecutive_wins,
-        consecutive_losses=consecutive_losses
+        consecutive_losses=consecutive_losses,
+        basis=risk.basis,
     )

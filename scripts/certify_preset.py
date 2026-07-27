@@ -39,11 +39,19 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
 from xauby.backtest.service import _prepare_backtest_config, resolve_strategy_name
+from xauby.backtest.significance import (
+    OrderInvariantStatistic,
+    bootstrap_returns,
+    deflated_sharpe_ratio,
+    longest_losing_streak,
+    max_drawdown,
+    shuffle_pvalue,
+)
 from xauby.backtest.walkforward import resolve_variant
 from xauby.observability.replay_validation import load_bot_config
 from xauby.saas.certification import (
@@ -103,6 +111,87 @@ def _measure(spec, engine_config, df4, df1, *, overrides=None, label=""):
     return stats
 
 
+def _equity_relative_returns(stats: Dict[str, Any]) -> List[float]:
+    """Each trade's PnL as a percent of account equity *before* that trade.
+
+    Not ``pnl_pct``. That field is the return on the trade — on the position's
+    own notional — and compounding a list of them treats every trade as if it
+    had been the whole account. On this BTC preset that turned a real 9.8%
+    max drawdown into a reported 35.4% and a bootstrap interval of ±316%: all
+    the right arithmetic on the wrong series.
+    """
+    initial = float(stats.get("initial_balance") or 0.0)
+    if initial <= 0:
+        return []
+    equity = initial
+    out: List[float] = []
+    for trade in stats.get("trades") or []:
+        pnl = float(trade.get("pnl") or 0.0)
+        if equity <= 0:
+            break
+        out.append(pnl / equity * 100.0)
+        equity += pnl
+    return out
+
+
+def _significance(
+    stats: Dict[str, Any],
+    *,
+    n_trials: int,
+    sharpe_variance: Optional[float],
+) -> Dict[str, Any]:
+    """Bootstrap, shuffle, and deflated Sharpe over the run's own returns.
+
+    Roadmap P1.3. A profit factor reported without these is a point estimate
+    from one path of one search; the certificate should carry the caveats that
+    make it readable.
+
+    Neither ``n_trials`` nor ``sharpe_variance`` can be recovered from a single
+    replay — they describe the *search* that selected this configuration — so
+    both are recorded verbatim and the deflated Sharpe is simply not computed
+    when the variance is unknown. A placeholder there produces a confident,
+    meaningless number: the default 0.25 against a per-trade Sharpe of 0.115
+    yields an expected-max of 1.11 and a deflated Sharpe of exactly 0.0, which
+    looks like a damning result and is really a units mismatch.
+    """
+    returns = _equity_relative_returns(stats)
+    out: Dict[str, Any] = {
+        "observations": len(returns),
+        "basis": "per-trade PnL as a percent of equity before the trade",
+    }
+
+    if len(returns) < 5:
+        out["note"] = "too few trades for any of these tests to mean anything"
+        return out
+
+    out["bootstrap"] = bootstrap_returns(returns).to_dict()
+    for name, statistic in (("max_drawdown", max_drawdown),
+                            ("longest_losing_streak", longest_losing_streak)):
+        try:
+            out[f"shuffle_{name}"] = shuffle_pvalue(returns, statistic).to_dict()
+        except OrderInvariantStatistic as exc:
+            # Recorded rather than swallowed: "this sample could not test it" is
+            # a finding, and dropping it would leave a gap that reads as a pass.
+            out[f"shuffle_{name}"] = {"error": str(exc)}
+
+    if sharpe_variance is None:
+        out["deflated_sharpe"] = {
+            "computed": False,
+            "n_trials": n_trials,
+            "reason": (
+                "--sharpe-variance was not supplied. The deflated Sharpe needs "
+                "the spread of Sharpe ratios across the configurations that "
+                "were searched, in the same per-trade units as this run. "
+                "Guessing it produces a confident number about nothing."
+            ),
+        }
+    else:
+        out["deflated_sharpe"] = deflated_sharpe_ratio(
+            returns, n_trials=n_trials, sharpe_variance=sharpe_variance
+        ).to_dict()
+    return out
+
+
 def _fmt_period(df: pd.DataFrame) -> tuple[str, str]:
     first = pd.to_datetime(int(df["open_time"].iloc[0]), unit="ms")
     last = pd.to_datetime(int(df["open_time"].iloc[-1]), unit="ms")
@@ -117,6 +206,8 @@ def build_record(
     *,
     document: str = "",
     note: str = "",
+    n_trials: int = 1,
+    sharpe_variance: Optional[float] = None,
 ) -> Dict[str, Any]:
     from scripts.validate_on_venue_data import _okx_frame
 
@@ -202,6 +293,8 @@ def build_record(
         "verdict": verdict,
         "note": note,
         "document": document,
+        "significance": _significance(stats, n_trials=n_trials,
+                                      sharpe_variance=sharpe_variance),
         "evidence": {
             "status": "validated",
             "score_label": f"PF {profit_factor:.2f}",
@@ -229,6 +322,16 @@ def main() -> int:
     ap.add_argument("--document", default="",
                     help="path to the human-readable write-up this record points at")
     ap.add_argument("--note", default="", help="override the generated note")
+    ap.add_argument("--trials", type=int, default=1,
+                    help="how many configurations were evaluated before this "
+                         "one was chosen — the whole grid, not the shortlist. "
+                         "Deflates the Sharpe for selection bias; leaving it at "
+                         "1 deflates nothing and the record says so.")
+    ap.add_argument("--sharpe-variance", type=float, default=None,
+                    help="variance of the per-trade Sharpe ratios across those "
+                         "trials, measured from the sweep. Omitted, the "
+                         "deflated Sharpe is recorded as not computed rather "
+                         "than guessed — there is no safe default here.")
     ap.add_argument("--list", action="store_true", help="show presets and their data paths")
     ap.add_argument("--dry-run", action="store_true", help="print the record, do not write it")
     args = ap.parse_args()
@@ -250,7 +353,9 @@ def main() -> int:
 
     engine_config = load_bot_config(args.config)
     record = build_record(spec, engine_config, data_symbol,
-                          document=args.document, note=args.note)
+                          document=args.document, note=args.note,
+                          n_trials=args.trials,
+                          sharpe_variance=args.sharpe_variance)
 
     text = json.dumps(record, indent=2) + "\n"
     if args.dry_run:
