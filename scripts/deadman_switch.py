@@ -28,8 +28,12 @@ Deliberate design choices, each of which is load-bearing:
 * **Debounced with recovery.** A five-minute timer against a day-long outage
   would send ~288 messages. It alerts, then re-alerts only every
   `--realert-sec`, and sends one message when the engine comes back.
-* **Exit code 1 while alerting**, so `systemctl list-units --failed` and any
-  external monitor also see it.
+* **Exit code 1 while alerting**, so any external monitor that inspects the exit
+  status sees the finding even if the Telegram send failed. Note the shipped
+  unit sets `SuccessExitStatus=1` on purpose — a silent engine is a real finding,
+  not a unit fault worth retrying, and the timer is the retry mechanism — so
+  `systemctl list-units --failed` will *not* list it. Read the journal, or the
+  marker file, to see the switch's own view.
 
 Usage:
     scripts/deadman_switch.py --state-file /var/lib/xauby/runtime/owner-itsara/logs/xauby_bot_state.json
