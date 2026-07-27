@@ -320,9 +320,21 @@ the single source of truth for both Claude and Codex; the essentials:
 - **Never force-push `main`** — the VPS deploys with `git merge --ff-only`, so a
   rewritten history makes deployment refuse to proceed.
 - One branch, one agent. Prefix Claude's work `claude/*`.
-- On the VPS, never edit `/opt/xauby/current`; `xauby update` stashes uncommitted
-  changes silently and restarts a live engine. Work in a separate clone.
+- On the VPS, never edit `/opt/xauby/current`; it is the active release symlink.
+  Work in a separate clone and change production only through a controlled,
+  rollback-capable deployment.
 - VPS deploys are manual and position-aware. Vercel deploys from `main` on its own.
+- A live tracked position may stay open during a controlled restart: the restart
+  preflight permits positions represented in DB/state and blocks untracked or
+  ambiguous exchange state. Exposure does not require waiting for flat when the
+  operator explicitly authorizes the deploy, backups exist, preflight reports
+  `SAFE`, and the post-restart exchange-versus-state reconciliation confirms the
+  same symbol, side, quantity, and entry price with no unexpected open orders.
+- On the SaaS/systemd host, activate an atomic release and restart
+  `xauby-control.service` plus the affected `xauby-engine@<tenant>.service`.
+  Do not use the checkout-scoped restart script to launch a parallel engine;
+  keep the previous release/config as rollback targets and roll back if service,
+  health, or reconciliation checks fail.
 
 Then, for this environment specifically:
 

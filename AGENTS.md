@@ -9,21 +9,22 @@ deploys, **and what a live money-trading engine pulls and restarts on**
 
 | Path on the VPS | Who touches it | Purpose |
 |-----------------|----------------|---------|
-| `/opt/xauby/current` | **only `xauby update`** | production checkout systemd runs |
+| `/opt/xauby/current` | **controlled deploys only** | active release symlink systemd runs |
 | `~/xauby-work` | any agent, freely | edit, commit, push, open PRs |
 
-**Never edit files in `/opt/xauby/current`.** `deploy_from_github.sh` stashes
-uncommitted changes *silently* (`git stash push -m "deploy-backup-..."`) and then
-restarts the live engine — so work-in-progress there is lost without an error,
-while a real position is open. Clone a separate working copy instead:
+**Never edit files in `/opt/xauby/current`.** A controlled deploy may replace the
+active release, and `deploy_from_github.sh` may stash uncommitted changes
+silently (`git stash push -m "deploy-backup-..."`). Keep work-in-progress in a
+separate clone instead:
 
 ```bash
 git clone https://github.com/iisara555/xAuby.git ~/xauby-work
 ```
 
-`deploy_from_github.sh` resolves `ROOT` from its own location, so running
-`xauby update` out of a working clone deploys the **wrong** checkout. Run it only
-from `/opt/xauby/current`.
+`deploy_from_github.sh` resolves `ROOT` from its own location, so never run
+`xauby update` from a working clone. On the SaaS/systemd host, activate a staged
+release and restart the systemd units; the checkout-scoped
+`controlled_restart_engine.sh` is for non-systemd installs.
 
 ### Branches
 
@@ -79,8 +80,26 @@ open.
 - **Vercel** (`Website/`) is wired up in the Vercel dashboard, not in this repo —
   there is no `vercel.json` or Vercel workflow here, so check the dashboard for
   the actual branch settings. Auto-deploy from `main` is fine: no money at risk.
-- **VPS** (trading engine) is **manual only**: run `xauby update` from
-  `/opt/xauby/current`, and pick a moment with no open position. Never automate it.
+- **VPS** (trading engine) is **manual only**. Never make restart-on-push or
+  unattended deployment part of CI.
+- A tracked open position is **supported during a controlled restart** and does
+  not require waiting for a flat account. `scripts/controlled_restart_preflight.py`
+  defaults to `allow_tracked_positions=True`; it permits a position represented
+  in the runtime DB/state while refusing untracked orders, balances, ambiguous
+  state, or exchange-verification failures. `--no-open-positions` remains
+  available for an intentionally flat-only restart.
+- Restart with exposure only after explicit operator authorization. Before the
+  restart, back up the tenant config, runtime state, engine SQLite DB, and control
+  DB; record the exchange position's symbol, side, quantity, and entry price; and
+  require the preflight to report `SAFE`.
+- On the SaaS/systemd host, stage the exact commit as an atomic release, keep a
+  rollback target, restart `xauby-control.service` and the affected
+  `xauby-engine@<tenant>.service`, and do not launch a second checkout-scoped
+  engine. After restart, require both services to be active on the intended
+  commit and confirm that DB/state and exchange still agree on symbol, side,
+  quantity, and entry price, with no untracked orders, reconcile halt, degraded
+  state, or startup error. Roll back the release and config backups if any gate
+  fails.
 - `core/` is gitignored runtime state (DB, logs, equity peak, locks). Never commit it.
 
 ## graphify
