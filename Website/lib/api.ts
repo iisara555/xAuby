@@ -96,12 +96,25 @@ export type Preset = {
   allocation_pct?: number;
   max_position_per_trade_pct?: number;
   allowed_sides?: Array<"long" | "short">;
+  /**
+   * APPROVAL, not a research result: whether an operator may activate this
+   * preset live. Gates canGoLive. A preset can be approved for live and still
+   * have failed certification — see certification_status.
+   */
   live_certified?: boolean;
+  /**
+   * VERDICT: did the measurement clear the pre-registered acceptance gate?
+   * Independent of both live_certified (approval) and backtest.status
+   * (evidence quality).
+   */
+  certification_status?: "certified" | "failed" | "not_assessed";
+  certification_note?: string;
   cdc_pure_certified?: boolean;
   stop_loss_required?: boolean;
   execution_profile?: Record<string, unknown>;
   strategy_traits?: string[];
   backtest?: {
+    /** EVIDENCE quality only — not whether it passed. */
     status: "validated" | "insufficient" | "pending";
     score_label: string;
     period: string;
