@@ -1,5 +1,25 @@
 # XAU 2x2 — the regime router is not needed
 
+> **CORRECTION 2026-07-27.** Every **monthly** figure here was regenerated. The
+> original harness sliced a 300-bar warmup lead-in but passed no
+> `min_bars_override`, so the replay skipped only the strategy's default 100
+> bars and traded the other 200 — consecutive months overlapped by roughly a
+> month and every per-month number was inflated, most of them by about 2x. The
+> **continuous 4-year table is untouched**: it never used windowing, and a
+> re-run through the rebuilt harness reproduces it to within the drift from six
+> newer candles.
+>
+> The document's conclusion is unchanged — the candidate still dominates the
+> then-deployed config on the continuous metrics, which is what the
+> recommendation rested on. What changes is the size of the crisis-alpha
+> concession: the candidate gives up **2.25pp**, not ~4pp.
+>
+> Also note **"DEPLOYED" below means `long+short D1 off`, which stopped being
+> the live config on 2026-07-26** (it is now `L:D1off S:D1on`). Regenerated via
+> `scripts/xau_windowed_regen.py` through `xauby.backtest.walkforward`; the
+> harness named below now resolves the deployed label from the config instead of
+> hardcoding it.
+
 **Date:** 2026-07-26. **Harness:** `scripts/xau_d1_short_matrix.py`.
 **Data:** OKX XAUT-USDT 4h + 1d, 8808 bars, 2022-07-19 → 2026-07-26 (4.02y).
 **Asked:** prove option E (regime router for XAU) is actually good, and that the
@@ -45,13 +65,19 @@ that no certificate had ever measured. That is the cell this document tests.
 
 ### The current gold drawdown (2026-03 → 2026-06, peak 2026-02)
 
+Monthly-reset, each month starting flat — regenerated 2026-07-27.
+
 | variant | compounded | +months | trades |
 |---|---|---|---|
-| long-only D1 off | +9.15% | 2/4 | 27 |
-| long-only D1 on (cert) | +1.24% | 1/4 | 13 |
-| long+short D1 off (DEPLOYED) | **+17.76%** | 3/4 | 57 |
-| long+short D1 on (candidate) | **+13.73%** | 3/4 | 35 |
+| long-only D1 off | -0.51% | 2/4 | 10 |
+| long-only D1 on (cert) | -4.74% | 0/4 | 3 |
+| long+short D1 off (DEPLOYED) | **+8.75%** | 2/4 | 25 |
+| long+short D1 on (candidate) | **+6.50%** | 2/4 | 16 |
 | buy & hold gold | **-23.21%** | — | — |
+
+*Superseded, recorded so the inflated set cannot be reintroduced: +9.15 / +1.24 /
++17.76 / +13.73, with 27 / 13 / 57 / 35 trades. Both long-only cells turn out to
+be negative rather than positive across the decline; the ranking is unchanged.*
 
 ## 1. The candidate strictly dominates the deployed config
 
@@ -63,13 +89,15 @@ that no certificate had ever measured. That is the cell this document tests.
 | Sharpe | **1.07** | 0.51 | candidate |
 | Calmar | **1.09** | 0.40 | candidate |
 | trades (cost drag) | **171** | 296 | candidate |
-| worst month % | **-6.18** | -12.01 | candidate |
-| current drawdown | +13.73 | **+17.76** | deployed |
+| worst month % | **-6.08** | -12.02 | candidate |
+| current drawdown | +6.50 | **+8.75** | deployed |
 
 **Seven of eight axes favor the candidate.** The single loss is the current
-drawdown window, where the candidate still returns +13.73% — against the cert
-config's +1.24% and buy-and-hold's -23.21%. It gives up ~4pp of crisis alpha and
-buys back 5.5pp of max drawdown, half the tail risk, and 42% fewer trades.
+drawdown window, where the candidate still returns +6.50% — against the cert
+config's **-4.74%** and buy-and-hold's -23.21%. It gives up **2.25pp** of crisis
+alpha and buys back 5.5pp of max drawdown, half the tail risk, and 42% fewer
+trades. *(The last two rows are the corrected monthly figures; first published
+as -6.18 / -12.01 and +13.73 / +17.76, a ~4pp concession.)*
 
 **There is no defensible reason to keep `use_d1_regime_filter: false` on XAU.**
 
@@ -84,7 +112,8 @@ Reading the D1-off column tells you what actually breaks:
 
 Adding the short side *without* regime confirmation cuts PF from 1.63 to 1.17.
 Shorts were firing into uptrends — which matches the deployed config's worst
-months all being bull months (-12.01%, -11.53%). Turning D1 on restores PF to
+months all being bull months (-12.02%, -4.06%; first published as -12.01% and
+-11.53%, the second inflated by the overlap). Turning D1 on restores PF to
 1.51 while keeping the bear/chop edge, because the filter blocks shorts unless
 the daily zone is genuinely bearish.
 
@@ -152,10 +181,14 @@ This is **not** a certificate. Before live:
 
 ## Limitations
 
-- Monthly-reset figures in the by-phase section inflate totals relative to the
-  continuous run (e.g. candidate +118.60% monthly vs +64.56% continuous). **Use
-  the continuous table for any headline claim**; phase numbers are attribution
-  only.
+- Monthly-reset figures in the by-phase section are not comparable to the
+  continuous run — each month restarts flat (candidate +67.72% monthly vs
+  +64.56% continuous). **Use the continuous table for any headline claim**;
+  phase numbers are attribution only. *(Published as +118.60% monthly, which
+  made the gap look like a property of monthly compounding rather than of the
+  traded warmup. With the overlap removed the two measures land close together
+  here, and the earlier claim that monthly compounding "inflates totals" was
+  measuring the bug.)*
 - XAUT-USDT is a proxy for XAU-USDT-SWAP (correlation 0.99/1.00, measured in
   `venue_data_revalidation_2026-07-26.md`); its spot book is thinner than the
   swap, so fills are if anything optimistic.

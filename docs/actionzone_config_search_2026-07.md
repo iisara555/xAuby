@@ -1,5 +1,32 @@
 # xAuby ActionZone (XAU) — institutional-grade config search, July 2026
 
+> **HARNESS DEFECT, MEASURED — conclusions unchanged (2026-07-27).**
+>
+> `scripts/actionzone_wfa_sweep.py` prepended a 300-bar warmup lead-in to the
+> OOS window and to each of the 5 folds, but passed no `min_bars_override`, so
+> the replay skipped only the strategy's default 100 bars and **traded the other
+> 200** — bars belonging to the previous window. The IS and full-period columns
+> never had a lead-in and are unaffected.
+>
+> The script is fixed (`skip_bars` is now a required argument). The effect was
+> measured rather than assumed, on this document's recommended config over
+> `research_data/backtest_candles_4h_paxgusdt_full.csv`, running the identical
+> frames both ways:
+>
+> | window | as run | corrected |
+> |---|---|---|
+> | OOS | PF 2.26, net +47.78%, 49 trades | PF 2.26, net **+43.29%**, 44 trades |
+> | fold 1 *(no lead-in)* | PF 1.34, net +3.81% | unchanged |
+> | fold 2 | PF 0.91, net -1.28% | PF 0.86, net -2.08% |
+> | fold 3 | PF 1.07, net +1.00% | PF **1.50**, net +5.15% |
+> | fold 4 | PF 3.44, net +49.48% | PF 3.51, net +50.14% |
+> | fold 5 | PF 2.06, net +28.32% | PF 1.93, net +21.95% |
+>
+> Same number of profitable folds, same signs, same OOS profit factor. The
+> distortion is small here because each window is roughly 13x the 200-bar
+> overlap — unlike the monthly windows in `docs/research/`, where the overlap
+> exceeded the window and inflated figures ~2x.
+>
 > **STILL CURRENT — and independently reproduced (verified 2026-07-26).**
 >
 > An earlier revision of this banner claimed this study was superseded by

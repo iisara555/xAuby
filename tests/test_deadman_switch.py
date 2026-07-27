@@ -225,6 +225,40 @@ class TestCredentialSourcing(unittest.TestCase):
         )
         self.assertNotIn("no Telegram credentials", proc.stderr)
 
+    def test_environment_beats_a_fallback_file(self):
+        # The unit delivers credentials via EnvironmentFile=, read by systemd as
+        # PID 1. A readable tenant secrets file must not override them: that is
+        # the engine's own token, and depending on it is the thing this whole
+        # design avoids.
+        fallback = self._write(**{TOKEN_KEY: PLACEHOLDER_VALUE, CHAT_KEY: "-999"})
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--state-file", "/definitely/missing.json",
+             "--marker", os.path.join(tempfile.mkdtemp(), "m.json"),
+             "--env-file", fallback, "--dry-run", "--label", "envwins"],
+            capture_output=True, text=True,
+            env={**os.environ, TOKEN_KEY: PLACEHOLDER_VALUE,
+                 CHAT_KEY: PLACEHOLDER_CHAT},
+        )
+        self.assertNotIn("no Telegram credentials", proc.stderr)
+        self.assertNotIn("-999", proc.stdout + proc.stderr)
+
+    def test_an_unreadable_env_file_does_not_kill_the_watchdog(self):
+        # os.path.isfile only stats, so a root:root 0600 credentials file passes
+        # that check and then raises PermissionError on open. A watchdog that
+        # dies every time the timer fires is indistinguishable from a healthy
+        # system — it must degrade to "cannot notify" instead.
+        from unittest import mock
+
+        sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
+        import deadman_switch
+
+        with mock.patch("builtins.open",
+                        side_effect=PermissionError(13, "Permission denied")):
+            with mock.patch.object(deadman_switch.os.path, "isfile",
+                                   return_value=True):
+                parsed = deadman_switch.parse_env_file("/etc/xauby/deadman.env")
+        self.assertEqual(parsed, {})
+
     def test_missing_credentials_warn_loudly_instead_of_passing_quietly(self):
         # "detects but cannot notify" must not look like "working".
         proc = subprocess.run(
@@ -258,6 +292,14 @@ class TestSystemdUnits(unittest.TestCase):
 
     def test_exit_one_is_not_treated_as_unit_failure_loop(self):
         self.assertIn("SuccessExitStatus=1", self._unit("xauby-deadman@.service"))
+
+    def test_credentials_arrive_before_privileges_drop(self):
+        # EnvironmentFile is read by systemd as PID 1, so /etc/xauby/deadman.env
+        # can stay root:root 0600 and User=xauby-control never needs read access
+        # to a live bot token. The leading `-` keeps a missing file from taking
+        # the watchdog down over a missing notifier.
+        body = self._unit("xauby-deadman@.service")
+        self.assertIn("EnvironmentFile=-/etc/xauby/deadman.env", body)
 
     def test_timer_interval_is_tighter_than_the_threshold(self):
         self.assertIn("OnUnitActiveSec=2min", self._unit("xauby-deadman@.timer"))

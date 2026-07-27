@@ -28,16 +28,28 @@ Deliberate design choices, each of which is load-bearing:
 * **Debounced with recovery.** A five-minute timer against a day-long outage
   would send ~288 messages. It alerts, then re-alerts only every
   `--realert-sec`, and sends one message when the engine comes back.
-* **Exit code 1 while alerting**, so `systemctl list-units --failed` and any
-  external monitor also see it.
+* **Exit code 1 while alerting**, so any external monitor that inspects the exit
+  status sees the finding even if the Telegram send failed. Note the shipped
+  unit sets `SuccessExitStatus=1` on purpose — a silent engine is a real finding,
+  not a unit fault worth retrying, and the timer is the retry mechanism — so
+  `systemctl list-units --failed` will *not* list it. Read the journal, or the
+  marker file, to see the switch's own view.
 
 Usage:
     scripts/deadman_switch.py --state-file /var/lib/xauby/runtime/owner-itsara/logs/xauby_bot_state.json
     scripts/deadman_switch.py --env-file /etc/xauby/tenants/owner-itsara/secrets.env --dry-run
 
-Credentials: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, from the environment or
-`--env-file` (repeatable; the first file that supplies both wins). Without them
-the check still runs and still exits non-zero; it just cannot notify, and says so.
+Credentials: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. The **environment wins
+outright** when it carries both; only otherwise are the `--env-file` paths tried
+in order, the first supplying both winning. Without them the check still runs and
+still exits non-zero; it just cannot notify, and says so.
+
+The unit passes them through `EnvironmentFile=`, which systemd reads as PID 1
+before dropping to `User=xauby-control` — so /etc/xauby/deadman.env can stay
+root:root 0600 and the service user never needs read access to a live bot token.
+`--env-file` remains for manual runs, and an unreadable file there degrades to
+"no credentials found" rather than killing the process (verified on the VPS,
+2026-07-27).
 
 **A watchdog must never source its credentials from an artifact the watched
 process creates.** The engine's own Telegram credentials are materialized to
@@ -66,11 +78,23 @@ TELEGRAM_TIMEOUT_SEC = 15
 
 
 def parse_env_file(path: str) -> Dict[str, str]:
-    """Read KEY=VALUE lines. Never sourced as shell — a token is data."""
+    """Read KEY=VALUE lines. Never sourced as shell — a token is data.
+
+    An unreadable file yields ``{}``, not an exception. `os.path.isfile` only
+    stats, so a credentials file owned by another user passes that check and
+    then raises PermissionError on open — which would kill the watchdog every
+    time the timer fired, and a watchdog that dies is indistinguishable from a
+    healthy system. Degrading to "no credentials here" lets the caller warn.
+    """
     out: Dict[str, str] = {}
     if not path or not os.path.isfile(path):
         return out
-    with open(path, "r", encoding="utf-8") as fh:
+    try:
+        fh = open(path, "r", encoding="utf-8")
+    except OSError as exc:
+        print(f"[WARN] cannot read {path}: {exc}", file=sys.stderr)
+        return out
+    with fh:
         for line in fh:
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -224,14 +248,23 @@ def main() -> int:
         f for f in [os.environ.get("XAUBY_DEADMAN_ENV", "")] if f
     ]
     env = dict(os.environ)
-    creds_from = "environment" if env.get("TELEGRAM_BOT_TOKEN") else ""
-    for candidate in env_files:
-        parsed = parse_env_file(candidate)
-        if parsed.get("TELEGRAM_BOT_TOKEN") and parsed.get("TELEGRAM_CHAT_ID"):
-            env.update(parsed)
-            creds_from = candidate
-            break
-        env.update({k: v for k, v in parsed.items() if k not in ("TELEGRAM_BOT_TOKEN",)})
+    # The environment wins outright when it already carries both keys. The unit
+    # delivers them via EnvironmentFile=, which systemd reads as PID 1 *before*
+    # dropping to User=, so the credentials file never has to be readable by the
+    # service user at all. Letting a fallback file override that would quietly
+    # move the watchdog back onto the engine's own credentials.
+    creds_from = ""
+    if env.get("TELEGRAM_BOT_TOKEN") and env.get("TELEGRAM_CHAT_ID"):
+        creds_from = "environment"
+    else:
+        for candidate in env_files:
+            parsed = parse_env_file(candidate)
+            if parsed.get("TELEGRAM_BOT_TOKEN") and parsed.get("TELEGRAM_CHAT_ID"):
+                env.update(parsed)
+                creds_from = candidate
+                break
+            env.update({k: v for k, v in parsed.items()
+                        if k not in ("TELEGRAM_BOT_TOKEN",)})
     token = env.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = env.get("TELEGRAM_CHAT_ID", "")
     if not (token and chat_id):

@@ -1,26 +1,26 @@
-"""2x2: does D1 confirmation fix the deployed XAU config's bull-market problem?
+"""2x2: does D1 confirmation fix a long+short XAU config's bull-market problem?
 
-Context. The deployed XAU config (long+short, D1 off) beats the July
-certificate's config (long-only, D1 on) in falling and choppy gold but loses
+Context. The config that ran live before 2026-07-26 (long+short, D1 off) beat the
+July certificate's config (long-only, D1 on) in falling and choppy gold but lost
 badly in sustained uptrends (docs/research/xau_regime_attribution_2026-07-26.md).
 Those two configs differ in TWO ways at once, so neither result attributes to a
 single cause.
 
 `use_d1_regime_filter` in xauby_actionzone gates BOTH directions symmetrically
-(strategy.py: longs need D1 in GREEN/YELLOW/ORANGE, shorts need RED/BLUE/LBLUE),
-so long+short WITH the D1 filter is a legal, already-supported config that nobody
-has measured. If it keeps the short side's crisis alpha while restoring the D1
-filter's bull discipline, it is a better answer than routing between two
-strategies — and it needs no regime router at all.
-
-This runs the full 2x2 over identical candles:
+(longs need D1 in GREEN/YELLOW/ORANGE, shorts need RED/BLUE/LBLUE), so long+short
+WITH the D1 filter is a legal, already-supported config that no certificate had
+measured. This runs the full 2x2 over identical candles:
 
                     D1 off              D1 on
     long-only       (factorial cell)    cert config
-    long+short      DEPLOYED            <- the untested candidate
+    long+short      (was deployed)      <- the candidate
 
 Three views per cell: a continuous 4y run (the headline numbers), a
-month-by-month phase split, and the current gold drawdown.
+month-by-month phase split, and the current gold drawdown. All of it goes
+through `scripts/xau_harness.py` — in particular the windowed runs use
+`xauby.backtest.walkforward`, so the warmup lead-in is never traded. The first
+version of this script traded it, which inflated every monthly figure it
+published.
 
 Usage:
     PYTHONPATH=. python3 scripts/xau_d1_short_matrix.py
@@ -35,29 +35,28 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pandas as pd
 
-from xauby.backtest.service import run_replay_from_bundle
+from xauby.backtest.walkforward import aggregate, aggregate_by_phase, month_windows
 from xauby.observability.replay_validation import load_bot_config
-from scripts.validate_on_venue_data import _bundle_for, _okx_frame
-from scripts.xau_phase_breakdown import (
+from scripts.xau_harness import (
+    DRAWDOWN_FROM,
     PROXY,
-    WARMUP_BARS,
-    aggregate,
-    month_windows,
-    phase_label,
+    VARIANTS,
+    buy_and_hold,
+    drawdown_slice,
+    load_frames,
+    prepare,
+    print_variant_banner,
+    run_continuous,
+    run_windowed,
 )
 
-DRAWDOWN_FROM = "2026-03"  # gold peaked 2026-02
-
-VARIANTS: Dict[str, Dict[str, Any]] = {
-    "long-only  D1 off": {"enable_short": False, "use_d1_regime_filter": False},
-    "long-only  D1 on  (cert)": {"enable_short": False, "use_d1_regime_filter": True},
-    "long+short D1 off (DEPLOYED)": {"enable_short": True, "use_d1_regime_filter": False},
-    "long+short D1 on  (candidate)": {"enable_short": True, "use_d1_regime_filter": True},
-}
+# The 2x2, in reading order. Names are the shared catalog's.
+CELLS = ["long-only D1 off", "long-only D1 on",
+         "long+short D1 off", "long+short D1 on"]
 
 CONT_KEYS = [
     ("trades", "total_trades"),
@@ -71,105 +70,6 @@ CONT_KEYS = [
 ]
 
 
-def _with_d1(bundle, df1: pd.DataFrame, override: Dict[str, Any], end_ms: Optional[int] = None):
-    """Attach the 1d regime frame when the variant asks for the D1 filter."""
-    if not override.get("use_d1_regime_filter"):
-        return bundle
-    regime = df1 if end_ms is None else df1[df1["open_time"] <= end_ms]
-    bundle.df_regime = regime.reset_index(drop=True)
-    bundle.regime_tf = "1d"
-    bundle.use_d1 = True
-    return bundle
-
-
-def _stats_or_raise(result, what: str) -> Dict[str, Any]:
-    stats = result.stats or {}
-    if not stats:
-        raise RuntimeError(
-            f"replay failed ({what}): "
-            f"{getattr(result.meta, 'error', '') or 'unknown error'}"
-        )
-    return stats
-
-
-def run_continuous(
-    df4: pd.DataFrame, df1: pd.DataFrame, cfg: Dict[str, Any]
-) -> List[Dict[str, Any]]:
-    """One uninterrupted replay per variant: the headline numbers."""
-    rows = []
-    for name, override in VARIANTS.items():
-        bundle = _bundle_for("XAUUSDT", df4, engine_config=cfg, label=PROXY)
-        _with_d1(bundle, df1, override)
-        stats = _stats_or_raise(
-            run_replay_from_bundle(bundle, strat_cfg_override=override), f"continuous {name}"
-        )
-        row: Dict[str, Any] = {"variant": name}
-        for out_key, stat_key in CONT_KEYS:
-            row[out_key] = stats.get(stat_key)
-        rows.append(row)
-    return rows
-
-
-def run_monthly(
-    df4: pd.DataFrame, df1: pd.DataFrame, cfg: Dict[str, Any]
-) -> tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
-    windows = [w for w in month_windows(df4) if phase_label(df1, w[2]) != "unknown"]
-    buckets: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
-        n: {"bull": [], "bear": [], "sideways": []} for n in VARIANTS
-    }
-    per_month: List[Dict[str, Any]] = []
-
-    for (y, m, start_ms, end_ms) in windows:
-        phase = phase_label(df1, start_ms)
-        if phase not in ("bull", "bear", "sideways"):
-            continue
-        entry: Dict[str, Any] = {"month": f"{y}-{m:02d}", "phase": phase}
-        idx = int((df4["open_time"] >= start_ms).idxmax())
-        lo = max(0, idx - WARMUP_BARS)
-        window = df4.iloc[lo:]
-        window = window[window["open_time"] <= end_ms].reset_index(drop=True)
-        if len(window) < WARMUP_BARS // 2:
-            continue
-        for name, override in VARIANTS.items():
-            bundle = _bundle_for("XAUUSDT", window, engine_config=cfg, label=PROXY)
-            _with_d1(bundle, df1, override, end_ms=end_ms)
-            stats = _stats_or_raise(
-                run_replay_from_bundle(bundle, strat_cfg_override=override),
-                f"{y}-{m:02d} {name}",
-            )
-            rec = {
-                "net_pct": float(stats.get("net_profit_pct", 0.0) or 0.0),
-                "trades": int(stats.get("total_trades", 0) or 0),
-            }
-            buckets[name][phase].append(rec)
-            entry[name] = rec["net_pct"]
-            entry[f"{name} n"] = rec["trades"]
-        per_month.append(entry)
-
-    summary: Dict[str, Dict[str, Any]] = {}
-    for name in VARIANTS:
-        summary[name] = {}
-        allm: List[Dict[str, Any]] = []
-        for phase in ("bull", "bear", "sideways"):
-            summary[name][phase] = aggregate(buckets[name][phase])
-            allm += buckets[name][phase]
-        summary[name]["ALL"] = aggregate(allm)
-    return summary, per_month
-
-
-def buy_and_hold(df1: pd.DataFrame, start: str, end: Optional[str] = None) -> Dict[str, float]:
-    ts = pd.to_datetime(df1["open_time"], unit="ms")
-    sel = df1[ts >= pd.Timestamp(start)]
-    if end:
-        sel = sel[pd.to_datetime(sel["open_time"], unit="ms") < pd.Timestamp(end)]
-    c = sel["close"].astype(float)
-    peak = c.cummax()
-    return {
-        "return_pct": round(float(c.iloc[-1] / c.iloc[0] - 1) * 100, 2),
-        "max_dd_pct": round(float(((c - peak) / peak * 100).min()), 2),
-    }
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -178,59 +78,91 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = load_bot_config(args.config)
-    df4 = _okx_frame(PROXY, "4h")
-    df1 = _okx_frame(PROXY, "1d")
+    prep = prepare(cfg)
+    df4, df1 = load_frames()
 
     span = (f"{pd.to_datetime(df4['open_time'].iloc[0], unit='ms').date()} -> "
             f"{pd.to_datetime(df4['open_time'].iloc[-1], unit='ms').date()}")
-    print(f"XAU 2x2 — {PROXY} 4h, {len(df4)} bars, {span}\n")
+    print(f"XAU 2x2 — {PROXY} 4h, {len(df4)} bars, {span}")
+    print_variant_banner(prep)
+    print()
 
     print("=== CONTINUOUS RUN (headline; no monthly reset) ===")
-    cont = run_continuous(df4, df1, cfg)
-    hdr = (f"{'variant':32s} {'n':>4s} {'WR%':>6s} {'PF':>5s} {'net%':>8s} "
+    continuous: List[Dict[str, Any]] = []
+    for name in CELLS:
+        stats = run_continuous(prep, df4, df1, VARIANTS[name], engine_config=cfg)
+        row: Dict[str, Any] = {"variant": name}
+        for out_key, stat_key in CONT_KEYS:
+            row[out_key] = stats.get(stat_key)
+        continuous.append(row)
+
+    hdr = (f"{'variant':22s} {'n':>4s} {'WR%':>6s} {'PF':>5s} {'net%':>8s} "
            f"{'MDD%':>6s} {'CAGR%':>6s} {'Calmar':>6s} {'Sharpe':>6s}")
     print(hdr)
     print("-" * len(hdr))
-    for r in cont:
-        print(f"{r['variant']:32s} {r['trades']:4d} {r['win_rate']:6.2f} "
-              f"{r['profit_factor']:5.2f} {r['net_profit_pct']:8.2f} "
-              f"{r['max_drawdown_pct']:6.2f} {r['cagr_pct']:6.2f} "
-              f"{r['calmar']:6.2f} {r['sharpe']:6.2f}")
-    bh_full = buy_and_hold(df1, str(pd.to_datetime(df4['open_time'].iloc[0], unit='ms').date()))
-    print(f"{'buy & hold gold':32s} {'-':>4s} {'-':>6s} {'-':>5s} "
+    for row in continuous:
+        print(f"{row['variant']:22s} {row['trades']:4d} {row['win_rate']:6.2f} "
+              f"{row['profit_factor']:5.2f} {row['net_profit_pct']:8.2f} "
+              f"{row['max_drawdown_pct']:6.2f} {row['cagr_pct']:6.2f} "
+              f"{row['calmar']:6.2f} {row['sharpe']:6.2f}")
+    bh_full = buy_and_hold(
+        df1, str(pd.to_datetime(df4["open_time"].iloc[0], unit="ms").date())
+    )
+    print(f"{'buy & hold gold':22s} {'-':>4s} {'-':>6s} {'-':>5s} "
           f"{bh_full['return_pct']:8.2f} {bh_full['max_dd_pct']:6.2f}")
 
     print("\n=== BY PHASE (monthly reset; attribution only) ===")
-    summary, per_month = run_monthly(df4, df1, cfg)
-    print(f"{len(per_month)} months, {per_month[0]['month']} -> {per_month[-1]['month']}\n")
-    h2 = f"{'variant':32s} {'phase':9s} {'mo':>3s} {'+mo':>4s} {'comp%':>9s} {'worst%':>7s} {'n':>4s}"
+    windows = month_windows(df4)
+    print(f"{len(windows)} complete months, {windows[0].label} -> "
+          f"{windows[-1].label}\n")
+    runs = {name: run_windowed(prep, df4, df1, VARIANTS[name], windows=windows)
+            for name in CELLS}
+
+    h2 = (f"{'variant':22s} {'phase':9s} {'mo':>3s} {'+mo':>4s} {'comp%':>9s} "
+          f"{'worst%':>7s} {'n':>4s}")
     print(h2)
     print("-" * len(h2))
-    for name in VARIANTS:
-        for phase in ("bull", "bear", "sideways", "ALL"):
-            a = summary[name][phase]
-            if not a.get("months"):
+    phase_summary: Dict[str, Any] = {}
+    for name in CELLS:
+        by_phase = aggregate_by_phase(runs[name])
+        phase_summary[name] = by_phase
+        for phase in ("bull", "bear", "sideways", "unknown", "ALL"):
+            agg = by_phase.get(phase)
+            if not agg or not agg.get("windows"):
                 continue
-            print(f"{name:32s} {phase:9s} {a['months']:3d} {a['pos_months']:4d} "
-                  f"{a['compounded_pct']:9.2f} {a['worst_month_pct']:7.2f} {a['trades']:4d}")
+            print(f"{name:22s} {phase:9s} {agg['windows']:3d} "
+                  f"{agg['positive_windows']:4d} {agg['compounded_pct']:9.2f} "
+                  f"{agg['worst_window_pct']:7.2f} {agg['trades']:4d}")
         print()
 
-    print(f"=== CURRENT GOLD DRAWDOWN ({DRAWDOWN_FROM} -> "
-          f"{per_month[-1]['month']}; peak 2026-02) ===")
-    dd = [m for m in per_month if m["month"] >= DRAWDOWN_FROM]
-    for name in VARIANTS:
-        a = aggregate([{"net_pct": m.get(name, 0.0), "trades": m.get(f"{name} n", 0)}
-                       for m in dd])
-        print(f"  {name:32s} comp {a['compounded_pct']:8.2f}%  "
-              f"+mo {a['pos_months']}/{a['months']}  worst {a['worst_month_pct']:7.2f}%  "
-              f"n={a['trades']}")
+    print(f"=== CURRENT GOLD DRAWDOWN ({DRAWDOWN_FROM} -> {windows[-1].label}; "
+          f"peak 2026-02) ===")
+    drawdown: Dict[str, Any] = {}
+    for name in CELLS:
+        window_results = drawdown_slice(runs[name])
+        agg = aggregate(window_results)
+        drawdown[name] = {
+            "aggregate": agg,
+            "months": {r.window.label: round(r.net_pct, 2) for r in window_results},
+        }
+        print(f"  {name:22s} comp {agg['compounded_pct']:8.2f}%  "
+              f"+mo {agg['positive_windows']}/{agg['windows']}  "
+              f"worst {agg['worst_window_pct']:7.2f}%  n={agg['trades']}")
     bh_dd = buy_and_hold(df1, DRAWDOWN_FROM + "-01")
-    print(f"  {'buy & hold gold':32s} comp {bh_dd['return_pct']:8.2f}%")
+    print(f"  {'buy & hold gold':22s} comp {bh_dd['return_pct']:8.2f}%")
 
     if args.json_out:
+        months = {
+            name: {r.window.label: {"phase": r.phase, "net_pct": round(r.net_pct, 2),
+                                    "trades": r.trades}
+                   for r in runs[name]}
+            for name in CELLS
+        }
         with open(args.json_out, "w") as fh:
-            json.dump({"continuous": cont, "phase": summary, "months": per_month,
-                       "buy_hold": {"full": bh_full, "drawdown": bh_dd}}, fh, indent=2)
+            json.dump({"continuous": continuous, "phase": phase_summary,
+                       "drawdown": drawdown, "months": months,
+                       "buy_hold": {"full": bh_full, "drawdown": bh_dd}},
+                      fh, indent=2)
         print(f"\nwrote {args.json_out}")
     return 0
 
