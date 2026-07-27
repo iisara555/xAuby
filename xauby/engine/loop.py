@@ -1989,9 +1989,17 @@ class LoopMixin:
             if sym == self.focus_symbol:
                 self.last_signal_meta = sc.last_signal_meta
 
+        # intent + position_side are emitted alongside action because `action`
+        # alone is ambiguous on the short side: open_short and a long exit are
+        # both SELL, close_short and a long entry are both BUY. Without these
+        # two fields replay can only compare SELL-vs-SELL and cannot tell the
+        # two apart, so replay output is not evidence for half the live
+        # exposure. See docs/roadmap_2026H2.md P0.5.
         self._emit_event(
             EventType.SIGNAL_EVALUATED,
             action=action,
+            intent=str(getattr(signal, "intent", "") or ""),
+            position_side=str(getattr(signal, "position_side", "") or ""),
             reason=(reason or "")[:240],
             confidence=round(float(signal.confidence or 0.0), 3),
         )

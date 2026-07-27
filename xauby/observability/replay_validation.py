@@ -75,6 +75,7 @@ def slice_df_at_ts(df: pd.DataFrame, iso_ts: str) -> pd.DataFrame:
 @dataclass
 class ReplayValidationState:
     has_position: bool = False
+    position_side: Optional[str] = None
     stop_loss: float = 0.0
     sl_breach_count: int = 0
 
@@ -83,19 +84,43 @@ class ReplayValidationState:
         pl = _payload(ev)
         if etype == "position_opened":
             self.has_position = True
+            # Default LONG for events written before position_side was emitted
+            # on the long path; SHORT has always carried it explicitly.
+            side = str(pl.get("position_side") or ev.get("position_side") or "LONG")
+            self.position_side = side.upper()
             self.stop_loss = float(pl.get("stop_loss") or ev.get("stop_loss") or 0.0)
             self.sl_breach_count = 0
         elif etype == "position_closed":
             self.has_position = False
+            self.position_side = None
             self.stop_loss = 0.0
             self.sl_breach_count = 0
         elif etype == "stop_loss_updated":
             self.stop_loss = float(pl.get("new_sl") or ev.get("new_sl") or self.stop_loss)
         elif etype == "tick" and tick_price is not None:
-            if self.has_position and self.stop_loss > 0 and tick_price <= self.stop_loss:
-                self.sl_breach_count += 1
+            # A short's stop sits ABOVE entry, so it is breached when price
+            # rises. The single `<=` test counted a short's stop as breached
+            # whenever price fell — the exact opposite — which silently
+            # corrupted sl_confirmed for every short position in replay.
+            if self.has_position and self.stop_loss > 0:
+                breached = (
+                    tick_price >= self.stop_loss
+                    if self.position_side == "SHORT"
+                    else tick_price <= self.stop_loss
+                )
             else:
-                self.sl_breach_count = 0
+                breached = False
+            self.sl_breach_count = self.sl_breach_count + 1 if breached else 0
+
+
+
+def _describe(action: str, intent: str, side: str) -> str:
+    """Render a decision so a short is distinguishable from a long in reports."""
+    if intent and side:
+        return f"{action}({intent}/{side})"
+    if intent:
+        return f"{action}({intent})"
+    return action
 
 
 @dataclass
@@ -305,6 +330,10 @@ def validate_run(
             df_regime=df_r if use_d1 else None,
             current_price=price,
             has_position=rstate.has_position,
+            # Without this the strategy cannot tell a long from a short and
+            # picks the wrong exit branch, so every short tick replayed as if a
+            # long were open. Mirrors loop.py's ContextBuilder.build call.
+            position_side=(rstate.position_side or "LONG") if rstate.has_position else None,
             stop_loss=rstate.stop_loss,
             sl_confirmed=sl_confirmed,
             config=strat_cfg,
@@ -327,7 +356,25 @@ def validate_run(
         live_reason = str(pl_sig.get("reason") or sig.get("reason") or "")
         replay_reason = str(replay_sig.reason or "")
 
-        if live_action == replay_action:
+        # Compare the SEMANTIC decision, not just the order verb. BUY/SELL are
+        # ambiguous on the short side — open_short and a long exit are both
+        # SELL, close_short and a long entry are both BUY — so an action-only
+        # comparison scores "SELL == SELL" as a match even when live opened a
+        # short and replay closed a long. Older events carry no intent /
+        # position_side; those degrade to the action-only comparison rather
+        # than reporting false mismatches for every pre-upgrade run.
+        live_intent = str(pl_sig.get("intent") or sig.get("intent") or "").upper()
+        live_side = str(pl_sig.get("position_side") or sig.get("position_side") or "").upper()
+        replay_intent = str(getattr(replay_sig, "intent", "") or "").upper()
+        replay_side = str(getattr(replay_sig, "position_side", "") or "").upper()
+
+        matched = live_action == replay_action
+        if matched and live_intent and replay_intent:
+            matched = live_intent == replay_intent
+        if matched and live_side and replay_side:
+            matched = live_side == replay_side
+
+        if matched:
             report.matched += 1
         else:
             report.mismatched += 1
@@ -337,8 +384,8 @@ def validate_run(
                     seq=int(sig.get("seq") or 0),
                     ts=str(sig.get("ts") or ""),
                     price=price,
-                    live_action=live_action,
-                    replay_action=replay_action,
+                    live_action=_describe(live_action, live_intent, live_side),
+                    replay_action=_describe(replay_action, replay_intent, replay_side),
                     live_reason=live_reason[:120],
                     replay_reason=replay_reason[:120],
                 )

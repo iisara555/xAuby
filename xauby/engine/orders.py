@@ -1659,6 +1659,7 @@ class OrderMixin:
             self.send_telegram_alert(msg)
             self._emit_event(
                 EventType.POSITION_OPENED,
+                position_side="LONG",
                 entry=round(ticker_price, 2),
                 stop_loss=round(stop_loss, 2),
                 take_profit=round(take_profit, 2),
@@ -1731,6 +1732,7 @@ class OrderMixin:
             self.send_telegram_alert(msg)
             self._emit_event(
                 EventType.POSITION_OPENED,
+                position_side="LONG",
                 entry=round(ticker_price, 2),
                 stop_loss=round(stop_loss, 2),
                 take_profit=round(take_profit, 2),
@@ -2050,6 +2052,7 @@ class OrderMixin:
                     self.send_telegram_alert(msg)
                     self._emit_event(
                         EventType.POSITION_OPENED,
+                        position_side="LONG",
                         entry=round(filled_price, 2),
                         stop_loss=round(stop_loss, 2),
                         take_profit=round(take_profit, 2),

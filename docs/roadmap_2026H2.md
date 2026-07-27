@@ -416,11 +416,25 @@ config** มาด้วยเสมอ นั่นคือสิ่งเด�
 ข้อสรุปเรื่อง parity หลังจากนี้ ทำพร้อมกับนโยบาย retention/rotation ใน change
 เดียวกัน — `core/logs/events/` โตเร็วบน VPS 2 GB
 
-**P0.5 — Short-side replay parity**
-เพิ่ม `intent` และ `position_side` เชิงความหมายเข้า `signal_evaluated` และคืนค่า
-position side เข้า `MarketContext` ตอน replay (`xauby/observability/replay.py`,
-`replay_validation.py`) ก่อนงานนี้เสร็จ replay output ยังใช้เป็นหลักฐานฝั่ง short
-ไม่ได้ — ซึ่งคือครึ่งหนึ่งของ exposure ที่ live อยู่
+**P0.5 — Short-side replay parity** ✅ **ทำแล้ว 2026-07-26**
+เร่งขึ้นเพราะ config ใหม่ของ XAU มีหัวใจอยู่ที่ฝั่ง short พอดี พบว่าไม่ใช่ 1 บั๊ก
+แต่เป็น **4 บั๊กแยกกัน**:
+
+1. `signal_evaluated` ส่งแค่ `action` ซึ่ง**กำกวม**: `open_short` กับ "ปิด long"
+   เป็น `SELL` เหมือนกัน, `close_short` กับ "เปิด long" เป็น `BUY` เหมือนกัน
+   (`Signal` มี `intent`/`position_side` อยู่แล้ว แต่ไม่เคยถูกส่งออก)
+2. การเทียบใช้ `action` อย่างเดียว → **"live เปิด short, replay ปิด long" นับเป็น
+   MATCH** ซึ่งซ่อนความต่างจริงไว้
+3. `ReplayValidationState` ไม่เคยเก็บว่าฝั่งไหนเปิดอยู่ และ `MarketContext` ที่สร้าง
+   ใหม่ไม่เคยได้รับ `position_side` → strategy replay ทุก tick ของ short
+   **ราวกับว่ามี long เปิดอยู่**
+4. การเช็ค SL ใช้ `price <= stop_loss` ซึ่งถูกสำหรับ long แต่**กลับด้านสำหรับ short**
+   (stop ของ short อยู่*เหนือ*ราคาเข้า) → short ที่กำลังกำไรถูกนับว่าโดน stop
+
+แก้ครบทั้ง 4 + long `position_opened` ส่ง `position_side="LONG"` ชัดเจนแล้ว
+(เดิม short ส่ง แต่ long ไม่ส่ง ต้องเดาจากการไม่มีค่า) เทสต์ใหม่ 21 ตัวใน
+`tests/test_replay_short_parity.py` — event เก่าที่ไม่มีฟิลด์ใหม่จะ degrade ไปเทียบ
+แบบ action อย่างเดียว ไม่ report mismatch ปลอมย้อนหลัง
 
 **P0.6 — Dead-man's switch**
 ต้องมี heartbeat ภายนอกที่เตือนเมื่อ engine **เงียบ** ไม่ใช่เตือนเมื่อ engine error
