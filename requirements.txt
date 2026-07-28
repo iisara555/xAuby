@@ -23,4 +23,4 @@ cryptography>=45.0.0
 httpx>=0.28.0
 optuna>=3.0.0
 pandas-ta @ git+https://github.com/MerlinR/Pandas-ta-fork.git
-textual>=1.0.0
+textual>=8.2.8
