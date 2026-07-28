@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
+from xauby.runtime.config_error import ConfigError
 from xauby.strategies.context import MarketContext
 from xauby.strategies.indicators.registry import load_indicator
 from xauby.strategies.registry import available_strategies, load_strategy
@@ -164,7 +165,7 @@ class TestSOLEMAPullbackStrategy(unittest.TestCase):
         self.assertIn("range too wide", signal.reason)
 
     def test_loader_rejects_rr_below_two_in_strict_mode(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(ConfigError):
             load_strategy("sol_ema_pullback", {"risk_reward": 1.5}, strict=True)
 
 

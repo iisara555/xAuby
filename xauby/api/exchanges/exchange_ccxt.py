@@ -120,7 +120,7 @@ class CCXTProWebSocket:
             try:
                 self._ccxtpro = _import_ccxtpro()
             except Exception as e:
-                raise unavailable(f"ccxt.pro not available: {e}")
+                raise unavailable(f"ccxt.pro not available: {e}") from e
             if getattr(self._ccxtpro, self.exchange_id, None) is None:
                 raise unavailable(f"ccxt.pro has no exchange {self.exchange_id!r}")
         else:

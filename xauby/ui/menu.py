@@ -458,67 +458,6 @@ def make_3d_gemini_logo(text: str) -> str:
     return "".join(result) + C_RESET
 
 def draw_hermes_banner(W: int):
-    border_color = BB_CYAN
-    logo_large = [
-        " ██╗  ██╗  █████╗  ██╗   ██╗ ██████╗  ██╗   ██╗",
-        " ╚██╗██╔╝ ██╔══██╗ ██║   ██║ ██╔══██╗ ╚██╗ ██╔╝",
-        "  ╚███╔╝  ███████║ ██║   ██║ ██████╔╝  ╚████╔╝ ",
-        "  ██╔██╗  ██╔══██║ ██║   ██║ ██╔══██╗   ╚██╔╝  ",
-        " ██╔╝ ██╗ ██║  ██║ ╚██████╔╝ ██████╔╝    ██║   ",
-        " ╚═╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝  ╚═════╝     ╚═╝   ",
-    ]
-    logo_small = [
-        "██ ██  ███  ██ ██ ██    ██ ██",
-        " ███  ██ ██ ██ ██ ████   ████",
-        " ███  █████ ██ ██ ██ ██   ██ ",
-        "██ ██ ██ ██  ███  ████    ██ ",
-    ]
-
-    if W >= 82:
-        box_w = 52
-        padding = (W - box_w) // 2
-        pad_str = " " * padding
-
-        print(f"{pad_str}{border_color}┌{'─' * (box_w - 2)}┐{RESET}")
-        for line in logo_large:
-            centered_line = center_text(make_3d_gemini_logo(line), box_w - 2)
-            print(f"{pad_str}{border_color}│{RESET}{centered_line}{border_color}│{RESET}")
-        sub_text = "◆ Alternative Store of Value Trading System ◆"
-        centered_sub = center_text(make_gemini_gradient(sub_text), box_w - 2)
-        print(f"{pad_str}{border_color}│{RESET}{centered_sub}{border_color}│{RESET}")
-        print(f"{pad_str}{border_color}└{'─' * (box_w - 2)}┘{RESET}")
-        print()
-    elif W >= 36:
-        box_w = 34
-        padding = (W - box_w) // 2
-        pad_str = " " * padding
-
-        print(f"{pad_str}{border_color}┌{'─' * (box_w - 2)}┐{RESET}")
-        for line in logo_small:
-            centered_line = center_text(make_3d_gemini_logo(line), box_w - 2)
-            print(f"{pad_str}{border_color}│{RESET}{centered_line}{border_color}│{RESET}")
-        sub_text = "◆ ASoV Trading System ◆"
-        centered_sub = center_text(make_gemini_gradient(sub_text), box_w - 2)
-        print(f"{pad_str}{border_color}│{RESET}{centered_sub}{border_color}│{RESET}")
-        print(f"{pad_str}{border_color}└{'─' * (box_w - 2)}┘{RESET}")
-        print()
-    elif W >= 30:
-        padding = (W - 30) // 2
-        pad_str = " " * padding
-        for line in logo_small:
-            print(f"{pad_str}{make_3d_gemini_logo(line)}")
-        sub_text = "◆ ASoV Trading System ◆"
-        print(center_text(make_gemini_gradient(sub_text), W))
-        print()
-    else:
-        sub_text = PRODUCT_NAME
-        print(center_text(make_gemini_gradient(sub_text), W))
-        print()
-
-    draw_hermes_status_bar(W)
-
-
-def draw_hermes_banner(W: int):
     """Render a terminal-safe xAuby banner without Unicode block-art mojibake."""
     border_color = BB_CYAN
     logo_large = [

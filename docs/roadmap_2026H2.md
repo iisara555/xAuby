@@ -816,13 +816,49 @@ master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส แ�
 rotation เลย เลือกเอาว่าจะทำ rotation จริง หรือลบคอลัมน์ทิ้งเพื่อไม่ให้สื่อว่ามี
 ความสามารถที่ไม่มี
 
-**P2.3 — สแกน dependency/CVE และรัน linter ที่ตั้งค่าไว้แล้ว**
+**P2.3 — สแกน dependency/CVE และรัน linter ที่ตั้งค่าไว้แล้ว** ✅ **ทำแล้ว 2026-07-28**
 CI ไม่มี Dependabot, CodeQL, `pip-audit`/`npm audit`, SBOM หรือ scheduled run
 `docs/security-saas-audit.md` ระบุข้อนี้เป็น residual risk ที่เปิดอยู่ตรง ๆ
 ส่วน `ruff` ตั้งค่าไว้ใน `pyproject.toml` (`select = ["E","F","I","UP","B"]`)
 แต่**ไม่เคยถูกเรียก** ข้อควรระวัง: `AGENTS.md` อนุญาตให้ agent merge PR ตัวเองได้เมื่อ
 CI เขียว และ `main` คือสิ่งที่ engine เงินจริง pull ไปใช้ — CI จึงเป็นด่านเดียวระหว่าง
 commit ของ agent กับเงินจริง มันควรจะเชื่อถือได้สมกับหน้าที่นั้น
+
+**ruff:** ชุดเต็มใน `pyproject.toml` ให้ **3,832 finding** — เอามาเป็น gate ทันที
+ไม่ได้ และ gate ที่ไม่มีใครทำให้เขียวได้คือ gate ที่ไม่มีใครรักษา จึงแยกเป็น
+สองชั้น: **ชั้น blocking = กฎที่จับบั๊กจริง** (`E9,F811,F821,F822,F823,F632,
+F702,F706,F707,F502,F601,B006,B008,B012,B017,B018,B023,B026,B904`) ผ่านสะอาดแล้ว
+· **ชั้น report** รันชุดเต็มแบบไม่บล็อก เพื่อให้หนี้มีตัวเลข ไม่ใช่มองไม่เห็น
+**ไม่ได้ลดค่า `select` ใน `pyproject.toml`** (มีเทสต์ล็อกไว้)
+
+**gate จับของได้ทันทีที่เปิด:** `F811` เจอการนิยามซ้ำที่ทับของเดิมเงียบ ๆ 2 จุด
+— `import re` ซ้ำใน `launcher/config_io.py` และ **`draw_hermes_banner` ใน
+`ui/menu.py` ที่มีสองนิยาม ตัวแรก 61 บรรทัดเป็น dead code** ที่ตัวหลังบังไว้
+ส่วน `F821` (undefined name = NameError ตอนรัน) **สะอาดอยู่แล้ว** — ไม่มีระเบิดเวลา
+ที่เหลือ ~2,900 จาก 3,832 เป็นเรื่อง import order กับ PEP-585 annotation ล้วน ๆ
+
+**dependency scan:** `.github/workflows/security.yml` รัน `pip-audit` + `npm audit`
+ทั้งบน PR และ **ตามตารางทุกสัปดาห์** — CVE ที่ประกาศทีหลังไม่ได้มาพร้อม push
+ถ้าสแกนแต่ตอน push จะไม่มีวันเห็น · เพิ่ม `.github/dependabot.yml` ครอบ pip / npm /
+**github-actions** (action ที่ถูกยึดรันด้วยสิทธิ์ที่ workflow ให้ บนด่านสุดท้าย
+ก่อนถึงเงินจริง)
+
+**สองช่องที่ปิดไม่ได้ — บันทึกไว้แบบระบุชื่อ ไม่ใช่ปิดตาทั้งด่าน:**
+- `PYSEC-2026-3447` (setuptools ≤80, แก้ที่ 83.0.0) — **`pandas-ta` ประกาศ
+  `setuptools (<=80)` เอง** จึงตรึงเวอร์ชันที่มีช่องโหว่ไว้ ยกเพดานไม่ได้
+  ต้องรอ pandas-ta ปล่อยรุ่นที่ยกเพดาน / patch fork ที่เราติดตั้ง
+  (`MerlinR/Pandas-ta-fork`) / หรือเปลี่ยนไลบรารี → `--ignore-vuln` พร้อมเหตุผล
+- npm 2 high: `sharp <0.35.0` สืบทอด CVE ของ libvips 4 ตัว — **ทางแก้เดียวที่ npm
+  เสนอคือ `next@14.2.35` ซึ่งเป็นการ *ถอย* semver-major** จากสาย 16.2.x ที่เว็บ
+  รันอยู่ และช่วงที่มีช่องโหว่ครอบ **ทุก** รุ่น 16.x จึงไม่มี patch ให้ take
+  → gate ที่ `--audit-level=critical` (high สองตัวนี้ผ่าน, critical ใหม่บล็อก)
+  บรรเทาบางส่วน: `next/image` ถูกใช้ที่เดียว (`profile-avatar.tsx`) และส่ง
+  `unoptimized` จึงไม่วิ่งผ่าน optimizer ที่ไปถึง libvips — **ยังไม่ได้ตรวจครบทุก route**
+- **`pandas-ta` audit ไม่ได้เลย** เพราะติดตั้งจาก git ไม่ใช่ PyPI (pip-audit skip)
+  คือ direct dependency ที่ไม่มีใครสแกนได้
+
+**ยังเหลือ:** CodeQL กับ SBOM ยังไม่ได้ทำ · ต้องตัดสินใจเรื่อง pandas-ta และ
+เรื่องยอมรับความเสี่ยง sharp/libvips
 
 **P2.4 — Audit ความปลอดภัยใหม่บนสถาปัตยกรรมปัจจุบัน**
 `docs/security-saas-audit.md` (2026-07-09) audit `xauby/webui/server.py` ซึ่ง

@@ -1,0 +1,44 @@
+# Roadmap P2.3. Without this, a dependency only moves when someone happens to
+# bump it — and the two outstanding advisories in this repo are both cases of a
+# pin that nobody revisited.
+#
+# Grouped and weekly on purpose: a two-tenant deployment cannot absorb a daily
+# stream of individual bumps, and a PR queue nobody reads is the same as no
+# scanning at all.
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels: ["dependencies"]
+
+  - package-ecosystem: npm
+    directory: "/Website"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: ["minor", "patch"]
+    labels: ["dependencies"]
+
+  # Action versions are supply chain too: a compromised or abandoned action runs
+  # with whatever the workflow grants it, and CI here is the last gate before
+  # code reaches the live engine.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    labels: ["dependencies"]

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from xauby.api.ccxt_client import CCXTExchangeClient
 from xauby.database.db import LiteDB, SCHEMA_VERSION
 from xauby.engine.brokers.sim_broker import SimBroker
+from xauby.runtime.config_error import ConfigError
 from xauby.runtime.derivatives_config import derivatives_settings
 from xauby.runtime.exchange_switch import run_exchange_preflight
 from xauby.strategies.signal import close_short, open_short
@@ -102,7 +103,10 @@ class TestDerivativesRuntime(unittest.TestCase):
     def test_config_caps_leverage(self):
         self.assertEqual(derivatives_settings(SWAP_CFG)["max_leverage"], 3)
         bad = {**SWAP_CFG, "derivatives": {"default_leverage": 1, "max_leverage": 10}}
-        with self.assertRaises(Exception):
+        # Named rather than bare Exception: a blind assertRaises also passes on
+        # an AttributeError or a typo in the call, so it can go green while the
+        # cap it is meant to prove has stopped working.
+        with self.assertRaises(ConfigError):
             derivatives_settings(bad)
 
     def test_okx_swap_symbol_contract_and_reduce_only(self):
