@@ -30,7 +30,13 @@ def _sqlite_backup(source: Path, destination: Path) -> None:
             raise RuntimeError(f"SQLite integrity check failed for {source}")
 
 
-def _copy_tree(source: Path, destination: Path, *, include_secrets: bool) -> None:
+#: Env keys whose presence in a backup would put the master key beside the
+#: ciphertext it opens. P2.2's decision was that the key stays offline, so this
+#: is enforced rather than documented.
+MASTER_KEY_MARKERS = ("XAUBY_CREDENTIAL_MASTER_KEY", "XAUBY_CREDENTIAL_RETIRED_KEYS")
+
+
+def _copy_tree(source: Path, destination: Path) -> None:
     if not source.exists():
         return
     for item in source.rglob("*"):
@@ -41,6 +47,26 @@ def _copy_tree(source: Path, destination: Path, *, include_secrets: bool) -> Non
         target = destination / item.relative_to(source)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, target)
+
+
+def carries_master_key(path: Path) -> bool:
+    """Does this file assign a real master key?
+
+    Checks for an assignment with a value, so a commented example or an empty
+    placeholder in `.env.saas.example` does not trip the guard.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        if name.strip() in MASTER_KEY_MARKERS and value.strip():
+            return True
+    return False
 
 
 def _sha256(path: Path) -> str:
@@ -107,8 +133,7 @@ def verify_backup(path: Path) -> dict[str, object]:
 
 
 def create_backup(settings: SaaSSettings, output: Path, *, kind: str, release_id: str,
-                  retention_days: int, include_secrets: bool,
-                  host_config: list[Path]) -> Path:
+                  retention_days: int, host_config: list[Path]) -> Path:
     output.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     safe_release = "".join(ch for ch in release_id if ch.isalnum() or ch in "._-")[:80] or "unknown"
@@ -127,9 +152,18 @@ def create_backup(settings: SaaSSettings, output: Path, *, kind: str, release_id
                 target = bundle / "position-snapshots" / f"{tenant_dir.name}.json"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(state, target)
-        _copy_tree(settings.tenant_config_root, bundle / "configs", include_secrets=include_secrets)
+        _copy_tree(settings.tenant_config_root, bundle / "configs")
         for source in host_config:
             if source.is_file():
+                # The backup goes off-host; the master key does not. Refusing
+                # here rather than filtering, because a caller that asked for
+                # control.env has a wrong expectation worth failing on.
+                if carries_master_key(source):
+                    raise RuntimeError(
+                        f"refusing to back up {source}: it assigns the credential "
+                        f"master key, which must be kept off the backup path "
+                        f"(the backup already contains the ciphertext this key opens)"
+                    )
                 target = bundle / "host-config" / source.name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
@@ -140,6 +174,7 @@ def create_backup(settings: SaaSSettings, output: Path, *, kind: str, release_id
             "tenant_count": sum(1 for item in settings.tenant_config_root.iterdir() if item.is_dir())
             if settings.tenant_config_root.exists() else 0,
             "includes_secrets": False,
+            "master_key_excluded": True,
             "credentials_encrypted_in_database": True,
             "current_release": str(settings.project_root.resolve()),
         }
@@ -166,7 +201,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--retention-days", type=int, default=7)
     parser.add_argument("--kind", choices=("daily", "predeploy"), default="daily")
     parser.add_argument("--release-id", default="scheduled")
-    parser.add_argument("--include-secrets", action="store_true")
     parser.add_argument("--host-config", action="append", default=[])
     parser.add_argument("--verify-only")
     args = parser.parse_args(argv)
@@ -176,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = SaaSSettings.from_env()
     final = create_backup(
         settings, Path(args.output).resolve(), kind=args.kind, release_id=args.release_id,
-        retention_days=args.retention_days, include_secrets=args.include_secrets,
+        retention_days=args.retention_days,
         host_config=[Path(item) for item in args.host_config],
     )
     print(final)

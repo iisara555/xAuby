@@ -158,13 +158,22 @@ class SaaSAuthAndBackupTests(unittest.TestCase):
             conn.execute("INSERT INTO position(side) VALUES ('short')")
         archive = create_backup(
             self.settings, Path(self.temp.name) / "backups", kind="predeploy",
-            release_id="test-release", retention_days=30, include_secrets=True, host_config=[],
+            release_id="test-release", retention_days=30, host_config=[],
         )
         manifest = verify_backup(archive)
         self.assertEqual(manifest["release_id"], "test-release")
         self.assertGreaterEqual(manifest["verified_databases"], 2)
         self.assertFalse(manifest["includes_secrets"])
         self.assertTrue(manifest["credentials_encrypted_in_database"])
+        # The old `--include-secrets` flag was threaded through to a parameter
+        # `_copy_tree` ignored, so it never did anything and the manifest said
+        # so. Removed (P2.2); this asserts the property the flag pretended to
+        # control, which is what actually mattered.
+        import tarfile
+        with tarfile.open(archive, "r:gz") as bundle:
+            names = bundle.getnames()
+        self.assertTrue(any("configs/" in name for name in names), names)
+        self.assertFalse([name for name in names if name.endswith("secrets.env")])
 
 
 if __name__ == "__main__":

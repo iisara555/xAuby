@@ -814,7 +814,7 @@ len(telegram_lines) == 1`) แต่เพราะ script ไม่เคย wi
 - 15 เทสต์ใน `tests/test_materialize_credentials.py` — เส้นทาง ExecStartPre นี้
   **ไม่เคยมีเทสต์เลย** ซึ่งคือเหตุผลที่ทั้งสามข้อมองไม่เห็น
 
-**P2.2 — การเก็บกุญแจและ backup นอกเครื่อง** ⏳ **ครึ่งแรกทำแล้ว 2026-07-28**
+**P2.2 — การเก็บกุญแจและ backup นอกเครื่อง** ✅ **ทำแล้ว 2026-07-28**
 master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส และ backup
 (`/var/lib/xauby/backups`, เก็บ 7 วัน) อยู่บน VPS เครื่องเดียวกันทั้งหมด
 เครื่องหายเมื่อไหร่ = exchange connection ของทุก tenant หายถาวร
@@ -842,7 +842,31 @@ master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส แ�
 - **ยังไม่ได้รันบนเครื่องจริง** — rotation ครั้งแรกคือสิ่งที่ยืนยันกับ
   `/etc/xauby/control.env` ของจริง
 
-**ยังเปิดอยู่: off-host backup** — ต้องเลือกปลายทางก่อน (ดูคำถามท้ายเอกสาร)
+**off-host backup — ทำแล้ว เจ้าของเลือก object storage + กุญแจอยู่ offline**
+
+- backup bundle ขึ้น S3-compatible object storage (B2 / R2 / S3) ผ่าน
+  `scripts/backup_offsite.py` · **master key ไม่ขึ้นไปด้วย** เจ้าของถือ offline เอง
+- การแยกนี้คือตัวดีไซน์ ไม่ใช่ผลข้างเคียงของ config:
+  ใครยึด bucket ได้ = ได้ ciphertext ที่เปิดไม่ออก · ใครยึด VPS ได้ = ได้กุญแจ
+  แต่ backup อยู่ที่อื่นแล้ว และ uploader **ไม่มีคำสั่ง delete** เครื่องที่ถูกยึด
+  จึงลบ backup ตัวเองไม่ได้ (ใช้ write-only key ยิ่งแคบลงอีก)
+- **ราคาที่ต้องยอมรับ พูดตรง ๆ เพราะกู้ไม่ได้:** ถ้าทำกุญแจ offline หาย
+  backup จะถอดรหัสไม่ได้เลย ไม่มี escrow ต้องเก็บแบบเดียวกับ seed phrase
+- บังคับด้วยโค้ด ไม่ใช่แค่เขียนไว้ในเอกสาร — กุญแจถูกปฏิเสธทั้งตอน **สร้าง**
+  (`create_backup`) และตอน **อัปโหลด** (`backup_offsite`) ซึ่งเป็นจังหวะที่ byte
+  ออกจากเครื่องจริง
+- `xauby-backup.service` **fail** ถ้าสำเนานอกเครื่องไม่ขึ้น รวมถึงกรณียังไม่ config
+  — งาน backup ที่เงียบ ๆ แล้วไม่ทำอะไรคือความล้มเหลวที่เฟสนี้เจอซ้ำ ๆ
+- SigV4 เขียนเองด้วย `requests` + stdlib ไม่เพิ่ม boto3 เข้าเครื่องที่เทรดเงินจริง
+  เทสต์ด้วยนาฬิกาคงที่ ลายเซ็นผิดจะพังที่นี่ ไม่ใช่ไปเจอ 403 เปล่า ๆ ที่ bucket จริง
+- **restore ยังเป็น manual โดยตั้งใจ** — uploader ทำ GET ไม่ได้ ถ้าทำจะต้องมี
+  read key อยู่บนเครื่อง ซึ่งทำให้ดีไซน์อ่อนลง กู้คืน = ดึงไฟล์ด้วยเครื่องมือของ
+  provider แล้วรัน `scripts/saas_restore.py`
+- 29 เทสต์ใน `tests/test_backup_offsite.py` · **ยังไม่ได้ยิงกับ bucket จริง**
+- เจอระหว่างทาง: `--include-secrets` ส่งค่าไปยัง parameter ที่ `_copy_tree`
+  **ไม่เคยอ่าน** และ manifest ก็ hardcode `includes_secrets: False` อยู่ดี —
+  รูปแบบเดียวกับ `key_version` เป๊ะ ลบทิ้งแล้ว และเปลี่ยนเป็น assert คุณสมบัติจริง
+  (`secrets.env` ไม่เคยถูกคัดลอก) แทน
 
 **P2.3 — สแกน dependency/CVE และรัน linter ที่ตั้งค่าไว้แล้ว** ✅ **ทำแล้ว 2026-07-28**
 CI ไม่มี Dependabot, CodeQL, `pip-audit`/`npm audit`, SBOM หรือ scheduled run

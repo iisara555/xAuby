@@ -33,6 +33,8 @@ picture, and because knowing what is solid tells you where to spend.
 | Privilege boundary | Control plane runs as `xauby-control`; service control is a fixed sudoers entry to one wrapper script, not general `systemctl` |
 | Secret leakage | `scan_secrets.py` on tracked files **and history**, in CI |
 | Dependency CVEs | `pip-audit` + `npm audit` on PRs and weekly, Dependabot on pip/npm/actions (P2.3) |
+| Key rotation | Active + retired key ids, a four-step runbook that verifies each rewrap before overwriting (P2.2) |
+| Backups | Verified bundle copied to S3-compatible storage; master key held offline and refused at both build and upload (P2.2) |
 
 The earlier report's finding that admin read endpoints used inline authorization
 while writes used a shared dependency (F-5) **is fixed**: both go through
@@ -107,12 +109,44 @@ the case where a retired key was dropped too early — there the tool reports an
 leaves every blob intact. The first real rotation is what confirms it against
 `/etc/xauby/control.env`.
 
-### 4. Master key, database and backups share one host — OPEN (P2.2)
+### 4. Master key, database and backups shared one host — FIXED in this pass (P2.2)
 
 `/etc/xauby/control.env` (master key), the encrypted control database and
-`/var/lib/xauby/backups` (7-day retention) are all on the same VPS. Loss of the
-host is permanent loss of every tenant's exchange connection. This is the single
+`/var/lib/xauby/backups` (7-day retention) were all on the same VPS. Loss of the
+host was permanent loss of every tenant's exchange connection — the single
 largest availability risk in the deployment.
+
+On the operator's decision, the database bundle now goes to S3-compatible
+object storage and **the master key stays offline, held by the operator alone**.
+The separation is the design:
+
+* Whoever holds the bucket holds ciphertext they cannot open.
+* Whoever holds the VPS holds the key, but the backups are already elsewhere
+  and the uploader has **no delete verb**, so a compromised host cannot erase
+  them. A write-only bucket key narrows it further.
+* The cost, stated plainly because it is not recoverable: **lose the offline key
+  and the backups cannot be decrypted by anyone.** There is no escrow.
+
+Enforcement rather than documentation — the key is refused at both the build
+step (`create_backup`) and the upload step (`backup_offsite`), the second being
+where bytes actually leave the host. `xauby-backup.service` fails when the
+off-host copy does not land, *including when object storage is unconfigured*:
+a backup task that silently does nothing is what this whole phase kept finding.
+
+Two things this does not cover, so they are not mistaken for done:
+
+* **Restore is manual.** The uploader cannot GET, deliberately — adding one
+  would push toward a read-capable key on the host. Recovery means fetching the
+  archive with the provider's own tooling and running `scripts/saas_restore.py`.
+* **Not yet run against a real bucket.** The SigV4 signing is tested against a
+  fixed clock so a bad signature fails here rather than as an opaque 403, but
+  the first real upload is what confirms the endpoint.
+
+Found while doing this: `--include-secrets` was threaded from the CLI into a
+`create_backup` parameter that `_copy_tree` ignored entirely, and the manifest
+hard-coded `includes_secrets: False` regardless. Same shape as finding 3 — a
+name promising a capability nobody built. Removed; the property it pretended to
+control (`secrets.env` is never copied) is now asserted directly.
 
 ### 5. One direct dependency cannot be audited — OPEN (P2.3)
 
@@ -146,7 +180,7 @@ From the 2026-07-09 list, updated against the current architecture.
 | Tenant identity, authz, per-tenant audit logs | absent | **present** — sessions, roles, `store.audit`, tenant-scoped queries |
 | Do not expose the WebUI directly | applied to the stdlib WebUI | **obsolete** — that server is deleted; Caddy terminates TLS in front of the control plane |
 | Manual trading needs authz/CSRF/replay protection/audit | open | **present** — Trade PIN, TOTP, per-request challenge with a digest, idempotency key |
-| Credentials should move to a secret manager | open | **partially** — envelope encryption with a host-held master key is better than `.env`, and the key can now be rotated (finding 3); still not a managed secret store (finding 4) |
+| Credentials should move to a secret manager | open | **partially** — envelope encryption with a host-held master key is better than `.env`, the key can now be rotated (finding 3), and backups no longer share a host with it (finding 4); still not a managed secret store |
 | One OS user/namespace per tenant | open | **partially** — separate `XAUBY_HOME` / `XAUBY_CONFIG_DIR` per tenant, `xauby-engines` group, systemd hardening; not separate OS users, no resource quotas |
 | Dependency/SBOM scanning and scheduled CVE review | open | **mostly done** (P2.3) — SBOM still missing (finding 7) |
 | Plugin execution isolation | open | **open** — still static checks and convention. The maturity gate added in P1.4 stops an uncertified plugin reaching a live pair, which narrows the blast radius but is not isolation |
@@ -172,7 +206,11 @@ Replaces the WebUI-era baseline. Every item refers to something that exists.
 - `sudoers.d/xauby-control` grants exactly the wrapper scripts, nothing broader.
 - Run `python scripts/scan_secrets.py --tracked --history` before release — in
   CI on every push and PR.
-- Keep backups off this host (finding 4). Not yet done.
+- Keep backups off this host: set `XAUBY_BACKUP_S3_*` in `/etc/xauby/control.env`
+  (finding 4). Verify with `python -m scripts.backup_offsite --check`. The
+  master key is **not** backed up with them and must be held offline by the
+  operator; both the backup builder and the uploader refuse an archive that
+  carries it.
 - Rotate the credential master key with
   `python scripts/rotate_credential_key.py` (runbook in its docstring) after any
   suspected exposure of `/etc/xauby/control.env`. Note what this does and does

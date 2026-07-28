@@ -8,6 +8,12 @@ Group=xauby-control
 EnvironmentFile=/etc/xauby/control.env
 WorkingDirectory=/opt/xauby/current
 ExecStart=/opt/xauby/current/venv/bin/python -m scripts.saas_backup --output /var/lib/xauby/backups --retention-days 7
+# P2.2: the local copy is not a backup while it shares a host with the thing it
+# backs up. This fails the unit if the off-host copy does not land, including
+# when object storage is unconfigured — a backup task that silently does nothing
+# is the exact failure this phase keeps finding. Configure
+# XAUBY_BACKUP_S3_* in /etc/xauby/control.env, or mask this unit deliberately.
+ExecStart=/opt/xauby/current/venv/bin/python -m scripts.backup_offsite --latest /var/lib/xauby/backups
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
