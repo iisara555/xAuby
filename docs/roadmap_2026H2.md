@@ -860,7 +860,7 @@ F702,F706,F707,F502,F601,B006,B008,B012,B017,B018,B023,B026,B904`) ผ่าน�
 **ยังเหลือ:** CodeQL กับ SBOM ยังไม่ได้ทำ · ต้องตัดสินใจเรื่อง pandas-ta และ
 เรื่องยอมรับความเสี่ยง sharp/libvips
 
-**P2.4 — Audit ความปลอดภัยใหม่บนสถาปัตยกรรมปัจจุบัน**
+**P2.4 — Audit ความปลอดภัยใหม่บนสถาปัตยกรรมปัจจุบัน** ✅ **ทำแล้ว 2026-07-28**
 `docs/security-saas-audit.md` (2026-07-09) audit `xauby/webui/server.py` ซึ่ง
 **ถูกลบไปแล้ว** ทั้งข้อค้นพบและ "Minimum SaaS Deployment Baseline" ทั้งหมดในนั้น
 อธิบายคอมโพเนนต์ที่ไม่มีอยู่แล้ว control plane ปัจจุบันยังไม่เคยถูก audit เทียบเท่า
@@ -868,6 +868,34 @@ F702,F706,F707,F502,F601,B006,B008,B012,B017,B018,B023,B026,B904`) ผ่าน�
 เช็กลิสต์ที่ถูกต้องอยู่ อีกเรื่อง: คำรับรอง "ปิดสิทธิ์ถอนเงินแล้ว" ที่โชว์ให้ลูกค้าเห็น
 ถูกเขียนแบบไม่มีเงื่อนไข (`saas/app.py:1114`) — เป็นการที่ผู้ใช้กรอกเอง ไม่เคยถูก
 ตรวจกับสิทธิ์จริงบน exchange
+
+- **audit ใหม่:** `docs/security-saas-audit-2026-07-28.md` ครอบ `xauby/saas/`
+  (54 route), `deploy/` และเส้นทาง credential จาก browser ถึง engine process ·
+  ฉบับเก่าติดป้าย SUPERSEDED แล้ว แต่**เก็บไว้** เพราะ residual-risk list ของมัน
+  ยังเป็นเช็กลิสต์ที่ถูก — ยกมาทีละข้อพร้อมสถานะปัจจุบันในฉบับใหม่
+- **`withdraw_disabled_attested` แก้แล้ว** — `xauby/saas/withdraw_check.py`
+  **ถามที่ venue จริง**: OKX `GET /api/v5/account/config` (`perm`) และ Binance
+  `GET /sapi/v1/account/apiRestrictions` (`enableWithdrawals`) ผลเป็น **tri-state**
+  และ **ทุกเส้นทางที่ล้มเหลวคืน unknown ไม่มีทางคืน pass** (venue ไม่รองรับ /
+  network error / key ไม่มีสิทธิ์อ่าน restriction ของตัวเอง / response รูปแบบ
+  ไม่รู้จัก) หน้า workspace แสดงคำตอบของ venue และบอกว่า "ยังไม่ได้ตรวจสอบ"
+  เมื่อไม่มีคำตอบ · **ยังไม่ได้ทดสอบกับบัญชี exchange จริง** — 17 เทสต์ครอบ
+  ตรรกะกับ failure mode ด้วย response ปลอม การกด Test connection ครั้งแรกหลัง
+  deploy คือตัวยืนยันรูปแบบ endpoint
+- **สิ่งที่พบว่า *ถูกแก้ไปแล้ว*:** F-5 (admin read endpoint ใช้ authz แบบ inline)
+  ตอนนี้ทั้ง `admin_read_user` และ `admin_user` ผ่าน `require_admin` ตัวเดียวกัน
+  ซึ่งบังคับ `platform_admin` + TOTP ที่ verify แล้ว — รายงานเก่าจึงล้าสมัยตรงนี้
+- **เจอเพิ่ม:** `/auth/dev-login` ตั้ง session cookie เองแบบ inline ไม่ผ่าน
+  `set_session_cookie` จึงไม่มีทั้ง `secure` และ `path` และสร้าง session ด้วย
+  `mfa_verified=True` — มี 404 gate จาก `dev_login_enabled` คุมอยู่ จึงไม่
+  exploit ได้ในโปรดักชัน แต่การมีสำเนาที่อ่อนกว่าซ่อนอยู่หลัง flag เดียวคือรูปทรง
+  ของอุบัติเหตุในอนาคต แก้ให้เรียก helper เดียวกันแล้ว
+- **ยังเปิดอยู่ (บันทึกในเอกสาร):** `key_version` มีคอลัมน์แต่ไม่มีโค้ด rotation ·
+  master key + DB + backup อยู่เครื่องเดียวกัน · `pandas-ta` audit ไม่ได้ ·
+  sharp/libvips ไม่มีทางแก้ไปข้างหน้า · ยังไม่มี CodeQL/SBOM
+- **สิ่งที่ audit นี้ *ไม่* ครอบ** (เขียนไว้ในเอกสารเพื่อไม่ให้ช่องว่างถูกอ่านเป็น
+  ผลสะอาด): ไม่ได้ทำ penetration test · ไม่ได้ตรวจบนเครื่องจริง (อ่านจาก `deploy/`
+  ไม่ได้ไปดู VPS) · ยังไม่มี threat model ที่เป็นทางการ
 
 **P2.5 — รับ design partner ฟรี 2 ราย** ผ่าน invite flow ที่มีอยู่ แบบ SIM-only
 capacity ตั้ง hardcode ไว้ (`max_users=3`, `max_active_engines=2` ใน

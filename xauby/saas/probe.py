@@ -8,6 +8,7 @@ import yaml
 
 from xauby.api import create_exchange_client
 from xauby.runtime.exchange_config import resolve_exchange_credentials
+from xauby.saas.withdraw_check import check_withdraw_disabled
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,11 +25,17 @@ def main(argv: list[str] | None = None) -> int:
         balances = client.get_balances()
         info = client.get_exchange_info()
         capabilities = dict(getattr(client, "capabilities", {}) or {})
+        exchange_id = str((config.get("exchange") or {}).get("ccxt_id") or "")
+        # Ask the venue rather than trusting the onboarding checkbox. Tri-state:
+        # None means we could not determine it, and that is reported as such.
+        withdraw = check_withdraw_disabled(client, exchange_id)
         payload = {
             "ok": isinstance(balances, dict) and isinstance(info, dict),
-            "exchange_id": str((config.get("exchange") or {}).get("ccxt_id") or ""),
+            "exchange_id": exchange_id,
             "capabilities": capabilities,
-            "withdraw_permission_checked": False,
+            "withdraw_disabled_verified": withdraw["withdraw_disabled"],
+            "withdraw_permission_checked": withdraw["checked"],
+            "withdraw_permission_detail": withdraw["detail"],
         }
         print(json.dumps(payload, sort_keys=True))
         return 0 if payload["ok"] else 1

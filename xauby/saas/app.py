@@ -661,7 +661,12 @@ def create_app(
             supervisor.provision(tenant["slug"])
         store.set_account_status(user["id"], "active", user["id"])
         token, csrf = store.create_session(user["id"], mfa_verified=True)
-        response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax")
+        # Through the shared helper like every other login path. Setting the
+        # cookie inline here meant it carried neither `secure` nor `path`, so if
+        # dev_login_enabled were ever true in production this route would issue
+        # a non-Secure, MFA-bypassing session. The 404 above is the real guard;
+        # this removes the second, weaker copy behind it.
+        set_session_cookie(response, token)
         return {"ok": True, "csrf_token": csrf}
 
     @app.post("/auth/logout")
@@ -1090,7 +1095,18 @@ def create_app(
             )
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         capabilities = dict(result.get("capabilities") or {})
-        capabilities["withdraw_disabled_attested"] = True
+        # The venue's answer, kept apart from the user's claim. This used to set
+        # withdraw_disabled_attested = True unconditionally and store it beside
+        # probed capabilities, so a checkbox from onboarding was displayed as a
+        # verified property of the key. None means "could not determine" and is
+        # rendered as unverified — never as a pass.
+        capabilities["withdraw_disabled_verified"] = result.get("withdraw_disabled_verified")
+        capabilities["withdraw_permission_checked"] = bool(
+            result.get("withdraw_permission_checked")
+        )
+        capabilities["withdraw_permission_detail"] = str(
+            result.get("withdraw_permission_detail") or ""
+        )
         updated = store.set_exchange_connection(
             tenant["id"], tenant["exchange_id"], connection["key_last4"],
             target_id=connection["target_id"], status="tested", capabilities=capabilities,
