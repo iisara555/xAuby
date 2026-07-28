@@ -329,6 +329,27 @@ def _summary_line(label: str, row: Mapping[str, Any]) -> str:
     )
 
 
+def _collect_with_progress(
+    pool: Pool,
+    fn: Any,
+    items: List[Mapping[str, Any]],
+    *,
+    label: str,
+) -> List[Dict[str, Any]]:
+    """Collect unordered worker results while leaving useful CI breadcrumbs."""
+    total = len(items)
+    rows: List[Dict[str, Any]] = []
+    interval = max(1, min(24, total // 10 or 1))
+    for completed, row in enumerate(
+        pool.imap_unordered(fn, items, chunksize=1),
+        start=1,
+    ):
+        rows.append(row)
+        if completed == total or completed % interval == 0:
+            print(f"{label}: {completed}/{total} complete", flush=True)
+    return rows
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="bot_config.yaml")
@@ -358,7 +379,7 @@ def main() -> int:
         initializer=_init_worker,
         initargs=(str(Path(args.config).resolve()), data["paths"]),
     ) as pool:
-        rows = list(pool.imap_unordered(_eval_grid, items, chunksize=1))
+        rows = _collect_with_progress(pool, _eval_grid, items, label="grid")
         rows.sort(key=lambda row: row["id"])
         ranked = _rank(rows)
         balanced = _balanced_rank(rows)
@@ -373,7 +394,12 @@ def main() -> int:
         by_id = {item["id"]: item for item in items}
         finalists = [by_id[combo_id] for combo_id in selected_ids]
 
-        crosschecks = list(pool.imap_unordered(_eval_crosscheck, finalists, chunksize=1))
+        crosschecks = _collect_with_progress(
+            pool,
+            _eval_crosscheck,
+            finalists,
+            label="cross-checks",
+        )
         crosschecks.sort(key=lambda row: row["id"])
 
         fold_ids = list(
@@ -382,8 +408,11 @@ def main() -> int:
                 + [balanced[0]["id"], live["id"], long_only["id"]]
             )
         )
-        folds = list(
-            pool.imap_unordered(_eval_folds, [by_id[combo_id] for combo_id in fold_ids])
+        folds = _collect_with_progress(
+            pool,
+            _eval_folds,
+            [by_id[combo_id] for combo_id in fold_ids],
+            label="folds",
         )
         folds.sort(key=lambda row: row["id"])
 
