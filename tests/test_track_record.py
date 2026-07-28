@@ -284,6 +284,46 @@ class TestAuditorMultiPair(unittest.TestCase):
 
 
 class TestAuditorEpoch(unittest.TestCase):
+    def test_position_crossing_epoch_is_seeded_before_its_close(self):
+        trade = _trade(
+            "XAUUSDT", "2026-07-20T12:00:00+00:00",
+            4018.6, 4019.9, 0.029,
+        )
+        trade["opened_at"] = "2026-07-19T16:00:00+00:00"
+        db = _db(
+            [_closed(
+                "XAUUSDT", "2026-07-20T12:00:00+00:00", 1, 4019.9,
+            )],
+            [trade],
+        )
+
+        success, discrepancies, stats = audit_track_record(db)
+
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["matching_trades"], 1)
+        self.assertEqual(stats["open_at_audit"], [])
+        self.assertEqual(stats["epoch_seeded_symbols"], ["XAUUSDT"])
+
+    def test_restore_hydrates_entry_missing_from_legacy_open_event(self):
+        legacy_open = {
+            "event_type": "position_opened",
+            "run_id": "legacy",
+            "ts": "2026-07-28T00:01:00+00:00",
+            "seq": 1,
+            "symbol": "BTCUSDT",
+            "payload": {"qty": 0.0008, "position_side": "SHORT"},
+        }
+        restored = _restored(
+            "BTCUSDT", "2026-07-28T04:02:33+00:00", 2,
+            63733.9, 0.0008, "2026-07-28T00:01:00+00:00", "new-run",
+        )
+        db = _db([legacy_open, restored], [])
+
+        success, discrepancies, stats = audit_track_record(db)
+
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["open_at_audit"], ["BTCUSDT"])
+
     def test_pre_epoch_history_is_excluded(self):
         # XAUTUSDT on the old venue is not the same instrument as XAUUSDT on
         # OKX, so blending them into one track record compares nothing.
