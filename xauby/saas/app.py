@@ -42,6 +42,9 @@ TRADE_PIN_PATTERN = r"^[0-9]{8,12}$"
 TELEGRAM_TOKEN_PATTERN = r"^[0-9]{5,16}:[A-Za-z0-9_-]{35}$"
 TELEGRAM_CHAT_PATTERN = r"^(-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
 TELEGRAM_API_ROOT = "https://api.telegram.org"
+WITHDRAWAL_LIVE_GATE_DETAIL = (
+    "the exchange must verify that withdrawal permission is disabled before Live"
+)
 # Legacy consoles accepted a broader secret for the old/current value. Accept
 # it only during rotation; every newly saved PIN and sensitive action keeps the
 # stronger 8-12 digit requirement.
@@ -53,6 +56,15 @@ class ExchangeConnectBody(BaseModel):
     api_secret: str = Field(min_length=4, max_length=512)
     passphrase: str = Field(default="", max_length=512)
     withdraw_disabled_attested: bool
+
+
+def withdrawal_permission_verified(connection: dict[str, Any] | None) -> bool:
+    """Return true only for a current venue-issued withdrawal safety verdict."""
+    capabilities = (connection or {}).get("capabilities") or {}
+    return (
+        capabilities.get("withdraw_permission_checked") is True
+        and capabilities.get("withdraw_disabled_verified") is True
+    )
 
 
 class TelegramConnectBody(BaseModel):
@@ -1107,10 +1119,21 @@ def create_app(
         capabilities["withdraw_permission_detail"] = str(
             result.get("withdraw_permission_detail") or ""
         )
+        withdraw_enabled = (
+            capabilities["withdraw_permission_checked"] is True
+            and capabilities["withdraw_disabled_verified"] is False
+        )
         updated = store.set_exchange_connection(
             tenant["id"], tenant["exchange_id"], connection["key_last4"],
-            target_id=connection["target_id"], status="tested", capabilities=capabilities,
+            target_id=connection["target_id"],
+            status="failed" if withdraw_enabled else "tested",
+            capabilities=capabilities,
         )
+        if withdraw_enabled:
+            raise HTTPException(
+                status_code=409,
+                detail="the exchange reports that withdrawal permission is enabled",
+            )
         return {"ok": True, "connection": updated, "probe": result}
 
     def _telegram_error(exc: Exception, status: int | None, body: dict[str, Any]) -> str:
@@ -1252,6 +1275,8 @@ def create_app(
         connection = store.exchange_connection(tenant["id"])
         if not connection or connection["status"] != "tested":
             raise HTTPException(status_code=409, detail="exchange connection must pass testing first")
+        if not withdrawal_permission_verified(connection):
+            raise HTTPException(status_code=409, detail=WITHDRAWAL_LIVE_GATE_DETAIL)
         profile = store.trading_profile(tenant["id"])
         if not profile:
             raise HTTPException(status_code=409, detail="certified trading profile is required")
@@ -1281,6 +1306,8 @@ def create_app(
             or time.time() - float(connection["tested_at"]) > 1800
         ):
             raise HTTPException(status_code=409, detail="test the exchange connection again")
+        if not withdrawal_permission_verified(connection):
+            raise HTTPException(status_code=409, detail=WITHDRAWAL_LIVE_GATE_DETAIL)
         profile = store.trading_profile(tenant["id"])
         if not profile or profile.get("target_id") != connection.get("target_id"):
             raise HTTPException(status_code=409, detail="profile and exchange target must match")
@@ -1572,6 +1599,8 @@ def create_app(
         connection = store.exchange_connection(tenant_id)
         if not connection or connection["status"] != "tested":
             raise HTTPException(status_code=409, detail="exchange connection is not tested")
+        if not withdrawal_permission_verified(connection):
+            raise HTTPException(status_code=409, detail=WITHDRAWAL_LIVE_GATE_DETAIL)
         profile = store.trading_profile(tenant_id)
         if not profile or not profile.get("target_id"):
             raise HTTPException(status_code=409, detail="tenant has no saved trading profile")

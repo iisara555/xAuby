@@ -342,7 +342,11 @@ class SaaSControlPlaneTests(unittest.TestCase):
         connection = self.store.exchange_connection(tenant["id"])
         self.store.set_exchange_connection(
             tenant["id"], "okx", connection["key_last4"], target_id="okx-swap",
-            status="tested", capabilities={"swap": True},
+            status="tested", capabilities={
+                "swap": True,
+                "withdraw_permission_checked": True,
+                "withdraw_disabled_verified": True,
+            },
         )
         self.client.post("/api/v1/trade-pin", headers=self.headers, json={"pin": "12345678"})
         response = self.client.post(
@@ -361,6 +365,70 @@ class SaaSControlPlaneTests(unittest.TestCase):
         stopped = self.client.post("/api/v1/live/deactivate", headers=self.headers)
         self.assertEqual(stopped.status_code, 200)
         self.assertFalse(ephemeral.exists())
+
+    def test_withdraw_enabled_fails_test_and_unknown_cannot_cross_live_gates(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        connected = self.client.post(
+            "/api/v1/exchange/connect", headers=self.headers,
+            json={"target_id": "okx-swap", "api_key": "test-key-1234",
+                  "api_secret": "test-secret-value", "passphrase": "test-passphrase",
+                  "withdraw_disabled_attested": True},
+        )
+        self.assertEqual(connected.status_code, 200, connected.text)
+
+        enabled_result = {
+            "ok": True,
+            "capabilities": {"swap": True},
+            "withdraw_disabled_verified": False,
+            "withdraw_permission_checked": True,
+            "withdraw_permission_detail": "venue reports withdrawals ENABLED for this key",
+        }
+        with patch.object(self.supervisor, "probe_exchange", return_value=enabled_result):
+            tested = self.client.post("/api/v1/exchange/test", headers=self.headers)
+        self.assertEqual(tested.status_code, 409, tested.text)
+        self.assertIn("withdrawal permission is enabled", tested.json()["detail"])
+        connection = self.store.exchange_connection(tenant["id"])
+        self.assertEqual(connection["status"], "failed")
+        self.assertIsNone(connection["tested_at"])
+        self.assertIs(connection["capabilities"]["withdraw_disabled_verified"], False)
+
+        unknown_result = {
+            "ok": True,
+            "capabilities": {"swap": True},
+            "withdraw_disabled_verified": None,
+            "withdraw_permission_checked": False,
+            "withdraw_permission_detail": "permission endpoint unavailable",
+        }
+        with patch.object(self.supervisor, "probe_exchange", return_value=unknown_result):
+            tested = self.client.post("/api/v1/exchange/test", headers=self.headers)
+        self.assertEqual(tested.status_code, 200, tested.text)
+        self.assertEqual(tested.json()["connection"]["status"], "tested")
+
+        profile = self.client.put(
+            "/api/v1/profile", headers=self.headers,
+            json={"preset_ids": ["okx-xau-actionzone-v1"],
+                  "active_preset_id": "okx-xau-actionzone-v1", "risk": {}},
+        )
+        self.assertEqual(profile.status_code, 200, profile.text)
+        requested = self.client.post("/api/v1/live/request", headers=self.headers)
+        self.assertEqual(requested.status_code, 409, requested.text)
+        self.assertIn("verify", requested.json()["detail"])
+
+        self.client.post("/api/v1/trade-pin", headers=self.headers, json={"pin": "12345678"})
+        activated = self.client.post(
+            "/api/v1/live/activate", headers=self.headers,
+            json={"trade_pin": "12345678", "risk_acknowledged": True},
+        )
+        self.assertEqual(activated.status_code, 409, activated.text)
+        self.assertIn("verify", activated.json()["detail"])
+
+        self.store.request_live(tenant["id"], me["id"])
+        approved = self.client.post(
+            f"/api/v1/admin/tenants/{tenant['id']}/approve-live", headers=self.headers
+        )
+        self.assertEqual(approved.status_code, 409, approved.text)
+        self.assertIn("verify", approved.json()["detail"])
 
     def test_saving_the_same_live_profile_is_idempotent(self):
         me = self.client.get("/api/v1/me").json()

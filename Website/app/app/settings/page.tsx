@@ -8,6 +8,7 @@ import { PageHeading } from "@/components/page-heading";
 import { StatusPill } from "@/components/status-pill";
 import { useCurrentUser } from "@/components/app-shell";
 import { api, csrfHeaders } from "@/lib/api";
+import type { ExchangeConnection } from "@/lib/api";
 import { useBot, useCatalog, useProfile } from "@/lib/hooks";
 import { ProfileSettings } from "@/components/profile-settings";
 import { TelegramSettings } from "@/components/telegram-settings";
@@ -180,6 +181,7 @@ export default function SettingsPage() {
   // self-declaration read like a verified fact.
   const withdrawChecked = bot?.exchange_connection?.capabilities?.withdraw_permission_checked;
   const withdrawDisabled = bot?.exchange_connection?.capabilities?.withdraw_disabled_verified;
+  const withdrawSafe = withdrawChecked === true && withdrawDisabled === true;
   const withdrawVerdict = !bot?.exchange_connection
     ? null
     : withdrawChecked && withdrawDisabled === true
@@ -304,12 +306,22 @@ export default function SettingsPage() {
   async function testConnection() {
     begin();
     try {
-      await api("/api/v1/exchange/test", { method: "POST", headers: csrfHeaders(user) });
+      const result = await api<{ connection: ExchangeConnection }>(
+        "/api/v1/exchange/test",
+        { method: "POST", headers: csrfHeaders(user) },
+      );
       await mutate();
       setNowSeconds(Math.floor(Date.now() / 1000));
-      setMessage("Connection test passed. Live activation is available for 30 minutes.");
+      const safe = result.connection.capabilities?.withdraw_permission_checked === true
+        && result.connection.capabilities?.withdraw_disabled_verified === true;
+      setMessage(safe
+        ? "Connection test passed. Live activation is available for 30 minutes."
+        : "Connection works, but withdrawal permission could not be verified. Live activation remains blocked.");
       setBusy(false);
-    } catch (reason) { fail(reason); }
+    } catch (reason) {
+      await mutate().catch(() => undefined);
+      fail(reason);
+    }
   }
 
   async function activateLive(event: FormEvent<HTMLFormElement>) {
@@ -488,7 +500,7 @@ export default function SettingsPage() {
             {exchangeTestExpired && <p className="form-error" role="status">The last exchange test expired. Tap “Test connection” before activating Live.</p>}
             {withdrawVerdict && <p className={withdrawVerdict.tone} role="status">{withdrawVerdict.text}</p>}
             {!savedCertified && savedProfile && <p className="form-error" role="status">All saved pairs are SIM-only. Live activation needs at least one live-certified preset.</p>}
-            {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={openLiveDialog} disabled={busy || !exchangeTestFresh || !savedCertified}>Review & activate</button>}
+            {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={openLiveDialog} disabled={busy || !exchangeTestFresh || !withdrawSafe || !savedCertified}>Review & activate</button>}
           </div>
         </Tabs.Content>
 
