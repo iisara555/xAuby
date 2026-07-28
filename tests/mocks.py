@@ -150,6 +150,7 @@ class MockDatabaseRepository(IDatabaseRepository):
         take_profit: float = 0.0,
         highest_price_seen: float = 0.0,
         quantity: float = 0.0,
+        lowest_price_seen: Optional[float] = None,
         opened_at: Optional[str] = None,
         last_transition_at: Optional[str] = None,
         stop_loss_order_id: Optional[str] = None,
@@ -161,6 +162,7 @@ class MockDatabaseRepository(IDatabaseRepository):
         management_mode: str = "strategy",
         exchange_position_id: Optional[str] = None,
         partial_tp_taken: bool = False,
+        excursion_tracking_complete: Optional[bool] = None,
         *,
         symbol: Optional[str] = None,
     ) -> None:
@@ -180,6 +182,12 @@ class MockDatabaseRepository(IDatabaseRepository):
             take_profit=take_profit,
             highest_price_seen=highest_price_seen,
             quantity=quantity,
+            lowest_price_seen=(
+                float(lowest_price_seen)
+                if lowest_price_seen is not None
+                else float(entry_price if str(state or "").lower() == "bought" else 0.0)
+            ),
+            excursion_tracking_complete=excursion_tracking_complete,
             opened_at=opened_at,
             last_transition_at=last_transition_at,
             stop_loss_order_id=stop_loss_order_id,
@@ -305,6 +313,8 @@ class MockDatabaseRepository(IDatabaseRepository):
         pnl_source: str = "engine",
         pnl_confirmed: bool = True,
         funding_fee: float = 0.0,
+        mae_pct: Optional[float] = None,
+        mfe_pct: Optional[float] = None,
     ) -> bool:
         self.closed_trades.append({
             "symbol": symbol,
@@ -331,6 +341,9 @@ class MockDatabaseRepository(IDatabaseRepository):
             "pnl_source": pnl_source,
             "pnl_confirmed": pnl_confirmed,
             "funding_fee": funding_fee,
+            "mae_pct": float(mae_pct or 0.0),
+            "mfe_pct": float(mfe_pct or 0.0),
+            "excursion_measured": mae_pct is not None and mfe_pct is not None,
         })
         self.trade_state = Position(
             symbol=symbol,

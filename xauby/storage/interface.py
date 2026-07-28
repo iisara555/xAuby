@@ -25,6 +25,10 @@ class IDatabaseRepository(ABC):
     def save_trade_state(self, position: Position) -> None:
         """Persist current position state."""
 
+    def update_position_extrema(self, symbol: str, price: float) -> bool:
+        """Persist a new high/low for an open position, if either changed."""
+        return False
+
     @abstractmethod
     def save_closed_trade(self, trade: Dict[str, Any]) -> None:
         """Save a finalized trade record."""
@@ -118,6 +122,7 @@ class IDatabaseRepository(ABC):
         pnl_source: str = "engine",
         pnl_confirmed: bool = True,
         funding_fee: float = 0.0,
+        mae_pct: Optional[float] = None,
+        mfe_pct: Optional[float] = None,
     ) -> bool:
         """Atomically record a closed trade and reset position state to idle."""
-

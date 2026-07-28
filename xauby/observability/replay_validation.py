@@ -13,6 +13,7 @@ from xauby.observability.incidents import load_run_timeline
 from xauby.observability.event_coverage import audit_event_coverage, EventCoverageReport
 from xauby.observability.replay import ContextBuilder
 from xauby.runtime.candle_utils import drop_forming_bar, use_closed_candles
+from xauby.runtime.trading_config import resolve_trading_config, strategy_name_for_symbol
 from xauby.strategies import load_strategy
 from xauby.strategies.sandbox import StrategyRunner
 
@@ -82,7 +83,7 @@ class ReplayValidationState:
     def apply(self, ev: Dict[str, Any], *, tick_price: Optional[float] = None) -> None:
         etype = _event_type(ev)
         pl = _payload(ev)
-        if etype == "position_opened":
+        if etype in {"position_opened", "position_restored"}:
             self.has_position = True
             # Default LONG for events written before position_side was emitted
             # on the long path; SHORT has always carried it explicitly.
@@ -156,6 +157,7 @@ class ReplayValidationReport:
     matched: int = 0
     mismatched: int = 0
     skipped: int = 0
+    short_signals_checked: int = 0
     match_rate_pct: float = 100.0
     mismatches: List[SignalMismatch] = field(default_factory=list)
     skip_reasons: Dict[str, int] = field(default_factory=dict)
@@ -180,6 +182,8 @@ class ReplayValidationReport:
             "matched": self.matched,
             "mismatched": self.mismatched,
             "skipped": self.skipped,
+            "short_signals_checked": self.short_signals_checked,
+            "short_side_checked": self.short_signals_checked > 0,
             "match_rate_pct": round(self.match_rate_pct, 2),
             "ok": self.ok,
             "mismatches": [m.to_dict() for m in self.mismatches],
@@ -223,36 +227,56 @@ def validate_run(
     
     symbol = resolved_symbol
     cfg = load_bot_config(config_path)
-    active_strategy = (cfg.get("strategy") or {}).get("active")
-    if strategy_name:
-        strat_name = strategy_name
-    elif active_strategy:
-        strat_name = active_strategy
-    else:
-        # Fallback to CDC for backward compatibility only
-        import warnings
-        warnings.warn(
-            "No strategy_name provided and no active strategy found in config. "
-            "Falling back to 'xauby_actionzone'. This fallback will be removed in a future release.",
-            stacklevel=2,
-        )
-        strat_name = "xauby_actionzone"
-    strat_cfg = strategy_config_from_yaml(cfg, strat_name)
+    project_root = os.path.dirname(os.path.abspath(config_path))
+    # Replay must resolve the same per-symbol strategy and whitelist overrides
+    # as the live engine. Falling back to strategy.active here made a BTC
+    # replay silently run the global/XAU strategy and could produce a false
+    # PASS for a multi-pair run.
+    strat_name = strategy_name or strategy_name_for_symbol(
+        cfg,
+        symbol,
+        project_root=project_root,
+    )
+    effective = resolve_trading_config(
+        cfg,
+        strat_name,
+        symbol=symbol,
+        project_root=project_root,
+        for_live=True,
+    )
+    strat_cfg = dict(effective.strategy)
     trading_cfg = cfg.get("trading") or {}
     sl_confirm_ticks = int(trading_cfg.get("sl_confirm_ticks", 3))
-    tf_primary = str(strat_cfg.get("timeframe") or trading_cfg.get("timeframe") or "4h")
-    tf_regime = str((cfg.get("strategy_mode") or {}).get("trend_only", {}).get("confirm_timeframe") or "1d")
-    use_d1 = bool(strat_cfg.get("use_d1_regime_filter", False))
+    tf_primary = str(effective.primary_timeframe or trading_cfg.get("timeframe") or "4h")
+    tf_regime = str(
+        effective.confirm_timeframe
+        or (cfg.get("strategy_mode") or {}).get("trend_only", {}).get("confirm_timeframe")
+        or "1d"
+    )
+    use_d1 = any(
+        bool(strat_cfg.get(key, False))
+        for key in (
+            "use_d1_regime_filter",
+            "use_d1_regime_filter_long",
+            "use_d1_regime_filter_short",
+        )
+    )
 
     strategy = load_strategy(strat_name, strat_cfg)
     runner = StrategyRunner(strategy, timeout=30.0, check_imports=False)
 
-    tick_by_id: Dict[str, Dict[str, Any]] = {}
+    tick_by_id: Dict[tuple[str, str], Dict[str, Any]] = {}
     for ev in events:
         if _event_type(ev) == "tick" and ev.get("tick_id"):
-            tick_by_id[str(ev["tick_id"])] = ev
+            tick_symbol = str(ev.get("symbol") or "").upper().replace("_", "")
+            tick_by_id[(str(ev["tick_id"]), tick_symbol)] = ev
 
-    sig_events = [e for e in events if _event_type(e) == "signal_evaluated"]
+    wanted_symbol = str(symbol or "").upper().replace("_", "")
+    sig_events = [
+        e for e in events
+        if _event_type(e) == "signal_evaluated"
+        and str(e.get("symbol") or "").upper().replace("_", "") == wanted_symbol
+    ]
     if len(sig_events) > max_signals:
         sig_events = sig_events[-max_signals:]
 
@@ -269,7 +293,8 @@ def validate_run(
 
     for sig in sig_events:
         tick_id = str(sig.get("tick_id") or "")
-        tick_ev = tick_by_id.get(tick_id)
+        sig_symbol = str(sig.get("symbol") or symbol).upper().replace("_", "")
+        tick_ev = tick_by_id.get((tick_id, sig_symbol))
         if not tick_ev:
             _skip(report, "no_tick_pair")
             continue
@@ -280,7 +305,6 @@ def validate_run(
             _skip(report, "bad_price")
             continue
 
-        sig_symbol = sig.get("symbol") or symbol
         if sig_symbol not in df_primary_by_symbol:
             df_primary_by_symbol[sig_symbol] = candles_to_df(db.get_candles(sig_symbol, tf_primary, limit=300))
             if tf_regime and tf_regime != tf_primary:
@@ -300,8 +324,13 @@ def validate_run(
         for ev in events:
             if int(ev.get("seq") or 0) >= tick_seq:
                 break
+            event_symbol = str(ev.get("symbol") or "").upper().replace("_", "")
+            if event_symbol and event_symbol != sig_symbol:
+                continue
             rstate.apply(ev)
         rstate.apply(tick_ev, tick_price=price)
+        if rstate.has_position and rstate.position_side == "SHORT":
+            report.short_signals_checked += 1
 
         sig_ts = sig.get("ts") or tick_ev.get("ts") or ""
         df_p = slice_df_at_ts(df_primary, sig_ts)

@@ -218,6 +218,19 @@ def apply_certification(spec: Mapping[str, Any]) -> dict[str, Any]:
         )
     preset = deepcopy(dict(spec))
     resolved = certification_for(preset)
+    if (
+        preset.get("live_certified")
+        and resolved["certification_status"] == "not_assessed"
+    ):
+        # An override can accept a measured failure (XAU), but it cannot turn
+        # absence of venue evidence into approval.  Keeping unmeasured presets
+        # live-selectable violated the Phase-1 release criterion even though
+        # the UI honestly labelled them pending.
+        raise CertificationError(
+            f"preset {preset.get('id')!r} is approved for live but has no "
+            "certificate for this configuration. Set live_certified=false "
+            "until scripts/certify_preset.py issues a venue-backed record."
+        )
     if preset.get("live_certified") and resolved["certification_status"] != "certified":
         _require_override(preset, resolved["certification_status"])
     preset.update(resolved)

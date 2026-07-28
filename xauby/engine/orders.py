@@ -10,6 +10,7 @@ from xauby.observability import EventType
 from xauby.notifications.interface import AlertLevel
 from xauby.runtime.trading_config import bounded_position_fraction, resolve_trading_config
 from xauby.runtime.exits import fixed_take_profit_price
+from xauby.analytics.calculator import position_excursions_pct
 
 logger = logging.getLogger("lite_bot")
 
@@ -391,8 +392,17 @@ class OrderMixin:
             management_mode=position_management_mode,
             partial_tp_taken=False,
         )
-        self._emit_event(EventType.POSITION_OPENED, symbol=sym, position_side="SHORT",
-                         side="SELL", qty=fill_qty, leverage=leverage, slippage_bps=slip_bps)
+        self._emit_event(
+            EventType.POSITION_OPENED,
+            symbol=sym,
+            position_side="SHORT",
+            side="SELL",
+            entry_price=fill_price,
+            quantity=fill_qty,
+            qty=fill_qty,
+            leverage=leverage,
+            slippage_bps=slip_bps,
+        )
         self.send_telegram_alert(
             f"SHORT OPEN {'LIVE' if live else 'PAPER'} {sym} qty={fill_qty:.6f} "
             f"@ {fill_price:.4f} {leverage:.0f}x isolated"
@@ -441,6 +451,13 @@ class OrderMixin:
             remaining_qty > 0.0001
             and (min_remaining_qty <= 0 or remaining_qty >= min_remaining_qty)
         )
+        slip_bps = (
+            self._report_slippage(
+                side="BUY", ref_price=ticker_price, fill_price=exit_price,
+                symbol=sym, kind="short exit",
+            )
+            if not self._use_sim_broker(sym) else 0.0
+        )
         if remaining_is_tradeable:
             if not self._record_partial_closed_trade(
                 state,
@@ -452,6 +469,7 @@ class OrderMixin:
                 symbol=sym,
                 side="SHORT",
                 funding_share=funding_share,
+                slippage_bps=slip_bps,
             ):
                 return False
             sl_order_id = state.get("stop_loss_order_id")
@@ -486,16 +504,6 @@ class OrderMixin:
                 management_mode=state.get("management_mode", "strategy"),
                 partial_tp_taken=bool(state.get("partial_tp_taken")),
             )
-            self._emit_event(
-                EventType.POSITION_CLOSED,
-                symbol=sym,
-                position_side="SHORT",
-                exit=exit_price,
-                pnl=round(net_pnl, 2),
-                pnl_pct=round(net_pct, 2),
-                trigger=trigger_reason,
-                partial=True,
-            )
             self.send_telegram_alert(
                 f"SHORT PARTIAL CLOSE {sym} @ {exit_price:.4f} | "
                 f"Filled {filled_qty:.6f}, remaining {remaining_qty:.6f} | "
@@ -511,12 +519,9 @@ class OrderMixin:
             execution_mode=self._execution_mode(sym),
         )
         if ok:
-            slip_bps = self._report_slippage(
-                side="BUY", ref_price=ticker_price, fill_price=exit_price,
-                symbol=sym, kind="short exit",
-            ) if not self._use_sim_broker(sym) else 0.0
             self._emit_event(EventType.POSITION_CLOSED, symbol=sym, position_side="SHORT",
-                             exit=exit_price, pnl=net_pnl, pnl_pct=net_pct,
+                             exit=exit_price, exit_price=exit_price,
+                             quantity=filled_qty, pnl=net_pnl, pnl_pct=net_pct,
                              trigger=trigger_reason, slippage_bps=slip_bps)
             self.send_telegram_alert(
                 f"SHORT CLOSE {sym} @ {exit_price:.4f} | PnL {net_pnl:+.2f} ({net_pct:+.2f}%)"
@@ -574,6 +579,13 @@ class OrderMixin:
             remaining_qty > 0.0001
             and (min_remaining_qty <= 0 or remaining_qty >= min_remaining_qty)
         )
+        slip_bps = (
+            self._report_slippage(
+                side="SELL", ref_price=ticker_price, fill_price=exit_price,
+                symbol=sym, kind="long exit",
+            )
+            if not self._use_sim_broker(sym) else 0.0
+        )
         if remaining_is_tradeable:
             if not self._record_partial_closed_trade(
                 state,
@@ -585,6 +597,7 @@ class OrderMixin:
                 symbol=sym,
                 side="BUY",
                 funding_share=funding_share,
+                slippage_bps=slip_bps,
             ):
                 return False
             now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
@@ -617,16 +630,6 @@ class OrderMixin:
             logger.info(msg)
             self.last_log_message = msg
             self.send_telegram_alert(msg)
-            self._emit_event(
-                EventType.POSITION_CLOSED,
-                symbol=sym,
-                position_side="LONG",
-                exit=exit_price,
-                pnl=round(net_pnl, 2),
-                pnl_pct=round(net_pct, 2),
-                trigger=trigger_reason,
-                partial=True,
-            )
             return True
         ok = self.db.close_position_atomic(
             sym, side="BUY", amount=filled_qty, entry_price=entry, exit_price=exit_price,
@@ -637,12 +640,10 @@ class OrderMixin:
             execution_mode=self._execution_mode(sym),
         )
         if ok:
-            slip_bps = self._report_slippage(
-                side="SELL", ref_price=ticker_price, fill_price=exit_price,
-                symbol=sym, kind="long exit",
-            ) if not self._use_sim_broker(sym) else 0.0
             self._emit_event(EventType.POSITION_CLOSED, symbol=sym, position_side="LONG",
-                             exit=exit_price, pnl=round(net_pnl, 2), pnl_pct=round(net_pct, 2),
+                             exit=exit_price, exit_price=exit_price,
+                             quantity=filled_qty,
+                             pnl=round(net_pnl, 2), pnl_pct=round(net_pct, 2),
                              trigger=trigger_reason, slippage_bps=slip_bps)
             base_coin = self._get_base_asset(sym)
             msg = (
@@ -743,11 +744,22 @@ class OrderMixin:
         exit_fee = float(result.fees or fill_price * qty_part * fee_pct)
         fraction_actual = qty_part / qty_total if qty_total > 0 else float(fraction)
         funding_share = funding_total * fraction_actual
+        slip_bps = (
+            self._report_slippage(
+                side="BUY" if side == "SHORT" else "SELL",
+                ref_price=ticker_price,
+                fill_price=fill_price,
+                symbol=sym,
+                kind="partial take-profit exit",
+            )
+            if not self._use_sim_broker(sym) else 0.0
+        )
         self._emit_event(
             EventType.ORDER_FILLED,
             side="BUY" if side == "SHORT" else "SELL",
             qty=round(qty_part, 6),
             price=round(fill_price, 2),
+            slippage_bps=slip_bps,
             status="FILLED",
         )
         self._record_partial_closed_trade(
@@ -760,6 +772,7 @@ class OrderMixin:
             symbol=sym,
             side="SHORT" if side == "SHORT" else "BUY",
             funding_share=funding_share,
+            slippage_bps=slip_bps,
         )
 
         # A live exchange-side stop still covers the ORIGINAL qty — re-place it
@@ -928,6 +941,7 @@ class OrderMixin:
         symbol: Optional[str] = None,
         side: str = "BUY",
         funding_share: float = 0.0,
+        slippage_bps: Optional[float] = None,
     ) -> bool:
         """Record a partial exit without resetting the remaining position.
 
@@ -963,6 +977,17 @@ class OrderMixin:
             entry_regime = None
             exit_regime = None
         try:
+            mae_pct, mfe_pct = position_excursions_pct(
+                entry_price=entry_price,
+                highest_price_seen=float(
+                    state.get("highest_price_seen") or entry_price
+                ),
+                lowest_price_seen=float(
+                    state.get("lowest_price_seen") or entry_price
+                ),
+                position_side=("SHORT" if str(side).upper() == "SHORT" else "LONG"),
+                exit_price=filled_price,
+            )
             self.db.save_closed_trade(
                 sym,
                 side=str(side).upper() if str(side).upper() == "SHORT" else "BUY",
@@ -983,7 +1008,29 @@ class OrderMixin:
                 exit_regime=exit_regime,
                 strategy_name=self._strategy_name_for_symbol(sym),
                 execution_mode=self._execution_mode(sym),
+                mae_pct=mae_pct,
+                mfe_pct=mfe_pct,
+                excursion_measured=bool(
+                    entry_price > 0 and state.get("excursion_tracking_complete")
+                ),
             )
+            event_fields = {
+                "symbol": sym,
+                "position_side": "SHORT" if str(side).upper() == "SHORT" else "LONG",
+                "exit": filled_price,
+                "exit_price": filled_price,
+                "quantity": filled_qty,
+                "remaining_quantity": max(
+                    0.0, float(state.get("quantity") or 0.0) - filled_qty
+                ),
+                "pnl": round(net_pnl, 2),
+                "pnl_pct": round(net_pnl_pct, 2),
+                "trigger": trigger_reason,
+                "partial": True,
+            }
+            if slippage_bps is not None:
+                event_fields["slippage_bps"] = float(slippage_bps)
+            self._emit_event(EventType.POSITION_CLOSED, **event_fields)
             return True
         except Exception as e:
             logger.error("Failed to record partial closed trade for %s: %s", sym, e)
@@ -1272,6 +1319,13 @@ class OrderMixin:
                     entry_fee=entry_fee,
                     exit_fee=exit_fee,
                 )
+                slip_bps = self._report_slippage(
+                    side="SELL",
+                    ref_price=ticker_price,
+                    fill_price=filled_price,
+                    symbol=sym,
+                    kind="exchange stop exit",
+                )
                 if not self._record_closed_trade_atomic(
                     state,
                     filled_qty,
@@ -1303,9 +1357,13 @@ class OrderMixin:
                     self._emit_event(
                         EventType.POSITION_CLOSED,
                         exit=round(filled_price, 2),
+                        exit_price=filled_price,
+                        position_side="LONG",
+                        quantity=filled_qty,
                         pnl=round(net_pnl, 2),
                         pnl_pct=round(net_pnl_pct, 2),
                         trigger="Exchange-Side Stop Loss",
+                        slippage_bps=slip_bps,
                         symbol=sym,
                     )
                 return self.db.get_trade_state(sym)
@@ -1316,6 +1374,13 @@ class OrderMixin:
                 entry_cost = filled_qty * float(state.get("entry_price", 0.0))
                 gross_exit = filled_qty * filled_price
                 fee_pct = self._symbol_fee_pct(sym)
+                slip_bps = self._report_slippage(
+                    side="SELL",
+                    ref_price=ticker_price,
+                    fill_price=filled_price,
+                    symbol=sym,
+                    kind="partial exchange stop exit",
+                )
                 self._record_partial_closed_trade(
                     state,
                     filled_qty,
@@ -1324,6 +1389,7 @@ class OrderMixin:
                     entry_fee=entry_cost * fee_pct,
                     exit_fee=gross_exit * fee_pct,
                     symbol=sym,
+                    slippage_bps=slip_bps,
                 )
                 self._emit_event(
                     EventType.ORDER_FILLED,
@@ -1661,9 +1727,11 @@ class OrderMixin:
                 EventType.POSITION_OPENED,
                 position_side="LONG",
                 entry=round(ticker_price, 2),
+                entry_price=round(ticker_price, 2),
                 stop_loss=round(stop_loss, 2),
                 take_profit=round(take_profit, 2),
                 qty=round(qty, 6),
+                quantity=round(qty, 6),
             )
             return True
 
@@ -1734,9 +1802,11 @@ class OrderMixin:
                 EventType.POSITION_OPENED,
                 position_side="LONG",
                 entry=round(ticker_price, 2),
+                entry_price=round(ticker_price, 2),
                 stop_loss=round(stop_loss, 2),
                 take_profit=round(take_profit, 2),
                 qty=round(qty, 6),
+                quantity=round(qty, 6),
             )
             return True
         else:
@@ -2054,11 +2124,14 @@ class OrderMixin:
                         EventType.POSITION_OPENED,
                         position_side="LONG",
                         entry=round(filled_price, 2),
+                        entry_price=round(filled_price, 2),
                         stop_loss=round(stop_loss, 2),
                         take_profit=round(take_profit, 2),
                         qty=round(filled_base_qty, 6),
+                        quantity=round(filled_base_qty, 6),
                         status=status,
                         order_path=order_path,
+                        slippage_bps=slip_bps,
                         order_total_ms=metrics.get("order_total_ms", order_total_ms),
                     )
                     return True
@@ -2425,6 +2498,7 @@ class OrderMixin:
                             entry_fee=entry_fee,
                             exit_fee=exit_fee,
                             symbol=sym,
+                            slippage_bps=slip_bps,
                         )
                         now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
                         new_sl_res = self._place_sl_with_retry(
@@ -2476,9 +2550,13 @@ class OrderMixin:
                         self._emit_event(
                             EventType.POSITION_CLOSED,
                             exit=round(filled_price, 2),
+                            exit_price=filled_price,
+                            position_side="LONG",
+                            quantity=filled_qty,
                             pnl=round(net_pnl, 2),
                             pnl_pct=round(net_pnl_pct, 2),
                             trigger=trigger_reason,
+                            slippage_bps=slip_bps,
                         )
 
                     logger.info(msg)

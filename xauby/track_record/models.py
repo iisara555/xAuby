@@ -13,6 +13,9 @@ class TrackRecordEntry:
     duration_seconds: float
     regime_at_entry: str
     regime_at_exit: str
+    mae_pct: float = 0.0
+    mfe_pct: float = 0.0
+    excursion_measured: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -28,6 +31,9 @@ class PerformanceReport:
     max_drawdown_pct: float
     average_duration_hours: float
     entries: List[TrackRecordEntry]
+    average_mae_pct: float = 0.0
+    average_mfe_pct: float = 0.0
+    excursion_coverage_pct: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -39,5 +45,8 @@ class PerformanceReport:
             "profit_factor": self.profit_factor,
             "max_drawdown_pct": self.max_drawdown_pct,
             "average_duration_hours": self.average_duration_hours,
+            "average_mae_pct": self.average_mae_pct,
+            "average_mfe_pct": self.average_mfe_pct,
+            "excursion_coverage_pct": self.excursion_coverage_pct,
             "entries": [e.to_dict() for e in self.entries]
         }

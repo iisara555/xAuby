@@ -101,19 +101,27 @@ For each `signal_evaluated` event in a run, validation:
 4. Re-runs the strategy plugin.
 5. Reports PASS if event integrity is OK and every replayed action matches the recorded action.
 
+The strategy, timeframe, and live-safe parameter overrides are resolved for the
+requested symbol from the same tenant `bot_config.yaml` and
+`coin_whitelist.json` used by the engine. Do not pass `--strategy` for a normal
+production proof; that override is reserved for targeted diagnostics.
+
 Limitations: validation checks strategy output before macro guard, cooldown, RegimeRouter execution overrides, and order placement. Candle snapshots must cover the event time with enough bars for the strategy.
 
 The validated run must also contain durable `tick` events. The committed
-baseline keeps `observability.durable_high_frequency_events: false` to limit
-write volume, so enable it temporarily before a controlled replay-validation
-run and restore it afterwards. A historical run without durable ticks cannot be
-backfilled; every signal will be skipped with `no_tick_pair`.
+baseline keeps `observability.durable_high_frequency_events: true`; bounded
+retention is 14 days for JSONL and 30 days for SQLite. A historical run without
+durable ticks cannot be backfilled and is now a failed CLI validation unless
+`--allow-empty` is explicitly used for diagnostics.
 
-Short-side parity is not certified by the current validator: persisted
-`signal_evaluated` events contain the legacy BUY/SELL dispatch action but not
-semantic `intent` + `position_side`, and replay validation does not restore the
-position side into `MarketContext`. Add those fields and side-aware comparison
-before using replay output as evidence for increasing live capital.
+Short-side validation is semantic: durable signals retain the strategy's raw
+`action` plus `intent` and `position_side`, while `execution_action` records the
+internal exchange dispatch. A restart emits `position_restored`, allowing a run
+that inherits an open SHORT to reconstruct the correct `MarketContext`. Use:
+
+```bash
+python scripts/replay_validate.py <run_id> --symbol BTCUSDT --require-short
+```
 
 ## Storage
 

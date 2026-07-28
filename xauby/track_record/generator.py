@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from xauby.track_record.models import TrackRecordEntry, PerformanceReport
-from xauby.analytics.calculator import calculate_metrics
+from xauby.analytics.calculator import calculate_metrics, trade_span_years
 
 def _parse_date(date_str: Any) -> datetime:
     if not date_str:
@@ -14,10 +14,22 @@ def _parse_date(date_str: Any) -> datetime:
     except Exception:
         return datetime.fromtimestamp(0, tz=timezone.utc)
 
-def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name: str) -> PerformanceReport:
+def generate_report(
+    trades: List[Dict[str, Any]],
+    period_days: int,
+    report_name: str,
+    *,
+    initial_balance: float = 1000.0,
+    as_of: Optional[datetime] = None,
+    period_start: Optional[datetime] = None,
+) -> PerformanceReport:
     """Generate a performance report for a specific period (in days) from the trades list."""
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=period_days)
+    now = as_of or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    cutoff = period_start or (now - timedelta(days=period_days))
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=timezone.utc)
 
     filtered_trades = []
     for t in trades:
@@ -26,7 +38,11 @@ def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name:
             filtered_trades.append(t)
 
     # Use analytics calculator to get metrics
-    metrics = calculate_metrics(filtered_trades)
+    metrics = calculate_metrics(
+        filtered_trades,
+        initial_balance=initial_balance,
+        years=trade_span_years(filtered_trades),
+    )
 
     # Running drawdown at each trade's close, chronologically. The field used to
     # be hardcoded to 0.0 under a comment saying it was "calculated
@@ -37,14 +53,13 @@ def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name:
         key=lambda t: t.get("closed_at_dt") or _parse_date(t.get("closed_at")),
     )
     running_drawdown: Dict[int, float] = {}
-    equity = 0.0
-    peak = 0.0
+    equity = float(initial_balance)
+    peak = float(initial_balance)
     for t in chronological:
         equity += float(t.get("net_pnl", 0.0))
         peak = max(peak, equity)
-        # Relative to the peak equity reached so far, which is 0.0 until the
-        # first profitable stretch — before that any loss is a drawdown of the
-        # starting balance, which this data does not carry, so it reads 0.0.
+        # Relative to the peak equity reached so far, including the real
+        # starting balance supplied by the runtime metrics context.
         running_drawdown[id(t)] = (
             (peak - equity) / peak * 100.0 if peak > 0 else 0.0
         )
@@ -73,7 +88,10 @@ def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name:
             drawdown_pct=round(running_drawdown.get(id(t), 0.0), 4),
             duration_seconds=duration,
             regime_at_entry=str(t.get("entry_regime") or "NORMAL"),
-            regime_at_exit=str(t.get("exit_regime") or "NORMAL")
+            regime_at_exit=str(t.get("exit_regime") or "NORMAL"),
+            mae_pct=round(float(t.get("mae_pct") or 0.0), 4),
+            mfe_pct=round(float(t.get("mfe_pct") or 0.0), 4),
+            excursion_measured=bool(t.get("excursion_measured", False)),
         ))
 
     # Calculate average duration
@@ -88,10 +106,15 @@ def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name:
         profit_factor=round(metrics.profit_factor, 2),
         max_drawdown_pct=round(metrics.max_drawdown_pct, 2),
         average_duration_hours=round(avg_duration_hours, 2),
-        entries=entries
+        entries=entries,
+        average_mae_pct=round(metrics.average_mae_pct, 4),
+        average_mfe_pct=round(metrics.average_mfe_pct, 4),
+        excursion_coverage_pct=round(metrics.excursion_coverage_pct, 2),
     )
 
-def generate_comparison_report(trades: List[Dict[str, Any]]) -> Dict[str, PerformanceReport]:
+def generate_comparison_report(
+    trades: List[Dict[str, Any]], *, initial_balance: float = 1000.0
+) -> Dict[str, PerformanceReport]:
     """Group trades by strategy_name (or trigger) and generate a performance report for each."""
     by_strategy: Dict[str, List[Dict[str, Any]]] = {}
     for t in trades:
@@ -107,5 +130,10 @@ def generate_comparison_report(trades: List[Dict[str, Any]]) -> Dict[str, Perfor
 
     reports = {}
     for strat, strat_trades in by_strategy.items():
-        reports[strat] = generate_report(strat_trades, 3650, f"Strategy Comparison: {strat}")
+        reports[strat] = generate_report(
+            strat_trades,
+            3650,
+            f"Strategy Comparison: {strat}",
+            initial_balance=initial_balance,
+        )
     return reports

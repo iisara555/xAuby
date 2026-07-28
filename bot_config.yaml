@@ -498,6 +498,14 @@ daily_digest:
   enabled: true
   hour_utc: 10
   send_telegram: true
+monthly_report:
+  enabled: true
+  day_of_month: 1
+  hour_utc: 12
+  send_telegram: true
+  save_to_file: true
+  file_path: monthly_reports/report_{month}.json
+  parity_tolerance_bps: 10.0
 # Replays the position event log against the closed-trade table once a day and
 # alerts on any disagreement. The auditor shipped long before this block: it was
 # reachable only from a unit test, so nothing ever checked the two against each
@@ -594,8 +602,10 @@ event_retention:
   enabled: true
   run_on_startup: true
   cleanup_interval_hours: 12
-  jsonl_retention_days: 30
-  sqlite_retention_days: 90
+  # Durable per-symbol ticks are required for replay certification.  Keep a
+  # deliberately bounded window on the 2 GB production VPS.
+  jsonl_retention_days: 14
+  sqlite_retention_days: 30
 backup_retention:
   enabled: true
   run_on_startup: true
@@ -731,7 +741,7 @@ logging:
   cleanup_on_startup: true
   metrics_flush_interval: 60
 observability:
-  durable_high_frequency_events: false
+  durable_high_frequency_events: true
   high_frequency_event_types:
   - tick
   - regime_classified

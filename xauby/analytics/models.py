@@ -24,6 +24,9 @@ class TradingPerformanceMetrics:
     #: Present so a live number is never silently compared with a backtest one
     #: measured on a different sampling unit — see xauby/analytics/risk.py.
     basis: Optional[MetricBasis] = None
+    average_mae_pct: float = 0.0
+    average_mfe_pct: float = 0.0
+    excursion_coverage_pct: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -43,4 +46,7 @@ class TradingPerformanceMetrics:
             "consecutive_wins": self.consecutive_wins,
             "consecutive_losses": self.consecutive_losses,
             "basis": self.basis.to_dict() if self.basis else None,
+            "average_mae_pct": self.average_mae_pct,
+            "average_mfe_pct": self.average_mfe_pct,
+            "excursion_coverage_pct": self.excursion_coverage_pct,
         }

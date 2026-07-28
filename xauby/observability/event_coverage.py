@@ -20,6 +20,7 @@ ENGINE_WIRED_EVENTS: Dict[str, str] = {
     EventType.RISK_CHECK_PASSED: "Pre-order risk sizing OK",
     EventType.GUARD_BLOCKED: "Macro sentiment guard block",
     EventType.POSITION_OPENED: "Position entry recorded",
+    EventType.POSITION_RESTORED: "Tracked position restored after restart",
     EventType.POSITION_CLOSED: "Position exit recorded",
     EventType.STOP_LOSS_UPDATED: "Trailing / BE stop move",
     EventType.STOP_LOSS_TRIGGERED: "Stop loss breach",
@@ -57,6 +58,10 @@ def _etype(ev: Dict[str, Any]) -> str:
 def _payload(ev: Dict[str, Any]) -> Dict[str, Any]:
     p = ev.get("payload")
     return p if isinstance(p, dict) else {}
+
+
+def _symbol(ev: Dict[str, Any]) -> str:
+    return str(ev.get("symbol") or "").upper().replace("_", "")
 
 
 @dataclass
@@ -118,8 +123,11 @@ def audit_event_coverage(events: List[Dict[str, Any]], run_id: str = "") -> Even
         report.integrity_issues.append("seq_not_monotonic")
 
     # tick_id pairing for signal_evaluated
-    tick_ids = {
-        str(ev.get("tick_id"))
+    tick_pairs = {
+        (
+            str(ev.get("tick_id")),
+            _symbol(ev),
+        )
         for ev in events
         if _etype(ev) == EventType.TICK and ev.get("tick_id")
     }
@@ -128,7 +136,8 @@ def audit_event_coverage(events: List[Dict[str, Any]], run_id: str = "") -> Even
         if _etype(ev) != EventType.SIGNAL_EVALUATED:
             continue
         tid = str(ev.get("tick_id") or "")
-        if tid and tid not in tick_ids:
+        pair = (tid, _symbol(ev))
+        if tid and pair not in tick_pairs:
             orphan_signals += 1
     if orphan_signals:
         report.tick_pairs_ok = False
@@ -136,7 +145,7 @@ def audit_event_coverage(events: List[Dict[str, Any]], run_id: str = "") -> Even
 
     # position_opened after live/paper buy should follow risk_check or order_filled
     risk_or_fill_seqs = {
-        int(ev.get("seq") or 0)
+        (int(ev.get("seq") or 0), _symbol(ev))
         for ev in events
         if _etype(ev) in (EventType.RISK_CHECK_PASSED, EventType.ORDER_FILLED)
     }
@@ -144,7 +153,8 @@ def audit_event_coverage(events: List[Dict[str, Any]], run_id: str = "") -> Even
         if _etype(ev) != EventType.POSITION_OPENED:
             continue
         seq = int(ev.get("seq") or 0)
-        if risk_or_fill_seqs and not any(r < seq for r in risk_or_fill_seqs):
+        symbol = _symbol(ev)
+        if not any(r < seq and sym == symbol for r, sym in risk_or_fill_seqs):
             report.integrity_issues.append(f"position_opened_without_precursor:seq={seq}")
 
     # order_filled should have order_submitted with same side earlier
@@ -155,9 +165,13 @@ def audit_event_coverage(events: List[Dict[str, Any]], run_id: str = "") -> Even
         side = str(pl.get("side") or ev.get("side") or "").upper()
         seq = int(ev.get("seq") or 0)
         if et == EventType.ORDER_SUBMITTED and side:
-            submitted_sides.append((seq, side))
+            submitted_sides.append((seq, side, _symbol(ev)))
         elif et == EventType.ORDER_FILLED and side:
-            if not any(s < seq and sd == side for s, sd in submitted_sides):
+            symbol = _symbol(ev)
+            if not any(
+                s < seq and submitted_side == side and submitted_symbol == symbol
+                for s, submitted_side, submitted_symbol in submitted_sides
+            ):
                 report.integrity_issues.append(f"order_filled_without_submit:{side}@seq={seq}")
 
     report.integrity_ok = len(report.integrity_issues) == 0

@@ -122,15 +122,16 @@ class TestFingerprintInvalidation(_WithCertificateDir):
     def test_editing_a_live_approved_preset_breaks_the_build(self):
         # The strongest form of the property, and worth stating on its own: you
         # cannot quietly retune a configuration that is approved for live and
-        # keep shipping it. Losing the certificate costs the approval too, until
-        # someone either re-certifies or signs the override.
+        # keep shipping it. Losing the certificate costs the approval too; an
+        # override can accept a measured failure, not a different unmeasured
+        # configuration.
         self.write(_record("okx-btc-supertrend-v1"))
         spec = _spec("okx-btc-supertrend-v1")
         self.assertTrue(spec["live_certified"])
         spec["execution_profile"]["supertrend_mult"] = 2.0
         with self.assertRaises(CertificationError) as ctx:
             apply_certification(spec)
-        self.assertIn("operator_override", str(ctx.exception))
+        self.assertIn("no certificate for this configuration", str(ctx.exception))
 
     def test_cosmetic_edits_do_not_revoke_it(self):
         # Renaming a preset or changing an allocation is not a new experiment;
@@ -153,6 +154,7 @@ class TestFingerprintInvalidation(_WithCertificateDir):
 
 class TestApprovalMustBeStated(_WithCertificateDir):
     def test_live_without_a_passing_verdict_needs_an_override(self):
+        self.write(_record("binance-eth-supertrend-v1", verdict="failed"))
         spec = _spec("binance-eth-supertrend-v1")
         spec["live_certified"] = True
         spec.pop("operator_override", None)
@@ -168,14 +170,14 @@ class TestApprovalMustBeStated(_WithCertificateDir):
         with self.assertRaises(CertificationError):
             apply_certification(spec)
 
-    def test_a_complete_override_is_accepted(self):
+    def test_an_override_cannot_approve_absent_evidence(self):
         spec = _spec("binance-eth-supertrend-v1")
         spec["live_certified"] = True
         spec["operator_override"] = {"decided_by": "owner",
                                      "decided_at": "2026-07-27",
                                      "reason": "pilot tenant, sim-sized"}
-        self.assertEqual(
-            apply_certification(spec)["certification_status"], "not_assessed")
+        with self.assertRaisesRegex(CertificationError, "no certificate"):
+            apply_certification(spec)
 
     def test_a_certified_preset_needs_no_override(self):
         self.write(_record("okx-btc-supertrend-v1"))
@@ -248,6 +250,20 @@ class TestShippedRecords(unittest.TestCase):
         from xauby.saas.catalog import PRESETS
 
         self.assertEqual(len(PRESETS), len(PRESET_SPECS))
+
+    def test_every_live_preset_has_a_measured_certificate(self):
+        from xauby.saas.catalog import PRESETS
+
+        for preset in PRESETS:
+            if not preset.get("live_certified"):
+                continue
+            with self.subTest(preset=preset["id"]):
+                self.assertNotEqual(
+                    preset["certification_status"],
+                    "not_assessed",
+                    "operator approval may accept a measured failure, never "
+                    "the absence of venue evidence",
+                )
 
 
 if __name__ == "__main__":

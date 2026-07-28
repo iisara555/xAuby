@@ -612,7 +612,12 @@ def build_tradelog_view_model(
     filter_mode = (trade_filter or "all").lower()
     if filter_mode not in TRADE_FILTERS:
         filter_mode = "all"
-    cache_key = (symbol, width, height, latest_trade_time, count, bool(state.get("simulate_only")), filter_mode)
+    metric_ctx = state.get("metrics_context") or {}
+    initial_balance = float(metric_ctx.get("initial_balance") or 1000.0)
+    cache_key = (
+        symbol, width, height, latest_trade_time, count,
+        bool(state.get("simulate_only")), filter_mode, initial_balance,
+    )
     with _TRADELOG_VM_CACHE_LOCK:
         if cache_key in _TRADELOG_VM_CACHE:
             return copy.deepcopy(_TRADELOG_VM_CACHE[cache_key])
@@ -625,7 +630,12 @@ def build_tradelog_view_model(
         t["closed_at_dt"] = _parse_date(t.get("closed_at"))
         t["opened_at_dt"] = _parse_date(t.get("opened_at"))
 
-    metrics = calculate_metrics(trades)
+    from xauby.analytics.calculator import trade_span_years
+    metrics = calculate_metrics(
+        trades,
+        initial_balance=initial_balance,
+        years=trade_span_years(trades),
+    )
     reg = state.get("regime") or dict(DEFAULT_REGIME)
     profile = get_layout_profile(max(38, width))
     body_h = max(12, height - 10)
@@ -654,7 +664,12 @@ def build_tradelog_view_model(
                 regime_lines = list(regime_lines) + [""] + hist
         except Exception:
             pass
-    track_lines = render_track_record_lines(trades, is_phone) if show_track else []
+    track_lines = (
+        render_track_record_lines(
+            trades, is_phone, initial_balance=initial_balance
+        )
+        if show_track else []
+    )
 
     vm = TradeLogViewModel(
         symbol=symbol,

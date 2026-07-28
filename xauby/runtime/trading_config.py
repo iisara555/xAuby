@@ -657,6 +657,7 @@ def canonical_runtime_config(
         config_path=config_path,
         project_root=project_root,
         whitelist_path=whitelist_path,
+        read_only=True,
     )
     specs = registry.load(None)
     symbols: Dict[str, Dict[str, Any]] = {}

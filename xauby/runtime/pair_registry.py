@@ -142,10 +142,12 @@ class PairRegistry:
         config_path: str = "bot_config.yaml",
         project_root: str = ".",
         whitelist_path: Optional[str] = None,
+        read_only: bool = False,
     ):
         self.config = config
         self.config_path = config_path
         self.project_root = project_root
+        self.read_only = bool(read_only)
         data = config.get("data", {}) or {}
         hybrid = data.get("hybrid_dynamic_coin_config", {}) or {}
         self.whitelist_path = whitelist_path or os.path.join(
@@ -401,6 +403,8 @@ class PairRegistry:
         return merged
 
     def _maybe_sync_yaml_pairs(self) -> None:
+        if self.read_only:
+            return
         if not sync_yaml_pairs_from_whitelist(self.config):
             return
         from xauby.runtime.pair_config import sync_data_pairs_yaml

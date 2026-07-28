@@ -60,6 +60,16 @@ class TestPositionSideTracking(unittest.TestCase):
         self.assertTrue(st.has_position)
         self.assertEqual(st.position_side, "SHORT")
 
+    def test_restored_short_seeds_a_new_run(self):
+        st = ReplayValidationState()
+        st.apply({
+            "event_type": "position_restored",
+            "payload": {"position_side": "SHORT", "stop_loss": 106.0},
+        })
+        self.assertTrue(st.has_position)
+        self.assertEqual(st.position_side, "SHORT")
+        self.assertEqual(st.stop_loss, 106.0)
+
     def test_long_open_is_recorded(self):
         st = ReplayValidationState()
         st.apply(self._open("LONG"))

@@ -112,6 +112,13 @@ class Position:
     take_profit: float
     highest_price_seen: float
     quantity: float
+    # Lowest observed ticker while this position is open.  Together with
+    # highest_price_seen this makes MAE/MFE measurable for both LONG and SHORT.
+    lowest_price_seen: float = 0.0
+    # None means a newly-created state whose DB layer may start complete
+    # tracking. False is retained for positions adopted/migrated mid-trade,
+    # whose pre-upgrade excursion history is unknowable.
+    excursion_tracking_complete: Optional[bool] = None
     opened_at: Optional[str] = None
     last_transition_at: Optional[str] = None
     stop_loss_order_id: Optional[str] = None
@@ -143,7 +150,8 @@ class Position:
     def keys(self):
         return (
             "symbol", "state", "entry_price", "stop_loss", "take_profit",
-            "highest_price_seen", "quantity", "opened_at", "last_transition_at",
+            "highest_price_seen", "quantity", "lowest_price_seen",
+            "excursion_tracking_complete", "opened_at", "last_transition_at",
             "stop_loss_order_id", "position_side", "leverage", "margin_mode",
             "liquidation_price", "funding_paid", "management_mode",
             "exchange_position_id", "partial_tp_taken",

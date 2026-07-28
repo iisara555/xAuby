@@ -92,6 +92,10 @@ open.
   restart, back up the tenant config, runtime state, engine SQLite DB, and control
   DB; record the exchange position's symbol, side, quantity, and entry price; and
   require the preflight to report `SAFE`.
+- Before activation, run `scripts/audit_release_readiness.py` against the staged
+  code plus the **tenant** config/whitelist. After restart, run it again with the
+  runtime DB and current run id; a release that has no replayed signal or no
+  SHORT-side evidence when `--require-short` is requested remains blocked.
 - On the SaaS/systemd host, stage the exact commit as an atomic release, keep a
   rollback target, restart `xauby-control.service` and the affected
   `xauby-engine@<tenant>.service`, and do not launch a second checkout-scoped

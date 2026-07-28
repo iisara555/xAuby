@@ -15,7 +15,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from xauby.analytics.calculator import calculate_metrics  # noqa: E402
+from xauby.analytics.calculator import calculate_metrics, trade_span_years  # noqa: E402
 from xauby.analytics.risk import (  # noqa: E402
     MetricBasis,
     bars_per_year,
@@ -180,6 +180,13 @@ class TestIntraTradeGapIsLabelled(unittest.TestCase):
 
 
 class TestCalculatorIntegration(unittest.TestCase):
+    def test_trade_span_is_derived_from_observed_timestamps(self):
+        trades = [{
+            "opened_at": "2024-01-01T00:00:00+00:00",
+            "closed_at": "2024-12-31T06:00:00+00:00",
+        }]
+        self.assertAlmostEqual(trade_span_years(trades), 1.0, places=6)
+
     def test_calculator_reports_a_basis(self):
         metrics = calculate_metrics(_trades([50.0, -30.0, 80.0]))
         self.assertIsInstance(metrics.basis, MetricBasis)

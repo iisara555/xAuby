@@ -31,6 +31,12 @@ def format_report_telegram(
         f"PF: `{_pf_str(report.profit_factor)}` │ Max DD: `{report.max_drawdown_pct:.2f}%`",
         _regime_line(regime),
     ]
+    if report.excursion_coverage_pct > 0:
+        lines.insert(
+            3,
+            f"MAE/MFE avg: `{report.average_mae_pct:.2f}% / "
+            f"{report.average_mfe_pct:.2f}%` │ coverage `{report.excursion_coverage_pct:.0f}%`",
+        )
     return "\n".join(lines)
 
 
@@ -54,6 +60,12 @@ def format_weekly_review_md(
         f"- Max drawdown: {report.max_drawdown_pct:.2f}%",
         f"- Avg duration: {report.average_duration_hours:.1f}h",
     ]
+    if report.excursion_coverage_pct > 0:
+        lines.extend([
+            f"- Average MAE: {report.average_mae_pct:.2f}%",
+            f"- Average MFE: {report.average_mfe_pct:.2f}%",
+            f"- Excursion coverage: {report.excursion_coverage_pct:.1f}%",
+        ])
     if regime:
         lines.extend([
             "",
@@ -71,8 +83,13 @@ def build_period_report_message(
     period_days: int,
     title: str,
     regime: Optional[Dict[str, Any]] = None,
+    *,
+    initial_balance: float = 1000.0,
 ) -> str:
-    report = generate_report(trades, period_days, f"{period_days}-Day")
+    report = generate_report(
+        trades, period_days, f"{period_days}-Day",
+        initial_balance=initial_balance,
+    )
     return format_report_telegram(report, title, regime)
 
 
@@ -82,8 +99,12 @@ def build_daily_digest_message(
     equity: float,
     position_line: str,
     regime: Optional[Dict[str, Any]] = None,
+    *,
+    initial_balance: float = 1000.0,
 ) -> str:
-    report = generate_report(trades, 1, "24h")
+    report = generate_report(
+        trades, 1, "24h", initial_balance=initial_balance
+    )
     sign = "+" if report.net_pnl >= 0 else ""
     return (
         f"📅 *Daily Digest* — `{symbol}`\n"

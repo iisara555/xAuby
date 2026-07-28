@@ -1,6 +1,71 @@
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from xauby.analytics.models import TradingPerformanceMetrics
 from xauby.analytics.risk import MetricBasis, risk_from_trade_pnls
+
+
+def position_excursions_pct(
+    *,
+    entry_price: float,
+    highest_price_seen: float,
+    lowest_price_seen: float,
+    position_side: str,
+    exit_price: Optional[float] = None,
+) -> tuple[float, float]:
+    """Return (MAE%, MFE%) from the observed range of one position.
+
+    The entry and exit are included in the range so a same-tick close still has
+    defensible evidence.  Values are positive magnitudes for both LONG/SHORT.
+    """
+    entry = float(entry_price or 0.0)
+    if entry <= 0:
+        return 0.0, 0.0
+    observed = [entry]
+    high = float(highest_price_seen or 0.0)
+    low = float(lowest_price_seen or 0.0)
+    exit_value = float(exit_price or 0.0)
+    if high > 0:
+        observed.append(high)
+    if low > 0:
+        observed.append(low)
+    if exit_value > 0:
+        observed.append(exit_value)
+    observed_high = max(observed)
+    observed_low = min(observed)
+    if str(position_side or "LONG").upper() == "SHORT":
+        mae = max(0.0, (observed_high - entry) / entry * 100.0)
+        mfe = max(0.0, (entry - observed_low) / entry * 100.0)
+    else:
+        mae = max(0.0, (entry - observed_low) / entry * 100.0)
+        mfe = max(0.0, (observed_high - entry) / entry * 100.0)
+    return mae, mfe
+
+
+def trade_span_years(trades: List[Dict[str, Any]]) -> Optional[float]:
+    """Observed entry-to-exit span for honest per-trade annualisation.
+
+    The UI previously omitted ``years`` and therefore displayed a raw
+    per-trade Sharpe beside annualised backtest ratios.  Derive the span from
+    the data we actually have; return ``None`` rather than guessing when fewer
+    than two usable timestamps exist.
+    """
+    points: List[datetime] = []
+    for trade in trades:
+        for key in ("opened_at", "closed_at"):
+            raw = trade.get(key)
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                points.append(dt.astimezone(timezone.utc))
+            except (TypeError, ValueError):
+                continue
+    if len(points) < 2:
+        return None
+    span_seconds = (max(points) - min(points)).total_seconds()
+    return span_seconds / (365.25 * 24 * 3600) if span_seconds > 0 else None
 
 def calculate_metrics(
     trades: List[Dict[str, Any]],
@@ -66,6 +131,23 @@ def calculate_metrics(
     losses = 0
     pnl_list = []
     return_pct_list = []
+    measured_excursions = [
+        t for t in sorted_trades if bool(t.get("excursion_measured", False))
+    ]
+    average_mae_pct = (
+        sum(float(t.get("mae_pct") or 0.0) for t in measured_excursions)
+        / len(measured_excursions)
+        if measured_excursions else 0.0
+    )
+    average_mfe_pct = (
+        sum(float(t.get("mfe_pct") or 0.0) for t in measured_excursions)
+        / len(measured_excursions)
+        if measured_excursions else 0.0
+    )
+    excursion_coverage_pct = (
+        len(measured_excursions) / len(sorted_trades) * 100.0
+        if sorted_trades else 0.0
+    )
 
     for t in sorted_trades:
         pnl = float(t.get("net_pnl", 0.0))
@@ -156,4 +238,7 @@ def calculate_metrics(
         consecutive_wins=consecutive_wins,
         consecutive_losses=consecutive_losses,
         basis=risk.basis,
+        average_mae_pct=average_mae_pct,
+        average_mfe_pct=average_mfe_pct,
+        excursion_coverage_pct=excursion_coverage_pct,
     )

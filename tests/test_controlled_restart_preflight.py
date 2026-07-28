@@ -9,8 +9,9 @@ class Pair:
 
 
 class FakeRegistry:
-    def __init__(self, cfg):
+    def __init__(self, cfg, **kwargs):
         self.cfg = cfg
+        self.kwargs = kwargs
 
     def load(self, client):
         return [Pair("BTCUSDT")]
@@ -61,7 +62,7 @@ class FakeClient:
 def _patch_common(monkeypatch, state):
     monkeypatch.setenv("BINANCE_API_KEY", "key")
     monkeypatch.setenv("BINANCE_API_SECRET", "secret")
-    monkeypatch.setattr(preflight, "load_bot_config", lambda: {"portfolio": {"quote_asset": "USDT"}})
+    monkeypatch.setattr(preflight, "load_bot_config", lambda _path: {"portfolio": {"quote_asset": "USDT"}})
     monkeypatch.setattr(preflight, "PairRegistry", FakeRegistry)
     monkeypatch.setattr(preflight, "LiteDB", FakeDB)
     monkeypatch.setattr(preflight, "create_exchange_client", lambda *args, **kwargs: FakeClient())
@@ -115,3 +116,26 @@ def test_preflight_strict_mode_keeps_old_zero_position_policy(monkeypatch):
 
     assert report["safe_to_restart"] is False
     assert "state reports open_positions=1" in report["reasons"]
+
+
+def test_preflight_registry_is_read_only_and_uses_tenant_config(monkeypatch, tmp_path):
+    captured = {}
+
+    class CaptureRegistry(FakeRegistry):
+        def __init__(self, cfg, **kwargs):
+            super().__init__(cfg, **kwargs)
+            captured.update(kwargs)
+
+    monkeypatch.setenv("XAUBY_CONFIG_DIR", str(tmp_path))
+    _patch_common(monkeypatch, {"aggregate": {"open_positions": 0}})
+    monkeypatch.setattr(preflight, "PairRegistry", CaptureRegistry)
+    FakeDB.position = FakePosition("idle")
+    FakeClient.balances = {}
+    FakeClient.orders = {}
+
+    report = preflight.run_preflight()
+
+    assert report["safe_to_restart"] is True
+    assert captured["read_only"] is True
+    assert captured["project_root"] == str(tmp_path)
+    assert captured["config_path"] == str(tmp_path / "bot_config.yaml")

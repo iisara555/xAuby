@@ -26,6 +26,7 @@ from xauby.runtime.exits import (
 from xauby.runtime.trading_config import resolve_trading_config
 from xauby.utils.atomic_io import atomic_json_write
 from xauby.api.utils import round_step
+from xauby.analytics.calculator import position_excursions_pct
 
 logger = logging.getLogger("lite_bot")
 
@@ -1049,12 +1050,22 @@ class LoopMixin:
         candle_status = sc.candle_snapshot()
         partial_tp_pct, partial_tp_fraction = resolve_partial_tp(self._get_strategy_config(sym))
         partial_tp_trigger_price = 0.0
+        current_mae_pct = 0.0
+        current_mfe_pct = 0.0
         if state["state"] == "bought" and partial_tp_pct > 0:
             entry = float(state.get("entry_price") or 0.0)
             if entry > 0:
                 is_short = str(state.get("position_side") or "LONG").upper() == "SHORT"
                 factor = 1.0 - (partial_tp_pct / 100.0) if is_short else 1.0 + (partial_tp_pct / 100.0)
                 partial_tp_trigger_price = entry * factor
+        if state["state"] == "bought":
+            current_mae_pct, current_mfe_pct = position_excursions_pct(
+                entry_price=float(state.get("entry_price") or 0.0),
+                highest_price_seen=float(state.get("highest_price_seen") or 0.0),
+                lowest_price_seen=float(state.get("lowest_price_seen") or 0.0),
+                position_side=str(state.get("position_side") or "LONG"),
+                exit_price=current_price,
+            )
         snap = self._state_exporter.build(
             pid=os.getpid(),
             engine_started_at=self.engine_started_at,
@@ -1074,6 +1085,7 @@ class LoopMixin:
                 "stop_loss": state["stop_loss"],
                 "take_profit": state["take_profit"],
                 "highest_price_seen": state["highest_price_seen"],
+                "lowest_price_seen": state.get("lowest_price_seen", 0.0),
                 "quantity": state["quantity"],
                 "unrealized_pnl": unrealized["net_pnl"],
                 "unrealized_pnl_pct": unrealized["net_pnl_pct"],
@@ -1093,6 +1105,8 @@ class LoopMixin:
                 "partial_tp_taken": bool(state.get("partial_tp_taken", False)),
                 "partial_tp_pct": partial_tp_pct,
                 "partial_tp_fraction": partial_tp_fraction,
+                "mae_pct": current_mae_pct,
+                "mfe_pct": current_mfe_pct,
                 "partial_tp_trigger_price": partial_tp_trigger_price,
                 "mark_price": current_price,
                 "exchange": exchange_id,
@@ -1139,6 +1153,9 @@ class LoopMixin:
         snap["last_candle_timestamp"] = candle_status["last_candle_timestamp"]
         snap["equity_breakdown"] = equity_breakdown
         snap["total_equity_usdt"] = portfolio_total
+        snap["metrics_context"] = {
+            "initial_balance": float(self.initial_balance),
+        }
         try:
             closed = self.db.get_closed_trades(sym, limit=1)
             snap["last_closed_trade"] = closed[0] if closed else None
@@ -1489,9 +1506,8 @@ class LoopMixin:
     def tick(self):
         tick_started = time.monotonic()
         self._tick_counter += 1
-        tick_id = f"{self.run_id}-{self._tick_counter}"
-        with TickContext(tick_id):
-            self._emitter.set_tick_id(tick_id)
+        cycle_id = f"{self.run_id}-{self._tick_counter}"
+        with TickContext(cycle_id):
             if self._pair_registry.maybe_reload(self.client):
                 prev_syms = set(self.contexts.keys())
                 self._reload_hot_pair_config()
@@ -1501,6 +1517,12 @@ class LoopMixin:
             self.sync_candles()
             for spec in self._pair_registry.active():
                 self._active_tick_symbol = spec.symbol
+                # One engine cycle evaluates several symbols.  A shared tick id
+                # lets the later symbol overwrite the earlier one in replay's
+                # lookup, pairing (for example) a BTC signal with the XAU price.
+                # Make the decision boundary explicit per symbol.
+                pair_tick_id = f"{cycle_id}-{spec.symbol}"
+                self._emitter.set_tick_id(pair_tick_id)
                 try:
                     self._tick_body()
                 except Exception as e:
@@ -1556,6 +1578,15 @@ class LoopMixin:
                 except Exception:
                     pass
                 return
+
+        # Excursion tracking is market-data telemetry, not strategy logic. Keep
+        # recording it even when the candle frame is temporarily insufficient
+        # and this tick cannot evaluate a signal.
+        state = self.db.get_trade_state(sym)
+        if state["state"] == "bought":
+            update_extrema = getattr(self.db, "update_position_extrema", None)
+            if callable(update_extrema) and update_extrema(sym, ticker_price):
+                state = self.db.get_trade_state(sym)
 
         tf_primary = sc.primary_timeframe
         df_4h = self.load_candles_df(tf_primary, symbol=sym)
@@ -1626,7 +1657,6 @@ class LoopMixin:
         if closed_only and df_d1 is not None:
             df_d1, _ = drop_forming_bar(df_d1, tf_regime)
 
-        state = self.db.get_trade_state(sym)
         # Per-symbol gate: a sim-mode symbol (whitelist mode "sim") must never
         # touch real exchange SL orders even when another symbol runs live.
         if (self._execution_mode(sym) == "live" and state["state"] == "bought"
@@ -1965,7 +1995,13 @@ class LoopMixin:
             if sym == self.focus_symbol:
                 self.current_regime = None
 
-        action = signal.action
+        # The strategy action is the canonical decision vocabulary persisted
+        # for replay.  Execution dispatch is a separate concern: SHORT opens
+        # are SELL decisions but the legacy dispatcher routes them through its
+        # BUY branch.  Mutating `action` before emitting made live record
+        # BUY(OPEN/SHORT) while replay correctly produced SELL(OPEN/SHORT).
+        signal_action = str(signal.action or "HOLD").upper()
+        action = signal_action
         reason = signal.reason
         signal_side = str(getattr(signal, "position_side", None) or "LONG").upper()
         signal_intent = str(getattr(signal, "intent", None) or "").upper()
@@ -2002,7 +2038,8 @@ class LoopMixin:
         # exposure. See docs/roadmap_2026H2.md P0.5.
         self._emit_event(
             EventType.SIGNAL_EVALUATED,
-            action=action,
+            action=signal_action,
+            execution_action=action,
             intent=str(getattr(signal, "intent", "") or ""),
             position_side=str(getattr(signal, "position_side", "") or ""),
             reason=(reason or "")[:240],
@@ -2672,6 +2709,24 @@ class LoopMixin:
         
         self.sync_candles()
         self.reconcile_startup_state()
+        # Reconciliation can preserve an exchange-backed position across a
+        # controlled restart.  That position was opened in the previous run,
+        # so seed this run's durable event stream explicitly; otherwise replay
+        # evaluates every post-restart short tick as if the account were flat.
+        for spec in self._pair_registry.active():
+            restored = self.db.get_trade_state(spec.symbol)
+            if restored.get("state") != "bought":
+                continue
+            self._emit_event(
+                EventType.POSITION_RESTORED,
+                symbol=spec.symbol,
+                position_side=str(restored.get("position_side") or "LONG").upper(),
+                quantity=float(restored.get("quantity") or 0.0),
+                entry_price=float(restored.get("entry_price") or 0.0),
+                stop_loss=float(restored.get("stop_loss") or 0.0),
+                opened_at=restored.get("opened_at"),
+                management_mode=str(restored.get("management_mode") or "strategy"),
+            )
         self.run_retention_pass(startup=True)
         if self.ws is not None:
             self.ws.start()
