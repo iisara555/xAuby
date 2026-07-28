@@ -22,6 +22,8 @@ class BTCEMAPullbackStrategy(Strategy):
     author = "xAuby"
     description = "BTC 1H EMA trend pullback/reclaim strategy with ATR exits."
     tags = ["btc", "1h", "ema", "pullback", "paper-test"]
+    # Tagged paper-test; never taken further.
+    maturity = "paper"
     required_timeframes = ["1h"]
     min_bars = 120
 

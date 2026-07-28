@@ -17,7 +17,9 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from xauby.analytics.risk import equity_relative_returns
 from xauby.backtest.service import run_focused_backtest
+from xauby.backtest.significance import benjamini_hochberg, bootstrap_returns
 from xauby.observability.replay_validation import load_bot_config
 from xauby.runtime.trading_config import strategy_name_for_symbol
 
@@ -53,6 +55,19 @@ def _passes_gate(stats: Dict[str, Any], *, min_pf: float, min_trades: int, max_d
         and int(stats.get("total_trades", 0) or 0) >= min_trades
         and abs(float(stats.get("max_drawdown_pct", 0.0) or 0.0)) <= max_dd
     )
+
+
+def _bootstrap_pvalue(returns: List[float]) -> float:
+    """One-sided bootstrap p-value for "this candidate's mean return <= 0".
+
+    Derived from P(compounded result > 0) over resamples, so it uses the same
+    machinery the certificates do. A candidate with too few trades to resample
+    gets p = 1.0 — no evidence, not benefit of the doubt.
+    """
+    result = bootstrap_returns(returns)
+    if not result.samples:
+        return 1.0
+    return max(0.0, 1.0 - result.prob_profitable)
 
 
 def _apply_strategy(config_path: str, symbol: str, strategy_name: str) -> None:
@@ -98,6 +113,9 @@ def main() -> int:
     parser.add_argument("--min-trades", type=int, default=5)
     parser.add_argument("--max-dd", type=float, default=10.0)
     parser.add_argument("--apply", action="store_true", help="Apply best passing strategy to config")
+    parser.add_argument("--alpha", type=float, default=0.05,
+                        help="false-discovery rate for the multiple-comparison "
+                             "correction across candidates")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -133,13 +151,32 @@ def main() -> int:
             "bars": result.meta.bars,
             "data_symbol": result.meta.data_symbol,
             "used_data_proxy": result.meta.used_data_proxy,
+            # Popped before reporting; only needed for the correction below.
+            "_returns": equity_relative_returns(
+                [float(t.get("pnl") or 0.0) for t in (stats.get("trades") or [])],
+                float(stats.get("initial_balance") or 0.0),
+            ) if result.meta.run_ok else [],
         }
         rows.append(row)
 
-    rows.sort(key=lambda r: r["score"], reverse=True)
+    # Correct for having tried several candidates (roadmap P1.3). Picking the
+    # best of N on a per-candidate gate is a multiple comparison: with enough
+    # candidates one clears the bar by luck alone. Each row gets a one-sided
+    # bootstrap p-value for "mean return <= 0", then Benjamini-Hochberg controls
+    # the false-discovery rate across the family.
+    p_values = [_bootstrap_pvalue(r.pop("_returns", [])) for r in rows]
+    correction = benjamini_hochberg(p_values, alpha=args.alpha)
+    for row, p_value, survived in zip(rows, p_values, correction.rejected):
+        row["p_value"] = round(p_value, 4)
+        row["survives_correction"] = bool(survived)
+        # A candidate that fails correction has not been shown to work; keeping
+        # passes_gate alone would let the family's luckiest draw through.
+        row["admissible"] = bool(row["passes_gate"] and survived)
+
+    rows.sort(key=lambda r: (r["admissible"], r["score"]), reverse=True)
     best = rows[0] if rows else {}
     applied = False
-    if args.apply and best and best.get("passes_gate"):
+    if args.apply and best and best.get("admissible"):
         _apply_strategy(args.config, symbol, str(best["strategy_name"]))
         applied = True
 
@@ -154,6 +191,7 @@ def main() -> int:
             "min_trades": args.min_trades,
             "max_dd": args.max_dd,
         },
+        "multiple_comparison": correction.to_dict(),
         "results": rows,
     }
 

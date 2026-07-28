@@ -32,6 +32,8 @@ class RSI2ShortStrategy(Strategy):
     author = "xAuby"
     description = "RESEARCH ONLY short: RSI(2) overbought fade below EMA200 (BUY = open short)."
     tags = ["research", "short", "rsi2", "1h"]
+    # Research short mirror: BUY opens a SHORT.
+    maturity = "research"
     required_timeframes = ["1h"]
     min_bars = 240
 

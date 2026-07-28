@@ -20,8 +20,10 @@ class ReportScheduler:
         self.config = config
         self._weekly_cfg = config.get("weekly_review") or {}
         self._daily_cfg = config.get("daily_digest") or {}
+        self._self_audit_cfg = config.get("self_audit") or {}
         self._last_weekly_key: Optional[str] = None
         self._last_daily_key: Optional[str] = None
+        self._last_audit_key: Optional[str] = None
 
     def _slot_key(self, day_of_week: int, hour_utc: int, now: datetime) -> str:
         if now.weekday() != day_of_week or now.hour != hour_utc:
@@ -52,6 +54,48 @@ class ReportScheduler:
 
         self._maybe_run_weekly(engine, now)
         self._maybe_run_daily(engine, now)
+        self._maybe_run_self_audit(engine, now)
+
+    def _maybe_run_self_audit(self, engine: Any, now: datetime) -> None:
+        """Replay the event log against the trade table and alert on drift.
+
+        Roadmap P1.6. The auditor shipped but nothing ever called it: it was
+        reachable only from a unit test, so the one check that would notice the
+        trade table disagreeing with the event log never ran against real data.
+        """
+        if not self._self_audit_cfg.get("enabled", False):
+            return
+        hour = int(self._self_audit_cfg.get("hour_utc", 11))
+        slot = self._daily_slot_key(hour, now)
+        if not slot or slot == self._last_audit_key:
+            return
+        self._last_audit_key = slot
+        try:
+            from xauby.track_record.validator import audit_track_record
+
+            ok, discrepancies, stats = audit_track_record(engine.db)
+            if ok:
+                logger.info(
+                    "Self-audit clean: %s trades matched across %s",
+                    stats.get("matching_trades"), stats.get("symbols") or "no symbols",
+                )
+                return
+            # Alerting on a failed audit is the whole point: a silent
+            # reconciliation failure is indistinguishable from a healthy system.
+            head = discrepancies[:5]
+            more = len(discrepancies) - len(head)
+            body = "\n".join(f"- {d}" for d in head)
+            if more > 0:
+                body += f"\n- ...and {more} more"
+            logger.warning("Self-audit found %s discrepancies", len(discrepancies))
+            if self._self_audit_cfg.get("send_telegram", True):
+                engine.send_telegram_alert(
+                    f"\u26a0\ufe0f Track-record self-audit found "
+                    f"{len(discrepancies)} discrepancies\n{body}",
+                    level=AlertLevel.CRITICAL,
+                )
+        except Exception as exc:  # never let reporting take the engine down
+            logger.error("Self-audit failed to run: %s", exc)
 
     def _maybe_run_weekly(self, engine: Any, now: datetime) -> None:
         if not self._weekly_cfg.get("enabled", False):

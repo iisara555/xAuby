@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from itertools import product
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from xauby.backtest.best_params import save_best_parameters as _save_best
 from xauby.backtest.constants import DEFAULT_COMPACT_GRID_RUNS
@@ -12,6 +13,67 @@ from xauby.backtest.service import load_backtest_replay_bundle, run_replay_from_
 
 
 PAIR_OPTIMIZATION_PRESETS: Dict[str, Dict[str, Any]] = {}
+
+# The repo's own pre-registered admission thresholds, taken verbatim from
+# scripts/actionzone_wfa_sweep.py rather than invented here. A parameter set
+# chosen on fewer trades than this is chosen on noise.
+MIN_IS_TRADES = 40
+MIN_OOS_TRADES = 18
+
+
+@dataclass
+class OptimizerVerdict:
+    """Whether the sample can support a selection at all, and why not.
+
+    Roadmap P1.2. Measured on the shipped config (``max_bars: 300``,
+    ``oos_split_ratio: 0.7``, ``oos_warmup_bars: 100``), neither live pair could:
+
+    * ``supertrend_ema200`` needs 240 bars before it emits anything, and both
+      windows are shorter than that (210 in-sample, 190 out-of-sample). Every
+      combination scored exactly 0.0 on every metric, ``robust`` was empty, and
+      the winner was whichever tuple happened to sort first — a coin flip
+      returned as an optimization result.
+    * ``xauby_actionzone`` produced **one** trade per window, and the selection
+      ranked candidates on an annualised Sharpe computed from that single trade.
+
+    Neither failure was visible: both paths returned a populated dict and saved
+    it as the pair's best parameters. So the optimizer now reports why it
+    declined instead of answering anyway.
+    """
+
+    admissible: bool
+    reason: str = ""
+    total_bars: int = 0
+    is_bars: int = 0
+    oos_bars: int = 0
+    strategy_min_bars: int = 0
+    best_is_trades: int = 0
+    best_oos_trades: int = 0
+    trials: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "admissible": self.admissible,
+            "reason": self.reason,
+            "total_bars": self.total_bars,
+            "is_bars": self.is_bars,
+            "oos_bars": self.oos_bars,
+            "strategy_min_bars": self.strategy_min_bars,
+            "best_is_trades": self.best_is_trades,
+            "best_oos_trades": self.best_oos_trades,
+            "trials": self.trials,
+            "min_is_trades": MIN_IS_TRADES,
+            "min_oos_trades": MIN_OOS_TRADES,
+        }
+
+
+def _strategy_min_bars(bundle: Any) -> int:
+    try:
+        from xauby.strategies import load_strategy
+
+        return int(getattr(load_strategy(bundle.strategy_name, {}), "min_bars", 0) or 0)
+    except Exception:
+        return 0
 
 
 def _unique(values: List[Any]) -> List[Any]:
@@ -91,10 +153,19 @@ def _evaluate_grid(
     use_oos = n >= (2 * warmup + 80)
 
     is_df = oos_df = None
+    oos_skip = 0
     if use_oos:
         split = int(n * ratio)
+        lo = max(0, split - warmup)
         is_df = df.iloc[:split].reset_index(drop=True)
-        oos_df = df.iloc[max(0, split - warmup):].reset_index(drop=True)
+        oos_df = df.iloc[lo:].reset_index(drop=True)
+        # Bars of the slice that are lead-in, not out-of-sample. Passed as
+        # min_bars_override so trading starts exactly at the split whatever the
+        # strategy's own min_bars is. Without it the replay skips min_bars
+        # instead: 100 for xauby_actionzone (equal to oos_warmup_bars purely by
+        # coincidence), 240 for supertrend_ema200 — longer than the whole slice,
+        # so it never traded and every combo scored 0.0.
+        oos_skip = split - lo
 
     results: List[Dict[str, Any]] = []
     total = len(combos)
@@ -117,17 +188,88 @@ def _evaluate_grid(
         is_res = run_replay_from_bundle(bundle, strat_cfg_override=override, df_override=is_df)
         if not is_res.meta.run_ok:
             continue
-        oos_res = run_replay_from_bundle(bundle, strat_cfg_override=override, df_override=oos_df)
+        oos_res = run_replay_from_bundle(bundle, strat_cfg_override=override,
+                                         df_override=oos_df,
+                                         min_bars_override=oos_skip)
         if not oos_res.meta.run_ok:
             continue
         entry = extract_optimizer_entry(oos_res, override)  # headline = OOS
         entry["is_net_profit_pct"] = float(is_res.stats.get("net_profit_pct", 0.0) or 0.0)
+        entry["is_trades"] = int(is_res.stats.get("total_trades", 0) or 0)
         entry["oos_net_profit_pct"] = entry["net_profit_pct"]
         entry["oos_profit_factor"] = entry["profit_factor"]
         entry["oos_sharpe"] = float(oos_res.stats.get("sharpe", 0.0) or 0.0)
+        entry["oos_trades"] = int(oos_res.stats.get("total_trades", 0) or 0)
         results.append(entry)
 
     return results, use_oos
+
+
+def _admissibility(
+    bundle: Any,
+    results: List[Dict[str, Any]],
+    used_oos: bool,
+    trials: int,
+) -> OptimizerVerdict:
+    """Can this sample support a selection at all?
+
+    Applies the repo's own pre-registered minimums rather than reporting
+    whichever combination happened to score highest on a handful of trades. A
+    ranking over four candidates that each traded once is not an optimization,
+    and calling it one is how a coin flip gets saved as a pair's best parameters.
+    """
+    ratio, warmup = _oos_settings(bundle.merged_cfg)
+    df = getattr(bundle, "df", None)
+    n = len(df) if df is not None and hasattr(df, "iloc") else 0
+    split = int(n * ratio) if n else 0
+    verdict = OptimizerVerdict(
+        admissible=False,
+        total_bars=n,
+        is_bars=split,
+        oos_bars=max(0, n - split),
+        strategy_min_bars=_strategy_min_bars(bundle),
+        trials=trials,
+    )
+
+    if not results:
+        verdict.reason = "no combination completed a replay"
+        return verdict
+
+    if not used_oos:
+        # A full-window run is a probe, not a validation: the parameters are
+        # scored on the same bars they were chosen from.
+        verdict.reason = (
+            f"only {n} bars, below the {2 * warmup + 80} needed to hold out an "
+            "out-of-sample window; a single full-window ranking selects on the "
+            "data it was tuned on"
+        )
+        return verdict
+
+    verdict.best_is_trades = max(int(e.get("is_trades", 0) or 0) for e in results)
+    verdict.best_oos_trades = max(int(e.get("oos_trades", 0) or 0) for e in results)
+    if verdict.strategy_min_bars > split:
+        verdict.reason = (
+            f"{bundle.strategy_name} needs {verdict.strategy_min_bars} bars "
+            f"before it emits a signal and the in-sample window is {split}; "
+            "every combination scores zero and the winner would be whichever "
+            "sorted first"
+        )
+        return verdict
+    if verdict.best_is_trades < MIN_IS_TRADES or verdict.best_oos_trades < MIN_OOS_TRADES:
+        verdict.reason = (
+            f"best combination traded {verdict.best_is_trades}x in-sample "
+            f"and {verdict.best_oos_trades}x out-of-sample, against the "
+            f"pre-registered minimum of {MIN_IS_TRADES}/{MIN_OOS_TRADES}; "
+            "raise backtest.optimizer.max_bars and re-run off the trading host"
+        )
+        return verdict
+
+    verdict.admissible = True
+    verdict.reason = (
+        f"best of {trials} trials, {verdict.best_is_trades} in-sample and "
+        f"{verdict.best_oos_trades} out-of-sample trades"
+    )
+    return verdict
 
 
 def _select_best(results: List[Dict[str, Any]], used_oos: bool) -> Dict[str, Any]:
@@ -334,8 +476,14 @@ def optimize_grid_for_symbol(
     results, used_oos = _evaluate_grid(
         bundle, keys, combos, progress_callback=progress_callback
     )
+    verdict = _admissibility(bundle, results, used_oos, len(combos))
+    if not verdict.admissible:
+        # Declining is the result. Returning the top row of an unusable ranking
+        # would be indistinguishable from a real optimization to every caller.
+        return {"admissible": False, "verdict": verdict.to_dict()}
     best = _select_best(results, used_oos)
     if best:
+        best["verdict"] = verdict.to_dict()
         _save_best(sym, best)
     return best
 
@@ -374,7 +522,12 @@ def optimize_pair_strategy_extended(
     results, used_oos = _evaluate_grid(
         bundle, keys, combos, progress_callback=progress_callback
     )
+    verdict = _admissibility(bundle, results, used_oos, len(combos))
+    if not verdict.admissible:
+        return {"admissible": False, "verdict": verdict.to_dict()}
     best = _select_best(results, used_oos)
-    if best and save:
-        _save_best(sym, best)
+    if best:
+        best["verdict"] = verdict.to_dict()
+        if save:
+            _save_best(sym, best)
     return best

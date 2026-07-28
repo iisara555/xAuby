@@ -252,12 +252,19 @@ def run_replay_from_bundle(
     *,
     strat_cfg_override: Optional[Dict[str, Any]] = None,
     df_override: Optional[pd.DataFrame] = None,
+    min_bars_override: Optional[int] = None,
 ) -> BacktestRunResult:
     """Run plugin replay using a pre-loaded bundle (no candle reload).
 
     ``df_override`` replays a slice of the bundle's candles (e.g. an in-sample
     or out-of-sample window) without reloading data; defaults to the full
     bundle frame.
+
+    ``min_bars_override`` is the count of leading bars in that slice to warm
+    indicators on WITHOUT trading. A slice prepended with a warmup lead-in needs
+    it, or the replay skips only the strategy's own ``min_bars`` and trades the
+    rest of the lead-in — bars that belong to the previous window. See
+    xauby/backtest/walkforward.py for the same mistake made three times.
     """
     strat_cfg = dict(bundle.strat_cfg)
     if strat_cfg_override:
@@ -284,6 +291,7 @@ def run_replay_from_bundle(
             df_regime=bundle.df_regime,
             primary_timeframe=bundle.primary_tf,
             regime_timeframe=bundle.regime_tf,
+            min_bars_override=min_bars_override,
         )
         config_used["net_profit_pct"] = float(stats.get("net_profit_pct", 0.0) or 0.0)
         config_used["profit_factor"] = float(stats.get("profit_factor", 0.0) or 0.0)

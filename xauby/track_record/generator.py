@@ -28,6 +28,27 @@ def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name:
     # Use analytics calculator to get metrics
     metrics = calculate_metrics(filtered_trades)
 
+    # Running drawdown at each trade's close, chronologically. The field used to
+    # be hardcoded to 0.0 under a comment saying it was "calculated
+    # chronologically at entry level" — it was not calculated anywhere, so every
+    # entry in every published track record reported no drawdown.
+    chronological = sorted(
+        filtered_trades,
+        key=lambda t: t.get("closed_at_dt") or _parse_date(t.get("closed_at")),
+    )
+    running_drawdown: Dict[int, float] = {}
+    equity = 0.0
+    peak = 0.0
+    for t in chronological:
+        equity += float(t.get("net_pnl", 0.0))
+        peak = max(peak, equity)
+        # Relative to the peak equity reached so far, which is 0.0 until the
+        # first profitable stretch — before that any loss is a drawdown of the
+        # starting balance, which this data does not carry, so it reads 0.0.
+        running_drawdown[id(t)] = (
+            (peak - equity) / peak * 100.0 if peak > 0 else 0.0
+        )
+
     # Convert trades to TrackRecordEntry instances
     entries = []
     total_duration_seconds = 0.0
@@ -49,7 +70,7 @@ def generate_report(trades: List[Dict[str, Any]], period_days: int, report_name:
             exit_time=str(t.get("closed_at") or ""),
             pnl=pnl,
             return_pct=round(ret_pct, 4),
-            drawdown_pct=0.0, # calculated chronologically at entry level
+            drawdown_pct=round(running_drawdown.get(id(t), 0.0), 4),
             duration_seconds=duration,
             regime_at_entry=str(t.get("entry_regime") or "NORMAL"),
             regime_at_exit=str(t.get("exit_regime") or "NORMAL")

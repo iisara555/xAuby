@@ -1,0 +1,68 @@
+{
+  "record_version": 1,
+  "preset_id": "okx-xau-actionzone-v1",
+  "config_fingerprint": "ed5944f8bc18864c",
+  "measured_at": "2026-07-27",
+  "protocol": {
+    "name": "saas-preset-acceptance",
+    "version": "1",
+    "script": "scripts/certify_preset.py"
+  },
+  "data_source": "OKX XAUT-USDT 4h",
+  "gate": {
+    "criterion": "backtest.acceptance: long+short net > 0 AND beats the matching long-only config by >= 5.00pp",
+    "min_profit_edge_pp": 5.0,
+    "baseline": "same configuration, enable_short=False",
+    "baseline_net_pct": 63.79,
+    "candidate_net_pct": 54.92,
+    "edge_pp": -8.87,
+    "passed": false
+  },
+  "verdict": "failed",
+  "note": "Fails the pre-registered backtest.acceptance gate by -8.90pp: long+short must beat the matching long-only config by >= 5.0pp and instead loses to it. long-only with the D1 gate on scores better on both PF (1.96 vs 1.37) and max drawdown (9.22% vs 14.4%). Running live on an explicit operator decision, recorded in the preset's operator_override, because it is the strongest cell in a falling gold market. Sample limitation: 4.0 years is one gold cycle with a single complete bear month, on XAUT-USDT as a proxy for XAU-USDT-SWAP (corr 0.99). n_trials=150 counts the 144-combination actionzone sweep plus the six D1 variants tested in July. See docs/research/xau_certification_2026-07-26.md.",
+  "document": "docs/research/xau_certification_2026-07-26.md",
+  "significance": {
+    "observations": 217,
+    "basis": "per-trade PnL as a percent of equity before the trade",
+    "bootstrap": {
+      "samples": 10000,
+      "observations": 217,
+      "median_pct": 55.64,
+      "p05_pct": 1.41,
+      "p95_pct": 141.97,
+      "prob_profitable": 0.9551,
+      "note": "i.i.d."
+    },
+    "shuffle_max_drawdown": {
+      "samples": 2000,
+      "observed": 13.7861,
+      "p_value": 0.3778,
+      "mean_shuffled": 15.469,
+      "better_or_equal": 755,
+      "lower_is_better": true
+    },
+    "shuffle_longest_losing_streak": {
+      "samples": 2000,
+      "observed": 13.0,
+      "p_value": 0.8716,
+      "mean_shuffled": 10.5035,
+      "better_or_equal": 1743,
+      "lower_is_better": true
+    },
+    "deflated_sharpe": {
+      "computed": false,
+      "n_trials": 150,
+      "reason": "--sharpe-variance was not supplied. The deflated Sharpe needs the spread of Sharpe ratios across the configurations that were searched, in the same per-trade units as this run. Guessing it produces a confident number about nothing."
+    }
+  },
+  "evidence": {
+    "status": "validated",
+    "score_label": "PF 1.36",
+    "period": "Jul 2022 \u2013 Jul 2026",
+    "duration": "4.0 years",
+    "win_rate_pct": 35.9,
+    "max_drawdown_pct": 14.4,
+    "trades": 217,
+    "source": "OKX XAUT-USDT \u00b7 this preset's execution_profile \u00b7 net of fee/slippage/funding \u00b7 measured 2026-07-27"
+  }
+}

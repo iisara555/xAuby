@@ -24,6 +24,10 @@ class SuperTrendEMA200Strategy(Strategy):
     author = "xAuby"
     description = "BTC 4H SuperTrend + EMA200 trend strategy."
     tags = ["btc", "supertrend", "ema200", "4h", "trend"]
+    # Certified: clears backtest.acceptance on native BTC-USDT-SWAP
+    # (xauby/saas/certificates/okx-btc-supertrend-v1.json) and out-of-sample
+    # over 66 fixed-config months.
+    maturity = "production"
     required_timeframes = ["4h"]
     min_bars = 240
 

@@ -1,10 +1,37 @@
 import unittest
 from datetime import datetime, timedelta, timezone
-from xauby.track_record.generator import generate_report
-from xauby.track_record.validator import audit_track_record
 from unittest.mock import MagicMock
 
-class TestTrackRecord(unittest.TestCase):
+from xauby.track_record.generator import generate_report
+from xauby.track_record.validator import TRACK_RECORD_EPOCH, audit_track_record
+
+
+def _db(events, trades):
+    """A stub LiteDB serving one event list and one closed-trade list."""
+    db = MagicMock()
+    db.query_events.side_effect = lambda event_type, **kwargs: [
+        e for e in events if e["event_type"] == event_type
+    ]
+    db.get_closed_trades.return_value = trades
+    return db
+
+
+def _opened(symbol, ts, seq, price, qty, run="r1"):
+    return {"event_type": "position_opened", "run_id": run, "ts": ts, "seq": seq,
+            "symbol": symbol, "payload": {"entry_price": price, "quantity": qty}}
+
+
+def _closed(symbol, ts, seq, price, run="r1"):
+    return {"event_type": "position_closed", "run_id": run, "ts": ts, "seq": seq,
+            "symbol": symbol, "payload": {"exit_price": price}}
+
+
+def _trade(symbol, closed_at, entry, exit_price, qty, pnl=0.0):
+    return {"symbol": symbol, "amount": qty, "entry_price": entry,
+            "exit_price": exit_price, "closed_at": closed_at, "net_pnl": pnl}
+
+
+class TestReportGenerator(unittest.TestCase):
     def test_report_generator(self):
         # Use dates relative to now so both trades fall inside the period window
         # regardless of the current date (generate_report filters by closed_at).
@@ -21,23 +48,165 @@ class TestTrackRecord(unittest.TestCase):
         self.assertEqual(report.total_trades, 2)
         self.assertEqual(report.win_rate, 50.0)
         self.assertEqual(report.net_pnl, 30.0)
-        self.assertEqual(report.average_duration_hours, 2.5) # 2 hours first, 3 hours second -> avg 2.5
+        self.assertEqual(report.average_duration_hours, 2.5)
 
-    def test_auditor_pass(self):
-        db = MagicMock()
-        db.query_events.side_effect = lambda event_type, **kwargs: [
-            {"event_type": "position_opened", "run_id": "r1", "ts": "2026-05-15T12:00:00", "seq": 1, "symbol": "XAUTUSDT", "payload": {"entry_price": 2000.0, "quantity": 1.0}}
-        ] if event_type == "position_opened" else [
-            {"event_type": "position_closed", "run_id": "r1", "ts": "2026-05-15T14:00:00", "seq": 2, "symbol": "XAUTUSDT", "payload": {"exit_price": 2050.0}}
+    def test_entry_drawdown_is_computed_not_hardcoded(self):
+        # Every entry reported drawdown_pct 0.0 under a comment claiming it was
+        # "calculated chronologically at entry level". It was not calculated.
+        now = datetime.now(timezone.utc)
+        trades = [
+            {"net_pnl": 100.0, "entry_cost": 1000.0,
+             "opened_at": (now - timedelta(days=9)).isoformat(),
+             "closed_at": (now - timedelta(days=9)).isoformat()},
+            {"net_pnl": -40.0, "entry_cost": 1000.0,
+             "opened_at": (now - timedelta(days=8)).isoformat(),
+             "closed_at": (now - timedelta(days=8)).isoformat()},
+            {"net_pnl": 10.0, "entry_cost": 1000.0,
+             "opened_at": (now - timedelta(days=7)).isoformat(),
+             "closed_at": (now - timedelta(days=7)).isoformat()},
         ]
-        db.get_closed_trades.return_value = [
-            {"net_pnl": 50.0, "amount": 1.0, "entry_price": 2000.0, "exit_price": 2050.0, "opened_at": "2026-05-15T12:00:00", "closed_at": "2026-05-15T14:00:00"}
-        ]
-        
+        report = generate_report(trades, period_days=30, report_name="dd")
+        drawdowns = [e.drawdown_pct for e in report.entries]
+        # Peak 100 after trade 1, then -40 leaves 60 => 40% below peak.
+        self.assertEqual(drawdowns[0], 0.0)
+        self.assertAlmostEqual(drawdowns[1], 40.0, places=4)
+        self.assertAlmostEqual(drawdowns[2], 30.0, places=4)
+
+    def test_drawdown_is_chronological_regardless_of_input_order(self):
+        now = datetime.now(timezone.utc)
+        early = {"net_pnl": 100.0, "entry_cost": 1000.0,
+                 "opened_at": (now - timedelta(days=9)).isoformat(),
+                 "closed_at": (now - timedelta(days=9)).isoformat()}
+        late = {"net_pnl": -40.0, "entry_cost": 1000.0,
+                "opened_at": (now - timedelta(days=8)).isoformat(),
+                "closed_at": (now - timedelta(days=8)).isoformat()}
+        shuffled = generate_report([late, early], 30, "dd")
+        by_pnl = {e.pnl: e.drawdown_pct for e in shuffled.entries}
+        self.assertEqual(by_pnl[100.0], 0.0)
+        self.assertAlmostEqual(by_pnl[-40.0], 40.0, places=4)
+
+
+class TestAuditorSinglePair(unittest.TestCase):
+    def test_matching_events_and_trades_pass(self):
+        db = _db(
+            [_opened("XAUUSDT", "2026-07-25T12:00:00", 1, 2000.0, 1.0),
+             _closed("XAUUSDT", "2026-07-25T14:00:00", 2, 2050.0)],
+            [_trade("XAUUSDT", "2026-07-25T14:00:00", 2000.0, 2050.0, 1.0, 50.0)],
+        )
         success, discrepancies, stats = audit_track_record(db)
-        self.assertTrue(success)
-        self.assertEqual(len(discrepancies), 0)
+        self.assertTrue(success, discrepancies)
         self.assertEqual(stats["matching_trades"], 1)
+        self.assertEqual(stats["symbols"], ["XAUUSDT"])
+
+    def test_a_price_mismatch_is_reported_with_its_symbol(self):
+        db = _db(
+            [_opened("XAUUSDT", "2026-07-25T12:00:00", 1, 2000.0, 1.0),
+             _closed("XAUUSDT", "2026-07-25T14:00:00", 2, 2050.0)],
+            [_trade("XAUUSDT", "2026-07-25T14:00:00", 2000.0, 1999.0, 1.0)],
+        )
+        success, discrepancies, _ = audit_track_record(db)
+        self.assertFalse(success)
+        self.assertIn("[XAUUSDT]", discrepancies[0])
+        self.assertIn("exit price", discrepancies[0])
+
+
+class TestAuditorMultiPair(unittest.TestCase):
+    """Two live pairs. Every one of these failed before P1.6."""
+
+    def test_interleaved_positions_are_not_an_anomaly(self):
+        # XAU opens, BTC opens, XAU closes, BTC closes. With one global
+        # active_position this raised "fired while a position was already open"
+        # and then paired XAU's entry with BTC's exit.
+        db = _db(
+            [_opened("XAUUSDT", "2026-07-25T10:00:00", 1, 2000.0, 1.0, "rx"),
+             _opened("BTCUSDT", "2026-07-25T11:00:00", 2, 60000.0, 0.1, "rb"),
+             _closed("XAUUSDT", "2026-07-25T12:00:00", 3, 2050.0, "rx"),
+             _closed("BTCUSDT", "2026-07-25T13:00:00", 4, 61000.0, "rb")],
+            [_trade("XAUUSDT", "2026-07-25T12:00:00", 2000.0, 2050.0, 1.0),
+             _trade("BTCUSDT", "2026-07-25T13:00:00", 60000.0, 61000.0, 0.1)],
+        )
+        success, discrepancies, stats = audit_track_record(db)
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["matching_trades"], 2)
+        self.assertEqual(stats["per_symbol"]["XAUUSDT"]["matching"], 1)
+        self.assertEqual(stats["per_symbol"]["BTCUSDT"]["matching"], 1)
+
+    def test_a_reopen_on_the_same_symbol_is_still_an_anomaly(self):
+        db = _db(
+            [_opened("XAUUSDT", "2026-07-25T10:00:00", 1, 2000.0, 1.0, "r1"),
+             _opened("XAUUSDT", "2026-07-25T11:00:00", 2, 2010.0, 1.0, "r2")],
+            [],
+        )
+        success, discrepancies, _ = audit_track_record(db)
+        self.assertFalse(success)
+        self.assertTrue(any("already had a position open" in d for d in discrepancies))
+
+    def test_a_close_without_an_open_names_the_right_symbol(self):
+        db = _db(
+            [_opened("XAUUSDT", "2026-07-25T10:00:00", 1, 2000.0, 1.0),
+             _closed("BTCUSDT", "2026-07-25T11:00:00", 2, 61000.0)],
+            [],
+        )
+        success, discrepancies, _ = audit_track_record(db)
+        self.assertFalse(success)
+        self.assertTrue(any("[BTCUSDT]" in d and "no open position" in d
+                            for d in discrepancies))
+
+    def test_an_extra_trade_on_one_pair_does_not_corrupt_the_other(self):
+        # Index alignment across a merged list made one extra event on one pair
+        # shift every later comparison on every pair.
+        db = _db(
+            [_opened("XAUUSDT", "2026-07-25T10:00:00", 1, 2000.0, 1.0, "rx"),
+             _closed("XAUUSDT", "2026-07-25T11:00:00", 2, 2050.0, "rx"),
+             _opened("BTCUSDT", "2026-07-25T12:00:00", 3, 60000.0, 0.1, "rb"),
+             _closed("BTCUSDT", "2026-07-25T13:00:00", 4, 61000.0, "rb")],
+            # XAU has an extra database trade the event log does not know about.
+            [_trade("XAUUSDT", "2026-07-25T09:00:00", 1990.0, 1995.0, 1.0),
+             _trade("XAUUSDT", "2026-07-25T11:00:00", 2000.0, 2050.0, 1.0),
+             _trade("BTCUSDT", "2026-07-25T13:00:00", 60000.0, 61000.0, 0.1)],
+        )
+        success, discrepancies, stats = audit_track_record(db)
+        self.assertFalse(success)
+        self.assertTrue(any("[XAUUSDT] count mismatch" in d for d in discrepancies))
+        # BTC is untouched by XAU's problem.
+        self.assertEqual(stats["per_symbol"]["BTCUSDT"]["matching"], 1)
+        self.assertFalse(any("[BTCUSDT]" in d for d in discrepancies))
+
+    def test_an_open_position_is_reported_not_flagged(self):
+        db = _db(
+            [_opened("BTCUSDT", "2026-07-25T12:00:00", 1, 60000.0, 0.1)],
+            [],
+        )
+        success, discrepancies, stats = audit_track_record(db)
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["open_at_audit"], ["BTCUSDT"])
+
+
+class TestAuditorEpoch(unittest.TestCase):
+    def test_pre_epoch_history_is_excluded(self):
+        # XAUTUSDT on the old venue is not the same instrument as XAUUSDT on
+        # OKX, so blending them into one track record compares nothing.
+        db = _db(
+            [_opened("XAUTUSDT", "2026-05-15T12:00:00", 1, 2000.0, 1.0),
+             _closed("XAUTUSDT", "2026-05-15T14:00:00", 2, 2050.0)],
+            [_trade("XAUTUSDT", "2026-05-15T14:00:00", 2000.0, 2050.0, 1.0)],
+        )
+        success, discrepancies, stats = audit_track_record(db)
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["events_analyzed"], 0)
+        self.assertEqual(stats["database_count"], 0)
+        self.assertEqual(stats["epoch"], TRACK_RECORD_EPOCH)
+
+    def test_the_epoch_can_be_lifted_explicitly(self):
+        db = _db(
+            [_opened("XAUTUSDT", "2026-05-15T12:00:00", 1, 2000.0, 1.0),
+             _closed("XAUTUSDT", "2026-05-15T14:00:00", 2, 2050.0)],
+            [_trade("XAUTUSDT", "2026-05-15T14:00:00", 2000.0, 2050.0, 1.0)],
+        )
+        success, discrepancies, stats = audit_track_record(db, epoch=None)
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["matching_trades"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

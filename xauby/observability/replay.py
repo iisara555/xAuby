@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from xauby.runtime.exits import minimal_roi_pct
+from xauby.runtime.exits import minimal_roi_pct, next_trailing_stop
 from xauby.strategies.context import MarketContext
 from xauby.strategies.sandbox import StrategyRunner
 from xauby.strategies.signal import Signal, hold as _hold_signal
@@ -638,11 +638,20 @@ class PositionSimulator:
         # CDC-pure mode: no trailing stop — exit is driven only by the RED zone.
         if self.disable_stop_loss:
             return events
-        candidate_sl = pos.highest_price - atr * self.trailing_atr_mult
-        if self.be_enabled and atr > 0:
-            activation = pos.entry_price + atr * self.be_activation_atr_mult
-            if pos.highest_price >= activation:
-                candidate_sl = max(candidate_sl, pos.entry_price + atr * self.be_buffer_atr_mult)
+        # Shared with the live engine (roadmap P1.7): the two used to compute
+        # this separately and disagreed on trail_distance and on atr == 0.
+        candidate_sl = next_trailing_stop(
+            side="long",
+            entry_price=pos.entry_price,
+            extreme_price=pos.highest_price,
+            current_sl=pos.stop_loss,
+            atr=atr,
+            trailing_atr_mult=self.trailing_atr_mult,
+            trail_distance=getattr(signal, "trail_distance", None),
+            breakeven_enabled=self.be_enabled,
+            breakeven_activation_atr_mult=self.be_activation_atr_mult,
+            breakeven_buffer_atr_mult=self.be_buffer_atr_mult,
+        )
         if candidate_sl > pos.stop_loss:
             old = pos.stop_loss
             pos.stop_loss = candidate_sl
@@ -726,11 +735,18 @@ class PositionSimulator:
         pos.lowest_price = min(pos.lowest_price or pos.entry_price, low)
         if self.disable_stop_loss:
             return events
-        candidate_sl = pos.lowest_price + atr * self.trailing_atr_mult
-        if self.be_enabled and atr > 0:
-            activation = pos.entry_price - atr * self.be_activation_atr_mult
-            if pos.lowest_price <= activation:
-                candidate_sl = min(candidate_sl, pos.entry_price - atr * self.be_buffer_atr_mult)
+        candidate_sl = next_trailing_stop(
+            side="short",
+            entry_price=pos.entry_price,
+            extreme_price=pos.lowest_price,
+            current_sl=pos.stop_loss,
+            atr=atr,
+            trailing_atr_mult=self.trailing_atr_mult,
+            trail_distance=getattr(signal, "trail_distance", None),
+            breakeven_enabled=self.be_enabled,
+            breakeven_activation_atr_mult=self.be_activation_atr_mult,
+            breakeven_buffer_atr_mult=self.be_buffer_atr_mult,
+        )
         if 0 < candidate_sl < pos.stop_loss:
             old = pos.stop_loss
             pos.stop_loss = candidate_sl

@@ -1,0 +1,68 @@
+{
+  "record_version": 1,
+  "preset_id": "okx-btc-supertrend-v1",
+  "config_fingerprint": "2f8d06566fcc267f",
+  "measured_at": "2026-07-27",
+  "protocol": {
+    "name": "saas-preset-acceptance",
+    "version": "1",
+    "script": "scripts/certify_preset.py"
+  },
+  "data_source": "OKX BTC-USDT-SWAP 4h",
+  "gate": {
+    "criterion": "backtest.acceptance: long+short net > 0 AND beats the matching long-only config by >= 5.00pp",
+    "min_profit_edge_pp": 5.0,
+    "baseline": "same configuration, enable_short=False",
+    "baseline_net_pct": 4.17,
+    "candidate_net_pct": 19.35,
+    "edge_pp": 15.18,
+    "passed": true
+  },
+  "verdict": "certified",
+  "note": "Clears the pre-registered backtest.acceptance gate by +15.18pp on native BTC-USDT-SWAP over 6.6 years, measured against this preset's own execution_profile. Independently, the July 2026 walk-forward certificate certified the same strategy out-of-sample over 66 fixed-config months, re-validated on OKX data in docs/research/venue_data_revalidation_2026-07-26.md. Two protocols, same verdict. Read the significance block before quoting the headline: the bootstrap's 90% lower bound is close to zero, and the realised equity path was unluckier than most reorderings of its own trades.",
+  "document": "docs/research/btc_supertrend_ema200_certificate_2026-07.md",
+  "significance": {
+    "observations": 134,
+    "basis": "per-trade PnL as a percent of equity before the trade",
+    "bootstrap": {
+      "samples": 10000,
+      "observations": 134,
+      "median_pct": 18.64,
+      "p05_pct": -2.17,
+      "p95_pct": 49.02,
+      "prob_profitable": 0.9259,
+      "note": "i.i.d."
+    },
+    "shuffle_max_drawdown": {
+      "samples": 2000,
+      "observed": 9.0052,
+      "p_value": 0.9055,
+      "mean_shuffled": 6.4785,
+      "better_or_equal": 1811,
+      "lower_is_better": true
+    },
+    "shuffle_longest_losing_streak": {
+      "samples": 2000,
+      "observed": 12.0,
+      "p_value": 0.933,
+      "mean_shuffled": 8.768,
+      "better_or_equal": 1866,
+      "lower_is_better": true
+    },
+    "deflated_sharpe": {
+      "computed": false,
+      "n_trials": 44,
+      "reason": "--sharpe-variance was not supplied. The deflated Sharpe needs the spread of Sharpe ratios across the configurations that were searched, in the same per-trade units as this run. Guessing it produces a confident number about nothing."
+    }
+  },
+  "evidence": {
+    "status": "validated",
+    "score_label": "PF 1.52",
+    "period": "Dec 2019 \u2013 Jul 2026",
+    "duration": "6.6 years",
+    "win_rate_pct": 38.1,
+    "max_drawdown_pct": 9.8,
+    "trades": 134,
+    "source": "OKX BTC-USDT-SWAP \u00b7 this preset's execution_profile \u00b7 net of fee/slippage/funding \u00b7 measured 2026-07-27"
+  }
+}

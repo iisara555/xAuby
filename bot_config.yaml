@@ -498,6 +498,14 @@ daily_digest:
   enabled: true
   hour_utc: 10
   send_telegram: true
+# Replays the position event log against the closed-trade table once a day and
+# alerts on any disagreement. The auditor shipped long before this block: it was
+# reachable only from a unit test, so nothing ever checked the two against each
+# other on real data.
+self_audit:
+  enabled: true
+  hour_utc: 11
+  send_telegram: true
 execution:
   order_type: limit
   # Low-latency live entry path. Safety gates still run first (pause/read-only,

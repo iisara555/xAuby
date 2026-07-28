@@ -403,6 +403,14 @@ export default function SettingsPage() {
                     {preset.certification_status === "failed" && preset.certification_note && (
                       <small className="preset-certification-warn">Not certified — {preset.certification_note}</small>
                     )}
+                    {preset.certification_status === "not_assessed" && preset.certification_note && (
+                      <small className="preset-certification-warn">Unassessed — {preset.certification_note}</small>
+                    )}
+                    {preset.live_certified && preset.operator_override && (
+                      <small className="preset-certification-warn">
+                        Live on an operator decision, not a certificate — {preset.operator_override.reason} ({preset.operator_override.decided_by}, {preset.operator_override.decided_at})
+                      </small>
+                    )}
                   </span>
                   {preset.strategy_traits && preset.strategy_traits.length > 0 && (
                     <span className="preset-traits">

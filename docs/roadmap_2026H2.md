@@ -559,21 +559,75 @@ venue ที่ติดต่อไม่ได้ต้องพังแบ�
 - **ยังเหลือ:** ทั้งสองสคริปต์ยังมี loop ของตัวเองไม่ได้ย้ายมาใช้ library และยังไม่ได้
   ทำให้ certification เรียกเป็นด่านอัตโนมัติ — อยู่ใน P1.4
 
-**P1.2 — แก้ความซื่อสัตย์เชิงสถิติของ optimizer**
+**P1.2 — แก้ความซื่อสัตย์เชิงสถิติของ optimizer** ✅ **ทำแล้ว 2026-07-27**
 `backtest.optimizer` รัน `max_runs: 4` บน `max_bars: 300`
 (`bot_config.yaml:619-621`) — มันเรียง Cartesian product ตามระยะห่างจาก baseline
 แล้วสุ่มตรวจ 4 จุด ดีไซน์ OOS-split (`optimizer.py:54-130`) ถูกต้อง แต่ข้อมูลน้อยเกิน
 ที่ 300 bars การแบ่ง 70/30 แทบไม่ผ่านเกณฑ์ขั้นต่ำของตัวเอง — เลือกเอาว่าจะเพิ่ม
 budget แล้วรันนอก VPS เทรด (ตามข้อจำกัดใน `AGENTS.md`) หรือเลิกเรียกมันว่า optimization
 
-**P1.3 — เพิ่มการทดสอบนัยสำคัญทางสถิติ**
+**ที่จริงมันแย่กว่าที่เขียนไว้ — และวัดแล้ว ไม่ใช่เดา** บน config ที่ ship อยู่
+(300 bars, split 0.7, warmup 100) **ทั้งสองคู่ live เลือกอะไรไม่ได้เลย**:
+
+- `supertrend_ema200` ต้องใช้ **240 แท่ง** ก่อนออกสัญญาณ แต่ IS ได้ 210 และ OOS
+  ได้ 190 → **ทุก combo ได้ 0.0 ทุก metric** ตัวกรอง "กำไรทั้งสองหน้าต่าง" จึงว่าง
+  แล้ว `pool.sort` บนค่าที่เท่ากันหมด → **ผู้ชนะคือ tuple ที่บังเอิญเรียงมาก่อน**
+  แล้วถูก `_save_best()` เก็บเป็น best parameters ของคู่นั้น
+- `xauby_actionzone` ได้ **1 เทรดต่อหน้าต่าง** และ selection จัดอันดับด้วย
+  Sharpe แบบ annualize ที่คำนวณจากเทรดเดียวนั้น (IS 5.75 / OOS 4.75)
+
+ทั้งสองเคสไม่มีอะไรฟ้อง เพราะ return dict ที่มีข้อมูลครบและ save สำเร็จ
+
+**สิ่งที่แก้:**
+- `OptimizerVerdict` + `_admissibility()` — ถ้าตัวอย่างรองรับการเลือกไม่ได้
+  **จะปฏิเสธพร้อมเหตุผล** แทนที่จะคืนแถวบนสุดของอันดับที่ใช้ไม่ได้ เกณฑ์ใช้
+  `MIN_IS_TRADES / MIN_OOS_TRADES = 40 / 18` ซึ่ง**คัดมาจาก
+  `scripts/actionzone_wfa_sweep.py` ของรีโปเอง** ไม่ได้ตั้งใหม่ (มีเทสต์ล็อกไว้ว่า
+  ต้องตรงกัน)
+- `run_replay_from_bundle` รับ `min_bars_override` แล้ว และ OOS window ส่ง
+  `split - lo` เข้าไป → เริ่มเทรดที่จุด split พอดีไม่ว่า `min_bars` ของกลยุทธ์จะ
+  เป็นเท่าไร เดิมมันถูกเฉพาะตอน `oos_warmup_bars` บังเอิญ = `min_bars` (100 ของ
+  `xauby_actionzone`) ส่วน 240 ของ supertrend ยาวกว่าทั้ง slice จึงไม่เทรดเลย
+- `scripts/optimize_pair_configs.py` แสดง `DECLINED <sym>: <reason>` แทนการเงียบ
+- `scripts/select_pair_strategy.py` แก้ multiple testing แล้ว: แต่ละ candidate ได้
+  bootstrap p-value ด้าน "mean return <= 0" แล้วผ่าน Benjamini-Hochberg ทั้ง family
+  · `--apply` ต้องผ่าน **ทั้ง gate เดิมและการ correction** (ปิดข้อที่ค้างจาก P1.3)
+
+**คำตอบต่อ either/or ของ roadmap:** ตอนนี้เป็นโค้ด ไม่ใช่การเปลี่ยนชื่อ — ด้วย
+budget ปัจจุบันมันจะปฏิเสธและบอกว่าต้องขยับ `max_bars` แล้วรันนอกเครื่องเทรด
+
+**P1.3 — เพิ่มการทดสอบนัยสำคัญทางสถิติ** ✅ **ทำแล้ว 2026-07-27**
 ยังไม่มี bootstrap, Monte Carlo, trade-shuffle, deflated Sharpe หรือการแก้ปัญหา
 multiple testing เลย ทั้งที่มี 17 กลยุทธ์ × grid search
 `docs/agent-strategy-checklist-indicator.md:718` ระบุข้อนี้เป็นสิ่งที่ต้องมีอยู่แล้ว
 และยังไม่ติ๊ก — ด้วยจำนวน candidate ขนาดนี้ นี่คือเส้นแบ่งระหว่าง certificate จริง
 กับสิ่งประดิษฐ์จากการขุดข้อมูล
 
-**P1.4 — ให้ certification pipeline generate แคตตาล็อก**
+- `xauby/backtest/significance.py` + 34 เทสต์ — bootstrap (มี block option),
+  trade-shuffle, PSR/deflated Sharpe (Bailey & López de Prado) และ
+  Bonferroni / Benjamini-Hochberg เขียนด้วย stdlib ล้วน (ไม่มี scipy) จึง import
+  ได้ทุกที่ที่ engine ไปถึง
+- **ปฏิเสธคำถามที่ตอบไม่ได้ 2 แบบ** เพราะความล้มเหลวของงานสถิติคือ "ตัวเลขที่ดู
+  สมเหตุสมผล": `shuffle_pvalue` จะ raise ถ้า statistic ขยับไม่ได้เมื่อสลับลำดับ
+  (compounded return กับ total PnL ไม่ขยับ เพราะการคูณ/บวกสลับที่ได้) — เดิมมัน
+  จะคืน p ≈ 1.0 แล้วอ่านว่า "ไม่มีนัยสำคัญ" ทั้งที่ไม่ได้ทดสอบอะไรเลย ·
+  `deflated_sharpe_ratio` บังคับให้ส่ง n_trials กับ sharpe_variance เอง
+- **certificate ทุกใบมีบล็อก `significance` แล้ว** และผลที่ได้เปลี่ยนวิธีอ่าน
+  ตัวเลขหัวข่าวจริง ๆ: BTC bootstrap 90% CI **[−2.17%, +49.02%]** P(profit)
+  92.6% · shuffle drawdown **p = 0.91** แปลว่าเส้นทุนจริงแย่กว่าการสลับลำดับ
+  เทรดตัวเองถึง 91% — ไม่ใช่หลักฐานว่าคุมความเสี่ยงได้ · XAU CI
+  **[+1.41%, +141.97%]** shuffle p = 0.38
+- **บั๊กที่จับได้ระหว่างต่อของจริง** (ทั้งคู่คือ "เลขสวยแต่ผิด" ที่เทสต์ของผมเอง
+  เขียนไว้กันแต่ผมก็เดินเข้าไปตอน integration): ใช้ `pnl_pct` ซึ่งเป็นผลตอบแทน
+  **ต่อ notional ของเทรด** ไม่ใช่ต่อพอร์ต ทำให้ MDD จริง 9.8% กลายเป็น 35.4%
+  และ CI กว้าง ±316% · และ default `sharpe_variance=0.25` คนละหน่วยกับ Sharpe
+  ราย trade ทำให้ deflated Sharpe ออกมา 0.0 พอดี ดูเหมือนผลร้ายแรงทั้งที่เป็น
+  หน่วยไม่ตรง — ตอนนี้ถ้าไม่ส่งค่ามาจะ **ไม่คำนวณ** แล้วบันทึกเหตุผลแทน
+- **ยังเหลือ:** `scripts/select_pair_strategy.py` เลือกผู้ชนะจากหลาย candidate
+  โดยยังไม่แก้ multiple testing (primitive พร้อมแล้ว ยังไม่ได้ต่อ) ·
+  `sharpe_variance` ของ sweep จริงยังไม่ได้วัด certificate จึงยังไม่มี DSR
+
+**P1.4 — ให้ certification pipeline generate แคตตาล็อก** ✅ **ทำแล้ว 2026-07-27**
 คือข้อเสนอแนะข้อ 4 ที่ยังค้างจาก `docs/audit_system_2026-07-21.md` ให้สคริปต์รัน
 protocol จาก P1.1 ออก certificate ลง `docs/research/` แล้ว **generate** บล็อกใน
 `catalog.py` — preset ที่ไม่ผ่านด่านจะถูกมาร์กว่า certified ด้วยมือไม่ได้อีก
@@ -581,7 +635,38 @@ protocol จาก P1.1 ออก certificate ลง `docs/research/` แล้�
 production เดาเอาจาก tag ที่เป็น free text และ 16 จาก 17 plugin ยังเป็น `0.1.0`
 โดยไม่มีอะไรกันไม่ให้ถูก whitelist ขึ้น live
 
-**P1.5 — รวม metric สองชุดให้ตรงกัน**
+- **verdict/evidence ไม่อยู่ใน `catalog.py` แล้ว** — อ่านจาก
+  `xauby/saas/certificates/<preset_id>.json` ที่ `scripts/certify_preset.py`
+  ออกให้จากการรันจริง spec ที่พยายามประกาศฟิลด์พวกนี้เองจะ raise ตอน import
+- **fingerprint คือหัวใจ** — record เก็บลายนิ้วมือของ config ที่วัด ถ้าใครแก้
+  `execution_profile` ทีหลัง fingerprint จะไม่ตรงและ **certificate หยุดมีผลทันที**
+  preset กลับไปเป็น `not_assessed` แทนที่จะถือ verdict ของ config ที่ไม่ได้รันแล้ว
+  (นี่คือความล้มเหลวเดือน ก.ค. ทำให้เป็นกลไก) และถ้า preset นั้น `live_certified`
+  อยู่ด้วย **build จะพังจนกว่าจะ re-certify หรือเซ็น override** — จูน config ที่
+  อนุมัติ live ไว้แบบเงียบ ๆ ไม่ได้อีก
+- **approval ต้องมีคนเซ็น** — `live_certified` ที่ verdict ไม่ใช่ `certified`
+  ต้องมี `operator_override` ระบุ decided_by / decided_at / reason ผลคือพบว่า
+  **2 preset ถูกอนุมัติ live ทั้งที่ไม่เคยวัดบน venue ของตัวเองเลย**
+- certificate จริง 2 ใบออกจากการรัน ไม่ใช่การคัดลอก: XAU **FAILED** −8.90pp
+  (ตัวเลขตรงกับที่เคยพิมพ์มือ PF 1.37 / MDD 14.4 / 217 trades) และ BTC
+  **CERTIFIED** +15.18pp วัดบน **BTC-USDT-SWAP ตัวจริง** ไม่ใช่ proxy สปอต
+  Binance แบบเดิม → MDD ที่ซื่อสัตย์คือ 9.8% ไม่ใช่ 4.8% ที่เคยโฆษณา
+- **maturity ประกาศแล้ว ไม่เดาจาก tag** — `Strategy.maturity` เป็น
+  `research | paper | production`, ไม่ประกาศ = `None` ซึ่ง **ไม่เท่ากับ
+  production** engine ปฏิเสธ plugin ที่ไม่ประกาศบนคู่ที่ `mode: live`
+  ตอนนี้มีแค่ 2 ตัวที่เป็น production คือ `xauby_actionzone` กับ
+  `supertrend_ema200` (ทั้งคู่รันเงินจริงอยู่) legacy tag ยังใช้ได้ พฤติกรรมของ
+  plugin เดิมจึงไม่เปลี่ยน
+- **ผลข้างเคียงที่ต้องรู้ก่อน deploy:** คู่ `mode: live` ที่รัน strategy อื่นนอก
+  จาก 2 ตัวนั้นจะ **สตาร์ตไม่ขึ้น** ตอนนี้ทั้ง whitelist และ SaaS catalog ใช้แค่
+  2 ตัวนี้ จึงไม่กระทบ แต่ tenant ที่แก้ whitelist มือเป็น strategy ตัวที่สาม
+  จะโดนบล็อก — ซึ่งคือสิ่งที่ตั้งใจ
+- **ยังเหลือ:** version ของ plugin ยังเป็น `0.1.0` เกือบทั้งหมด (รวม
+  `supertrend_ema200` ที่มี certificate) — maturity เป็นสัญญาณที่ใช้จริง ส่วน
+  version ยังไม่มีความหมาย · preset ที่ไม่มี data path (Binance Global / TH)
+  ยังออก certificate ไม่ได้ ต้องต่อ data source ก่อน
+
+**P1.5 — รวม metric สองชุดให้ตรงกัน** ✅ **ทำแล้ว 2026-07-27**
 `analytics/calculator.py` (live/UI) คำนวณ Sharpe ราย trade แบบไม่ annualize
 เทียบกับ `initial_balance=1000.0` ที่ hardcode ไว้ และวัด drawdown แบบ
 close-to-close ส่วน `backtest/metrics.py` annualize และมี Calmar/CAGR ด้วย
@@ -589,20 +674,79 @@ close-to-close ส่วน `backtest/metrics.py` annualize และมี Calm
 ยืนยันว่าสองอันนี้ตรงกัน ยิ่งกับคู่ที่รัน `disable_stop_loss: true` การวัด drawdown
 แบบ close-to-close ยังซ่อน intra-trade excursion ซึ่งเป็นสิ่งที่ต้องเห็นที่สุดพอดี
 
-**P1.6 — ปลุก self-audit กลับมา**
+- `xauby/analytics/risk.py` เป็นนิยามเดียวของ Sharpe / Sortino / drawdown
+  ทั้ง `analytics/calculator.py` (live/UI) และ `backtest/metrics.py` เรียกตัวนี้
+  ตอนนี้ + 18 เทสต์ใน `tests/test_metric_parity.py` ที่ป้อนประวัติเดียวกันเข้า
+  ทั้งสองทางแล้วยืนยันว่าได้เลขเท่ากันเป๊ะ — ช่องที่ roadmap บอกว่า "ไม่มีเทสต์ไหน
+  ยืนยัน"
+- **มันต่างกัน 4 แกน ไม่ใช่แกนเดียว**: หน่วยตัวอย่าง (ราย trade vs ราย bar) ·
+  annualize หรือไม่ · ฐานผลตอบแทน (`net_pnl_pct` = ผลตอบแทนต่อ **notional ของ
+  เทรด** ไม่ใช่ต่อพอร์ต) · นิยาม downside deviation ฝั่ง live เดิม clip ค่าบวก
+  เป็น 0 แล้วหารด้วยจำนวน **ทั้งหมด** ดังนั้น **ยิ่งมีเทรดกำไร Sortino ยิ่งสูงขึ้น
+  โดยที่ความเสี่ยงขาลงไม่เปลี่ยน**
+- ฝั่ง backtest ก็มีบั๊กของตัวเอง: Sortino เดิมใช้ `pstdev` ของผลตอบแทนติดลบ ซึ่ง
+  คือการกระจายรอบ**ค่าเฉลี่ยของการขาดทุน** ไม่ใช่ deviation ต่ำกว่าเป้า —
+  เส้นทุนที่ขาดทุนเท่ากันทุกแท่งจึงมี downside spread = 0 และรายงานว่า
+  "ไม่มีความเสี่ยงขาลง" (มีเทสต์ครอบแล้ว)
+- **สิ่งที่ซ่อมจากข้อมูลไม่ได้ ก็ติดป้ายแทน** — drawdown ฝั่ง live มาจากราคาปิด
+  เทรดเท่านั้น ส่วนที่ลอยติดลบระหว่างถือไม่มีในข้อมูล ทุกผลลัพธ์จึงพก
+  `MetricBasis` บอกว่าวัดจากอะไร (`trade-close` vs `mark-to-market`,
+  annualize หรือยัง) และมี `comparable_to()` ให้เช็คก่อนเอาไปเทียบกัน
+- **ยังเหลือ:** call site ใน TUI/track record ยังเรียก `calculate_metrics(trades)`
+  โดยไม่ส่ง `initial_balance` จริงและไม่ส่ง `years` → `total_return_pct` ยังอิง
+  1000.0 ที่ hardcode ไว้ และ ratio ยังไม่ annualize (`basis.annualised: false`
+  บอกไว้แล้ว) · การเก็บ MAE/MFE ต่อเทรดเพื่อวัด intra-trade excursion จริง ๆ
+  ยังไม่มี
+
+**P1.6 — ปลุก self-audit กลับมา** ✅ **ทำแล้ว 2026-07-27**
 แก้ `audit_track_record` ให้รองรับหลายคู่ (`active_position` แยกตาม symbol,
 query event แบบกรอง symbol) แล้วต่อเข้า scheduler จริง ๆ และ commit track record
 รายเดือนจาก `track_record/generator.py` — หมายเหตุ `drawdown_pct` ยัง hardcode
 เป็น `0.0` ที่ `generator.py:52` ให้เริ่มนับ track record อย่างเป็นทางการที่จุดย้ายมา
 OKX เพราะการเปลี่ยนสัญลักษณ์ `XAUTUSDT` → `XAUUSDT` ทำให้ประวัติก่อนหน้าเทียบกันไม่ได้
 
-**P1.7 — Parity ของ *ผลลัพธ์* ระหว่าง live กับ backtest**
+- **auditor ไม่เคยถูกเรียกจาก runtime เลย** มีแต่ unit test เรียก — การตรวจ
+  reconciliation ที่ไม่เคยรันกับข้อมูลจริง ไม่ต่างจากไม่มี ตอนนี้ต่อเข้า
+  `ReportScheduler` แล้ว (`self_audit:` ใน `bot_config.yaml`, `enabled: true`,
+  รันวันละครั้ง) เจอ discrepancy แล้วยิง Telegram พร้อมตัดข้อความไม่ให้ท่วม
+- **มันพังแน่นอนถ้าเจอสองคู่พร้อมกัน** เพราะเก็บ `active_position` ตัวเดียวทั้ง
+  บัญชี: XAU เปิด → BTC เปิด จะขึ้น "fired while a position was already open"
+  (false alarm) แล้ว close ของ BTC จะไปจับคู่กับ entry ของ XAU → สร้างเทรดที่
+  ไม่เคยมีอยู่จริงขึ้นมาเงียบ ๆ · และการเทียบ `reconstructed[i]` กับ `db[i]` บน
+  list ที่รวมทุก symbol ทำให้ event เกินมาตัวเดียวบนคู่หนึ่ง เลื่อนการเทียบของ
+  ทุกคู่ที่เหลือทั้งหมด → ตอนนี้แยกต่อ symbol ทั้งการ reconstruct และการจับคู่
+- **`drawdown_pct` ที่ hardcode 0.0** พร้อมคอมเมนต์ว่า "calculated
+  chronologically at entry level" — ไม่ได้คำนวณที่ไหนเลย ทุก entry ในทุก
+  track record ที่เคยเผยแพร่รายงานว่าไม่มี drawdown ตอนนี้คำนวณจริงตามลำดับเวลา
+- **track record epoch** = `2026-07-20` (จุดย้ายมา OKX) เทรดก่อนหน้านั้นเป็น
+  `XAUTUSDT` คนละ instrument จึงถูกตัดออกแทนที่จะผสมเข้ามา (ยกเลิกได้ด้วย
+  `epoch=None` ถ้าต้องการดูประวัติเต็ม)
+
+**P1.7 — Parity ของ *ผลลัพธ์* ระหว่าง live กับ backtest** ✅ **ทำแล้ว 2026-07-27**
 `replay_validation.py` ตรวจแค่ว่าสัญญาณตรงกัน (และตัวมันเองไม่มีเทสต์)
 `scripts/live_parity_report.py` ตรวจแค่ว่า config ตรงกัน — ยังไม่มีอะไรกระทบยอด
 PnL, slippage และ fee ที่เกิดขึ้นจริง กับที่ simulator ทำนายไว้ในช่วงเวลาเดียวกัน
 `tests/test_fixed_tp_backtest_parity.py` คือรูปแบบที่ถูกต้อง เพียงแต่ทำไว้ฟีเจอร์เดียว
 ให้ขยายไปที่ trailing, partial TP, minimal-ROI, funding และ short
 นี่ยังเป็นเอกสารที่น่าเชื่อถือที่สุดสำหรับโชว์ลูกค้าด้วย
+
+- **trailing stop กับ breakeven เขียนแยกกันสองที่ และคำนวณไม่ตรงกันจริง ๆ**
+  (เจอตอนไล่ทำ ไม่ใช่สมมติ) — ยกขึ้นมาเป็น `next_trailing_stop()` ใน
+  `xauby/runtime/exits.py` แล้วทั้ง `engine/loop.py` และ
+  `observability/replay.py` เรียกตัวเดียวกัน มีเทสต์ยืนยันว่าเป็นฟังก์ชันเดียวกัน
+  จริง (`assertIs`)
+- **ความต่างที่เปลี่ยนผลลัพธ์ ไม่ใช่ปัดเศษ:**
+  1. `Signal.trail_distance` ที่กลยุทธ์กำหนดเอง — live ใช้ แต่ replay
+     **ไม่สนใจเลย** กลยุทธ์ที่ใช้ฟีเจอร์นี้จึง backtest เป็นคนละอย่างกับที่เทรดจริง
+  2. ตอนไม่มี ATR — live คงค่า SL เดิมไว้ ส่วน replay คำนวณ
+     `peak - 0 * mult` = **วาง SL ไว้ที่จุดสูงสุดพอดี** ซึ่งคือการโดน stop out
+     ทันทีในแท่งถัดไป
+- 23 เทสต์ใน `tests/test_exit_parity.py` ครอบ trailing / breakeven /
+  minimal-ROI / partial TP / funding / short ทั้งหมด รวมถึงยืนยัน invariant ว่า
+  rung ของ ROI ที่ต่ำกว่า partial target จะ pre-empt มันเสมอ
+- **ยังเหลือ:** ยังไม่มีการกระทบยอด PnL/slippage/fee **ที่เกิดขึ้นจริง** กับที่
+  simulator ทำนายในช่วงเวลาเดียวกัน — ส่วนนี้ต้องรอ live event สะสม ที่ทำไปคือ
+  ทำให้ตรรกะทั้งสองฝั่งเป็นตัวเดียวกันก่อน ซึ่งเป็นเงื่อนไขที่ต้องมาก่อน
 
 **เกณฑ์ผ่าน:** `catalog.py` ถูก generate ไม่ใช่แก้มือ · ทุก preset ที่
 `live_certified` สืบย้อนไปถึง walk-forward certificate บนข้อมูลที่ถูก venue ได้ ·

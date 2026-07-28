@@ -73,9 +73,14 @@ class TestOosEvaluation(unittest.TestCase):
             (2.5,): [_Res(net_profit_pct=10.0), _Res(net_profit_pct=8.0, sharpe=1.5)],
         }
         seq = {k: list(v) for k, v in plan.items()}
+        seen_skip = []
 
-        def fake_run(b, *, strat_cfg_override=None, df_override=None):
+        def fake_run(b, *, strat_cfg_override=None, df_override=None,
+                     min_bars_override=None):
             key = (strat_cfg_override["sl_atr_mult"],)
+            # The OOS call must carry the lead-in length; without it the replay
+            # skips only the strategy's own min_bars and trades the warmup.
+            seen_skip.append(min_bars_override)
             return seq[key].pop(0)  # 1st call = IS, 2nd = OOS
 
         import xauby.backtest.optimizer as opt
@@ -92,6 +97,11 @@ class TestOosEvaluation(unittest.TestCase):
         self.assertEqual(best["sl_atr_mult"], 2.5)
         self.assertEqual(best["oos_net_profit_pct"], 8.0)
         self.assertEqual(best["is_net_profit_pct"], 10.0)
+        # IS gets no override (no lead-in); OOS gets the split-minus-lo count.
+        split = int(400 * 0.7)
+        self.assertEqual(seen_skip, [None, 100, None, 100],
+                         "OOS replay must start exactly at the split")
+        self.assertEqual(split - max(0, split - 100), 100)
 
 
 if __name__ == "__main__":
