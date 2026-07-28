@@ -184,3 +184,64 @@ def validate_exit_config(
         "above the partial-TP trigger (note: changing the ladder changes the "
         "strategy and re-opens certification)."
     )
+
+
+def next_trailing_stop(
+    *,
+    side: str,
+    entry_price: float,
+    extreme_price: float,
+    current_sl: float,
+    atr: float,
+    trailing_atr_mult: float,
+    trail_distance: Optional[float] = None,
+    breakeven_enabled: bool = False,
+    breakeven_activation_atr_mult: float = 1.5,
+    breakeven_buffer_atr_mult: float = 0.1,
+    disable_stop_loss: bool = False,
+) -> float:
+    """Where the trailing stop should sit, for live and for replay alike.
+
+    Roadmap P1.7. The engine and the simulator each had their own version, and
+    they disagreed in two ways that changed outcomes rather than rounding:
+
+    * **A strategy-supplied trail distance was honoured live and ignored in
+      replay.** ``Signal.trail_distance`` takes precedence over the ATR multiple
+      in ``loop.py``; ``replay.py`` only ever computed ``extreme - atr * mult``.
+      Any strategy using it backtested as something it does not trade.
+    * **With no ATR the two moved the stop in opposite directions.** Live keeps
+      the existing stop, on the grounds that an unknown ATR is not a reason to
+      move a stop. Replay computed ``extreme - 0 * mult`` — the stop landed
+      exactly on the running peak, guaranteeing an immediate stop-out on the
+      next adverse tick.
+
+    ``extreme_price`` is the highest price seen for a long, the lowest for a
+    short. The result is a *candidate*: the caller still decides whether to move
+    the stop, since the engine has ratchet rules and exchange constraints the
+    simulator does not.
+    """
+    is_long = str(side or "long").lower() != "short"
+    if disable_stop_loss:
+        # CDC-pure: the strategy is the stop. Keep whatever is pinned.
+        return float(current_sl)
+
+    if trail_distance is not None and float(trail_distance) > 0:
+        distance = float(trail_distance)
+        candidate = (extreme_price - distance) if is_long else (extreme_price + distance)
+    elif float(atr) > 0:
+        offset = float(atr) * float(trailing_atr_mult)
+        candidate = (extreme_price - offset) if is_long else (extreme_price + offset)
+    else:
+        # No ATR: hold the stop where it is rather than parking it on the peak.
+        candidate = float(current_sl)
+
+    if breakeven_enabled and float(atr) > 0 and float(entry_price) > 0:
+        activation_offset = float(atr) * float(breakeven_activation_atr_mult)
+        buffer_offset = float(atr) * float(breakeven_buffer_atr_mult)
+        if is_long:
+            if extreme_price >= entry_price + activation_offset:
+                candidate = max(candidate, entry_price + buffer_offset)
+        else:
+            if extreme_price <= entry_price - activation_offset:
+                candidate = min(candidate, entry_price - buffer_offset)
+    return float(candidate)

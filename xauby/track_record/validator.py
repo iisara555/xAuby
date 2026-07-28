@@ -1,107 +1,183 @@
-from typing import List, Dict, Any, Tuple, Optional
+"""Self-audit: replay the event log and check the trade table against it.
+
+Roadmap P1.6. The audit existed but had never been run outside a unit test, and
+it could not have survived contact with the current runtime, which trades two
+pairs at once:
+
+* It tracked **one** ``active_position`` for the whole account. With XAU and BTC
+  both open, every second ``position_opened`` raised "fired while a position was
+  already open" — a false anomaly — and the next ``position_closed`` was paired
+  with whichever pair happened to be open, silently reconstructing a trade that
+  never existed (BTC's exit against XAU's entry).
+* It compared reconstructed trade *i* against database trade *i* across a merged,
+  multi-symbol list, so a single extra event on one pair shifted every later
+  comparison and produced a cascade of price mismatches.
+
+Both are fixed by doing the whole thing per symbol. The audit also now takes an
+epoch, because the OKX migration renamed ``XAUTUSDT`` to ``XAUUSDT`` and trades
+either side of it are not the same instrument.
+"""
+from typing import Any, Dict, List, Optional, Tuple
+
 from xauby.database.db import LiteDB
 
-def audit_track_record(db: LiteDB) -> Tuple[bool, List[str], Dict[str, Any]]:
-    """Self-audits the track record database by replaying position lifecycle events.
-    
-    Returns:
-        (success, discrepancies_list, stats_dict)
+#: Official start of the track record. Before this the gold pair traded as
+#: XAUTUSDT on a different venue, so earlier trades are not comparable and are
+#: excluded rather than blended into the same numbers.
+TRACK_RECORD_EPOCH = "2026-07-20"
+
+PRICE_TOLERANCE = 0.01
+QUANTITY_TOLERANCE = 0.0001
+
+
+def _symbol_of(record: Dict[str, Any]) -> str:
+    return str(record.get("symbol") or "").upper().replace("_", "")
+
+
+def _after_epoch(timestamp: Any, epoch: Optional[str]) -> bool:
+    if not epoch:
+        return True
+    return str(timestamp or "") >= str(epoch)
+
+
+def audit_track_record(
+    db: LiteDB,
+    *,
+    epoch: Optional[str] = TRACK_RECORD_EPOCH,
+    limit: int = 10000,
+) -> Tuple[bool, List[str], Dict[str, Any]]:
+    """Reconstruct trades from position events and compare with the trade table.
+
+    Returns ``(success, discrepancies, stats)``. Every discrepancy names the
+    symbol it belongs to, because "trade index 4 mismatched" is unactionable
+    once more than one pair is running.
     """
-    discrepancies = []
-    
-    # Query all position lifecycle events
-    opened_events = db.query_events(event_type="position_opened", limit=10000, order="asc")
-    closed_events = db.query_events(event_type="position_closed", limit=10000, order="asc")
-    
-    # Combine and sort chronologically
-    all_events = sorted(opened_events + closed_events, key=lambda e: (e.get("ts", ""), e.get("seq", 0)))
-    
-    # Reconstruct trades from events
-    reconstructed_trades: List[Dict[str, Any]] = []
-    active_position: Optional[Dict[str, Any]] = None
-    
-    for ev in all_events:
-        etype = ev.get("event_type")
-        payload = ev.get("payload") or {}
-        
+    discrepancies: List[str] = []
+
+    opened_events = db.query_events(event_type="position_opened", limit=limit, order="asc")
+    closed_events = db.query_events(event_type="position_closed", limit=limit, order="asc")
+    all_events = sorted(
+        list(opened_events) + list(closed_events),
+        key=lambda e: (str(e.get("ts") or ""), int(e.get("seq") or 0)),
+    )
+    all_events = [e for e in all_events if _after_epoch(e.get("ts"), epoch)]
+
+    # One open position per symbol, not one for the account.
+    active: Dict[str, Dict[str, Any]] = {}
+    reconstructed: Dict[str, List[Dict[str, Any]]] = {}
+
+    for event in all_events:
+        etype = event.get("event_type")
+        payload = event.get("payload") or {}
+        symbol = _symbol_of(event)
+
         if etype == "position_opened":
-            if active_position is not None:
+            if symbol in active:
                 discrepancies.append(
-                    f"Anomaly: position_opened event for run {ev.get('run_id')} "
-                    f"fired while a position was already open (run {active_position.get('run_id')})."
+                    f"[{symbol}] position_opened (run {event.get('run_id')}) fired "
+                    f"while {symbol} already had a position open "
+                    f"(run {active[symbol].get('run_id')})"
                 )
-            active_position = {
-                "run_id": ev.get("run_id"),
-                "opened_at": ev.get("ts"),
-                "entry_price": float(payload.get("entry_price") or payload.get("price") or 0.0),
-                "amount": float(payload.get("quantity") or payload.get("amount") or 0.0),
-                "symbol": ev.get("symbol")
+            active[symbol] = {
+                "run_id": event.get("run_id"),
+                "opened_at": event.get("ts"),
+                "entry_price": float(payload.get("entry_price")
+                                     or payload.get("price") or 0.0),
+                "amount": float(payload.get("quantity")
+                                or payload.get("amount") or 0.0),
+                "symbol": symbol,
             }
         elif etype == "position_closed":
-            if active_position is None:
+            position = active.pop(symbol, None)
+            if position is None:
                 discrepancies.append(
-                    f"Anomaly: position_closed event for run {ev.get('run_id')} "
-                    f"fired with no active open position."
+                    f"[{symbol}] position_closed (run {event.get('run_id')}) fired "
+                    f"with no open position for that symbol"
                 )
                 continue
-            
-            # Record reconstructed closed trade
-            reconstructed_trades.append({
-                "symbol": active_position["symbol"],
-                "amount": active_position["amount"],
-                "entry_price": active_position["entry_price"],
-                "exit_price": float(payload.get("exit_price") or payload.get("price") or 0.0),
-                "opened_at": active_position["opened_at"],
-                "closed_at": ev.get("ts")
+            reconstructed.setdefault(symbol, []).append({
+                "symbol": symbol,
+                "amount": position["amount"],
+                "entry_price": position["entry_price"],
+                "exit_price": float(payload.get("exit_price")
+                                    or payload.get("price") or 0.0),
+                "opened_at": position["opened_at"],
+                "closed_at": event.get("ts"),
             })
-            active_position = None
 
-    # Get actual closed trades from SQLite
-    db_trades = db.get_closed_trades(limit=1000)
-    # Sort actual trades oldest first to align with reconstructed
-    db_trades_sorted = sorted(db_trades, key=lambda t: t.get("closed_at", ""))
+    # Whatever is still in `active` is a position open right now. That is not a
+    # discrepancy — it simply has no closed trade to match — so it is reported
+    # in stats["open_at_audit"] and left out of the counts.
 
-    # Compare lists
-    len_recon = len(reconstructed_trades)
-    len_db = len(db_trades_sorted)
-    
-    if len_recon != len_db:
-        discrepancies.append(
-            f"Count mismatch: Reconstructed {len_recon} trades from event log, "
-            f"but database has {len_db} closed trades."
-        )
+    db_trades = [
+        trade for trade in db.get_closed_trades(None, limit=limit)
+        if _after_epoch(trade.get("closed_at"), epoch)
+    ]
+    db_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
+    for trade in db_trades:
+        db_by_symbol.setdefault(_symbol_of(trade), []).append(trade)
+    for trades in db_by_symbol.values():
+        trades.sort(key=lambda t: str(t.get("closed_at") or ""))
 
-    # Cross-reference aligned entries
-    aligned_count = min(len_recon, len_db)
     matches = 0
-    for i in range(aligned_count):
-        rt = reconstructed_trades[i]
-        dt = db_trades_sorted[i]
-        
-        # Check tolerance on prices and amounts
-        price_diff = abs(rt["exit_price"] - dt.get("exit_price", 0.0))
-        qty_diff = abs(rt["amount"] - dt.get("amount", 0.0))
-        
-        if price_diff > 0.01:
-            discrepancies.append(
-                f"Trade index {i}: Exit price mismatch (Event: {rt['exit_price']:.2f}, DB: {dt.get('exit_price'):.2f})"
-            )
-        if qty_diff > 0.0001:
-            discrepancies.append(
-                f"Trade index {i}: Quantity mismatch (Event: {rt['amount']:.4f}, DB: {dt.get('amount'):.4f})"
-            )
-        
-        if price_diff <= 0.01 and qty_diff <= 0.0001:
-            matches += 1
+    total_reconstructed = 0
+    total_db = 0
+    per_symbol: Dict[str, Dict[str, int]] = {}
 
-    success = len(discrepancies) == 0
-    
+    for symbol in sorted(set(reconstructed) | set(db_by_symbol)):
+        from_events = reconstructed.get(symbol, [])
+        from_db = db_by_symbol.get(symbol, [])
+        total_reconstructed += len(from_events)
+        total_db += len(from_db)
+        symbol_matches = 0
+
+        if len(from_events) != len(from_db):
+            discrepancies.append(
+                f"[{symbol}] count mismatch: {len(from_events)} trades "
+                f"reconstructed from events, {len(from_db)} in the database"
+            )
+
+        # Aligned within the symbol. Comparing across symbols by position, as
+        # this did before, means one extra event on one pair shifts every later
+        # comparison on every other pair.
+        for index in range(min(len(from_events), len(from_db))):
+            event_trade = from_events[index]
+            db_trade = from_db[index]
+            price_diff = abs(event_trade["exit_price"]
+                             - float(db_trade.get("exit_price") or 0.0))
+            qty_diff = abs(event_trade["amount"]
+                           - float(db_trade.get("amount") or 0.0))
+            if price_diff > PRICE_TOLERANCE:
+                discrepancies.append(
+                    f"[{symbol}] trade {index}: exit price mismatch "
+                    f"(events {event_trade['exit_price']:.2f}, "
+                    f"db {float(db_trade.get('exit_price') or 0.0):.2f})"
+                )
+            if qty_diff > QUANTITY_TOLERANCE:
+                discrepancies.append(
+                    f"[{symbol}] trade {index}: quantity mismatch "
+                    f"(events {event_trade['amount']:.4f}, "
+                    f"db {float(db_trade.get('amount') or 0.0):.4f})"
+                )
+            if price_diff <= PRICE_TOLERANCE and qty_diff <= QUANTITY_TOLERANCE:
+                symbol_matches += 1
+
+        matches += symbol_matches
+        per_symbol[symbol] = {
+            "reconstructed": len(from_events),
+            "database": len(from_db),
+            "matching": symbol_matches,
+        }
+
     stats = {
+        "epoch": epoch or "",
         "events_analyzed": len(all_events),
-        "reconstructed_count": len_recon,
-        "database_count": len_db,
+        "reconstructed_count": total_reconstructed,
+        "database_count": total_db,
         "matching_trades": matches,
-        "discrepancies_count": len(discrepancies)
+        "discrepancies_count": len(discrepancies),
+        "symbols": sorted(per_symbol),
+        "per_symbol": per_symbol,
+        "open_at_audit": sorted(active),
     }
-    
-    return success, discrepancies, stats
+    return len(discrepancies) == 0, discrepancies, stats

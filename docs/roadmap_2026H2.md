@@ -698,20 +698,55 @@ close-to-close ส่วน `backtest/metrics.py` annualize และมี Calm
   บอกไว้แล้ว) · การเก็บ MAE/MFE ต่อเทรดเพื่อวัด intra-trade excursion จริง ๆ
   ยังไม่มี
 
-**P1.6 — ปลุก self-audit กลับมา**
+**P1.6 — ปลุก self-audit กลับมา** ✅ **ทำแล้ว 2026-07-27**
 แก้ `audit_track_record` ให้รองรับหลายคู่ (`active_position` แยกตาม symbol,
 query event แบบกรอง symbol) แล้วต่อเข้า scheduler จริง ๆ และ commit track record
 รายเดือนจาก `track_record/generator.py` — หมายเหตุ `drawdown_pct` ยัง hardcode
 เป็น `0.0` ที่ `generator.py:52` ให้เริ่มนับ track record อย่างเป็นทางการที่จุดย้ายมา
 OKX เพราะการเปลี่ยนสัญลักษณ์ `XAUTUSDT` → `XAUUSDT` ทำให้ประวัติก่อนหน้าเทียบกันไม่ได้
 
-**P1.7 — Parity ของ *ผลลัพธ์* ระหว่าง live กับ backtest**
+- **auditor ไม่เคยถูกเรียกจาก runtime เลย** มีแต่ unit test เรียก — การตรวจ
+  reconciliation ที่ไม่เคยรันกับข้อมูลจริง ไม่ต่างจากไม่มี ตอนนี้ต่อเข้า
+  `ReportScheduler` แล้ว (`self_audit:` ใน `bot_config.yaml`, `enabled: true`,
+  รันวันละครั้ง) เจอ discrepancy แล้วยิง Telegram พร้อมตัดข้อความไม่ให้ท่วม
+- **มันพังแน่นอนถ้าเจอสองคู่พร้อมกัน** เพราะเก็บ `active_position` ตัวเดียวทั้ง
+  บัญชี: XAU เปิด → BTC เปิด จะขึ้น "fired while a position was already open"
+  (false alarm) แล้ว close ของ BTC จะไปจับคู่กับ entry ของ XAU → สร้างเทรดที่
+  ไม่เคยมีอยู่จริงขึ้นมาเงียบ ๆ · และการเทียบ `reconstructed[i]` กับ `db[i]` บน
+  list ที่รวมทุก symbol ทำให้ event เกินมาตัวเดียวบนคู่หนึ่ง เลื่อนการเทียบของ
+  ทุกคู่ที่เหลือทั้งหมด → ตอนนี้แยกต่อ symbol ทั้งการ reconstruct และการจับคู่
+- **`drawdown_pct` ที่ hardcode 0.0** พร้อมคอมเมนต์ว่า "calculated
+  chronologically at entry level" — ไม่ได้คำนวณที่ไหนเลย ทุก entry ในทุก
+  track record ที่เคยเผยแพร่รายงานว่าไม่มี drawdown ตอนนี้คำนวณจริงตามลำดับเวลา
+- **track record epoch** = `2026-07-20` (จุดย้ายมา OKX) เทรดก่อนหน้านั้นเป็น
+  `XAUTUSDT` คนละ instrument จึงถูกตัดออกแทนที่จะผสมเข้ามา (ยกเลิกได้ด้วย
+  `epoch=None` ถ้าต้องการดูประวัติเต็ม)
+
+**P1.7 — Parity ของ *ผลลัพธ์* ระหว่าง live กับ backtest** ✅ **ทำแล้ว 2026-07-27**
 `replay_validation.py` ตรวจแค่ว่าสัญญาณตรงกัน (และตัวมันเองไม่มีเทสต์)
 `scripts/live_parity_report.py` ตรวจแค่ว่า config ตรงกัน — ยังไม่มีอะไรกระทบยอด
 PnL, slippage และ fee ที่เกิดขึ้นจริง กับที่ simulator ทำนายไว้ในช่วงเวลาเดียวกัน
 `tests/test_fixed_tp_backtest_parity.py` คือรูปแบบที่ถูกต้อง เพียงแต่ทำไว้ฟีเจอร์เดียว
 ให้ขยายไปที่ trailing, partial TP, minimal-ROI, funding และ short
 นี่ยังเป็นเอกสารที่น่าเชื่อถือที่สุดสำหรับโชว์ลูกค้าด้วย
+
+- **trailing stop กับ breakeven เขียนแยกกันสองที่ และคำนวณไม่ตรงกันจริง ๆ**
+  (เจอตอนไล่ทำ ไม่ใช่สมมติ) — ยกขึ้นมาเป็น `next_trailing_stop()` ใน
+  `xauby/runtime/exits.py` แล้วทั้ง `engine/loop.py` และ
+  `observability/replay.py` เรียกตัวเดียวกัน มีเทสต์ยืนยันว่าเป็นฟังก์ชันเดียวกัน
+  จริง (`assertIs`)
+- **ความต่างที่เปลี่ยนผลลัพธ์ ไม่ใช่ปัดเศษ:**
+  1. `Signal.trail_distance` ที่กลยุทธ์กำหนดเอง — live ใช้ แต่ replay
+     **ไม่สนใจเลย** กลยุทธ์ที่ใช้ฟีเจอร์นี้จึง backtest เป็นคนละอย่างกับที่เทรดจริง
+  2. ตอนไม่มี ATR — live คงค่า SL เดิมไว้ ส่วน replay คำนวณ
+     `peak - 0 * mult` = **วาง SL ไว้ที่จุดสูงสุดพอดี** ซึ่งคือการโดน stop out
+     ทันทีในแท่งถัดไป
+- 23 เทสต์ใน `tests/test_exit_parity.py` ครอบ trailing / breakeven /
+  minimal-ROI / partial TP / funding / short ทั้งหมด รวมถึงยืนยัน invariant ว่า
+  rung ของ ROI ที่ต่ำกว่า partial target จะ pre-empt มันเสมอ
+- **ยังเหลือ:** ยังไม่มีการกระทบยอด PnL/slippage/fee **ที่เกิดขึ้นจริง** กับที่
+  simulator ทำนายในช่วงเวลาเดียวกัน — ส่วนนี้ต้องรอ live event สะสม ที่ทำไปคือ
+  ทำให้ตรรกะทั้งสองฝั่งเป็นตัวเดียวกันก่อน ซึ่งเป็นเงื่อนไขที่ต้องมาก่อน
 
 **เกณฑ์ผ่าน:** `catalog.py` ถูก generate ไม่ใช่แก้มือ · ทุก preset ที่
 `live_certified` สืบย้อนไปถึง walk-forward certificate บนข้อมูลที่ถูก venue ได้ ·

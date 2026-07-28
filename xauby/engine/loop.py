@@ -17,7 +17,12 @@ from xauby.runtime.paths import dashboard_focus_path, sentiment_guard_state_path
 from xauby.runtime.manual_orders import claim_manual_order_request
 from xauby.engine.regime_policy import apply_regime_policy, regime_policy_enabled
 from xauby.runtime.candle_utils import candle_is_stale, drop_forming_bar, use_closed_candles
-from xauby.runtime.exits import minimal_roi_pct, resolve_minimal_roi, resolve_partial_tp
+from xauby.runtime.exits import (
+    minimal_roi_pct,
+    next_trailing_stop,
+    resolve_minimal_roi,
+    resolve_partial_tp,
+)
 from xauby.runtime.trading_config import resolve_trading_config
 from xauby.utils.atomic_io import atomic_json_write
 from xauby.api.utils import round_step
@@ -2386,29 +2391,27 @@ class LoopMixin:
             # CDC-pure mode: no stop loss / no trailing — exit only on a RED zone
             # (SELL signal). Keep the SL pinned (0.0) and just track the peak.
             disable_sl = bool(strat_conf.get("disable_stop_loss", False))
-            if disable_sl:
-                candidate_sl = current_sl
-            else:
-                if signal.trail_distance is not None and signal.trail_distance > 0:
-                    candidate_sl = highest_seen - signal.trail_distance
-                elif atr > 0:
-                    trailing_mult = float(strat_conf.get("trailing_atr_mult", 1.5))
-                    if sc.no_trade_state in ("NO_TRADE", "NO_TRADE_PENDING", "HANDOFF"):
-                        trailing_mult = min(trailing_mult, float(sc.trailing_atr_mult or 1.0))
-                    candidate_sl = highest_seen - atr * trailing_mult
-                else:
-                    # ATR unavailable — keep current SL rather than setting it at the price peak
-                    candidate_sl = current_sl
-
-                be_enabled = strat_conf.get("breakeven_sl_enabled", False)
-                if be_enabled:
-                    entry_price = float(state.get("entry_price", 0.0))
-                    be_activation_mult = float(strat_conf.get("breakeven_activation_atr_mult", 1.5))
-                    be_buffer_mult = float(strat_conf.get("breakeven_buffer_atr_mult", 0.1))
-                    activation_price = entry_price + (atr * be_activation_mult)
-                    if highest_seen >= activation_price:
-                        be_sl_target = entry_price + (atr * be_buffer_mult)
-                        candidate_sl = max(candidate_sl, be_sl_target)
+            # A NO_TRADE regime tightens the trail; that policy is the engine's,
+            # so it is applied to the multiplier here and the shared resolver
+            # below computes the price the same way replay does (roadmap P1.7).
+            trailing_mult = float(strat_conf.get("trailing_atr_mult", 1.5))
+            if sc.no_trade_state in ("NO_TRADE", "NO_TRADE_PENDING", "HANDOFF"):
+                trailing_mult = min(trailing_mult, float(sc.trailing_atr_mult or 1.0))
+            candidate_sl = next_trailing_stop(
+                side="long",
+                entry_price=float(state.get("entry_price", 0.0)),
+                extreme_price=float(highest_seen),
+                current_sl=float(current_sl),
+                atr=float(atr),
+                trailing_atr_mult=trailing_mult,
+                trail_distance=signal.trail_distance,
+                breakeven_enabled=bool(strat_conf.get("breakeven_sl_enabled", False)),
+                breakeven_activation_atr_mult=float(
+                    strat_conf.get("breakeven_activation_atr_mult", 1.5)),
+                breakeven_buffer_atr_mult=float(
+                    strat_conf.get("breakeven_buffer_atr_mult", 0.1)),
+                disable_stop_loss=disable_sl,
+            )
             sl_order_id = state.get("stop_loss_order_id")
             state_changed = False
             new_sl = current_sl
