@@ -97,7 +97,11 @@ class SaaSAuthAndBackupTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_invite_returns_manual_link_when_email_delivery_is_unavailable(self):
+    def test_invite_returns_a_usable_link_when_email_delivery_is_unavailable(self):
+        # P2.5 split the outcome: a delivery failure now reports "failed" while
+        # never having configured email reports "manual". This stub is the
+        # former -- SMTP is set up and broken -- and the point of the test is
+        # unchanged: the admin still gets a link they can send by hand.
         app = create_app(
             self.settings,
             store=self.store,
@@ -115,7 +119,7 @@ class SaaSAuthAndBackupTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 201, response.text)
             payload = response.json()
-            self.assertEqual(payload["delivery"], "manual")
+            self.assertEqual(payload["delivery"], "failed")
             self.assertEqual(payload["delivery_detail"], "transactional email delivery is unavailable")
             self.assertTrue(payload["invite_url"].startswith("http://testserver/invite/"))
             token = urlparse(payload["invite_url"]).path.rsplit("/", 1)[-1]

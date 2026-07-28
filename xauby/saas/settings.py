@@ -33,6 +33,9 @@ class SaaSSettings:
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
+    # Implicit TLS. Inferred from port 465; this forces it for a provider that
+    # uses implicit TLS on a non-standard port.
+    smtp_use_ssl: bool = False
     live_activation_enabled: bool = False
     manual_trading_enabled: bool = False
     # Comma-separated static egress IP(s) of the engine host. Surfaced in the
@@ -102,6 +105,8 @@ class SaaSSettings:
             smtp_username=os.environ.get("XAUBY_SMTP_USERNAME", ""),
             smtp_password=os.environ.get("XAUBY_SMTP_PASSWORD", ""),
             smtp_from=os.environ.get("XAUBY_SMTP_FROM", ""),
+            smtp_use_ssl=os.environ.get("XAUBY_SMTP_USE_SSL", "0").lower()
+            in {"1", "true", "yes"},
             live_activation_enabled=os.environ.get(
                 "XAUBY_LIVE_ACTIVATION_ENABLED", "0"
             ).lower() in {"1", "true", "yes"},

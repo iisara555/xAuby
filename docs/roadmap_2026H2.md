@@ -949,11 +949,53 @@ F702,F706,F707,F502,F601,B006,B008,B012,B017,B018,B023,B026,B904`) ผ่าน�
   ผลสะอาด): ไม่ได้ทำ penetration test · ไม่ได้ตรวจบนเครื่องจริง (อ่านจาก `deploy/`
   ไม่ได้ไปดู VPS) · ยังไม่มี threat model ที่เป็นทางการ
 
-**P2.5 — รับ design partner ฟรี 2 ราย** ผ่าน invite flow ที่มีอยู่ แบบ SIM-only
-capacity ตั้ง hardcode ไว้ (`max_users=3`, `max_active_engines=2` ใน
-`xauby/saas/settings.py`) และนั่นคือขนาดที่ถูกต้องสำหรับเฟสนี้ อย่าเพิ่งเพิ่ม
-ตั้งค่า SMTP ให้เรียบร้อยเพื่อให้ invite เลิกตกไปเป็นการส่งลิงก์ด้วยมือ
-(`mailer.py:14`)
+**P2.5 — รับ design partner ฟรี 2 ราย** ⏳ **โค้ดพร้อมแล้ว 2026-07-28 เหลือ SMTP + คนจริง**
+ผ่าน invite flow ที่มีอยู่ แบบ SIM-only capacity ตั้ง hardcode ไว้
+(`max_users=3`, `max_active_engines=2` ใน `xauby/saas/settings.py`) และนั่นคือ
+ขนาดที่ถูกต้องสำหรับเฟสนี้ อย่าเพิ่งเพิ่ม
+
+**`mailer.py` มีปัญหามากกว่าแค่ "ยังไม่ตั้ง credential" — เจอ 4 ข้อ:**
+
+- **port 465 ใช้ไม่ได้เลย** `smtplib.SMTP` + `starttls()` คือ explicit TLS
+  แต่ 465 เป็น implicit TLS ต้องใช้ `SMTP_SSL` ผู้ให้บริการที่ใช้ 465 จะค้างแล้ว
+  พังแบบไม่บอกสาเหตุ → รองรับแล้ว (ตรวจจาก port หรือ `XAUBY_SMTP_USE_SSL`)
+- **เหตุผลถูกทิ้ง** ทุก failure กลายเป็นสตริงเดียวกัน แล้วสตริงนั้นคือสิ่งที่ลงใน
+  audit row `invite_delivery_failed` — บันทึกชิ้นเดียวที่มีเรื่องปัญหานี้ กลับไม่บอกอะไรเลย
+  ตอนนี้เก็บเหตุผลจริงไว้ พร้อม redact username/password ถ้า server สะท้อนกลับมา
+- **ไม่มี header `Date`** ยืนยันแล้วด้วยการอ่าน source ของ `smtplib` ไม่ใช่เดา:
+  `send_message` **ไม่ได้เติมให้** (มันจัดการแค่ `Resent-Date`) และ `EmailMessage`
+  ก็ไม่เติม `Date` เป็น field บังคับตาม RFC 5322 การไม่มีคือสัญญาณ spam ชัด ๆ —
+  ตรงกับอาการ "ส่งสำเร็จ แต่ไม่เคยถึง" → เติม `Date` + `Message-ID` แล้ว
+- **`From` fallback ไปใช้ SMTP username** ซึ่งหลายเจ้าไม่ใช่อีเมล (SendGrid ใช้คำว่า
+  `apikey` ตรง ๆ) ได้ header ที่ไม่ถูกต้อง → ตอนนี้บังคับ `XAUBY_SMTP_FROM`
+  ถ้า username ไม่ใช่อีเมล และปฏิเสธตั้งแต่ preflight
+
+**`scripts/check_email.py`** — preflight ก่อนเชิญคนจริง (`--check` แล้ว `--to`)
+เพราะเดิมมีทางเดียวที่จะรู้ว่า SMTP พัง คือเชิญคนจริงแล้วรอดูว่าเขาบอกว่าไม่ได้รับ
+ซึ่งแยกไม่ออกจาก "ได้รับแล้วแต่ไม่สนใจ" · `--to` เท่านั้นที่พิสูจน์การส่งจริง
+(auth ผ่าน ≠ provider ยอมรับ From ≠ ไม่โดน spam filter)
+
+**แยก `manual` ออกจาก `failed`** — เดิมทั้งสองอย่างรายงานเหมือนกัน "ยังไม่เคยตั้ง
+SMTP" (ก็อปลิงก์ส่งเอง) กับ "ตั้งแล้วและพัง" (ต้องไปแก้) จึงหน้าตาเหมือนกันหมด
+ไม่มีใครไปตาม · และ `forgot_password` เดิม `except RuntimeError: pass` เงียบสนิท
+ตอนนี้ยัง**ตอบเหมือนเดิมทุกกรณี** (ห้ามบอกว่ามีบัญชีนี้ไหม) แต่ลง audit ให้ operator เห็น
+
+**`tests/test_design_partner_journey.py` (15 เทสต์) เดินเส้นทาง non-owner ทั้งเส้น**
+เพราะเทสต์เดิมทุกตัว**หยุดที่ขั้นที่สอง** และช่องว่างนั้นไม่ใช่เรื่องสมมติ — P2.1 เจอว่า
+tenant SIM-only ที่เพิ่งสร้าง (สถานะตั้งต้นของทุกคนที่ถูกเชิญ) **สตาร์ตไม่ขึ้นเลย**
+เพราะไม่มีเทสต์คลุมเส้นนี้
+
+> **เทสต์ของผมเองเกือบผ่านด้วยเหตุผลผิด** — `test_a_partner_cannot_reach_live`
+> ผ่านเพราะได้ 422 จาก **schema validation** ของ `trade_pin` ไม่ใช่จากการตรวจสิทธิ์
+> ถ้าเอา authorization ออกทั้งหมดมันก็ยังผ่าน ตรวจเจอตอนไปยิงดูจริงว่าคืนอะไร
+> ของจริงคือ `/api/v1/live/activate` **เปิดให้เจ้าของ tenant ทุกคน** โดยดีไซน์
+> สิ่งที่กัน pilot ไว้ที่ sim คือ `live_activation_enabled` ไม่ใช่ role
+
+**`docs/design-partner-onboarding.md`** — runbook ตั้งแต่ preflight อีเมลจนถึง soak
+2 สัปดาห์ รวมช่องว่างที่ partner จะเจอแน่ ๆ (ไม่มีปุ่มถอน API key เอง · ไม่มี ToS ·
+restore เป็น manual · public signup 404)
+
+**เหลือที่ผมทำแทนไม่ได้:** SMTP credential ของจริง กับคนจริง 2 คน
 
 **เกณฑ์ผ่าน:** tenant ที่ไม่ใช่เจ้าของ provision ได้ ต่อ key ได้ รัน SIM ได้ 2 สัปดาห์
 และยังได้รับ Telegram alert ต่อเนื่องหลังรีบูตเครื่อง

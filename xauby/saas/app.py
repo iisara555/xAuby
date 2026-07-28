@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from xauby.saas.catalog import public_catalog, target_by_id, validate_profile
 from xauby.saas.credentials import CredentialCipher
-from xauby.saas.mailer import Mailer
+from xauby.saas.mailer import Mailer, MailNotConfigured
 from xauby.saas.order_sizing import resolve_pair_atr, risk_based_stop_distance
 from xauby.saas.runtime import RuntimeGateway
 from xauby.saas.security import (
@@ -489,8 +489,15 @@ def create_app(
                     user["email"], "Reset your xAuby password",
                     f"This link is valid for 30 minutes:\n{settings.public_base_url}/reset-password?token={quote(token)}",
                 )
-            except RuntimeError:
-                pass
+            except RuntimeError as exc:
+                # The response stays identical either way -- it must not reveal
+                # whether the account exists. But a broken SMTP config was
+                # previously invisible on this path entirely, so record it where
+                # the operator can find it.
+                store.audit(
+                    "password_reset_delivery_failed",
+                    user_id=user["id"], payload={"reason": str(exc)},
+                )
         return {"ok": True}
 
     @app.post("/auth/reset-password")
@@ -1542,12 +1549,17 @@ def create_app(
                     f"You have been invited to xAuby. This link is valid for 7 days:\n{url}",
                 )
             except RuntimeError as exc:
-                delivery = "manual"
+                # "manual" and "failed" are different problems: one means email
+                # was never set up and the admin should copy the link, the other
+                # means it *is* set up and is broken, which nobody would chase
+                # if both reported the same thing.
+                delivery = "manual" if isinstance(exc, MailNotConfigured) else "failed"
                 delivery_detail = str(exc)
                 store.audit(
                     "invite_delivery_failed",
                     user_id=user["id"],
-                    payload={"email": invite["email"], "reason": delivery_detail},
+                    payload={"email": invite["email"], "delivery": delivery,
+                             "reason": delivery_detail},
                 )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
