@@ -35,11 +35,28 @@ from xauby.runtime.exchange_config import (
 from xauby.runtime.pair_registry import PairRegistry
 from xauby.runtime.paths import bot_state_path, config_file, config_root
 
+MATERIALIZED_CREDENTIAL_ROOT = "/run/xauby/credentials"
+
 
 def _load_dotenv(path: str | None = None) -> None:
     if path is None:
+        instance = str(os.environ.get("XAUBY_INSTANCE_ID") or "").strip()
+        runtime_credentials = (
+            os.path.join(MATERIALIZED_CREDENTIAL_ROOT, f"{instance}.env")
+            if instance else ""
+        )
         tenant_secrets = config_file("secrets.env")
-        path = tenant_secrets if os.path.exists(tenant_secrets) else config_file(".env")
+        path = next(
+            (
+                candidate for candidate in (
+                    runtime_credentials,
+                    tenant_secrets,
+                    config_file(".env"),
+                )
+                if candidate and os.path.exists(candidate)
+            ),
+            tenant_secrets,
+        )
     if not os.path.exists(path):
         return
     with open(path, "r", encoding="utf-8") as f:
@@ -69,6 +86,17 @@ def _state_value(state: Dict[str, Any], key: str, default: Any = None) -> Any:
 def _base_asset(symbol: str, quote: str = "USDT") -> str:
     sym = str(symbol or "").upper().replace("_", "")
     return sym[: -len(quote)] if quote and sym.endswith(quote) else sym
+
+
+def _symbol(value: Any) -> str:
+    return (
+        str(value or "")
+        .split(":", 1)[0]
+        .upper()
+        .replace("/", "")
+        .replace("_", "")
+        .replace("-", "")
+    )
 
 
 def _order_id(order: Any) -> str:
@@ -103,6 +131,11 @@ def _load_tracked_positions(pairs: List[Any], state: Dict[str, Any]) -> Dict[str
                     "symbol": pair.symbol,
                     "state": "bought",
                     "quantity": float(pos.get("quantity", 0.0) or 0.0),
+                    "position_side": str(
+                        pos.get("position_side") or "LONG"
+                    ).upper(),
+                    "entry_price": float(pos.get("entry_price", 0.0) or 0.0),
+                    "exchange_position_id": pos.get("exchange_position_id"),
                     "stop_loss_order_id": pos.get("stop_loss_order_id"),
                 }
     except Exception:
@@ -132,8 +165,119 @@ def _qty_tolerance(client: IExchangeGateway, symbol: str) -> float:
         return 1e-8
 
 
-def run_preflight(*, require_exchange: bool = True, allow_tracked_positions: bool = True) -> Dict[str, Any]:
-    _load_dotenv()
+def _price_tolerance(client: IExchangeGateway, symbol: str, price: float) -> float:
+    try:
+        filters = client.get_symbol_filters(symbol)
+        tick_size = float(filters.get("tickSize") or 0.0)
+    except Exception:
+        tick_size = 0.0
+    return max(tick_size, abs(float(price or 0.0)) * 1e-6, 1e-8)
+
+
+def _derivative_positions(
+    client: IExchangeGateway,
+    pairs: List[Any],
+    tracked_positions: Dict[str, Dict[str, Any]],
+    *,
+    allow_tracked_positions: bool,
+) -> tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """Fail-closed comparison of exchange swap positions to durable state."""
+    if not hasattr(client, "get_positions"):
+        return {}, ["exchange adapter cannot verify derivative positions"]
+    try:
+        # Account-wide query is intentional: restricting to configured pairs
+        # cannot reveal an orphan position on a third instrument.
+        rows = client.get_positions() or []
+    except Exception as exc:
+        return {}, [
+            f"derivative position verification failed: {exc.__class__.__name__}: {exc}"
+        ]
+
+    allowed_symbols = {_symbol(pair.symbol) for pair in pairs}
+    live_by_symbol: Dict[str, Dict[str, Any]] = {}
+    reasons: List[str] = []
+    for row in rows:
+        symbol = _symbol(row.get("symbol"))
+        quantity = abs(float(row.get("quantity") or row.get("contracts") or 0.0))
+        if quantity <= 0:
+            continue
+        if not symbol or symbol not in allowed_symbols:
+            reasons.append(
+                f"exchange has untracked derivative position {symbol or 'UNKNOWN'} qty={quantity}"
+            )
+            continue
+        if symbol in live_by_symbol:
+            reasons.append(f"{symbol} has multiple exchange derivative positions")
+            continue
+        live_by_symbol[symbol] = {
+            "symbol": symbol,
+            "position_side": str(row.get("position_side") or "").upper(),
+            "quantity": quantity,
+            "entry_price": float(row.get("entry_price") or 0.0),
+            "exchange_position_id": row.get("exchange_position_id"),
+        }
+
+    pair_symbols = {_symbol(pair.symbol) for pair in pairs}
+    for symbol in sorted(pair_symbols):
+        tracked = tracked_positions.get(symbol)
+        live = live_by_symbol.get(symbol)
+        if not allow_tracked_positions:
+            if live:
+                reasons.append(f"{symbol} has an open derivative position")
+            continue
+        if tracked and not live:
+            reasons.append(f"{symbol} is tracked locally but missing on exchange")
+            continue
+        if live and not tracked:
+            reasons.append(f"{symbol} exists on exchange but is not tracked locally")
+            continue
+        if not tracked or not live:
+            continue
+
+        tracked_side = str(tracked.get("position_side") or "").upper()
+        if tracked_side not in {"LONG", "SHORT"} or live["position_side"] != tracked_side:
+            reasons.append(
+                f"{symbol} side mismatch: exchange={live['position_side'] or 'UNKNOWN'} "
+                f"tracked={tracked_side or 'UNKNOWN'}"
+            )
+        expected_qty = abs(float(tracked.get("quantity") or 0.0))
+        if abs(live["quantity"] - expected_qty) > _qty_tolerance(client, symbol):
+            reasons.append(
+                f"{symbol} quantity mismatch: exchange={live['quantity']} tracked={expected_qty}"
+            )
+        expected_entry = float(tracked.get("entry_price") or 0.0)
+        live_entry = float(live.get("entry_price") or 0.0)
+        if expected_entry <= 0 or live_entry <= 0:
+            reasons.append(
+                f"{symbol} entry price is unavailable: exchange={live_entry} tracked={expected_entry}"
+            )
+        elif abs(live_entry - expected_entry) > _price_tolerance(
+            client, symbol, expected_entry
+        ):
+            reasons.append(
+                f"{symbol} entry mismatch: exchange={live_entry} tracked={expected_entry}"
+            )
+        tracked_position_id = str(tracked.get("exchange_position_id") or "")
+        live_position_id = str(live.get("exchange_position_id") or "")
+        if (
+            tracked_position_id
+            and live_position_id
+            and live_position_id != tracked_position_id
+        ):
+            reasons.append(
+                f"{symbol} position id mismatch: exchange={live_position_id} "
+                f"tracked={tracked_position_id}"
+            )
+    return live_by_symbol, reasons
+
+
+def run_preflight(
+    *,
+    require_exchange: bool = True,
+    allow_tracked_positions: bool = True,
+    credentials_env: str | None = None,
+) -> Dict[str, Any]:
+    _load_dotenv(credentials_env)
     cfg_path = config_file("bot_config.yaml")
     cfg = load_bot_config(cfg_path)
     state = _load_state()
@@ -145,6 +289,8 @@ def run_preflight(*, require_exchange: bool = True, allow_tracked_positions: boo
     )
     pairs = registry.load(None)
     quote = str(((cfg.get("portfolio") or {}).get("quote_asset")) or resolve_quote_asset(cfg)).upper()
+    market_type = str((cfg.get("exchange") or {}).get("market_type") or "spot").lower()
+    is_derivative = market_type == "swap"
     tracked_positions = _load_tracked_positions(pairs, state)
 
     report: Dict[str, Any] = {
@@ -161,6 +307,7 @@ def run_preflight(*, require_exchange: bool = True, allow_tracked_positions: boo
         },
         "pairs": [p.symbol for p in pairs],
         "tracked_positions": tracked_positions,
+        "exchange_positions": {},
         "open_orders": {},
         "balances": {},
     }
@@ -177,6 +324,30 @@ def run_preflight(*, require_exchange: bool = True, allow_tracked_positions: boo
             client = create_exchange_client(cfg, api_key, api_secret, base_url)
             balances = client.get_balances()
             report["exchange_checked"] = True
+            if is_derivative:
+                try:
+                    account_orders = client.get_open_orders() or []
+                except TypeError:
+                    account_orders = []
+                    report["reasons"].append(
+                        "exchange adapter cannot query account-wide open orders"
+                    )
+                allowed_symbols = {_symbol(pair.symbol) for pair in pairs}
+                for order in account_orders:
+                    order_symbol = _symbol(order.get("symbol"))
+                    if order_symbol not in allowed_symbols:
+                        report["reasons"].append(
+                            f"exchange has untracked open order on "
+                            f"{order_symbol or 'UNKNOWN'}"
+                        )
+                live_positions, position_reasons = _derivative_positions(
+                    client,
+                    pairs,
+                    tracked_positions,
+                    allow_tracked_positions=allow_tracked_positions,
+                )
+                report["exchange_positions"] = live_positions
+                report["reasons"].extend(position_reasons)
             for pair in pairs:
                 orders = client.get_open_orders(pair.symbol)
                 if orders:
@@ -198,6 +369,13 @@ def run_preflight(*, require_exchange: bool = True, allow_tracked_positions: boo
                 qty = float(bal.get("available", 0.0) or 0.0) + float(bal.get("reserved", 0.0) or 0.0)
                 if qty > 0:
                     report["balances"][base] = qty
+                    if is_derivative:
+                        tol = _qty_tolerance(client, pair.symbol)
+                        if qty > tol:
+                            report["reasons"].append(
+                                f"{base} spot balance is non-zero ({qty}) on derivative account"
+                            )
+                        continue
                     tracked = tracked_positions.get(pair.symbol) if allow_tracked_positions else None
                     expected_qty = float((tracked or {}).get("quantity", 0.0) or 0.0)
                     if not tracked:
@@ -239,6 +417,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--allow-no-exchange", action="store_true", help="Do not fail solely because API keys are missing.")
     ap.add_argument(
+        "--credentials-env",
+        default=None,
+        help=(
+            "credential env file (defaults to the materialized tenant file "
+            "when XAUBY_INSTANCE_ID is set)"
+        ),
+    )
+    ap.add_argument(
         "--no-open-positions",
         action="store_true",
         help="Require zero open positions, matching the old conservative restart policy.",
@@ -248,6 +434,7 @@ def main() -> int:
     report = run_preflight(
         require_exchange=not args.allow_no_exchange,
         allow_tracked_positions=not args.no_open_positions,
+        credentials_env=args.credentials_env,
     )
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True, default=str))
