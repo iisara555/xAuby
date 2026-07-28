@@ -22,6 +22,44 @@ from xauby.utils.atomic_io import atomic_json_write
 from xauby.runtime.manual_orders import write_manual_order_request
 
 
+def attach_tenant_loaders(supervisor: "TenantSupervisor", store: Any, cipher: Any) -> None:
+    """Wire both credential loaders onto ``supervisor``.
+
+    Both the control plane and the systemd ExecStartPre helper need these, and
+    keeping two copies is how they drifted: `deploy/xauby-materialize-credentials`
+    wired only the exchange loader, so `_telegram_env_lines` saw no loader and
+    wrote ``TELEGRAM_ENABLED="false"`` on every start — silently disabling
+    per-tenant alerts each time systemd brought an engine up, including after
+    every reboot.
+    """
+
+    def load_credentials(slug: str) -> tuple[str, dict[str, str]] | None:
+        tenant = store.tenant_by_slug(slug)
+        if not tenant:
+            return None
+        encrypted = store.encrypted_credentials(tenant["id"])
+        if not encrypted:
+            return None
+        target_id, envelope = encrypted
+        return target_id, cipher.decrypt(tenant["id"], target_id, envelope)
+
+    def load_telegram(slug: str) -> dict[str, str] | None:
+        tenant = store.tenant_by_slug(slug)
+        if not tenant:
+            return None
+        row = store.telegram_connection(tenant["id"])
+        if not row or not row.get("enabled"):
+            return None
+        envelope = store.encrypted_telegram_token(tenant["id"])
+        if not envelope:
+            return None
+        token = cipher.decrypt(tenant["id"], "telegram", envelope)["bot_token"]
+        return {"bot_token": token, "chat_id": str(row["chat_id"])}
+
+    supervisor.set_credential_loader(load_credentials)
+    supervisor.set_telegram_loader(load_telegram)
+
+
 class TenantSupervisor:
     """Narrow adapter around tenant files and the templated systemd unit."""
 
@@ -576,6 +614,12 @@ class TenantSupervisor:
         # A Telegram-only tenant (no exchange keys yet) still needs an env file,
         # so the exchange block is optional rather than an early return.
         if loaded is None and len(telegram_lines) == 1:
+            # Nothing to materialize. Remove any file a previous run left
+            # behind rather than returning with it still on disk: after a
+            # tenant disconnects their keys, restart() calls this and used to
+            # leave the old plaintext in place, so the engine came back up on
+            # credentials that had just been revoked.
+            self.clear_credentials(tenant)
             return None
         cfg = yaml.safe_load(
             (self.config_dir(slug) / "bot_config.yaml").read_text(encoding="utf-8")

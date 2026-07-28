@@ -779,7 +779,7 @@ Trade PIN → live gate พร้อมเทสต์ ~1,900 บรรทัด
 กับ tenant/target, plaintext อยู่บน tmpfs เท่านั้น เหลือบั๊ก production 2 ตัวกับ
 ปัญหาการเก็บกุญแจ 1 เรื่องที่ขวางอยู่
 
-**P2.1 — แก้ `deploy/xauby-materialize-credentials`** (บล็อกอยู่ 2 เรื่องอิสระกัน)
+**P2.1 — แก้ `deploy/xauby-materialize-credentials`** ✅ **ทำแล้ว 2026-07-28**
 - ไม่เคยเรียก `set_telegram_loader` ทำให้ `_telegram_env_lines`
   (`xauby/saas/supervisor.py:561`) เขียน `TELEGRAM_ENABLED="false"` ทุกครั้งที่
   systemd สั่ง start จะปิด per-tenant alert เงียบ ๆ ล้างงานของ `de4f69a` ทิ้งทุกครั้ง
@@ -787,6 +787,26 @@ Trade PIN → live gate พร้อมเทสต์ ~1,900 บรรทัด
 - `materialize_credentials` return `None` เมื่อ tenant ยังไม่มี exchange key แล้วไป
   ชน `raise SystemExit(...)` ใน `ExecStartPre` → engine ของ tenant SIM-only
   สตาร์ตไม่ขึ้น ซึ่งคือสถานะเริ่มต้นของผู้ใช้ใหม่ทุกคนพอดี
+
+**สองข้อนี้ไม่ได้อิสระกัน — ข้อสองเกิดเพราะข้อแรก** `materialize_credentials`
+ถูกแก้ให้ exchange block เป็น optional ไปแล้ว (`if loaded is None and
+len(telegram_lines) == 1`) แต่เพราะ script ไม่เคย wire telegram loader
+`telegram_lines` จึง**ยาว 1 เสมอ**ในเส้นทางนั้น → เงื่อนไขเป็นจริงตลอด → คืน
+`None` → `SystemExit` แก้ข้อสองอย่างเดียวจึงไม่มีผลเลย
+
+**สิ่งที่ทำ:**
+- `attach_tenant_loaders()` ใน `supervisor.py` เป็นที่เดียวที่นิยาม loader ทั้งคู่
+  ทั้ง `saas/app.py` และ script เรียกตัวนี้ — การมีสองสำเนาคือสาเหตุที่มันเพี้ยน
+  ตั้งแต่แรก
+- script ไม่ `SystemExit` เมื่อไม่มีอะไรให้ materialize แล้ว (exit 0 พร้อมข้อความ)
+  ปลอดภัยเพราะ unit ประกาศ `EnvironmentFile=-` (นำหน้าด้วย `-` = ไฟล์หายได้)
+  engine จึง fallback ไป simulation ซึ่งถูกต้องสำหรับ tenant ที่ยังไม่ต่ออะไรเลย
+- **เจอบั๊กที่สามในฟังก์ชันเดียวกัน:** ตอนคืน `None` มัน**ไม่ลบไฟล์เดิม** →
+  tenant ที่เพิ่งถอน key ออก พอ `restart()` เรียก `materialize_credentials`
+  มันคืน `None` โดยปล่อย plaintext เดิมค้างบน tmpfs → **engine กลับมาด้วย
+  credential ที่เพิ่งถูกเพิกถอน** ตอนนี้เรียก `clear_credentials()` ก่อนคืน `None`
+- 15 เทสต์ใน `tests/test_materialize_credentials.py` — เส้นทาง ExecStartPre นี้
+  **ไม่เคยมีเทสต์เลย** ซึ่งคือเหตุผลที่ทั้งสามข้อมองไม่เห็น
 
 **P2.2 — การเก็บกุญแจและ backup นอกเครื่อง**
 master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส และ backup
