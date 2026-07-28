@@ -65,9 +65,49 @@ def audit_track_record(
     )
     all_events = [e for e in all_events if _after_epoch(e.get("ts"), epoch)]
 
+    db_trades = [
+        trade for trade in db.get_closed_trades(None, limit=limit)
+        if _after_epoch(trade.get("closed_at"), epoch)
+    ]
+
     # One open position per symbol, not one for the account.
     active: Dict[str, Dict[str, Any]] = {}
     reconstructed: Dict[str, List[Dict[str, Any]]] = {}
+    epoch_seeded_symbols: set[str] = set()
+
+    # A calendar cutover can fall in the middle of a real position.  The close
+    # belongs to the post-epoch track record, but its open event was correctly
+    # filtered out above.  Seed that boundary position from the durable trade
+    # row so the first close does not shift every later comparison.  Multiple
+    # rows with the same entry represent partial closes of one position.
+    if epoch:
+        for trade in db_trades:
+            opened_at = str(trade.get("opened_at") or "")
+            closed_at = str(trade.get("closed_at") or "")
+            if not opened_at or not (opened_at < str(epoch) <= closed_at):
+                continue
+            symbol = _symbol_of(trade)
+            entry_price = float(trade.get("entry_price") or 0.0)
+            amount = float(trade.get("amount") or 0.0)
+            current = active.get(symbol)
+            if current is None:
+                epoch_seeded_symbols.add(symbol)
+                active[symbol] = {
+                    "run_id": "epoch-seed",
+                    "opened_at": opened_at,
+                    "entry_price": entry_price,
+                    "amount": amount,
+                    "symbol": symbol,
+                }
+            elif (
+                current["opened_at"] == opened_at
+                and abs(current["entry_price"] - entry_price) <= PRICE_TOLERANCE
+            ):
+                current["amount"] += amount
+            else:
+                discrepancies.append(
+                    f"[{symbol}] multiple positions overlap audit epoch {epoch}"
+                )
 
     for event in all_events:
         etype = event.get("event_type")
@@ -85,16 +125,22 @@ def audit_track_record(
             )
             if etype == "position_restored" and symbol in active:
                 current = active[symbol]
-                if entry_price and abs(entry_price - current["entry_price"]) > PRICE_TOLERANCE:
-                    discrepancies.append(
-                        f"[{symbol}] position_restored entry mismatch "
-                        f"({entry_price:.2f} vs active {current['entry_price']:.2f})"
-                    )
-                if amount and abs(amount - current["amount"]) > QUANTITY_TOLERANCE:
-                    discrepancies.append(
-                        f"[{symbol}] position_restored quantity mismatch "
-                        f"({amount:.4f} vs active {current['amount']:.4f})"
-                    )
+                if entry_price:
+                    if current["entry_price"] <= 0:
+                        current["entry_price"] = entry_price
+                    elif abs(entry_price - current["entry_price"]) > PRICE_TOLERANCE:
+                        discrepancies.append(
+                            f"[{symbol}] position_restored entry mismatch "
+                            f"({entry_price:.2f} vs active {current['entry_price']:.2f})"
+                        )
+                if amount:
+                    if current["amount"] <= 0:
+                        current["amount"] = amount
+                    elif abs(amount - current["amount"]) > QUANTITY_TOLERANCE:
+                        discrepancies.append(
+                            f"[{symbol}] position_restored quantity mismatch "
+                            f"({amount:.4f} vs active {current['amount']:.4f})"
+                        )
                 continue
             if symbol in active:
                 discrepancies.append(
@@ -152,10 +198,6 @@ def audit_track_record(
     # discrepancy — it simply has no closed trade to match — so it is reported
     # in stats["open_at_audit"] and left out of the counts.
 
-    db_trades = [
-        trade for trade in db.get_closed_trades(None, limit=limit)
-        if _after_epoch(trade.get("closed_at"), epoch)
-    ]
     db_by_symbol: Dict[str, List[Dict[str, Any]]] = {}
     for trade in db_trades:
         db_by_symbol.setdefault(_symbol_of(trade), []).append(trade)
@@ -222,5 +264,6 @@ def audit_track_record(
         "symbols": sorted(per_symbol),
         "per_symbol": per_symbol,
         "open_at_audit": sorted(active),
+        "epoch_seeded_symbols": sorted(epoch_seeded_symbols),
     }
     return len(discrepancies) == 0, discrepancies, stats
