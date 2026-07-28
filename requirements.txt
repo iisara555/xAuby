@@ -5,7 +5,7 @@ requests>=2.28.0
 # (xauby/api/exchanges/exchange_ccxt.py CCXTProWebSocket). Without it the ccxt
 # provider degrades to REST polling.
 ccxt>=4.4.0
-pandas>=2.0.0
+pandas>=2.3.3
 numpy>=1.24.0
 python-dotenv>=1.0.0
 PyYAML>=6.0.0
