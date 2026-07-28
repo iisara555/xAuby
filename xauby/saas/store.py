@@ -669,24 +669,33 @@ class ControlPlaneStore:
     def set_exchange_connection(self, tenant_id: str, exchange_id: str, key_last4: str,
                                 *, target_id: str = "okx-swap", status: str = "stored",
                                 capabilities: dict[str, Any] | None = None,
-                                credential_blob: str | None = None) -> dict[str, Any]:
+                                credential_blob: str | None = None,
+                                key_version: int = 1) -> dict[str, Any]:
         with self.connection() as conn:
             conn.execute(
                 """
                 INSERT INTO exchange_connections
                 (tenant_id,exchange_id,key_last4,status,capabilities_json,updated_at,
                  target_id,credential_blob,key_version,tested_at)
-                VALUES (?,?,?,?,?,?,?,?,1,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(tenant_id) DO UPDATE SET
                   exchange_id=excluded.exchange_id,key_last4=excluded.key_last4,
                   status=excluded.status,capabilities_json=excluded.capabilities_json,
                   updated_at=excluded.updated_at,target_id=excluded.target_id,
                   credential_blob=coalesce(excluded.credential_blob,exchange_connections.credential_blob),
-                  key_version=excluded.key_version,tested_at=excluded.tested_at
+                  -- key_version has to follow the blob, not the statement: a
+                  -- status-only update keeps the existing ciphertext via the
+                  -- coalesce above, so taking the new key id here would label a
+                  -- blob with a key that never encrypted it.
+                  key_version=CASE WHEN excluded.credential_blob IS NULL
+                                   THEN exchange_connections.key_version
+                                   ELSE excluded.key_version END,
+                  tested_at=excluded.tested_at
                 """,
                 (tenant_id, exchange_id, key_last4, status,
                  json.dumps(capabilities or {}, sort_keys=True), time.time(), target_id,
-                 credential_blob, time.time() if status == "tested" else None),
+                 credential_blob, int(key_version),
+                 time.time() if status == "tested" else None),
             )
             row = conn.execute(
                 "SELECT * FROM exchange_connections WHERE tenant_id=?", (tenant_id,)
@@ -736,24 +745,29 @@ class ControlPlaneStore:
     def set_telegram_connection(self, tenant_id: str, chat_id: str, token_last4: str, *,
                                 status: str = "stored", enabled: bool = True,
                                 bot_username: str = "",
-                                credential_blob: str | None = None) -> dict[str, Any]:
+                                credential_blob: str | None = None,
+                                key_version: int = 1) -> dict[str, Any]:
         with self.connection() as conn:
             conn.execute(
                 """
                 INSERT INTO telegram_connections
                 (tenant_id,chat_id,token_last4,bot_username,status,enabled,
                  credential_blob,key_version,tested_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,1,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(tenant_id) DO UPDATE SET
                   chat_id=excluded.chat_id,token_last4=excluded.token_last4,
                   bot_username=excluded.bot_username,status=excluded.status,
                   enabled=excluded.enabled,
                   credential_blob=coalesce(excluded.credential_blob,telegram_connections.credential_blob),
-                  key_version=excluded.key_version,tested_at=excluded.tested_at,
+                  key_version=CASE WHEN excluded.credential_blob IS NULL
+                                   THEN telegram_connections.key_version
+                                   ELSE excluded.key_version END,
+                  tested_at=excluded.tested_at,
                   updated_at=excluded.updated_at
                 """,
                 (tenant_id, chat_id, token_last4, bot_username, status, int(bool(enabled)),
-                 credential_blob, time.time() if status == "tested" else None, time.time()),
+                 credential_blob, int(key_version),
+                 time.time() if status == "tested" else None, time.time()),
             )
             row = conn.execute(
                 "SELECT * FROM telegram_connections WHERE tenant_id=?", (tenant_id,)
@@ -784,6 +798,65 @@ class ControlPlaneStore:
     def delete_telegram_connection(self, tenant_id: str) -> None:
         with self.connection() as conn:
             conn.execute("DELETE FROM telegram_connections WHERE tenant_id=?", (tenant_id,))
+
+    # --- Key rotation (P2.2) --------------------------------------------------
+    # The only two methods that hand ciphertext back to a caller. Everything
+    # else in this module masks `credential_blob` out of its read model, which
+    # is why rotation needs its own door rather than reusing the views above.
+
+    def credential_blobs(self) -> list[dict[str, Any]]:
+        """Every stored envelope, with the AAD needed to open it.
+
+        ``target_id`` is the second half of the AAD: the exchange target for
+        exchange rows, and the literal ``"telegram"`` for Telegram tokens —
+        matching what `app.py` and `supervisor.py` encrypt under.
+        """
+        rows: list[dict[str, Any]] = []
+        with self.connection() as conn:
+            for row in conn.execute(
+                "SELECT tenant_id,target_id,credential_blob,key_version "
+                "FROM exchange_connections WHERE credential_blob IS NOT NULL "
+                "ORDER BY tenant_id"
+            ):
+                rows.append({"kind": "exchange", "tenant_id": str(row["tenant_id"]),
+                             "target_id": str(row["target_id"]),
+                             "blob": str(row["credential_blob"]),
+                             "key_version": int(row["key_version"])})
+            for row in conn.execute(
+                "SELECT tenant_id,credential_blob,key_version "
+                "FROM telegram_connections WHERE credential_blob IS NOT NULL "
+                "ORDER BY tenant_id"
+            ):
+                rows.append({"kind": "telegram", "tenant_id": str(row["tenant_id"]),
+                             "target_id": "telegram",
+                             "blob": str(row["credential_blob"]),
+                             "key_version": int(row["key_version"])})
+        return rows
+
+    def update_credential_blob(self, kind: str, tenant_id: str, blob: str,
+                               key_version: int) -> None:
+        """Replace one envelope and its key id, touching nothing else.
+
+        Deliberately not routed through `set_exchange_connection`: rewrapping
+        must not disturb `status`, `tested_at` or `capabilities`. Re-encrypting
+        a blob is not a re-test, and a rotation that silently reset a tenant's
+        live-activation state would be a far worse bug than the one it fixes.
+        """
+        table = {"exchange": "exchange_connections",
+                 "telegram": "telegram_connections"}.get(kind)
+        if table is None:
+            raise ValueError(f"unknown credential kind {kind!r}")
+        with self.connection() as conn:
+            cursor = conn.execute(
+                f"UPDATE {table} SET credential_blob=?,key_version=? WHERE tenant_id=?",
+                (blob, int(key_version), tenant_id),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(f"no {kind} credential row for tenant {tenant_id}")
+        # No payload: which tenant rotated when is operationally useful, the
+        # key material and its fragments are not.
+        self.audit("credential_key_rotated", tenant_id=tenant_id,
+                   payload={"kind": kind, "key_version": int(key_version)})
 
     def record_config_revision(self, tenant_id: str, user_id: str,
                                config: dict[str, Any]) -> int:

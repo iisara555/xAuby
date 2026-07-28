@@ -15,6 +15,13 @@ class SaaSSettings:
     public_base_url: str
     session_secret: str
     credential_master_key: str = ""
+    # Rotation (P2.2). The active key encrypts and stamps its id into every
+    # envelope; retired keys ("<id>:<base64>,...") only decrypt, and exist so
+    # blobs written before a rotation stay readable until they are rewrapped by
+    # scripts/rotate_credential_key.py. Defaults reproduce the single-key
+    # deployment exactly.
+    credential_master_key_id: int = 1
+    credential_retired_keys: str = ""
     credential_runtime_root: Path | None = None
     google_client_id: str = ""
     google_client_secret: str = ""
@@ -73,6 +80,15 @@ class SaaSSettings:
             public_base_url=os.environ.get("XAUBY_PUBLIC_BASE_URL", "http://127.0.0.1:8790").rstrip("/"),
             session_secret=secret or "dev-only-session-secret",
             credential_master_key=credential_key,
+            # Not clamped on purpose. A typo'd key id must stop the control
+            # plane rather than be quietly rounded to 1, which would stamp
+            # envelopes with a key the operator does not think is in use.
+            credential_master_key_id=int(
+                os.environ.get("XAUBY_CREDENTIAL_MASTER_KEY_ID", "1") or "1"
+            ),
+            credential_retired_keys=os.environ.get(
+                "XAUBY_CREDENTIAL_RETIRED_KEYS", ""
+            ).strip(),
             credential_runtime_root=Path(
                 os.environ.get("XAUBY_CREDENTIAL_RUNTIME_ROOT", "/run/xauby/credentials")
             ).resolve(),

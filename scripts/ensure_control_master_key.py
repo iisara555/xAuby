@@ -7,55 +7,26 @@ import argparse
 import base64
 import os
 import secrets
-import tempfile
+import sys
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from xauby.saas.keyfile import read_env, write_env  # noqa: E402
 
 KEY = "XAUBY_CREDENTIAL_MASTER_KEY"
 
 
 def ensure_master_key(path: Path) -> bool:
-    stat = path.stat()
-    lines = path.read_text(encoding="utf-8").splitlines()
-    generated = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
-    output: list[str] = []
-    found = False
-    changed = False
-    for line in lines:
-        if not line.startswith(f"{KEY}="):
-            output.append(line)
-            continue
-        found = True
-        value = line.split("=", 1)[1].strip()
-        try:
-            valid = len(base64.b64decode(value, validate=True)) == 32
-        except ValueError:
-            valid = False
-        if valid:
-            output.append(line)
-        else:
-            output.append(f"{KEY}={generated}")
-            changed = True
-    if not found:
-        output.append(f"{KEY}={generated}")
-        changed = True
-    if not changed:
-        return False
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    current = read_env(path).get(KEY, "")
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write("\n".join(output) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, stat.st_mode & 0o777)
-        os.chown(temporary, stat.st_uid, stat.st_gid)
-        os.replace(temporary, path)
-    finally:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
-    return True
+        valid = len(base64.b64decode(current, validate=True)) == 32
+    except ValueError:
+        valid = False
+    if valid:
+        return False
+    generated = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+    return write_env(path, {KEY: generated})
 
 
 def main() -> int:

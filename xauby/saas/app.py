@@ -241,6 +241,8 @@ def create_app(
     cipher = CredentialCipher(
         settings.credential_master_key,
         fallback_secret=settings.session_secret if settings.dev_login_enabled else "",
+        active_key_id=settings.credential_master_key_id,
+        retired_keys=settings.credential_retired_keys,
     )
 
     # Both loaders come from one definition shared with the systemd
@@ -1084,6 +1086,7 @@ def create_app(
             tenant["id"], target["exchange_id"], body.api_key[-4:],
             target_id=target["id"], credential_blob=envelope,
             capabilities={"withdraw_disabled_attested": True},
+            key_version=cipher.active_key_id,
         )
         return {"ok": True, "connection": connection}
 
@@ -1171,6 +1174,7 @@ def create_app(
         connection = store.set_telegram_connection(
             tenant["id"], body.chat_id, body.bot_token[-4:],
             status="stored", enabled=True, credential_blob=envelope,
+            key_version=cipher.active_key_id,
         )
         preferences = supervisor.update_notification_config(tenant["slug"], {
             # alert_channel must be forced: "console" short-circuits delivery

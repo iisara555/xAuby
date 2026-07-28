@@ -533,6 +533,12 @@ venue ที่ติดต่อไม่ได้ต้องพังแบ�
 ฆ่า engine ทิ้งแล้วมีการแจ้งเตือนภายใน 10 นาที · มี live run ที่ผ่าน
 `scripts/replay_validate.py` โดยรวม trade ฝั่ง short ด้วย
 
+✅ **ครบทุกข้อแล้ว 2026-07-28** — ข้อสุดท้ายปิดบนเครื่องจริงหลัง deploy `0390894`
+(รายงานจากเจ้าของ ผมไม่ได้เข้าไปดูเครื่องเอง): replay หลัง restart ได้ matched `1`,
+mismatch `0`, **SHORT checked `1`** และ run ก่อน restart ผ่าน `200/200` ·
+BTC ถือ SHORT `0.0008 @ 63733.9`, XAU ถือ SHORT `0.033 @ 4030.6` ·
+DB/state/OKX ตรงกัน ไม่มี position หรือ order ที่ไม่ถูก track
+
 ---
 
 > ⚠️ **แก้ตัวเลข 2026-07-27** — ตัวเลขแบบ **รายเดือน/window ทั้งหมด** ใน Phase 0
@@ -808,13 +814,35 @@ len(telegram_lines) == 1`) แต่เพราะ script ไม่เคย wi
 - 15 เทสต์ใน `tests/test_materialize_credentials.py` — เส้นทาง ExecStartPre นี้
   **ไม่เคยมีเทสต์เลย** ซึ่งคือเหตุผลที่ทั้งสามข้อมองไม่เห็น
 
-**P2.2 — การเก็บกุญแจและ backup นอกเครื่อง**
+**P2.2 — การเก็บกุญแจและ backup นอกเครื่อง** ⏳ **ครึ่งแรกทำแล้ว 2026-07-28**
 master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส และ backup
 (`/var/lib/xauby/backups`, เก็บ 7 วัน) อยู่บน VPS เครื่องเดียวกันทั้งหมด
-เครื่องหายเมื่อไหร่ = exchange connection ของทุก tenant หายถาวร ย้าย backup ออกนอก
-เครื่องและเขียนขั้นตอนดูแลกุญแจให้ชัด — คอลัมน์ `key_version` มีอยู่แต่ไม่มีโค้ด
-rotation เลย เลือกเอาว่าจะทำ rotation จริง หรือลบคอลัมน์ทิ้งเพื่อไม่ให้สื่อว่ามี
-ความสามารถที่ไม่มี
+เครื่องหายเมื่อไหร่ = exchange connection ของทุก tenant หายถาวร
+
+**key rotation — ทำจริงแล้วตามที่เจ้าของเลือก (ไม่ลบคอลัมน์)**
+
+- สิ่งที่พบตอนลงมือ **แย่กว่าที่ roadmap เขียนไว้**: `key_version` ไม่ใช่แค่ไม่มี
+  โค้ด rotation — upsert ทั้งสองตัวเขียนมันเป็น **SQL literal `1`**
+  (`VALUES (?,?,?,?,?,?,?,?,1,?)`) แปลว่า schema **บันทึกกุญแจตัวที่สองไม่ได้เลย**
+  ต่อให้เขียน rotation มาวางทับ ก็จะได้คอลัมน์ที่ขัดกับ ciphertext เงียบ ๆ
+- envelope เก็บ id ของกุญแจไว้ในตัวเอง (`"k"`) และลงคอลัมน์ด้วย — blob บอกได้เสมอ
+  ว่าเปิดด้วยกุญแจไหน envelope ที่ไม่มี `"k"` = กุญแจ 1 (ของเดิมทุกอัน อ่านได้ปกติ)
+- กุญแจเก่าถอดรหัสได้อย่างเดียว ผ่าน `XAUBY_CREDENTIAL_RETIRED_KEYS`
+- `scripts/rotate_credential_key.py` = runbook 4 ขั้น (ดู/stage/rewrap/retire)
+  ปฏิเสธการทิ้งกุญแจที่ยังมี blob ใช้อยู่ · ตรวจ rewrap ด้วยการถอดกลับมาเทียบ
+  ก่อนเขียนทับสำเนาเดียวที่มี · ไม่แตะ `status`/`tested_at`/`capabilities`
+  (re-encrypt ไม่ใช่ re-test) · **ไม่พิมพ์กุญแจออกจอ** `--stage-key` เขียนลงไฟล์ตรง ๆ
+- key id **ไม่อยู่ใน AAD** โดยตั้งใจ → ตราบใดที่ active key ยังเป็น id 1
+  โค้ดเวอร์ชันก่อนหน้ายังอ่าน envelope ที่เขียนใหม่ได้ การเพิ่ม rotation จึงไม่ทำให้
+  rollback เสียข้อมูล
+- 51 เทสต์ใน `tests/test_credential_rotation.py` รวมกรณีที่ทิ้งกุญแจเก่าเร็วไป —
+  เครื่องมือรายงานแล้วปล่อย blob ไว้ครบ ไม่ทำลาย
+- `xauby/saas/keyfile.py` แยกออกมาเพื่อไม่ให้เกิดสำเนาที่สองของโค้ดแก้ไฟล์ env
+  แบบ atomic + รักษา owner/mode (`ensure_control_master_key.py` ใช้ตัวเดียวกันแล้ว)
+- **ยังไม่ได้รันบนเครื่องจริง** — rotation ครั้งแรกคือสิ่งที่ยืนยันกับ
+  `/etc/xauby/control.env` ของจริง
+
+**ยังเปิดอยู่: off-host backup** — ต้องเลือกปลายทางก่อน (ดูคำถามท้ายเอกสาร)
 
 **P2.3 — สแกน dependency/CVE และรัน linter ที่ตั้งค่าไว้แล้ว** ✅ **ทำแล้ว 2026-07-28**
 CI ไม่มี Dependabot, CodeQL, `pip-audit`/`npm audit`, SBOM หรือ scheduled run

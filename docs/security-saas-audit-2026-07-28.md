@@ -72,12 +72,40 @@ carried neither `secure` nor `path`, while also creating the session with
 copy of a security-relevant helper sitting behind one flag is the shape of a
 future incident. It now calls the shared helper.
 
-### 3. `key_version` implies a capability that does not exist — OPEN (P2.2)
+### 3. `key_version` implied a capability that did not exist — FIXED (P2.2)
 
 The `encrypted_credentials` table carries `key_version`, written on every
-insert. There is no rotation code anywhere. A column that names a capability
-nobody implemented invites the assumption that keys can be rotated. Either
-implement rotation or drop the column.
+insert, and there was no rotation code anywhere.
+
+It was worse than this finding originally said. The column was not merely
+unused: both credential upserts wrote it as a SQL **literal** `1`
+(`VALUES (?,?,?,?,?,?,?,?,1,?)`), so the schema could not have recorded a second
+key even if rotation had existed. Anyone adding rotation on top of it would
+have had a column that silently disagreed with the ciphertext.
+
+Rotation is now real, on the operator's decision to implement rather than drop:
+
+* The active key stamps its id into the envelope (`"k"`) **and** the column, so
+  a blob always says which key opens it. Envelopes without `"k"` are key 1 —
+  every blob written before this change, still readable untouched.
+* Retired keys decrypt only, supplied through `XAUBY_CREDENTIAL_RETIRED_KEYS`,
+  so blobs stay readable between staging a new key and rewrapping.
+* `scripts/rotate_credential_key.py` is the four-step runbook: report, stage,
+  rewrap, retire. It refuses to drop a key anything still depends on, verifies
+  every rewrap by decrypting it back before overwriting the only copy of a
+  tenant's keys, leaves `status` / `tested_at` / `capabilities` alone, and never
+  prints key material — `--stage-key` writes the new key straight into the env
+  file rather than to a terminal.
+
+The key id is deliberately **not** in the AAD, so an envelope written by this
+code is still readable by the previous version while the active key is id 1:
+adding rotation did not itself make a rollback lossy.
+
+**Not yet exercised on the production host.** 51 tests cover the cipher, the
+store columns, the env-file edits and the full runbook end to end, including
+the case where a retired key was dropped too early — there the tool reports and
+leaves every blob intact. The first real rotation is what confirms it against
+`/etc/xauby/control.env`.
 
 ### 4. Master key, database and backups share one host — OPEN (P2.2)
 
@@ -118,7 +146,7 @@ From the 2026-07-09 list, updated against the current architecture.
 | Tenant identity, authz, per-tenant audit logs | absent | **present** — sessions, roles, `store.audit`, tenant-scoped queries |
 | Do not expose the WebUI directly | applied to the stdlib WebUI | **obsolete** — that server is deleted; Caddy terminates TLS in front of the control plane |
 | Manual trading needs authz/CSRF/replay protection/audit | open | **present** — Trade PIN, TOTP, per-request challenge with a digest, idempotency key |
-| Credentials should move to a secret manager | open | **partially** — envelope encryption with a host-held master key is better than `.env`, and is still not a managed secret store (finding 4) |
+| Credentials should move to a secret manager | open | **partially** — envelope encryption with a host-held master key is better than `.env`, and the key can now be rotated (finding 3); still not a managed secret store (finding 4) |
 | One OS user/namespace per tenant | open | **partially** — separate `XAUBY_HOME` / `XAUBY_CONFIG_DIR` per tenant, `xauby-engines` group, systemd hardening; not separate OS users, no resource quotas |
 | Dependency/SBOM scanning and scheduled CVE review | open | **mostly done** (P2.3) — SBOM still missing (finding 7) |
 | Plugin execution isolation | open | **open** — still static checks and convention. The maturity gate added in P1.4 stops an uncertified plugin reaching a live pair, which narrows the blast radius but is not isolation |
@@ -145,8 +173,13 @@ Replaces the WebUI-era baseline. Every item refers to something that exists.
 - Run `python scripts/scan_secrets.py --tracked --history` before release — in
   CI on every push and PR.
 - Keep backups off this host (finding 4). Not yet done.
-- Rotate exchange credentials after any suspected exposure; there is no key
-  rotation, so rotation means the tenant reconnecting their keys (finding 3).
+- Rotate the credential master key with
+  `python scripts/rotate_credential_key.py` (runbook in its docstring) after any
+  suspected exposure of `/etc/xauby/control.env`. Note what this does and does
+  not cover: it re-wraps stored envelopes under a new master key, which is the
+  remedy when the *host* key is exposed. If a *tenant's exchange API key* is
+  what leaked, rotation does not help — that tenant has to revoke the key at the
+  venue and reconnect.
 
 ---
 
