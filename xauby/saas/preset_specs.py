@@ -113,18 +113,10 @@ PRESET_SPECS = [
         "confirm_timeframe": "4h",
         "allowed_sides": ["long"],
         "max_leverage": 1,
-        "live_certified": True,
-        "operator_override": {
-            "decided_by": "owner",
-            "decided_at": "2026-07-21",
-            "reason": (
-                "Approved for live before the certification protocol existed. "
-                "The BTC SuperTrend strategy is certified on OKX swap; this "
-                "preset is the same strategy on Binance Global futures and has "
-                "never been measured on that venue. Not a certificate — an "
-                "unassessed pair kept selectable pending its own run."
-            ),
-        },
+        # Available for simulation/research only until this exact Binance
+        # futures profile has its own venue-backed certificate.  A certificate
+        # for the same strategy on OKX is not portable evidence.
+        "live_certified": False,
     },
     {
         "id": "binance-th-btc-supertrend-v1",
@@ -139,17 +131,9 @@ PRESET_SPECS = [
         "confirm_timeframe": "4h",
         "allowed_sides": ["long"],
         "max_leverage": 1,
-        "live_certified": True,
-        "operator_override": {
-            "decided_by": "owner",
-            "decided_at": "2026-07-21",
-            "reason": (
-                "Binance TH is a live-certified venue and this is the same "
-                "SuperTrend strategy, but BTCTHB has only ~3.5 months of "
-                "history — too little for the protocol to say anything. Kept "
-                "selectable as an unassessed pair, not as a certificate."
-            ),
-        },
+        # BTCTHB has too little history for the protocol.  Keep the preset
+        # selectable in sim, but never let "pending" cross the live gate.
+        "live_certified": False,
     },
     {
         "id": "okx-btc-supertrend-v1",

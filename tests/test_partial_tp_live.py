@@ -141,6 +141,13 @@ class TestExecutePartialTp(unittest.TestCase):
         trade = self.db.get_closed_trades("XAUUSDT", limit=1)[0]
         self.assertEqual(trade["trigger"], "Partial TP +12.0% (banked 50%)")
         self.assertAlmostEqual(trade["net_pnl"], 240.0 - (2.0 + 2.24) - 2.0, places=6)
+        partial_event = next(
+            payload for _, payload in self.eng.events if payload.get("partial")
+        )
+        self.assertEqual(partial_event["quantity"], 1.0)
+        self.assertEqual(partial_event["remaining_quantity"], 1.0)
+        self.assertEqual(partial_event["exit_price"], 2240.0)
+        self.assertIn("slippage_bps", partial_event)
         st = self.db.get_trade_state("XAUUSDT")
         self.assertEqual(st.state, "bought")
         self.assertAlmostEqual(st.quantity, 1.0)

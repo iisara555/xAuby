@@ -115,6 +115,8 @@ class TestAlerting(unittest.TestCase):
         with patch("xauby.track_record.validator.audit_track_record",
                    side_effect=RuntimeError("db locked")):
             _scheduler().check_and_run(engine, AT_ELEVEN)  # must not raise
+        engine.send_telegram_alert.assert_called_once()
+        self.assertIn("failed to run", engine.send_telegram_alert.call_args[0][0])
 
 
 class TestShippedConfig(unittest.TestCase):

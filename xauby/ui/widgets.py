@@ -285,10 +285,16 @@ def compute_trade_stats(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 def draw_analytics_view(db, state, W, is_mobile, border_color):
-    from xauby.analytics.calculator import calculate_metrics
+    from xauby.analytics.calculator import calculate_metrics, trade_span_years
     symbol = _state_symbol(state)
     trades = db.get_closed_trades(symbol, limit=1000)
-    metrics = calculate_metrics(trades)
+    metric_ctx = state.get("metrics_context") or {}
+    initial_balance = float(metric_ctx.get("initial_balance") or 1000.0)
+    metrics = calculate_metrics(
+        trades,
+        initial_balance=initial_balance,
+        years=trade_span_years(trades),
+    )
 
     border_top = "┌" + "─" * (W - 2) + "┐"
     border_mid = "├" + "─" * (W - 2) + "┤"
@@ -304,6 +310,16 @@ def draw_analytics_view(db, state, W, is_mobile, border_color):
         print_row(f"  {C_MUTED}Profit Factor : {C_PRIMARY}{metrics.profit_factor:.2f}x{C_RESET}", W, border_color=border_color)
         print_row(f"  {C_MUTED}Sharpe Ratio  : {C_PRIMARY}{metrics.sharpe_ratio:.2f}{C_RESET}", W, border_color=border_color)
         print_row(f"  {C_MUTED}Max Drawdown  : {C_RED}{metrics.max_drawdown_pct:.2f}%{C_RESET}", W, border_color=border_color)
+        excursion_text = (
+            f"{metrics.average_mae_pct:.2f}% / {metrics.average_mfe_pct:.2f}% "
+            f"({metrics.excursion_coverage_pct:.0f}% covered)"
+            if metrics.excursion_coverage_pct > 0 else "collecting (0% covered)"
+        )
+        print_row(
+            f"  {C_MUTED}Avg MAE / MFE : {C_PRIMARY}{excursion_text}{C_RESET}",
+            W,
+            border_color=border_color,
+        )
     else:
         col1 = f"  {C_MUTED}Net PnL      : {C_GREEN if metrics.net_pnl >= 0 else C_RED}{metrics.net_pnl:+.4f} USDT{C_RESET}   │ {C_MUTED}Sharpe Ratio : {C_PRIMARY}{metrics.sharpe_ratio:.2f}{C_RESET}"
         col2 = f"  {C_MUTED}Total Return : {C_PRIMARY}{metrics.total_return_pct:+.2f}%{C_RESET}            │ {C_MUTED}Sortino Ratio: {C_PRIMARY}{metrics.sortino_ratio:.2f}{C_RESET}"
@@ -318,6 +334,16 @@ def draw_analytics_view(db, state, W, is_mobile, border_color):
         print_row(col4, W, border_color=border_color)
         print_row(col5, W, border_color=border_color)
         print_row(col6, W, border_color=border_color)
+        excursion_text = (
+            f"{metrics.average_mae_pct:.2f}% / {metrics.average_mfe_pct:.2f}%"
+            if metrics.excursion_coverage_pct > 0 else "collecting"
+        )
+        print_row(
+            f"  {C_MUTED}Avg MAE / MFE: {C_PRIMARY}{excursion_text}{C_RESET}              │ "
+            f"{C_MUTED}Coverage: {C_PRIMARY}{metrics.excursion_coverage_pct:.0f}%{C_RESET}",
+            W,
+            border_color=border_color,
+        )
 
     print(f"{border_color}{border_mid}{RESET}")
 
@@ -644,26 +670,46 @@ def render_advanced_analytics_lines(metrics: Any, is_phone: bool) -> List[str]:
             f"  {C_MUTED}Win Rate     : {C_PRIMARY}{metrics.win_rate:.0f}%{C_RESET} (max {metrics.consecutive_wins}W)",
             f"  {C_MUTED}Profit Factor: {C_PRIMARY}{pf_str}{C_RESET}",
         ])
+        excursion_text = (
+            f"{metrics.average_mae_pct:.2f}% / {metrics.average_mfe_pct:.2f}%"
+            if metrics.excursion_coverage_pct > 0 else "collecting"
+        )
+        lines.append(
+            f"  {C_MUTED}MAE/MFE avg  : {C_PRIMARY}{excursion_text}{C_RESET}"
+        )
     else:
         lines.extend([
             f"  {C_MUTED}Net PnL      : {C_GREEN if metrics.net_pnl >= 0 else C_RED}{metrics.net_pnl:+.4f} USDT{C_RESET}   │ {C_MUTED}Sharpe/Sortino   : {C_PRIMARY}{metrics.sharpe_ratio:.2f} / {metrics.sortino_ratio:.2f}{C_RESET}",
             f"  {C_MUTED}Total Return : {C_PRIMARY}{metrics.total_return_pct:+.2f}%{C_RESET}            │ {C_MUTED}Profit Factor    : {C_PRIMARY}{pf_str}{C_RESET}",
             f"  {C_MUTED}Win Rate     : {C_PRIMARY}{metrics.win_rate:.1f}%{C_RESET}                    │ {C_MUTED}Max DD / Risk-Rew: {C_RED}{metrics.max_drawdown_pct:.2f}%{C_RESET} / {C_PRIMARY}{metrics.risk_reward_ratio:.2f}{C_RESET}",
         ])
+        excursion_text = (
+            f"{metrics.average_mae_pct:.2f}% / {metrics.average_mfe_pct:.2f}%"
+            if metrics.excursion_coverage_pct > 0 else "collecting"
+        )
+        lines.append(
+            f"  {C_MUTED}Avg MAE / MFE: {C_PRIMARY}{excursion_text}{C_RESET}              │ "
+            f"{C_MUTED}Coverage: {C_PRIMARY}{metrics.excursion_coverage_pct:.0f}%{C_RESET}"
+        )
     return lines
 
 
 def advanced_analytics_line_count(is_phone: bool) -> int:
-    return 5 if is_phone else 4
+    return (5 if is_phone else 4) + 1
 
 
-def render_track_record_lines(trades: List[Dict[str, Any]], is_phone: bool) -> List[str]:
+def render_track_record_lines(
+    trades: List[Dict[str, Any]],
+    is_phone: bool,
+    *,
+    initial_balance: float = 1000.0,
+) -> List[str]:
     """Return [3] HISTORICAL TRACK RECORD lines (with header)."""
     from xauby.track_record.generator import generate_report
 
-    r30 = generate_report(trades, 30, "30-Day")
-    r90 = generate_report(trades, 90, "90-Day")
-    r1y = generate_report(trades, 365, "1-Year")
+    r30 = generate_report(trades, 30, "30-Day", initial_balance=initial_balance)
+    r90 = generate_report(trades, 90, "90-Day", initial_balance=initial_balance)
+    r1y = generate_report(trades, 365, "1-Year", initial_balance=initial_balance)
     title = " [3] TRACK RECORD" if is_phone else " [3] HISTORICAL TRACK RECORD"
     lines = [f" {C_BOLD}{C_PRIMARY}{title}{RESET}"]
     if is_phone:
@@ -723,9 +769,11 @@ def draw_track_record_view(db, state, W, is_mobile, border_color):
     symbol = _state_symbol(state)
     trades = db.get_closed_trades(symbol, limit=1000)
     
-    r30 = generate_report(trades, 30, "30-Day")
-    r90 = generate_report(trades, 90, "90-Day")
-    r1y = generate_report(trades, 365, "1-Year")
+    metric_ctx = state.get("metrics_context") or {}
+    initial_balance = float(metric_ctx.get("initial_balance") or 1000.0)
+    r30 = generate_report(trades, 30, "30-Day", initial_balance=initial_balance)
+    r90 = generate_report(trades, 90, "90-Day", initial_balance=initial_balance)
+    r1y = generate_report(trades, 365, "1-Year", initial_balance=initial_balance)
 
     border_top = "┌" + "─" * (W - 2) + "┐"
     border_mid = "├" + "─" * (W - 2) + "┤"
@@ -762,4 +810,3 @@ def draw_track_record_view(db, state, W, is_mobile, border_color):
             print_row(row, W, border_color=border_color)
             
     print(f"{border_color}{border_mid}{RESET}")
-

@@ -256,6 +256,12 @@ class TestEntryMarketFallback(unittest.TestCase):
         self.assertIsNotNone(engine.db.saved_state)
         self.assertEqual(engine.db.saved_state["state"], "bought")
         self.assertAlmostEqual(engine.db.saved_state["quantity"], 5.0, places=4)
+        opened = [
+            payload for event, payload in engine.events
+            if str(event).endswith("position_opened")
+        ]
+        self.assertEqual(len(opened), 1)
+        self.assertIn("slippage_bps", opened[0])
 
     def test_cdc_long_is_capped_by_pair_allocation(self):
         client = _FallbackClient(fill_limit=True)

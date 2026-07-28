@@ -138,17 +138,15 @@ supports (per-symbol `mode`, isolated `SymbolContext`, RegimeRouter gating):
 
 Backtest, live engine, replay validation, TUI indicators, and optimizer should resolve config through the same strategy/portfolio resolver. Avoid adding strategy-impacting values in engine-only config blocks.
 
-Replay validation needs durable `tick` events from the run being checked. For a
-controlled validation run, temporarily set
-`observability.durable_high_frequency_events: true`, capture the complete
-position lifecycle, run `scripts/replay_validate.py`, then restore the normal
-retention setting. Existing runs recorded while it was `false` cannot be
-backfilled and will report `no_tick_pair`.
+Replay validation needs durable `tick` events from the run being checked. They
+are enabled in the committed baseline with bounded retention (JSONL 14 days,
+SQLite 30 days). Existing runs recorded while they were disabled cannot be
+backfilled; the CLI exits non-zero when no signal/tick pair can be checked.
 
-Short-side certification also requires `signal_evaluated` to persist semantic
-`intent` and `position_side`, and replay validation to restore that side into
-`MarketContext`. The current event payload and validator do neither, so a
-BUY/SELL-only replay result must not be used to approve more live capital.
+Short-side validation persists semantic `intent` + `position_side`, retains the
+raw strategy action separately from the internal execution action, and restores
+an inherited position through `position_restored`. The Phase-0 evidence command
+is `scripts/replay_validate.py <run_id> --symbol BTCUSDT --require-short`.
 
 Values that affect signal or exits belong under:
 

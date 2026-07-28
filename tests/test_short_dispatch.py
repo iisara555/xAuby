@@ -1,8 +1,9 @@
 """Engine dispatch routing for SHORT signals.
 
-open_short() maps intent OPEN/SHORT onto action "BUY"; the tick dispatcher must
-route it to execute_open_short, NOT the LONG execute_buy path. close_short()
-maps to action "SELL" and must cover an open short.
+The strategy vocabulary remains SELL(OPEN/SHORT) / BUY(CLOSE/SHORT) for replay
+parity.  The engine may translate those into its legacy execution branches, but
+must never overwrite the durable ``signal_evaluated.action`` with that internal
+dispatch verb.
 """
 from __future__ import annotations
 
@@ -114,6 +115,17 @@ class TestShortDispatch(unittest.TestCase):
         calls.open_short.assert_called_once()
         calls.buy.assert_not_called()
         calls.sell.assert_not_called()
+
+        signals = [
+            event for event in engine.get_recent_events(50, symbol=sym)
+            if event.get("event_type") == "signal_evaluated"
+        ]
+        self.assertTrue(signals)
+        payload = signals[-1]["payload"]
+        self.assertEqual(payload["action"], "SELL")
+        self.assertEqual(payload["execution_action"], "BUY")
+        self.assertEqual(payload["intent"], "OPEN")
+        self.assertEqual(payload["position_side"], "SHORT")
 
     def test_close_short_covers_open_short_position(self):
         short_state = {

@@ -356,6 +356,10 @@ the single source of truth for both Claude and Codex; the essentials:
   Do not use the checkout-scoped restart script to launch a parallel engine;
   keep the previous release/config as rollback targets and roll back if service,
   health, or reconciliation checks fail.
+- Treat `scripts/audit_release_readiness.py` as a fail-closed deployment gate.
+  Run its static checks against `/etc/xauby/tenants/<tenant>/`, then its runtime
+  DB/replay checks after restart. `replay_validate.py` now exits non-zero when
+  every signal was skipped; use `--require-short` for the Phase-0 proof.
 
 ### Production config is NOT in the repo checkout
 

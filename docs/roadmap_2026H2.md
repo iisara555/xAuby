@@ -2,7 +2,8 @@
 
 ## บริบท
 
-`main` เป็นปัจจุบันแล้ว (`8cc6396` — branch ตรงกับ origin ไม่มีอะไรต้อง pull)
+สถานะในเอกสารอ้างอิง `main` ปัจจุบัน ณ เวลารัน release audit; ไม่ตรึง commit hash
+ไว้ใน roadmap เพราะ hash เปลี่ยนทุกครั้งที่ merge และทำให้คำอธิบายล้าสมัยทันที
 
 นี่ไม่ใช่โปรเจกต์เริ่มใหม่ xAuby เป็นระบบ production ที่รันอยู่จริง: engine เทรด
 OKX perpetual swap ด้วยเงินจริง 2 คู่, FastAPI multi-tenant control plane, Next.js
@@ -143,6 +144,12 @@ config อื่น จึงกลับไปเป็น **exposure ที่
 
 ### 3. เครื่องมือวัดยัง verify พฤติกรรม live ไม่ได้ และไม่มีอะไรปลุกคน
 
+> **ปิดช่องนี้แล้ว 2026-07-28:** durable ticks เปิดถาวรพร้อม retention แบบมีขอบเขต,
+> replay แยก raw strategy action ออกจาก execution dispatch, restore สถานะ
+> LONG/SHORT ข้าม restart, self-audit/รายงานรายเดือนถูก schedule จริง และมี
+> dead-man timer นอก engine ข้อความด้านล่างคือสภาพที่ตรวจพบก่อนแก้ เก็บไว้เป็น
+> incident record ไม่ใช่สถานะปัจจุบัน
+
 - `observability.durable_high_frequency_events: false` → replay validation รายงาน
   `no_tick_pair` **ไม่มี run ย้อนหลังไหน validate หรือ backfill ได้เลย**
 - `xauby/observability/README.md` ระบุว่า short-side replay parity ยังไม่ certified
@@ -280,7 +287,9 @@ config ที่ backtest บอกว่าดี** — ปิดสองช�
 D1 กั้น short ปล่อย long** (`L:D1ปิด S:D1เปิด`) เจ้าของสั่งเปิด หลังเห็นตัวเลข
 ครบทั้ง 6 configuration
 
-**แก้แล้วในรีโป (ยัง deploy ไม่ได้เอง — VPS ต้องทำมือและรอ position ว่าง):**
+**แก้แล้วในรีโป (VPS ต้อง deploy แบบ controlled):** tracked open position รองรับ
+ได้เมื่อ preflight เป็น `SAFE`, มี backup และตรวจ exchange/DB ตรงกันทั้งก่อนและหลัง
+restart; ไม่ต้องรอ flat โดยอัตโนมัติ
 `coin_whitelist.json` + `bot_config.yaml` → `use_d1_regime_filter: true`,
 `use_d1_regime_filter_long: false`
 
@@ -298,7 +307,7 @@ PF (1.96 vs 1.38) และ MDD (9.22% vs 14.42%) → เป็นการต�
 PF 1.17→**1.38**, net 31.04→**56.54%**, MDD 17.66→**14.42%**, Sharpe 0.51→**0.89**
 และเป็น cell ที่แข็งที่สุดในขาลงปัจจุบัน **+11.22%** (ซื้อถือ −23.21%)
 
-**ที่ยังเหลือ:** รันโปรโตคอลรับรองให้ config นี้เมื่อมีข้อมูลขาลงมากพอ
+**งานวิจัยต่อเนื่อง (ไม่ใช่ release blocker):** รันโปรโตคอลรับรองให้ config นี้เมื่อมีข้อมูลขาลงมากพอ
 (ตอนนี้ bear = 1 เดือนเต็ม) — ตามหลักที่ P1.4 จะบังคับ
 
 ทำแล้วส่วนเอกสาร ✅: commit เอกสารรับรอง + PDF, ถอนป้าย SUPERSEDED ที่ติดผิด,
@@ -412,10 +421,16 @@ long-only+D1 ชนะ candidate ทั้ง MDD 9.22 vs 12.20 และ Calmar
 config** มาด้วยเสมอ นั่นคือสิ่งเดียวที่จะกันเคสนี้ได้: ป้ายผิดรอดมา 2 สัปดาห์เพราะ
 รายงานไม่เคยบอกว่ามันวัดอะไร)*
 
-**P0.4 — เปิด durable events**
+**P0.4 — เปิด durable events** ✅ **ทำแล้ว 2026-07-28**
 ตั้ง `observability.durable_high_frequency_events: true` เป็นเงื่อนไขจำเป็นของทุก
 ข้อสรุปเรื่อง parity หลังจากนี้ ทำพร้อมกับนโยบาย retention/rotation ใน change
 เดียวกัน — `core/logs/events/` โตเร็วบน VPS 2 GB
+
+- เปิดถาวรแล้ว; JSONL เก็บ 14 วัน, SQLite เก็บ 30 วัน
+- tick id เป็น per-symbol และ validator จับคู่ด้วย `(tick_id, symbol)` จึงไม่เอา
+  BTC/XAU ใน cycle เดียวกันมาปนกัน
+- `position_restored` seed สถานะที่ถือข้าม restart และ CLI fail เมื่อ replay ว่าง
+  แทนที่จะคืน PASS จาก `matched=0`; `--require-short` เป็น gate ของหลักฐาน Phase 0
 
 **P0.5 — Short-side replay parity** ✅ **ทำแล้ว 2026-07-26**
 เร่งขึ้นเพราะ config ใหม่ของ XAU มีหัวใจอยู่ที่ฝั่ง short พอดี พบว่าไม่ใช่ 1 บั๊ก
@@ -623,9 +638,11 @@ multiple testing เลย ทั้งที่มี 17 กลยุทธ์ 
   และ CI กว้าง ±316% · และ default `sharpe_variance=0.25` คนละหน่วยกับ Sharpe
   ราย trade ทำให้ deflated Sharpe ออกมา 0.0 พอดี ดูเหมือนผลร้ายแรงทั้งที่เป็น
   หน่วยไม่ตรง — ตอนนี้ถ้าไม่ส่งค่ามาจะ **ไม่คำนวณ** แล้วบันทึกเหตุผลแทน
-- **ยังเหลือ:** `scripts/select_pair_strategy.py` เลือกผู้ชนะจากหลาย candidate
-  โดยยังไม่แก้ multiple testing (primitive พร้อมแล้ว ยังไม่ได้ต่อ) ·
-  `sharpe_variance` ของ sweep จริงยังไม่ได้วัด certificate จึงยังไม่มี DSR
+- **แก้ multiple testing แล้ว:** `scripts/select_pair_strategy.py` ใช้ bootstrap
+  p-value และ Benjamini–Hochberg ทั้ง family ก่อน `--apply`
+- **งานวิจัยต่อเนื่อง (ไม่ใช่ release blocker):** `sharpe_variance` ของ sweep เดิม
+  ไม่มีหน่วย per-trade ที่ certificate ต้องใช้ จึงบันทึก DSR ว่า `computed:false`
+  แทนการเดาค่า การออก certificate รอบใหม่ต้องแนบ trial distribution จาก sweep
 
 **P1.4 — ให้ certification pipeline generate แคตตาล็อก** ✅ **ทำแล้ว 2026-07-27**
 คือข้อเสนอแนะข้อ 4 ที่ยังค้างจาก `docs/audit_system_2026-07-21.md` ให้สคริปต์รัน
@@ -661,7 +678,7 @@ production เดาเอาจาก tag ที่เป็น free text แ�
   จาก 2 ตัวนั้นจะ **สตาร์ตไม่ขึ้น** ตอนนี้ทั้ง whitelist และ SaaS catalog ใช้แค่
   2 ตัวนี้ จึงไม่กระทบ แต่ tenant ที่แก้ whitelist มือเป็น strategy ตัวที่สาม
   จะโดนบล็อก — ซึ่งคือสิ่งที่ตั้งใจ
-- **ยังเหลือ:** version ของ plugin ยังเป็น `0.1.0` เกือบทั้งหมด (รวม
+- **งาน versioning ต่อเนื่อง (ไม่ใช่ release blocker):** version ของ plugin ยังเป็น `0.1.0` เกือบทั้งหมด (รวม
   `supertrend_ema200` ที่มี certificate) — maturity เป็นสัญญาณที่ใช้จริง ส่วน
   version ยังไม่มีความหมาย · preset ที่ไม่มี data path (Binance Global / TH)
   ยังออก certificate ไม่ได้ ต้องต่อ data source ก่อน
@@ -692,18 +709,16 @@ close-to-close ส่วน `backtest/metrics.py` annualize และมี Calm
   เทรดเท่านั้น ส่วนที่ลอยติดลบระหว่างถือไม่มีในข้อมูล ทุกผลลัพธ์จึงพก
   `MetricBasis` บอกว่าวัดจากอะไร (`trade-close` vs `mark-to-market`,
   annualize หรือยัง) และมี `comparable_to()` ให้เช็คก่อนเอาไปเทียบกัน
-- **ยังเหลือ:** call site ใน TUI/track record ยังเรียก `calculate_metrics(trades)`
-  โดยไม่ส่ง `initial_balance` จริงและไม่ส่ง `years` → `total_return_pct` ยังอิง
-  1000.0 ที่ hardcode ไว้ และ ratio ยังไม่ annualize (`basis.annualised: false`
-  บอกไว้แล้ว) · การเก็บ MAE/MFE ต่อเทรดเพื่อวัด intra-trade excursion จริง ๆ
-  ยังไม่มี
+- **ปิดส่วนที่เหลือ 2026-07-28:** TUI/track record ใช้ initial balance จาก runtime
+  และช่วงเวลาจริง; schema v13 เก็บทั้ง high/low ระหว่างถือแล้วคำนวณ MAE/MFE แบบ
+  กลับทิศสำหรับ SHORT พร้อม `excursion_measured` เพื่อไม่ตีความแถวเก่าว่า 0%
+  อย่างผิด ๆ UI แสดง coverage ของหลักฐานทุกครั้ง
 
 **P1.6 — ปลุก self-audit กลับมา** ✅ **ทำแล้ว 2026-07-27**
 แก้ `audit_track_record` ให้รองรับหลายคู่ (`active_position` แยกตาม symbol,
-query event แบบกรอง symbol) แล้วต่อเข้า scheduler จริง ๆ และ commit track record
-รายเดือนจาก `track_record/generator.py` — หมายเหตุ `drawdown_pct` ยัง hardcode
-เป็น `0.0` ที่ `generator.py:52` ให้เริ่มนับ track record อย่างเป็นทางการที่จุดย้ายมา
-OKX เพราะการเปลี่ยนสัญลักษณ์ `XAUTUSDT` → `XAUUSDT` ทำให้ประวัติก่อนหน้าเทียบกันไม่ได้
+query event แบบกรอง symbol) แล้วต่อเข้า scheduler จริง ๆ รายงาน calendar-month
+ถูกเขียนเป็น JSON แบบ atomic ใต้ runtime root พร้อม track record และ realised
+fee/slippage/PnL parity ใน artifact เดียวกัน
 
 - **auditor ไม่เคยถูกเรียกจาก runtime เลย** มีแต่ unit test เรียก — การตรวจ
   reconciliation ที่ไม่เคยรันกับข้อมูลจริง ไม่ต่างจากไม่มี ตอนนี้ต่อเข้า
@@ -723,7 +738,7 @@ OKX เพราะการเปลี่ยนสัญลักษณ์ `XA
   `epoch=None` ถ้าต้องการดูประวัติเต็ม)
 
 **P1.7 — Parity ของ *ผลลัพธ์* ระหว่าง live กับ backtest** ✅ **ทำแล้ว 2026-07-27**
-`replay_validation.py` ตรวจแค่ว่าสัญญาณตรงกัน (และตัวมันเองไม่มีเทสต์)
+ก่อนงานรอบนี้ `replay_validation.py` ตรวจแค่ว่าสัญญาณตรงกันและไม่มีเทสต์ครอบ
 `scripts/live_parity_report.py` ตรวจแค่ว่า config ตรงกัน — ยังไม่มีอะไรกระทบยอด
 PnL, slippage และ fee ที่เกิดขึ้นจริง กับที่ simulator ทำนายไว้ในช่วงเวลาเดียวกัน
 `tests/test_fixed_tp_backtest_parity.py` คือรูปแบบที่ถูกต้อง เพียงแต่ทำไว้ฟีเจอร์เดียว
@@ -744,13 +759,16 @@ PnL, slippage และ fee ที่เกิดขึ้นจริง กั
 - 23 เทสต์ใน `tests/test_exit_parity.py` ครอบ trailing / breakeven /
   minimal-ROI / partial TP / funding / short ทั้งหมด รวมถึงยืนยัน invariant ว่า
   rung ของ ROI ที่ต่ำกว่า partial target จะ pre-empt มันเสมอ
-- **ยังเหลือ:** ยังไม่มีการกระทบยอด PnL/slippage/fee **ที่เกิดขึ้นจริง** กับที่
-  simulator ทำนายในช่วงเวลาเดียวกัน — ส่วนนี้ต้องรอ live event สะสม ที่ทำไปคือ
-  ทำให้ตรรกะทั้งสองฝั่งเป็นตัวเดียวกันก่อน ซึ่งเป็นเงื่อนไขที่ต้องมาก่อน
+- **ปิดส่วนที่เหลือ 2026-07-28:** `xauby/analytics/realised_parity.py` จับ lifecycle
+  จาก durable events แล้วกระทบ actual fee/slippage/net PnL กับสมมติฐาน simulator
+  โดยตรึง entry/exit decision จริงไว้ รายงาน coverage และ `insufficient_evidence`
+  อย่างชัดเจน; scheduler สร้าง artifact อัตโนมัติทุกเดือนและ Telegram แจ้งระดับ
+  CRITICAL เมื่อ variance เกิน tolerance หรือหลักฐานไม่ครบ
 
-**เกณฑ์ผ่าน:** `catalog.py` ถูก generate ไม่ใช่แก้มือ · ทุก preset ที่
-`live_certified` สืบย้อนไปถึง walk-forward certificate บนข้อมูลที่ถูก venue ได้ ·
-track record รายเดือนและรายงาน parity ออกอัตโนมัติ
+**เกณฑ์ผ่าน:** verdict/evidence ใน catalog มาจาก certificate record ที่ fingerprint
+ตรงกับ config เท่านั้นและไม่มี preset `live_certified` ที่ยัง `not_assessed` · ทุก
+preset live สืบย้อนไปถึง protocol/ข้อมูลที่ถูก venue ได้ · track record รายเดือนและ
+รายงาน parity ออกอัตโนมัติ
 
 ---
 
@@ -868,12 +886,12 @@ project/org ID และ IP production ฝังอยู่ทั้งใน `
 - **Phase 0:** `PYTHONPATH=. python3 -m pytest -q` ผ่านทั้งชุด · backtest ที่ตั้งค่า
   ไปยัง venue ที่ติดต่อไม่ได้ต้อง **พังแบบดัง ๆ** ไม่ใช่คืน frame ว่าง · ฆ่า engine บน
   VPS แล้วยืนยันว่ามีแจ้งเตือนมาทางช่องที่ engine ไม่ได้เป็นเจ้าของ ·
-  `python scripts/replay_validate.py <run_id> --symbol XAUUSDT` คืนผลเปรียบเทียบ
-  ที่มีข้อมูล รวมถึง trade ฝั่ง short
-- **Phase 1:** รันสคริปต์ certification กับ preset ที่ live ทั้งสองตัว แล้ว diff บล็อก
-  แคตตาล็อกที่ generate ออกมา เทียบกับ `xauby/saas/catalog.py` ปัจจุบัน — ความต่าง
-  ที่เจอคือ bug ของ pipeline หรือ drift ของค่าที่แก้ด้วยมือ ทั้งสองกรณีต้องอธิบายให้ได้
-  ก่อนจะเชื่อ pipeline
+  `python scripts/replay_validate.py <run_id> --symbol BTCUSDT --require-short`
+  คืนผลเปรียบเทียบที่มีข้อมูลและตรวจสถานะ SHORT จริง
+- **Phase 1:** ตรวจ certificate ของ preset live ทั้งสองตัวว่ามี config fingerprint,
+  protocol script และ venue data source ตรงกับ spec ปัจจุบัน; import catalog ต้อง
+  fail ทันทีเมื่อ fingerprint drift หรือ preset live ไม่มีหลักฐาน และ monthly artifact
+  ต้องระบุ parity status/coverage อย่างตรงไปตรงมา
 - **Phase 2:** provision tenant ทดสอบบน VPS รีบูตเครื่อง แล้วยืนยันว่า engine กลับมา
   พร้อม `TELEGRAM_ENABLED=true` และ tenant แบบ SIM-only สตาร์ตได้โดยไม่เจอ
   `SystemExit`
@@ -881,6 +899,9 @@ project/org ID และ IP production ฝังอยู่ทั้งใน `
   ทุกครั้ง และ **ห้าม**รัน `npm run build`, `pytest` เต็มชุด, optimizer หรือ backtest
   บน VPS ที่เทรดอยู่ — 1 vCPU / 2 GB แชร์กับ engine เงินจริง และ `CPUQuota=30%`
   เป็นเพดาน ไม่ใช่โควตาที่จองไว้ (`AGENTS.md`)
+- **release gate:** รัน `python scripts/audit_release_readiness.py` ใน CI และรันซ้ำ
+  กับ tenant config + runtime DB/current run หลัง deploy; `READY` ไม่แทน controlled
+  restart preflight แต่ทั้งสองด่านต้องผ่าน
 
 ## หมายเหตุการทำงาน
 
@@ -888,8 +909,10 @@ project/org ID และ IP production ฝังอยู่ทั้งใน `
   การลงมือแต่ละข้อเริ่มเมื่อ phase นั้นได้รับอนุมัติ
 - แต่ละข้อในแต่ละ phase ควรแยกเป็น branch และ PR ของตัวเอง ตาม `AGENTS.md`
   (หนึ่ง branch หนึ่ง agent, prefix `claude/*` หรือ `codex/*`)
-- ข้อใดที่แตะ `coin_whitelist.json` หรือ `bot_config.yaml` ต้องไม่มี position ค้าง
-  ก่อน deploy และต้อง restart แบบควบคุม (`scripts/controlled_restart_engine.sh`)
+- ข้อใดที่แตะ `coin_whitelist.json` หรือ `bot_config.yaml` ต้อง restart แบบควบคุม;
+  บน SaaS/systemd host ใช้ staged release + systemd units ตาม `AGENTS.md` ไม่เรียก
+  checkout-scoped restart และถ้ามี tracked position ต้องผ่าน backup/preflight/
+  post-reconcile gate ครบทุกข้อ
 - เอกสารฉบับนี้แทนที่ roadmap ใน PR #9 (`docs/roadmap_webapp_saas.md`) ซึ่งเขียน
   ก่อนที่ `xauby/webui` จะถูกลบ และอ้างอิงคอมโพเนนต์ที่ไม่มีอยู่แล้ว
 - **สภาพแวดล้อม agent:** Claude Code บนเว็บรันชุดเทสต์ไม่ได้ เพราะ container

@@ -144,12 +144,12 @@ class SaaSControlPlaneTests(unittest.TestCase):
         # The one preset with a real certificate, re-validated on venue data.
         self.assertEqual(presets["okx-btc-supertrend-v1"]["certification_status"], "certified")
 
-        # Never measured on Binance Global futures, so it has no record and
-        # reads as pending — with an override saying why it is still selectable.
+        # Never measured on Binance Global futures, so it remains selectable
+        # for simulation but cannot cross the live gate.
         binance_btc = presets["binance-btc-supertrend-v1"]
         self.assertEqual(binance_btc["backtest"]["status"], "pending")
         self.assertEqual(binance_btc["certification_status"], "not_assessed")
-        self.assertTrue(binance_btc["operator_override"]["reason"].strip())
+        self.assertFalse(binance_btc["live_certified"])
         okx_btc = presets["okx-btc-supertrend-v1"]
         self.assertEqual(okx_btc["primary_timeframe"], "4h")
         self.assertEqual(okx_btc["allowed_sides"], ["long", "short"])

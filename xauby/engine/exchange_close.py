@@ -5,6 +5,8 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional, Tuple
 
+from xauby.analytics.calculator import position_excursions_pct
+
 
 def _timestamp_ms(value: Any) -> int:
     if value in (None, ""):
@@ -152,6 +154,13 @@ def build_confirmed_trade(
     entry_cost = quantity * entry_price
     net_pnl_pct = (net_pnl / entry_cost * 100.0) if entry_cost > 0 else 0.0
     side = str(history.get("position_side") or state.get("position_side") or "LONG").upper()
+    mae_pct, mfe_pct = position_excursions_pct(
+        entry_price=entry_price,
+        highest_price_seen=float(state.get("highest_price_seen") or entry_price),
+        lowest_price_seen=float(state.get("lowest_price_seen") or entry_price),
+        position_side=side,
+        exit_price=exit_price,
+    )
 
     return {
         "symbol": str(symbol).upper().replace("_", ""),
@@ -178,4 +187,9 @@ def build_confirmed_trade(
         "exchange_position_id": history.get("exchange_position_id"),
         "pnl_source": f"{history.get('exchange') or 'exchange'}_positions_history",
         "pnl_confirmed": True,
+        "mae_pct": mae_pct,
+        "mfe_pct": mfe_pct,
+        "excursion_measured": bool(
+            entry_price > 0 and state.get("excursion_tracking_complete")
+        ),
     }

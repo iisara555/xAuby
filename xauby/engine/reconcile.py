@@ -319,6 +319,7 @@ class ReconcileMixin:
                 management_mode="manual",
                 exchange_position_id=live.get("exchange_position_id"),
                 partial_tp_taken=False,
+                excursion_tracking_complete=False,
             )
             msg = (
                 f"MANUAL DERIVATIVE POSITION DETECTED {sym} {live_side} "

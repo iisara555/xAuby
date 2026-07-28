@@ -7,11 +7,12 @@ from typing import Any, Dict, List, Optional
 
 from xauby.storage.interface import IDatabaseRepository
 from xauby.domain.models import Candle, Position
+from xauby.analytics.calculator import position_excursions_pct
 from xauby.runtime.paths import runtime_path
 
 logger = logging.getLogger("lite_db")
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 DEFAULT_DB_PATH = "core/xauby.db"
 
 
@@ -134,7 +135,10 @@ class LiteDB(IDatabaseRepository):
                         exchange_position_id TEXT,
                         pnl_source TEXT NOT NULL DEFAULT 'engine',
                         pnl_confirmed INTEGER NOT NULL DEFAULT 1,
-                        funding_fee REAL NOT NULL DEFAULT 0.0
+                        funding_fee REAL NOT NULL DEFAULT 0.0,
+                        mae_pct REAL NOT NULL DEFAULT 0.0,
+                        mfe_pct REAL NOT NULL DEFAULT 0.0,
+                        excursion_measured INTEGER NOT NULL DEFAULT 0
                     )
                 """)
                 conn.execute(
@@ -150,6 +154,7 @@ class LiteDB(IDatabaseRepository):
                         stop_loss REAL DEFAULT 0.0,
                         take_profit REAL DEFAULT 0.0,
                         highest_price_seen REAL DEFAULT 0.0,
+                        lowest_price_seen REAL DEFAULT 0.0,
                         quantity REAL DEFAULT 0.0,
                         opened_at TEXT,
                         last_transition_at TEXT,
@@ -162,6 +167,7 @@ class LiteDB(IDatabaseRepository):
                         ,management_mode TEXT NOT NULL DEFAULT 'strategy'
                         ,exchange_position_id TEXT
                         ,partial_tp_taken INTEGER NOT NULL DEFAULT 0
+                        ,excursion_tracking_complete INTEGER NOT NULL DEFAULT 0
                     )
                 """)
 
@@ -416,6 +422,24 @@ class LiteDB(IDatabaseRepository):
                         "WHERE exchange_close_id IS NOT NULL"
                     )
 
+                if user_version < 13:
+                    for sql in (
+                        "ALTER TABLE trade_states ADD COLUMN lowest_price_seen "
+                        "REAL NOT NULL DEFAULT 0.0",
+                        "ALTER TABLE closed_trades ADD COLUMN mae_pct "
+                        "REAL NOT NULL DEFAULT 0.0",
+                        "ALTER TABLE closed_trades ADD COLUMN mfe_pct "
+                        "REAL NOT NULL DEFAULT 0.0",
+                        "ALTER TABLE closed_trades ADD COLUMN excursion_measured "
+                        "INTEGER NOT NULL DEFAULT 0",
+                        "ALTER TABLE trade_states ADD COLUMN excursion_tracking_complete "
+                        "INTEGER NOT NULL DEFAULT 0",
+                    ):
+                        try:
+                            conn.execute(sql)
+                        except sqlite3.OperationalError:
+                            pass
+
                 if user_version < SCHEMA_VERSION:
                     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
 
@@ -512,6 +536,8 @@ class LiteDB(IDatabaseRepository):
             "stop_loss": 0.0,
             "take_profit": 0.0,
             "highest_price_seen": 0.0,
+            "lowest_price_seen": 0.0,
+            "excursion_tracking_complete": 0,
             "quantity": 0.0,
             "opened_at": None,
             "last_transition_at": None,
@@ -545,6 +571,10 @@ class LiteDB(IDatabaseRepository):
                 take_profit=float(d.get("take_profit", 0.0) or 0.0),
                 highest_price_seen=float(d.get("highest_price_seen", 0.0) or 0.0),
                 quantity=float(d.get("quantity", 0.0) or 0.0),
+                lowest_price_seen=float(d.get("lowest_price_seen", 0.0) or 0.0),
+                excursion_tracking_complete=bool(
+                    d.get("excursion_tracking_complete", 0) or 0
+                ),
                 opened_at=d.get("opened_at"),
                 last_transition_at=d.get("last_transition_at"),
                 stop_loss_order_id=d.get("stop_loss_order_id"),
@@ -572,6 +602,7 @@ class LiteDB(IDatabaseRepository):
         take_profit: float = 0.0,
         highest_price_seen: float = 0.0,
         quantity: float = 0.0,
+        lowest_price_seen: Optional[float] = None,
         opened_at: Optional[str] = None,
         last_transition_at: Optional[str] = None,
         stop_loss_order_id: Optional[str] = None,
@@ -583,6 +614,7 @@ class LiteDB(IDatabaseRepository):
         management_mode: str = "strategy",
         exchange_position_id: Optional[str] = None,
         partial_tp_taken: bool = False,
+        excursion_tracking_complete: Optional[bool] = None,
         *,
         symbol: Optional[str] = None,
     ) -> None:
@@ -605,6 +637,8 @@ class LiteDB(IDatabaseRepository):
             take_profit = pos.take_profit
             highest_price_seen = pos.highest_price_seen
             quantity = pos.quantity
+            lowest_price_seen = pos.lowest_price_seen
+            excursion_tracking_complete = pos.excursion_tracking_complete
             opened_at = pos.opened_at
             last_transition_at = pos.last_transition_at
             stop_loss_order_id = pos.stop_loss_order_id
@@ -627,29 +661,45 @@ class LiteDB(IDatabaseRepository):
         conn = self._get_connection()
         try:
             with conn:
-                if exchange_position_id is None and str(state or "").lower() == "bought":
+                if str(state or "").lower() == "bought":
                     existing = conn.execute(
-                        "SELECT exchange_position_id FROM trade_states WHERE symbol=?",
+                        "SELECT state, exchange_position_id, lowest_price_seen, "
+                        "excursion_tracking_complete "
+                        "FROM trade_states WHERE symbol=?",
                         (sym,),
                     ).fetchone()
-                    if existing:
+                    if existing and exchange_position_id is None:
                         exchange_position_id = existing["exchange_position_id"]
+                    if lowest_price_seen is None and existing:
+                        lowest_price_seen = float(existing["lowest_price_seen"] or 0.0)
+                    if not lowest_price_seen or lowest_price_seen <= 0:
+                        lowest_price_seen = float(entry_price or 0.0)
+                    if excursion_tracking_complete is None:
+                        excursion_tracking_complete = (
+                            bool(existing["excursion_tracking_complete"])
+                            if existing and str(existing["state"]).lower() == "bought"
+                            else True
+                        )
+                else:
+                    lowest_price_seen = 0.0
+                    excursion_tracking_complete = False
                 conn.execute("""
                     INSERT INTO trade_states (
                         symbol, state, entry_price, stop_loss, take_profit,
-                        highest_price_seen, quantity, opened_at, last_transition_at,
+                        highest_price_seen, lowest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
                         liquidation_price, funding_paid, management_mode,
                         exchange_position_id,
-                        partial_tp_taken
+                        partial_tp_taken, excursion_tracking_complete
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state=excluded.state,
                         entry_price=excluded.entry_price,
                         stop_loss=excluded.stop_loss,
                         take_profit=excluded.take_profit,
                         highest_price_seen=excluded.highest_price_seen,
+                        lowest_price_seen=excluded.lowest_price_seen,
                         quantity=excluded.quantity,
                         opened_at=excluded.opened_at,
                         last_transition_at=excluded.last_transition_at,
@@ -661,19 +711,53 @@ class LiteDB(IDatabaseRepository):
                         funding_paid=excluded.funding_paid,
                         management_mode=excluded.management_mode,
                         exchange_position_id=excluded.exchange_position_id,
-                        partial_tp_taken=excluded.partial_tp_taken
+                        partial_tp_taken=excluded.partial_tp_taken,
+                        excursion_tracking_complete=excluded.excursion_tracking_complete
                 """, (
                     sym, state, entry_price, stop_loss, take_profit,
-                    highest_price_seen, quantity, opened_at, transition_str,
+                    highest_price_seen, float(lowest_price_seen or 0.0), quantity,
+                    opened_at, transition_str,
                     stop_loss_order_id, str(position_side or "LONG").upper(),
                     float(leverage or 1.0), str(margin_mode or "spot"),
                     float(liquidation_price or 0.0), float(funding_paid or 0.0),
                     str(management_mode or "strategy").lower(),
                     str(exchange_position_id) if exchange_position_id else None,
                     1 if partial_tp_taken else 0,
+                    1 if excursion_tracking_complete else 0,
                 ))
         except Exception as e:
             logger.error(f"Error saving trade state for {sym}: {e}")
+        finally:
+            conn.close()
+
+    def update_position_extrema(self, symbol: str, price: float) -> bool:
+        """Atomically extend the observed price range for an open position."""
+        sym = symbol.upper().replace("_", "")
+        observed = float(price or 0.0)
+        if observed <= 0:
+            return False
+        conn = self._get_connection()
+        try:
+            with conn:
+                cursor = conn.execute(
+                    """
+                    UPDATE trade_states
+                    SET highest_price_seen = CASE
+                            WHEN highest_price_seen <= 0 OR ? > highest_price_seen
+                            THEN ? ELSE highest_price_seen END,
+                        lowest_price_seen = CASE
+                            WHEN lowest_price_seen <= 0 OR ? < lowest_price_seen
+                            THEN ? ELSE lowest_price_seen END
+                    WHERE symbol=? AND state='bought'
+                      AND (highest_price_seen <= 0 OR ? > highest_price_seen
+                           OR lowest_price_seen <= 0 OR ? < lowest_price_seen)
+                    """,
+                    (observed, observed, observed, observed, sym, observed, observed),
+                )
+            return cursor.rowcount == 1
+        except Exception as e:
+            logger.error("Failed to update position extrema for %s: %s", sym, e)
+            return False
         finally:
             conn.close()
 
@@ -728,6 +812,9 @@ class LiteDB(IDatabaseRepository):
         pnl_source: str = "engine",
         pnl_confirmed: bool = True,
         funding_fee: float = 0.0,
+        mae_pct: Optional[float] = None,
+        mfe_pct: Optional[float] = None,
+        excursion_measured: Optional[bool] = None,
     ) -> None:
         if isinstance(symbol_or_trade, dict):
             t = symbol_or_trade
@@ -755,12 +842,23 @@ class LiteDB(IDatabaseRepository):
             pnl_source = t.get("pnl_source", "engine")
             pnl_confirmed = bool(t.get("pnl_confirmed", True))
             funding_fee = float(t.get("funding_fee", 0.0) or 0.0)
+            mae_pct = (
+                float(t.get("mae_pct") or 0.0)
+                if t.get("mae_pct") is not None else None
+            )
+            mfe_pct = (
+                float(t.get("mfe_pct") or 0.0)
+                if t.get("mfe_pct") is not None else None
+            )
+            excursion_measured = bool(t.get("excursion_measured", False))
         else:
             symbol = symbol_or_trade
 
         sym = symbol.upper().replace("_", "")
         closed_str = closed_at or datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         mode = (execution_mode or "live").lower()
+        if excursion_measured is None:
+            excursion_measured = mae_pct is not None and mfe_pct is not None
         conn = self._get_connection()
         try:
             with conn:
@@ -770,9 +868,10 @@ class LiteDB(IDatabaseRepository):
                         gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                         net_pnl_pct, trigger, opened_at, closed_at, entry_regime, exit_regime,
                         strategy_name, execution_mode, exchange_close_id,
-                        exchange_position_id, pnl_source, pnl_confirmed, funding_fee
+                        exchange_position_id, pnl_source, pnl_confirmed, funding_fee,
+                        mae_pct, mfe_pct, excursion_measured
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     sym, side, amount, entry_price, exit_price, entry_cost,
                     gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
@@ -780,6 +879,8 @@ class LiteDB(IDatabaseRepository):
                     strategy_name, mode, exchange_close_id, exchange_position_id,
                     str(pnl_source or "engine"), 1 if pnl_confirmed else 0,
                     float(funding_fee or 0.0),
+                    float(mae_pct or 0.0), float(mfe_pct or 0.0),
+                    1 if excursion_measured else 0,
                 ))
         except Exception as e:
             logger.error(f"Error saving closed trade for {sym}: {e}")
@@ -813,6 +914,8 @@ class LiteDB(IDatabaseRepository):
         pnl_source: str = "engine",
         pnl_confirmed: bool = True,
         funding_fee: float = 0.0,
+        mae_pct: Optional[float] = None,
+        mfe_pct: Optional[float] = None,
     ) -> bool:
         """Atomically record a closed trade and reset position state to idle."""
         sym = symbol.upper().replace("_", "")
@@ -822,15 +925,45 @@ class LiteDB(IDatabaseRepository):
         conn = self._get_connection()
         try:
             with conn:
+                state_row = conn.execute(
+                    "SELECT position_side, highest_price_seen, lowest_price_seen, "
+                    "excursion_tracking_complete "
+                    "FROM trade_states WHERE symbol=? AND state='bought'",
+                    (sym,),
+                ).fetchone()
+                excursion_measured = bool(
+                    float(entry_price or 0.0) > 0
+                    and state_row is not None
+                    and state_row["excursion_tracking_complete"]
+                )
+                if mae_pct is None or mfe_pct is None:
+                    calculated_mae, calculated_mfe = position_excursions_pct(
+                        entry_price=entry_price,
+                        highest_price_seen=(
+                            state_row["highest_price_seen"] if state_row else entry_price
+                        ),
+                        lowest_price_seen=(
+                            state_row["lowest_price_seen"] if state_row else entry_price
+                        ),
+                        position_side=(
+                            state_row["position_side"] if state_row else side
+                        ),
+                        exit_price=exit_price,
+                    )
+                    if mae_pct is None:
+                        mae_pct = calculated_mae
+                    if mfe_pct is None:
+                        mfe_pct = calculated_mfe
                 conn.execute("""
                     INSERT INTO closed_trades (
                         symbol, side, amount, entry_price, exit_price, entry_cost,
                         gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                         net_pnl_pct, trigger, opened_at, closed_at, entry_regime, exit_regime,
                         strategy_name, execution_mode, exchange_close_id,
-                        exchange_position_id, pnl_source, pnl_confirmed, funding_fee
+                        exchange_position_id, pnl_source, pnl_confirmed, funding_fee,
+                        mae_pct, mfe_pct, excursion_measured
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     sym, side, amount, entry_price, exit_price, entry_cost,
                     gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
@@ -838,23 +971,26 @@ class LiteDB(IDatabaseRepository):
                     strategy_name, mode, exchange_close_id, exchange_position_id,
                     str(pnl_source or "engine"), 1 if pnl_confirmed else 0,
                     float(funding_fee or 0.0),
+                    float(mae_pct or 0.0), float(mfe_pct or 0.0),
+                    1 if excursion_measured else 0,
                 ))
                 conn.execute("""
                     INSERT INTO trade_states (
                         symbol, state, entry_price, stop_loss, take_profit,
-                        highest_price_seen, quantity, opened_at, last_transition_at,
+                        highest_price_seen, lowest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
                         liquidation_price, funding_paid, management_mode,
                         exchange_position_id,
-                        partial_tp_taken
+                        partial_tp_taken, excursion_tracking_complete
                     )
-                    VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0)
+                    VALUES (?, 'idle', 0, 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0, 0)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state='idle',
                         entry_price=0,
                         stop_loss=0,
                         take_profit=0,
                         highest_price_seen=0,
+                        lowest_price_seen=0,
                         quantity=0,
                         opened_at=NULL,
                         last_transition_at=excluded.last_transition_at,
@@ -862,7 +998,8 @@ class LiteDB(IDatabaseRepository):
                         position_side='LONG', leverage=1.0, margin_mode='spot',
                         liquidation_price=0, funding_paid=0, management_mode='strategy',
                         exchange_position_id=NULL,
-                        partial_tp_taken=0
+                        partial_tp_taken=0,
+                        excursion_tracking_complete=0
                 """, (sym, transition_str))
             return True
         except Exception as e:
@@ -918,21 +1055,23 @@ class LiteDB(IDatabaseRepository):
                         """
                         INSERT INTO trade_states (
                             symbol, state, entry_price, stop_loss, take_profit,
-                            highest_price_seen, quantity, opened_at, last_transition_at,
+                            highest_price_seen, lowest_price_seen, quantity, opened_at, last_transition_at,
                             stop_loss_order_id, position_side, leverage, margin_mode,
                             liquidation_price, funding_paid, management_mode,
-                            exchange_position_id, partial_tp_taken
+                            exchange_position_id, partial_tp_taken,
+                            excursion_tracking_complete
                         )
-                        VALUES (?, 'idle', 0, 0, 0, 0, 0, NULL, ?, NULL,
-                                'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0)
+                        VALUES (?, 'idle', 0, 0, 0, 0, 0, 0, NULL, ?, NULL,
+                                'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0, 0)
                         ON CONFLICT(symbol) DO UPDATE SET
                             state='idle', entry_price=0, stop_loss=0, take_profit=0,
-                            highest_price_seen=0, quantity=0, opened_at=NULL,
+                            highest_price_seen=0, lowest_price_seen=0, quantity=0, opened_at=NULL,
                             last_transition_at=excluded.last_transition_at,
                             stop_loss_order_id=NULL, position_side='LONG', leverage=1.0,
                             margin_mode='spot', liquidation_price=0, funding_paid=0,
                             management_mode='strategy', exchange_position_id=NULL,
-                            partial_tp_taken=0
+                            partial_tp_taken=0,
+                            excursion_tracking_complete=0
                         """,
                         (sym, detected_at),
                     )
@@ -1020,10 +1159,11 @@ class LiteDB(IDatabaseRepository):
                             net_pnl_pct, trigger, opened_at, closed_at, entry_regime,
                             exit_regime, strategy_name, execution_mode,
                             exchange_close_id, exchange_position_id, pnl_source,
-                            pnl_confirmed, funding_fee
+                            pnl_confirmed, funding_fee, mae_pct, mfe_pct,
+                            excursion_measured
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                ?, ?, ?, ?, ?, ?, ?)
+                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(trade["symbol"]).upper().replace("_", ""),
@@ -1050,6 +1190,9 @@ class LiteDB(IDatabaseRepository):
                             str(trade.get("pnl_source") or "exchange"),
                             1 if trade.get("pnl_confirmed", True) else 0,
                             float(trade.get("funding_fee") or 0.0),
+                            float(trade.get("mae_pct") or 0.0),
+                            float(trade.get("mfe_pct") or 0.0),
+                            1 if trade.get("excursion_measured", False) else 0,
                         ),
                     )
                     trade_id = int(cursor.lastrowid)

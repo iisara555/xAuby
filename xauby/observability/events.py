@@ -33,6 +33,10 @@ class EventType:
 
     # Position lifecycle
     POSITION_OPENED = "position_opened"
+    # A controlled restart may inherit a tracked position that was opened by
+    # the previous run.  Persist the reconciled snapshot in the new run so
+    # replay validation starts with the same side/SL as the live engine.
+    POSITION_RESTORED = "position_restored"
     POSITION_CLOSED = "position_closed"
     STOP_LOSS_UPDATED = "stop_loss_updated"
     STOP_LOSS_TRIGGERED = "stop_loss_triggered"

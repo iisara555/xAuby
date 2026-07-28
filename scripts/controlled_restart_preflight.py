@@ -12,7 +12,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from typing import Any, Dict, List
+
+# Executing ``scripts/foo.py`` puts only ``scripts/`` first on sys.path.  The
+# VPS also has an old editable install, so preflight could silently import a
+# different release than the one being staged.  Pin imports to this checkout.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+while REPO_ROOT in sys.path:
+    sys.path.remove(REPO_ROOT)
+sys.path.insert(0, REPO_ROOT)
 
 from xauby.api import create_exchange_client
 from xauby.api.interface import IExchangeGateway
@@ -24,13 +33,13 @@ from xauby.runtime.exchange_config import (
     resolve_quote_asset,
 )
 from xauby.runtime.pair_registry import PairRegistry
-from xauby.runtime.paths import bot_state_path
+from xauby.runtime.paths import bot_state_path, config_file, config_root
 
 
-STATE_PATH = bot_state_path()
-
-
-def _load_dotenv(path: str = ".env") -> None:
+def _load_dotenv(path: str | None = None) -> None:
+    if path is None:
+        tenant_secrets = config_file("secrets.env")
+        path = tenant_secrets if os.path.exists(tenant_secrets) else config_file(".env")
     if not os.path.exists(path):
         return
     with open(path, "r", encoding="utf-8") as f:
@@ -44,7 +53,7 @@ def _load_dotenv(path: str = ".env") -> None:
 
 def _load_state() -> Dict[str, Any]:
     try:
-        with open(STATE_PATH, "r", encoding="utf-8") as f:
+        with open(bot_state_path(), "r", encoding="utf-8") as f:
             return json.load(f) or {}
     except Exception:
         return {}
@@ -125,9 +134,15 @@ def _qty_tolerance(client: IExchangeGateway, symbol: str) -> float:
 
 def run_preflight(*, require_exchange: bool = True, allow_tracked_positions: bool = True) -> Dict[str, Any]:
     _load_dotenv()
-    cfg = load_bot_config()
+    cfg_path = config_file("bot_config.yaml")
+    cfg = load_bot_config(cfg_path)
     state = _load_state()
-    registry = PairRegistry(cfg)
+    registry = PairRegistry(
+        cfg,
+        config_path=cfg_path,
+        project_root=config_root(),
+        read_only=True,
+    )
     pairs = registry.load(None)
     quote = str(((cfg.get("portfolio") or {}).get("quote_asset")) or resolve_quote_asset(cfg)).upper()
     tracked_positions = _load_tracked_positions(pairs, state)

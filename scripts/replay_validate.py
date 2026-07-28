@@ -15,7 +15,7 @@ from xauby.observability.store import EventStore
 from xauby.utils.common import format_ts_ict
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate live engine signals by replaying the strategy at logged ticks"
     )
@@ -24,11 +24,23 @@ def main() -> None:
     parser.add_argument("--strategy", default="", help="Override strategy plugin id")
     parser.add_argument("--symbol", default=None, help="Explicitly specify the symbol")
     parser.add_argument("--max-signals", type=int, default=200)
+    parser.add_argument(
+        "--db", default=None,
+        help="runtime SQLite path (default: SQLITE_DB_PATH/XAUBY_HOME)",
+    )
+    parser.add_argument(
+        "--require-short", action="store_true",
+        help="fail unless at least one signal was replayed while SHORT",
+    )
+    parser.add_argument(
+        "--allow-empty", action="store_true",
+        help="diagnostic only: exit zero even when no signal could be checked",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
-    store = EventStore()
-    db = LiteDB("core/xauby.db", readonly=True)
+    db = LiteDB(args.db, readonly=True)
+    store = EventStore(db=db)
     report = validate_run(
         store,
         db,
@@ -41,7 +53,13 @@ def main() -> None:
 
     if args.json:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
-        return
+        if not report.ok:
+            return 1
+        if not args.allow_empty and report.matched + report.mismatched == 0:
+            return 2
+        if args.require_short and report.short_signals_checked == 0:
+            return 3
+        return 0
 
     status = "PASS" if report.ok else "FAIL"
     print(f"Replay validation [{status}] run_id={report.run_id}")
@@ -60,13 +78,22 @@ def main() -> None:
         f"{report.matched + report.mismatched} ({report.match_rate_pct:.1f}%)  "
         f"skipped={report.skipped}"
     )
+    print(f"  Short-side signals checked: {report.short_signals_checked}")
 
     if not report.mismatches:
         if report.total_signals == 0:
             print("  No signal_evaluated events in this run.")
         else:
             print("  All replayed signals match live events.")
-        return
+        if not report.ok:
+            return 1
+        if not args.allow_empty and report.matched + report.mismatched == 0:
+            print("  RELEASE BLOCKED: no signal/tick pair could be checked.")
+            return 2
+        if args.require_short and report.short_signals_checked == 0:
+            print("  RELEASE BLOCKED: no signal was checked while SHORT.")
+            return 3
+        return 0
 
     print(f"\nMismatches ({len(report.mismatches)}):")
     for m in report.mismatches[:25]:
@@ -79,7 +106,8 @@ def main() -> None:
         )
     if len(report.mismatches) > 25:
         print(f"  ... and {len(report.mismatches) - 25} more")
+    return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

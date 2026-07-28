@@ -55,9 +55,12 @@ def audit_track_record(
     discrepancies: List[str] = []
 
     opened_events = db.query_events(event_type="position_opened", limit=limit, order="asc")
+    restored_events = db.query_events(
+        event_type="position_restored", limit=limit, order="asc"
+    )
     closed_events = db.query_events(event_type="position_closed", limit=limit, order="asc")
     all_events = sorted(
-        list(opened_events) + list(closed_events),
+        list(opened_events) + list(restored_events) + list(closed_events),
         key=lambda e: (str(e.get("ts") or ""), int(e.get("seq") or 0)),
     )
     all_events = [e for e in all_events if _after_epoch(e.get("ts"), epoch)]
@@ -71,7 +74,28 @@ def audit_track_record(
         payload = event.get("payload") or {}
         symbol = _symbol_of(event)
 
-        if etype == "position_opened":
+        if etype in {"position_opened", "position_restored"}:
+            entry_price = float(
+                payload.get("entry_price") or payload.get("entry")
+                or payload.get("price") or 0.0
+            )
+            amount = float(
+                payload.get("quantity") or payload.get("amount")
+                or payload.get("qty") or 0.0
+            )
+            if etype == "position_restored" and symbol in active:
+                current = active[symbol]
+                if entry_price and abs(entry_price - current["entry_price"]) > PRICE_TOLERANCE:
+                    discrepancies.append(
+                        f"[{symbol}] position_restored entry mismatch "
+                        f"({entry_price:.2f} vs active {current['entry_price']:.2f})"
+                    )
+                if amount and abs(amount - current["amount"]) > QUANTITY_TOLERANCE:
+                    discrepancies.append(
+                        f"[{symbol}] position_restored quantity mismatch "
+                        f"({amount:.4f} vs active {current['amount']:.4f})"
+                    )
+                continue
             if symbol in active:
                 discrepancies.append(
                     f"[{symbol}] position_opened (run {event.get('run_id')}) fired "
@@ -80,30 +104,49 @@ def audit_track_record(
                 )
             active[symbol] = {
                 "run_id": event.get("run_id"),
-                "opened_at": event.get("ts"),
-                "entry_price": float(payload.get("entry_price")
-                                     or payload.get("price") or 0.0),
-                "amount": float(payload.get("quantity")
-                                or payload.get("amount") or 0.0),
+                "opened_at": payload.get("opened_at") or event.get("ts"),
+                "entry_price": entry_price,
+                "amount": amount,
                 "symbol": symbol,
             }
         elif etype == "position_closed":
-            position = active.pop(symbol, None)
+            is_partial = bool(payload.get("partial"))
+            position = active.get(symbol)
             if position is None:
                 discrepancies.append(
                     f"[{symbol}] position_closed (run {event.get('run_id')}) fired "
                     f"with no open position for that symbol"
                 )
                 continue
+            closed_amount = float(
+                payload.get("quantity") or payload.get("amount")
+                or payload.get("qty") or position["amount"]
+            )
+            if is_partial and not any(
+                payload.get(key) is not None for key in ("quantity", "amount", "qty")
+            ):
+                discrepancies.append(
+                    f"[{symbol}] legacy partial close has no closed quantity"
+                )
             reconstructed.setdefault(symbol, []).append({
                 "symbol": symbol,
-                "amount": position["amount"],
+                "amount": closed_amount,
                 "entry_price": position["entry_price"],
-                "exit_price": float(payload.get("exit_price")
-                                    or payload.get("price") or 0.0),
+                "exit_price": float(
+                    payload.get("exit_price") or payload.get("exit")
+                    or payload.get("price") or 0.0
+                ),
                 "opened_at": position["opened_at"],
                 "closed_at": event.get("ts"),
             })
+            if is_partial:
+                position["amount"] = float(
+                    payload.get("remaining_quantity")
+                    if payload.get("remaining_quantity") is not None
+                    else max(0.0, position["amount"] - closed_amount)
+                )
+            else:
+                active.pop(symbol, None)
 
     # Whatever is still in `active` is a position open right now. That is not a
     # discrepancy — it simply has no closed trade to match — so it is reported

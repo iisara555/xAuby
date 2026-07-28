@@ -170,6 +170,7 @@ class StateExportUnrealizedPnlTest(unittest.TestCase):
         self.assertAlmostEqual(pos["estimated_total_fees"], 3.3505)
         self.assertAlmostEqual(pos["unrealized_pnl"], -2.3505)
         self.assertAlmostEqual(pos["unrealized_pnl_pct"], (-2.3505 / 3350.0) * 100.0)
+        self.assertEqual(snap["metrics_context"]["initial_balance"], 1000.0)
 
 
 if __name__ == "__main__":

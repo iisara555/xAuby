@@ -26,6 +26,16 @@ def _closed(symbol, ts, seq, price, run="r1"):
             "symbol": symbol, "payload": {"exit_price": price}}
 
 
+def _restored(symbol, ts, seq, price, qty, opened_at, run="r2"):
+    return {
+        "event_type": "position_restored", "run_id": run, "ts": ts, "seq": seq,
+        "symbol": symbol,
+        "payload": {
+            "entry_price": price, "quantity": qty, "opened_at": opened_at,
+        },
+    }
+
+
 def _trade(symbol, closed_at, entry, exit_price, qty, pnl=0.0):
     return {"symbol": symbol, "amount": qty, "entry_price": entry,
             "exit_price": exit_price, "closed_at": closed_at, "net_pnl": pnl}
@@ -67,10 +77,12 @@ class TestReportGenerator(unittest.TestCase):
         ]
         report = generate_report(trades, period_days=30, report_name="dd")
         drawdowns = [e.drawdown_pct for e in report.entries]
-        # Peak 100 after trade 1, then -40 leaves 60 => 40% below peak.
+        # With the real 1000 starting balance, peak equity is 1100 and the
+        # 40 loss is a 3.6364% drawdown — not the old 40% obtained by silently
+        # pretending the account started at zero.
         self.assertEqual(drawdowns[0], 0.0)
-        self.assertAlmostEqual(drawdowns[1], 40.0, places=4)
-        self.assertAlmostEqual(drawdowns[2], 30.0, places=4)
+        self.assertAlmostEqual(drawdowns[1], 3.6364, places=4)
+        self.assertAlmostEqual(drawdowns[2], 2.7273, places=4)
 
     def test_drawdown_is_chronological_regardless_of_input_order(self):
         now = datetime.now(timezone.utc)
@@ -83,7 +95,37 @@ class TestReportGenerator(unittest.TestCase):
         shuffled = generate_report([late, early], 30, "dd")
         by_pnl = {e.pnl: e.drawdown_pct for e in shuffled.entries}
         self.assertEqual(by_pnl[100.0], 0.0)
-        self.assertAlmostEqual(by_pnl[-40.0], 40.0, places=4)
+        self.assertAlmostEqual(by_pnl[-40.0], 3.6364, places=4)
+
+    def test_report_uses_supplied_account_baseline(self):
+        now = datetime.now(timezone.utc)
+        trades = [{
+            "net_pnl": -20.0,
+            "entry_cost": 100.0,
+            "opened_at": (now - timedelta(days=2)).isoformat(),
+            "closed_at": (now - timedelta(days=1)).isoformat(),
+        }]
+
+        report = generate_report(
+            trades, 30, "real balance", initial_balance=200.0
+        )
+
+        self.assertAlmostEqual(report.max_drawdown_pct, 10.0, places=4)
+        self.assertAlmostEqual(report.entries[0].drawdown_pct, 10.0, places=4)
+
+    def test_explicit_calendar_start_does_not_drop_first_day_hours(self):
+        start = datetime(2026, 7, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 7, 28, 12, tzinfo=timezone.utc)
+        trade = {
+            "net_pnl": 1.0,
+            "entry_cost": 100.0,
+            "opened_at": "2026-07-01T00:05:00+00:00",
+            "closed_at": "2026-07-01T00:10:00+00:00",
+        }
+        report = generate_report(
+            [trade], 27, "calendar month", as_of=end, period_start=start
+        )
+        self.assertEqual(report.total_trades, 1)
 
 
 class TestAuditorSinglePair(unittest.TestCase):
@@ -98,6 +140,23 @@ class TestAuditorSinglePair(unittest.TestCase):
         self.assertEqual(stats["matching_trades"], 1)
         self.assertEqual(stats["symbols"], ["XAUUSDT"])
 
+    def test_engine_legacy_entry_exit_and_qty_field_names_are_understood(self):
+        events = [
+            {"event_type": "position_opened", "run_id": "r1",
+             "ts": "2026-07-25T10:00:00", "seq": 1, "symbol": "XAUUSDT",
+             "payload": {"entry": 100.0, "qty": 0.5}},
+            {"event_type": "position_closed", "run_id": "r1",
+             "ts": "2026-07-25T11:00:00", "seq": 2, "symbol": "XAUUSDT",
+             "payload": {"exit": 110.0}},
+        ]
+        db = _db(
+            events,
+            [_trade("XAUUSDT", "2026-07-25T11:00:00", 100.0, 110.0, 0.5)],
+        )
+        success, discrepancies, stats = audit_track_record(db)
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["matching_trades"], 1)
+
     def test_a_price_mismatch_is_reported_with_its_symbol(self):
         db = _db(
             [_opened("XAUUSDT", "2026-07-25T12:00:00", 1, 2000.0, 1.0),
@@ -108,6 +167,48 @@ class TestAuditorSinglePair(unittest.TestCase):
         self.assertFalse(success)
         self.assertIn("[XAUUSDT]", discrepancies[0])
         self.assertIn("exit price", discrepancies[0])
+
+    def test_restored_position_seeds_a_new_run_without_duplicate_open(self):
+        opened_at = "2026-07-24T10:00:00"
+        db = _db(
+            [_restored("BTCUSDT", "2026-07-25T10:00:00", 1, 100.0, 1.0, opened_at),
+             _closed("BTCUSDT", "2026-07-25T12:00:00", 2, 90.0, "r2")],
+            [_trade("BTCUSDT", "2026-07-25T12:00:00", 100.0, 90.0, 1.0)],
+        )
+        success, discrepancies, stats = audit_track_record(db)
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["matching_trades"], 1)
+
+    def test_matching_restore_during_open_position_is_not_a_second_entry(self):
+        db = _db(
+            [_opened("BTCUSDT", "2026-07-24T10:00:00", 1, 100.0, 1.0, "r1"),
+             _restored("BTCUSDT", "2026-07-25T10:00:00", 1, 100.0, 1.0,
+                       "2026-07-24T10:00:00", "r2"),
+             _closed("BTCUSDT", "2026-07-25T12:00:00", 2, 90.0, "r2")],
+            [_trade("BTCUSDT", "2026-07-25T12:00:00", 100.0, 90.0, 1.0)],
+        )
+        success, discrepancies, _ = audit_track_record(db)
+        self.assertTrue(success, discrepancies)
+
+    def test_partial_close_retains_remaining_position_for_final_close(self):
+        partial = {
+            "event_type": "position_closed", "run_id": "r1",
+            "ts": "2026-07-25T11:00:00", "seq": 2, "symbol": "XAUUSDT",
+            "payload": {
+                "exit": 110.0, "quantity": 0.4,
+                "remaining_quantity": 0.6, "partial": True,
+            },
+        }
+        db = _db(
+            [_opened("XAUUSDT", "2026-07-25T10:00:00", 1, 100.0, 1.0),
+             partial,
+             _closed("XAUUSDT", "2026-07-25T12:00:00", 3, 120.0)],
+            [_trade("XAUUSDT", "2026-07-25T11:00:00", 100.0, 110.0, 0.4),
+             _trade("XAUUSDT", "2026-07-25T12:00:00", 100.0, 120.0, 0.6)],
+        )
+        success, discrepancies, stats = audit_track_record(db)
+        self.assertTrue(success, discrepancies)
+        self.assertEqual(stats["matching_trades"], 2)
 
 
 class TestAuditorMultiPair(unittest.TestCase):

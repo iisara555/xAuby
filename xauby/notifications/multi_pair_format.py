@@ -70,11 +70,14 @@ def format_multi_pnl(
     get_trades: Callable[[Optional[str], int], List[Dict[str, Any]]],
     *,
     periods: Tuple[int, ...] = (7, 30),
+    initial_balance: float = 1000.0,
 ) -> str:
     all_trades = get_trades(None, 5000)
     lines = [f"📈 *PnL* — `{len(symbols)}` pair(s)"]
     for days in periods:
-        portfolio = generate_report(all_trades, days, f"{days}-Day")
+        portfolio = generate_report(
+            all_trades, days, f"{days}-Day", initial_balance=initial_balance
+        )
         sign = "+" if portfolio.net_pnl >= 0 else ""
         lines.append(
             f"\n*{days}-Day Portfolio*\n"
@@ -83,7 +86,9 @@ def format_multi_pnl(
         )
         for sym in symbols:
             sym_trades = [t for t in all_trades if str(t.get("symbol", "")).upper() == sym]
-            report = generate_report(sym_trades, days, f"{days}-Day")
+            report = generate_report(
+                sym_trades, days, f"{days}-Day", initial_balance=initial_balance
+            )
             s = "+" if report.net_pnl >= 0 else ""
             lines.append(
                 f"  • `{sym}`: `{report.total_trades}` │ `{s}{report.net_pnl:.2f} USDT`"
@@ -117,9 +122,13 @@ def build_multi_daily_digest(
     get_trades: Callable[[Optional[str], int], List[Dict[str, Any]]],
     get_position_line: Callable[[str], str],
     get_regime: Callable[[str], Optional[Dict[str, Any]]],
+    *,
+    initial_balance: float = 1000.0,
 ) -> str:
     all_trades = get_trades(None, 5000)
-    portfolio = generate_report(all_trades, 1, "24h")
+    portfolio = generate_report(
+        all_trades, 1, "24h", initial_balance=initial_balance
+    )
     sign = "+" if portfolio.net_pnl >= 0 else ""
     lines = [
         f"📅 *Daily Digest* — `{len(symbols)}` pair(s)",
@@ -133,7 +142,9 @@ def build_multi_daily_digest(
     ]
     for sym in symbols:
         sym_trades = [t for t in all_trades if str(t.get("symbol", "")).upper() == sym]
-        day = generate_report(sym_trades, 1, "24h")
+        day = generate_report(
+            sym_trades, 1, "24h", initial_balance=initial_balance
+        )
         ds = "+" if day.net_pnl >= 0 else ""
         pos = get_position_line(sym)
         lines.append(
@@ -148,15 +159,25 @@ def build_multi_weekly_review(
     get_trades: Callable[[Optional[str], int], List[Dict[str, Any]]],
     get_regime: Callable[[str], Optional[Dict[str, Any]]],
     period_days: int = 7,
+    *,
+    initial_balance: float = 1000.0,
 ) -> str:
     all_trades = get_trades(None, 5000)
     focus_regime = get_regime(symbols[0]) if symbols else None
     title = f"Weekly Review ({len(symbols)} pairs)"
-    body = build_period_report_message(all_trades, period_days, title, focus_regime)
+    body = build_period_report_message(
+        all_trades, period_days, title, focus_regime,
+        initial_balance=initial_balance,
+    )
     lines = [body, "", "*Per pair*"]
     for sym in symbols:
         sym_trades = [t for t in all_trades if str(t.get("symbol", "")).upper() == sym]
-        report = generate_report(sym_trades, period_days, f"{period_days}-Day")
+        report = generate_report(
+            sym_trades,
+            period_days,
+            f"{period_days}-Day",
+            initial_balance=initial_balance,
+        )
         sign = "+" if report.net_pnl >= 0 else ""
         lines.append(
             f"• `{sym}`: `{report.total_trades}` trades │ WR `{report.win_rate:.1f}%` │ "

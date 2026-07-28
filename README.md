@@ -472,7 +472,9 @@ xAuby/
 - [ ] `risk.drawdown_guard` threshold set for your risk tolerance.
 - [ ] `regime_router_live_confirmed: true` only after explicit per-pair sign-off.
 - [ ] `architecture.strategy_sandbox_strict: true` when running third-party strategy plugins.
-- [ ] `scripts/replay_validate.py <run_id> --symbol XAUUSDT` passes after restart.
+- [ ] `scripts/audit_release_readiness.py` reports `READY` for the tenant config.
+- [ ] `scripts/replay_validate.py <run_id> --symbol BTCUSDT --require-short`
+  checks at least one SHORT-side signal after restart (an empty replay fails).
 - [ ] Telegram `/status` and `/health` verified; `/pause` + `/resume` tested in simulation.
 - [ ] SaaS console: TOTP enabled, Trade PIN set, withdraw-off attestation honest.
 - [ ] Engine supervised by tmux/systemd, one instance per runtime root.
