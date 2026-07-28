@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from xauby.saas.app import withdrawal_permission_verified  # noqa: E402
 from xauby.saas.withdraw_check import SUPPORTED, check_withdraw_disabled  # noqa: E402
 
 
@@ -133,6 +134,25 @@ class TestEveryFailurePathIsUnknown(unittest.TestCase):
 
 
 class TestApiKeepsTheClaimApartFromTheCheck(unittest.TestCase):
+    def test_live_gate_requires_both_checked_and_disabled(self):
+        safe = {
+            "capabilities": {
+                "withdraw_permission_checked": True,
+                "withdraw_disabled_verified": True,
+            }
+        }
+        self.assertTrue(withdrawal_permission_verified(safe))
+        for capabilities in (
+            {},
+            {"withdraw_permission_checked": False, "withdraw_disabled_verified": True},
+            {"withdraw_permission_checked": True, "withdraw_disabled_verified": False},
+            {"withdraw_permission_checked": True, "withdraw_disabled_verified": None},
+        ):
+            with self.subTest(capabilities=capabilities):
+                self.assertFalse(
+                    withdrawal_permission_verified({"capabilities": capabilities})
+                )
+
     def test_the_endpoint_no_longer_asserts_an_unconditional_pass(self):
         import inspect
 

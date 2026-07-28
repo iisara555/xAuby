@@ -262,6 +262,10 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200, saved.text)
         self.store.set_exchange_connection(
             tenant["id"], "okx", "1234", target_id="okx-swap", status="tested",
+            capabilities={
+                "withdraw_permission_checked": True,
+                "withdraw_disabled_verified": True,
+            },
         )
         response = self.client.post("/api/v1/live/request", headers=self.headers)
         self.assertEqual(response.status_code, 200, response.text)
