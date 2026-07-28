@@ -83,6 +83,35 @@ class TestMultiPairReplayPairing(unittest.TestCase):
         self.assertIn("order_filled_without_submit:BUY@seq=2", report.integrity_issues)
         self.assertIn("position_opened_without_precursor:seq=3", report.integrity_issues)
 
+    def test_legacy_same_tick_stop_and_reverse_is_a_valid_open_precursor(self):
+        events = [
+            {"run_id": "r", "seq": 1, "event_type": "position_closed",
+             "symbol": "XAUUSDT", "tick_id": "reverse-1",
+             "payload": {"position_side": "LONG"}},
+            {"run_id": "r", "seq": 2, "event_type": "position_opened",
+             "symbol": "XAUUSDT", "tick_id": "reverse-1",
+             "payload": {"position_side": "SHORT"}},
+        ]
+
+        report = audit_event_coverage(events, run_id="r")
+
+        self.assertTrue(report.integrity_ok, report.integrity_issues)
+
+    def test_unrelated_close_does_not_hide_an_open_without_order_evidence(self):
+        events = [
+            {"run_id": "r", "seq": 1, "event_type": "position_closed",
+             "symbol": "XAUUSDT", "tick_id": "another-tick",
+             "payload": {"position_side": "LONG"}},
+            {"run_id": "r", "seq": 2, "event_type": "position_opened",
+             "symbol": "XAUUSDT", "tick_id": "open-tick",
+             "payload": {"position_side": "SHORT"}},
+        ]
+
+        report = audit_event_coverage(events, run_id="r")
+
+        self.assertFalse(report.integrity_ok)
+        self.assertIn("position_opened_without_precursor:seq=2", report.integrity_issues)
+
     def test_filters_symbol_pairs_tick_by_symbol_and_restores_short(self):
         run = "run-1"
         shared = "legacy-shared-tick-id"

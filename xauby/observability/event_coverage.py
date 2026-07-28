@@ -149,12 +149,45 @@ def audit_event_coverage(events: List[Dict[str, Any]], run_id: str = "") -> Even
         for ev in events
         if _etype(ev) in (EventType.RISK_CHECK_PASSED, EventType.ORDER_FILLED)
     }
+    legacy_reversal_closes = [
+        (
+            int(ev.get("seq") or 0),
+            _symbol(ev),
+            str(ev.get("tick_id") or ""),
+            str(_payload(ev).get("position_side") or "").upper(),
+        )
+        for ev in events
+        if _etype(ev) == EventType.POSITION_CLOSED
+    ]
     for ev in events:
         if _etype(ev) != EventType.POSITION_OPENED:
             continue
         seq = int(ev.get("seq") or 0)
         symbol = _symbol(ev)
-        if not any(r < seq and sym == symbol for r, sym in risk_or_fill_seqs):
+        tick_id = str(ev.get("tick_id") or "")
+        opened_side = str(_payload(ev).get("position_side") or "").upper()
+        has_order_precursor = any(
+            precursor_seq < seq and precursor_symbol == symbol
+            for precursor_seq, precursor_symbol in risk_or_fill_seqs
+        )
+        # Runs produced before short-entry order telemetry existed only carry
+        # the atomic stop-and-reverse lifecycle. Accept that legacy evidence
+        # when the opposite-side close is on the same tick and immediately
+        # precedes the open; new runs emit the stricter risk/order chain above.
+        has_legacy_reversal_precursor = bool(
+            tick_id
+            and opened_side in {"LONG", "SHORT"}
+            and any(
+                0 < seq - close_seq <= 3
+                and close_symbol == symbol
+                and close_tick_id == tick_id
+                and close_side in {"LONG", "SHORT"}
+                and close_side != opened_side
+                for close_seq, close_symbol, close_tick_id, close_side
+                in legacy_reversal_closes
+            )
+        )
+        if not has_order_precursor and not has_legacy_reversal_precursor:
             report.integrity_issues.append(f"position_opened_without_precursor:seq={seq}")
 
     # order_filled should have order_submitted with same side earlier
