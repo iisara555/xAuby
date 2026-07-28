@@ -50,7 +50,6 @@ def default_runtime_symbol() -> str:
         return os.environ.get("XAUBY_DEFAULT_SYMBOL", "XAUTUSDT")
 
 # ── Tmux helpers for Textual TUI ──
-import re
 
 def _yaml_defines_key(line: str, key: str) -> bool:
     """True when line defines a YAML key (not a comment mentioning the key)."""

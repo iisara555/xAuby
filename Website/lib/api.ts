@@ -52,6 +52,20 @@ export type ExchangeConnection = {
   key_last4: string;
   status: string;
   tested_at?: number | null;
+  capabilities?: {
+    /**
+     * What the EXCHANGE said about this key's withdrawal permission, not what
+     * the user ticked during onboarding. Tri-state on purpose:
+     *   true  - the venue confirms withdrawals are disabled
+     *   false - the venue reports withdrawals are ENABLED (a finding)
+     *   null / undefined - could not be determined; show as unverified, never
+     *                      as a pass
+     */
+    withdraw_disabled_verified?: boolean | null;
+    withdraw_permission_checked?: boolean;
+    withdraw_permission_detail?: string;
+    [key: string]: unknown;
+  } | null;
 };
 
 export type TelegramConnection = {

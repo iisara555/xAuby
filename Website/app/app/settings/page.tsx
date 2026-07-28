@@ -174,6 +174,19 @@ export default function SettingsPage() {
   const exchangeTestFresh = bot?.exchange_connection?.status === "tested"
     && (nowSeconds === null || (bot.exchange_connection.tested_at != null && nowSeconds - bot.exchange_connection.tested_at < 1800));
   const exchangeTestExpired = bot?.exchange_connection?.status === "tested" && nowSeconds !== null && !exchangeTestFresh;
+  // What the venue said about the key, kept distinct from the checkbox the user
+  // ticked when connecting. Unknown is shown as unknown: the previous code
+  // stored an unconditional "attested: true" beside probed capabilities, so a
+  // self-declaration read like a verified fact.
+  const withdrawChecked = bot?.exchange_connection?.capabilities?.withdraw_permission_checked;
+  const withdrawDisabled = bot?.exchange_connection?.capabilities?.withdraw_disabled_verified;
+  const withdrawVerdict = !bot?.exchange_connection
+    ? null
+    : withdrawChecked && withdrawDisabled === true
+      ? { tone: "form-note", text: "Withdrawals confirmed disabled on this key by the exchange." }
+      : withdrawChecked && withdrawDisabled === false
+        ? { tone: "form-error", text: "The exchange reports withdrawals are ENABLED on this key. Disable them on the exchange and test again." }
+        : { tone: "form-note", text: "Withdrawal permission not verified with the exchange — your confirmation is on file, but it has not been checked." };
 
   useEffect(() => {
     if (seeded || !catalog) return;
@@ -473,6 +486,7 @@ export default function SettingsPage() {
           <div className="live-zone">
             <div><ShieldAlert size={21} /><span><strong>Live execution</strong><small>Requires a test from the last 30 minutes, TOTP and your Trade PIN. {cdcPure ? "CDC Pure exits by signal/ROI; no exchange stop-loss." : "Stop-loss protection is required."}</small></span></div>
             {exchangeTestExpired && <p className="form-error" role="status">The last exchange test expired. Tap “Test connection” before activating Live.</p>}
+            {withdrawVerdict && <p className={withdrawVerdict.tone} role="status">{withdrawVerdict.text}</p>}
             {!savedCertified && savedProfile && <p className="form-error" role="status">All saved pairs are SIM-only. Live activation needs at least one live-certified preset.</p>}
             {bot?.tenant.live_status === "active" ? <button className="button-danger" onClick={deactivateLive} disabled={busy}>Stop Live</button> : <button className="button-secondary" onClick={openLiveDialog} disabled={busy || !exchangeTestFresh || !savedCertified}>Review & activate</button>}
           </div>

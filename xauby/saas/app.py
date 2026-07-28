@@ -32,7 +32,7 @@ from xauby.saas.security import (
 )
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
-from xauby.saas.supervisor import TenantSupervisor
+from xauby.saas.supervisor import TenantSupervisor, attach_tenant_loaders
 from xauby.runtime.trading_config import bounded_position_fraction
 from xauby.utils.atomic_io import atomic_bytes_write
 
@@ -231,31 +231,10 @@ def create_app(
         fallback_secret=settings.session_secret if settings.dev_login_enabled else "",
     )
 
-    def load_credentials(slug: str) -> tuple[str, dict[str, str]] | None:
-        tenant = store.tenant_by_slug(slug)
-        if not tenant:
-            return None
-        encrypted = store.encrypted_credentials(tenant["id"])
-        if not encrypted:
-            return None
-        target_id, envelope = encrypted
-        return target_id, cipher.decrypt(tenant["id"], target_id, envelope)
-
-    def load_telegram(slug: str) -> dict[str, str] | None:
-        tenant = store.tenant_by_slug(slug)
-        if not tenant:
-            return None
-        row = store.telegram_connection(tenant["id"])
-        if not row or not row.get("enabled"):
-            return None
-        envelope = store.encrypted_telegram_token(tenant["id"])
-        if not envelope:
-            return None
-        token = cipher.decrypt(tenant["id"], "telegram", envelope)["bot_token"]
-        return {"bot_token": token, "chat_id": str(row["chat_id"])}
-
-    supervisor.set_credential_loader(load_credentials)
-    supervisor.set_telegram_loader(load_telegram)
+    # Both loaders come from one definition shared with the systemd
+    # ExecStartPre helper; two copies is how the helper ended up wiring
+    # only half of them.
+    attach_tenant_loaders(supervisor, store, cipher)
     mailer = mailer or Mailer(settings)
     runtime = runtime or RuntimeGateway(settings, supervisor)
     login_throttle = AttemptThrottle(max_attempts=8, window_seconds=300, lockout_seconds=900)
@@ -682,7 +661,12 @@ def create_app(
             supervisor.provision(tenant["slug"])
         store.set_account_status(user["id"], "active", user["id"])
         token, csrf = store.create_session(user["id"], mfa_verified=True)
-        response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax")
+        # Through the shared helper like every other login path. Setting the
+        # cookie inline here meant it carried neither `secure` nor `path`, so if
+        # dev_login_enabled were ever true in production this route would issue
+        # a non-Secure, MFA-bypassing session. The 404 above is the real guard;
+        # this removes the second, weaker copy behind it.
+        set_session_cookie(response, token)
         return {"ok": True, "csrf_token": csrf}
 
     @app.post("/auth/logout")
@@ -1111,7 +1095,18 @@ def create_app(
             )
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         capabilities = dict(result.get("capabilities") or {})
-        capabilities["withdraw_disabled_attested"] = True
+        # The venue's answer, kept apart from the user's claim. This used to set
+        # withdraw_disabled_attested = True unconditionally and store it beside
+        # probed capabilities, so a checkbox from onboarding was displayed as a
+        # verified property of the key. None means "could not determine" and is
+        # rendered as unverified — never as a pass.
+        capabilities["withdraw_disabled_verified"] = result.get("withdraw_disabled_verified")
+        capabilities["withdraw_permission_checked"] = bool(
+            result.get("withdraw_permission_checked")
+        )
+        capabilities["withdraw_permission_detail"] = str(
+            result.get("withdraw_permission_detail") or ""
+        )
         updated = store.set_exchange_connection(
             tenant["id"], tenant["exchange_id"], connection["key_last4"],
             target_id=connection["target_id"], status="tested", capabilities=capabilities,

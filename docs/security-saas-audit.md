@@ -1,5 +1,17 @@
 # xAuby Security Audit For SaaS Readiness
 
+> **SUPERSEDED 2026-07-28 — see
+> [`security-saas-audit-2026-07-28.md`](security-saas-audit-2026-07-28.md).**
+>
+> This pass audited `xauby/webui/server.py`, **which has been deleted**. Its
+> findings, its attack tests and every line of its "Minimum SaaS Deployment
+> Baseline" describe a stdlib WebUI, `XAUBY_WEBUI_PASSWORD` and
+> `XAUBY_WEBUI_ALLOW_UNAUTH_REMOTE` — none of which exist any more, so none of
+> it is actionable as written. It is kept for history, not for guidance.
+>
+> The **residual risk** list below is the exception: it was the right checklist
+> and is carried forward, item by item with current status, into the new audit.
+
 Date: 2026-07-09 (updated 2026-07-10: branded sign-in / session cookies)
 
 ## Scope

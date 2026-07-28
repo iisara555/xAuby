@@ -1,0 +1,85 @@
+name: Dependency Audit
+
+# Roadmap P2.3. AGENTS.md lets an agent merge its own PR once CI is green, and
+# `main` is what the live trading engine pulls — so CI is the only gate between
+# an agent's commit and real money. It had no dependency scanning at all.
+#
+# The schedule matters as much as the pull_request trigger: a CVE disclosed
+# against a dependency we already ship does not arrive with a push, so a
+# push-only audit would never see it.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Mondays 06:00 UTC. Weekly is enough for a two-tenant deployment and keeps
+    # the noise low enough that someone still reads the failures.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install pip-audit
+        run: pip install pip-audit
+      # Blocking, with one named exception rather than a blanket
+      # continue-on-error. A new advisory against anything we ship fails this
+      # job; the one finding we cannot act on is listed here with its reason, so
+      # it is documented rather than hidden.
+      #
+      # PYSEC-2026-3447 (setuptools <= 80, fixed in 83.0.0) cannot be resolved
+      # today: pandas-ta declares `setuptools (<=80)`, so its own cap pins the
+      # vulnerable version in place. Removing the ignore requires either a
+      # pandas-ta release that lifts the cap, patching the fork we install from
+      # (requirements.txt points at MerlinR/Pandas-ta-fork), or replacing the
+      # library. Revisit when any of those happens.
+      - name: pip-audit
+        run: |
+          pip-audit -r requirements.txt \
+            --ignore-vuln PYSEC-2026-3447 \
+            --progress-spinner off
+
+  node-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Website/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: Website
+        run: npm ci
+      # Blocks on critical. Two `high` findings are outstanding and cannot be
+      # fixed forward: sharp < 0.35.0 inherits four libvips CVEs, and the only
+      # remediation npm offers is next@14.2.35 — a semver-major *downgrade* from
+      # the 16.2.x line this site is built and deployed on. The vulnerable range
+      # covers every 16.x release, so there is no patch to take.
+      #
+      # Partial mitigation, not a clean bill of health: the single next/image
+      # usage (components/profile-avatar.tsx) passes `unoptimized`, so it does
+      # not route images through the optimizer that reaches libvips. That has
+      # not been verified for every route.
+      #
+      # Raise this back to `high` the moment Next ships a release with a fixed
+      # sharp.
+      - name: npm audit
+        working-directory: Website
+        run: npm audit --omit=dev --audit-level=critical
+      - name: npm audit (full report, including the known high findings)
+        working-directory: Website
+        continue-on-error: true
+        run: npm audit --omit=dev

@@ -779,7 +779,7 @@ Trade PIN → live gate พร้อมเทสต์ ~1,900 บรรทัด
 กับ tenant/target, plaintext อยู่บน tmpfs เท่านั้น เหลือบั๊ก production 2 ตัวกับ
 ปัญหาการเก็บกุญแจ 1 เรื่องที่ขวางอยู่
 
-**P2.1 — แก้ `deploy/xauby-materialize-credentials`** (บล็อกอยู่ 2 เรื่องอิสระกัน)
+**P2.1 — แก้ `deploy/xauby-materialize-credentials`** ✅ **ทำแล้ว 2026-07-28**
 - ไม่เคยเรียก `set_telegram_loader` ทำให้ `_telegram_env_lines`
   (`xauby/saas/supervisor.py:561`) เขียน `TELEGRAM_ENABLED="false"` ทุกครั้งที่
   systemd สั่ง start จะปิด per-tenant alert เงียบ ๆ ล้างงานของ `de4f69a` ทิ้งทุกครั้ง
@@ -787,6 +787,26 @@ Trade PIN → live gate พร้อมเทสต์ ~1,900 บรรทัด
 - `materialize_credentials` return `None` เมื่อ tenant ยังไม่มี exchange key แล้วไป
   ชน `raise SystemExit(...)` ใน `ExecStartPre` → engine ของ tenant SIM-only
   สตาร์ตไม่ขึ้น ซึ่งคือสถานะเริ่มต้นของผู้ใช้ใหม่ทุกคนพอดี
+
+**สองข้อนี้ไม่ได้อิสระกัน — ข้อสองเกิดเพราะข้อแรก** `materialize_credentials`
+ถูกแก้ให้ exchange block เป็น optional ไปแล้ว (`if loaded is None and
+len(telegram_lines) == 1`) แต่เพราะ script ไม่เคย wire telegram loader
+`telegram_lines` จึง**ยาว 1 เสมอ**ในเส้นทางนั้น → เงื่อนไขเป็นจริงตลอด → คืน
+`None` → `SystemExit` แก้ข้อสองอย่างเดียวจึงไม่มีผลเลย
+
+**สิ่งที่ทำ:**
+- `attach_tenant_loaders()` ใน `supervisor.py` เป็นที่เดียวที่นิยาม loader ทั้งคู่
+  ทั้ง `saas/app.py` และ script เรียกตัวนี้ — การมีสองสำเนาคือสาเหตุที่มันเพี้ยน
+  ตั้งแต่แรก
+- script ไม่ `SystemExit` เมื่อไม่มีอะไรให้ materialize แล้ว (exit 0 พร้อมข้อความ)
+  ปลอดภัยเพราะ unit ประกาศ `EnvironmentFile=-` (นำหน้าด้วย `-` = ไฟล์หายได้)
+  engine จึง fallback ไป simulation ซึ่งถูกต้องสำหรับ tenant ที่ยังไม่ต่ออะไรเลย
+- **เจอบั๊กที่สามในฟังก์ชันเดียวกัน:** ตอนคืน `None` มัน**ไม่ลบไฟล์เดิม** →
+  tenant ที่เพิ่งถอน key ออก พอ `restart()` เรียก `materialize_credentials`
+  มันคืน `None` โดยปล่อย plaintext เดิมค้างบน tmpfs → **engine กลับมาด้วย
+  credential ที่เพิ่งถูกเพิกถอน** ตอนนี้เรียก `clear_credentials()` ก่อนคืน `None`
+- 15 เทสต์ใน `tests/test_materialize_credentials.py` — เส้นทาง ExecStartPre นี้
+  **ไม่เคยมีเทสต์เลย** ซึ่งคือเหตุผลที่ทั้งสามข้อมองไม่เห็น
 
 **P2.2 — การเก็บกุญแจและ backup นอกเครื่อง**
 master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส และ backup
@@ -796,7 +816,7 @@ master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส แ�
 rotation เลย เลือกเอาว่าจะทำ rotation จริง หรือลบคอลัมน์ทิ้งเพื่อไม่ให้สื่อว่ามี
 ความสามารถที่ไม่มี
 
-**P2.3 — สแกน dependency/CVE และรัน linter ที่ตั้งค่าไว้แล้ว**
+**P2.3 — สแกน dependency/CVE และรัน linter ที่ตั้งค่าไว้แล้ว** ✅ **ทำแล้ว 2026-07-28**
 CI ไม่มี Dependabot, CodeQL, `pip-audit`/`npm audit`, SBOM หรือ scheduled run
 `docs/security-saas-audit.md` ระบุข้อนี้เป็น residual risk ที่เปิดอยู่ตรง ๆ
 ส่วน `ruff` ตั้งค่าไว้ใน `pyproject.toml` (`select = ["E","F","I","UP","B"]`)
@@ -804,7 +824,43 @@ CI ไม่มี Dependabot, CodeQL, `pip-audit`/`npm audit`, SBOM หรื�
 CI เขียว และ `main` คือสิ่งที่ engine เงินจริง pull ไปใช้ — CI จึงเป็นด่านเดียวระหว่าง
 commit ของ agent กับเงินจริง มันควรจะเชื่อถือได้สมกับหน้าที่นั้น
 
-**P2.4 — Audit ความปลอดภัยใหม่บนสถาปัตยกรรมปัจจุบัน**
+**ruff:** ชุดเต็มใน `pyproject.toml` ให้ **3,832 finding** — เอามาเป็น gate ทันที
+ไม่ได้ และ gate ที่ไม่มีใครทำให้เขียวได้คือ gate ที่ไม่มีใครรักษา จึงแยกเป็น
+สองชั้น: **ชั้น blocking = กฎที่จับบั๊กจริง** (`E9,F811,F821,F822,F823,F632,
+F702,F706,F707,F502,F601,B006,B008,B012,B017,B018,B023,B026,B904`) ผ่านสะอาดแล้ว
+· **ชั้น report** รันชุดเต็มแบบไม่บล็อก เพื่อให้หนี้มีตัวเลข ไม่ใช่มองไม่เห็น
+**ไม่ได้ลดค่า `select` ใน `pyproject.toml`** (มีเทสต์ล็อกไว้)
+
+**gate จับของได้ทันทีที่เปิด:** `F811` เจอการนิยามซ้ำที่ทับของเดิมเงียบ ๆ 2 จุด
+— `import re` ซ้ำใน `launcher/config_io.py` และ **`draw_hermes_banner` ใน
+`ui/menu.py` ที่มีสองนิยาม ตัวแรก 61 บรรทัดเป็น dead code** ที่ตัวหลังบังไว้
+ส่วน `F821` (undefined name = NameError ตอนรัน) **สะอาดอยู่แล้ว** — ไม่มีระเบิดเวลา
+ที่เหลือ ~2,900 จาก 3,832 เป็นเรื่อง import order กับ PEP-585 annotation ล้วน ๆ
+
+**dependency scan:** `.github/workflows/security.yml` รัน `pip-audit` + `npm audit`
+ทั้งบน PR และ **ตามตารางทุกสัปดาห์** — CVE ที่ประกาศทีหลังไม่ได้มาพร้อม push
+ถ้าสแกนแต่ตอน push จะไม่มีวันเห็น · เพิ่ม `.github/dependabot.yml` ครอบ pip / npm /
+**github-actions** (action ที่ถูกยึดรันด้วยสิทธิ์ที่ workflow ให้ บนด่านสุดท้าย
+ก่อนถึงเงินจริง)
+
+**สองช่องที่ปิดไม่ได้ — บันทึกไว้แบบระบุชื่อ ไม่ใช่ปิดตาทั้งด่าน:**
+- `PYSEC-2026-3447` (setuptools ≤80, แก้ที่ 83.0.0) — **`pandas-ta` ประกาศ
+  `setuptools (<=80)` เอง** จึงตรึงเวอร์ชันที่มีช่องโหว่ไว้ ยกเพดานไม่ได้
+  ต้องรอ pandas-ta ปล่อยรุ่นที่ยกเพดาน / patch fork ที่เราติดตั้ง
+  (`MerlinR/Pandas-ta-fork`) / หรือเปลี่ยนไลบรารี → `--ignore-vuln` พร้อมเหตุผล
+- npm 2 high: `sharp <0.35.0` สืบทอด CVE ของ libvips 4 ตัว — **ทางแก้เดียวที่ npm
+  เสนอคือ `next@14.2.35` ซึ่งเป็นการ *ถอย* semver-major** จากสาย 16.2.x ที่เว็บ
+  รันอยู่ และช่วงที่มีช่องโหว่ครอบ **ทุก** รุ่น 16.x จึงไม่มี patch ให้ take
+  → gate ที่ `--audit-level=critical` (high สองตัวนี้ผ่าน, critical ใหม่บล็อก)
+  บรรเทาบางส่วน: `next/image` ถูกใช้ที่เดียว (`profile-avatar.tsx`) และส่ง
+  `unoptimized` จึงไม่วิ่งผ่าน optimizer ที่ไปถึง libvips — **ยังไม่ได้ตรวจครบทุก route**
+- **`pandas-ta` audit ไม่ได้เลย** เพราะติดตั้งจาก git ไม่ใช่ PyPI (pip-audit skip)
+  คือ direct dependency ที่ไม่มีใครสแกนได้
+
+**ยังเหลือ:** CodeQL กับ SBOM ยังไม่ได้ทำ · ต้องตัดสินใจเรื่อง pandas-ta และ
+เรื่องยอมรับความเสี่ยง sharp/libvips
+
+**P2.4 — Audit ความปลอดภัยใหม่บนสถาปัตยกรรมปัจจุบัน** ✅ **ทำแล้ว 2026-07-28**
 `docs/security-saas-audit.md` (2026-07-09) audit `xauby/webui/server.py` ซึ่ง
 **ถูกลบไปแล้ว** ทั้งข้อค้นพบและ "Minimum SaaS Deployment Baseline" ทั้งหมดในนั้น
 อธิบายคอมโพเนนต์ที่ไม่มีอยู่แล้ว control plane ปัจจุบันยังไม่เคยถูก audit เทียบเท่า
@@ -812,6 +868,34 @@ commit ของ agent กับเงินจริง มันควรจ�
 เช็กลิสต์ที่ถูกต้องอยู่ อีกเรื่อง: คำรับรอง "ปิดสิทธิ์ถอนเงินแล้ว" ที่โชว์ให้ลูกค้าเห็น
 ถูกเขียนแบบไม่มีเงื่อนไข (`saas/app.py:1114`) — เป็นการที่ผู้ใช้กรอกเอง ไม่เคยถูก
 ตรวจกับสิทธิ์จริงบน exchange
+
+- **audit ใหม่:** `docs/security-saas-audit-2026-07-28.md` ครอบ `xauby/saas/`
+  (54 route), `deploy/` และเส้นทาง credential จาก browser ถึง engine process ·
+  ฉบับเก่าติดป้าย SUPERSEDED แล้ว แต่**เก็บไว้** เพราะ residual-risk list ของมัน
+  ยังเป็นเช็กลิสต์ที่ถูก — ยกมาทีละข้อพร้อมสถานะปัจจุบันในฉบับใหม่
+- **`withdraw_disabled_attested` แก้แล้ว** — `xauby/saas/withdraw_check.py`
+  **ถามที่ venue จริง**: OKX `GET /api/v5/account/config` (`perm`) และ Binance
+  `GET /sapi/v1/account/apiRestrictions` (`enableWithdrawals`) ผลเป็น **tri-state**
+  และ **ทุกเส้นทางที่ล้มเหลวคืน unknown ไม่มีทางคืน pass** (venue ไม่รองรับ /
+  network error / key ไม่มีสิทธิ์อ่าน restriction ของตัวเอง / response รูปแบบ
+  ไม่รู้จัก) หน้า workspace แสดงคำตอบของ venue และบอกว่า "ยังไม่ได้ตรวจสอบ"
+  เมื่อไม่มีคำตอบ · **ยังไม่ได้ทดสอบกับบัญชี exchange จริง** — 17 เทสต์ครอบ
+  ตรรกะกับ failure mode ด้วย response ปลอม การกด Test connection ครั้งแรกหลัง
+  deploy คือตัวยืนยันรูปแบบ endpoint
+- **สิ่งที่พบว่า *ถูกแก้ไปแล้ว*:** F-5 (admin read endpoint ใช้ authz แบบ inline)
+  ตอนนี้ทั้ง `admin_read_user` และ `admin_user` ผ่าน `require_admin` ตัวเดียวกัน
+  ซึ่งบังคับ `platform_admin` + TOTP ที่ verify แล้ว — รายงานเก่าจึงล้าสมัยตรงนี้
+- **เจอเพิ่ม:** `/auth/dev-login` ตั้ง session cookie เองแบบ inline ไม่ผ่าน
+  `set_session_cookie` จึงไม่มีทั้ง `secure` และ `path` และสร้าง session ด้วย
+  `mfa_verified=True` — มี 404 gate จาก `dev_login_enabled` คุมอยู่ จึงไม่
+  exploit ได้ในโปรดักชัน แต่การมีสำเนาที่อ่อนกว่าซ่อนอยู่หลัง flag เดียวคือรูปทรง
+  ของอุบัติเหตุในอนาคต แก้ให้เรียก helper เดียวกันแล้ว
+- **ยังเปิดอยู่ (บันทึกในเอกสาร):** `key_version` มีคอลัมน์แต่ไม่มีโค้ด rotation ·
+  master key + DB + backup อยู่เครื่องเดียวกัน · `pandas-ta` audit ไม่ได้ ·
+  sharp/libvips ไม่มีทางแก้ไปข้างหน้า · ยังไม่มี CodeQL/SBOM
+- **สิ่งที่ audit นี้ *ไม่* ครอบ** (เขียนไว้ในเอกสารเพื่อไม่ให้ช่องว่างถูกอ่านเป็น
+  ผลสะอาด): ไม่ได้ทำ penetration test · ไม่ได้ตรวจบนเครื่องจริง (อ่านจาก `deploy/`
+  ไม่ได้ไปดู VPS) · ยังไม่มี threat model ที่เป็นทางการ
 
 **P2.5 — รับ design partner ฟรี 2 ราย** ผ่าน invite flow ที่มีอยู่ แบบ SIM-only
 capacity ตั้ง hardcode ไว้ (`max_users=3`, `max_active_engines=2` ใน
