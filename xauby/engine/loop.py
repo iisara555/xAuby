@@ -1154,7 +1154,12 @@ class LoopMixin:
         snap["equity_breakdown"] = equity_breakdown
         snap["total_equity_usdt"] = portfolio_total
         snap["metrics_context"] = {
-            "initial_balance": float(self.initial_balance),
+            # Minimal/legacy engine adapters may not expose the attribute yet;
+            # the production engine always does. Keep state export compatible
+            # without falling back when an explicit runtime value exists.
+            "initial_balance": float(
+                getattr(self, "initial_balance", 1000.0) or 1000.0
+            ),
         }
         try:
             closed = self.db.get_closed_trades(sym, limit=1)
