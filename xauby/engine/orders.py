@@ -308,6 +308,8 @@ class OrderMixin:
         )
         min_order = float(eff_cfg.portfolio.get("min_order_amount", 10.0) or 10.0)
         disable_sl = bool(eff_cfg.strategy.get("disable_stop_loss", False))
+        risk_pct = 0.0
+        sl_distance = 0.0
         if disable_sl:
             # CDC-pure: no stop loss, size by position_pct of equity so the SHORT
             # side mirrors the LONG side of the same strategy (symmetric SAR).
@@ -321,16 +323,20 @@ class OrderMixin:
             stop_loss = 0.0
         else:
             risk_pct = float(eff_cfg.portfolio.get("risk_pct", 0.03) or 0.03)
-            distance = float(signal.stop_loss_distance or 0.0)
-            if distance <= 0:
-                distance = ticker_price * float((self.config.get("risk") or {}).get("stop_loss_pct", 2.0)) / 100.0
-            if distance <= 0:
+            sl_distance = float(signal.stop_loss_distance or 0.0)
+            if sl_distance <= 0:
+                sl_distance = (
+                    ticker_price
+                    * float((self.config.get("risk") or {}).get("stop_loss_pct", 2.0))
+                    / 100.0
+                )
+            if sl_distance <= 0:
                 logger.warning("SHORT blocked for %s: invalid SL distance", sym)
                 return False
-            notional = (equity * risk_pct) / distance * ticker_price
+            notional = (equity * risk_pct) / sl_distance * ticker_price
             max_pos_pct = float(eff_cfg.portfolio.get("max_position_per_trade_pct", 28.0)) / 100.0
             notional = min(notional, equity * max_pos_pct * leverage)
-            stop_loss = float(signal.stop_loss_price or (ticker_price + distance))
+            stop_loss = float(signal.stop_loss_price or (ticker_price + sl_distance))
         if notional < min_order:
             logger.warning("SHORT blocked for %s: notional %.2f below %.2f", sym, notional, min_order)
             return False
@@ -367,12 +373,52 @@ class OrderMixin:
                             reverse_entry=reverse_entry,
                         )
                         return False
+            self._emit_event(
+                EventType.RISK_CHECK_PASSED,
+                symbol=sym,
+                equity=round(equity, 2),
+                qty=round(qty, 6),
+                notional=round(notional, 2),
+                sl_distance=round(sl_distance, 4),
+                risk_pct=risk_pct,
+                position_side="SHORT",
+                reverse_entry=reverse_entry,
+            )
+            self._emit_event(
+                EventType.ORDER_SUBMITTED,
+                symbol=sym,
+                side="SELL",
+                position_side="SHORT",
+                qty=round(qty, 6),
+                price=round(ticker_price, 2),
+                notional=round(notional, 2),
+                order_type="MARKET" if live else "PAPER",
+                context="short_entry",
+                reverse_entry=reverse_entry,
+            )
             result = broker.execute_open(sym, "SHORT", qty, ticker_price, notional, leverage)
         except Exception as exc:
             logger.error("SHORT open failed for %s: %s", sym, exc, exc_info=True)
+            self._emit_event(
+                EventType.ORDER_FAILED,
+                symbol=sym,
+                side="SELL",
+                position_side="SHORT",
+                context="execute_open_short",
+                error=str(exc),
+            )
             return False
         if not result.success:
-            logger.error(result.error or "SHORT open failed")
+            error = result.error or "SHORT open failed"
+            logger.error(error)
+            self._emit_event(
+                EventType.ORDER_FAILED,
+                symbol=sym,
+                side="SELL",
+                position_side="SHORT",
+                context="execute_open_short",
+                error=error,
+            )
             return False
         fill_price = float(result.price or ticker_price)
         fill_qty = float(result.qty or qty)
@@ -382,6 +428,18 @@ class OrderMixin:
             side="SELL", ref_price=ticker_price, fill_price=fill_price,
             symbol=sym, kind="short entry",
         ) if live else 0.0
+        self._emit_event(
+            EventType.ORDER_FILLED,
+            symbol=sym,
+            side="SELL",
+            position_side="SHORT",
+            order_id=getattr(result, "order_id", ""),
+            qty=round(fill_qty, 6),
+            price=round(fill_price, 2),
+            status="FILLED",
+            context="short_entry",
+            reverse_entry=reverse_entry,
+        )
         now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         self.db.save_trade_state(
             symbol=sym, state="bought", entry_price=fill_price,

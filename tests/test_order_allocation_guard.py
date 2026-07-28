@@ -223,6 +223,21 @@ class TestOrderAllocationGuard(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(engine.client.balance_calls, 2)
         self.assertAlmostEqual(engine.broker.notional, 65.0)
+        event_names = [event for event, _payload in engine.events]
+        self.assertEqual(
+            [
+                event for event in event_names
+                if event in {
+                    "risk_check_passed", "order_submitted", "order_filled",
+                    "position_opened",
+                }
+            ],
+            ["risk_check_passed", "order_submitted", "order_filled", "position_opened"],
+        )
+        filled = next(payload for event, payload in engine.events if event == "order_filled")
+        self.assertEqual(filled["side"], "SELL")
+        self.assertEqual(filled["position_side"], "SHORT")
+        self.assertTrue(filled["reverse_entry"])
 
     def test_reverse_short_timeout_does_not_submit_partial_order(self):
         engine = _ShortEngine()
