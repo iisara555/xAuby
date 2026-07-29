@@ -63,22 +63,33 @@ strategy:
     XAUUSDT:
       strategy: cdc_action_zone
       ap_smoothing: 2
-      enable_short: true
+      enable_short: false
       allowed_sides:
         - long
-        - short
       short_live_enabled: false
       backtest_data_proxy: PAXGUSDT
       disable_stop_loss: true
-      position_pct: 1.0
+      position_pct: 0.95
+      use_d1_regime_filter: true
+      use_d1_regime_filter_long: true
+      use_d1_regime_filter_short: true
       require_fresh_zone: true
-      fresh_zone_window: 1
+      fresh_zone_window: 3
+      require_slow_slope: false
+      slow_slope_bars: 3
+      entry_thrust_min: 0.5
+      exit_on_bear_cross: false
       rsi_min: 0.0
       rsi_max: 100.0
       vol_min_ratio: 0.0
       sl_atr_mult: 2.0
       trailing_atr_mult: 1.8
       fixed_tp_pct: 0.0
+      breakeven_sl_enabled: false
+      minimal_roi:
+        "0": 8.0
+        "1440": 5.0
+        "4320": 3.0
 
 backtest:
   data_source: okx

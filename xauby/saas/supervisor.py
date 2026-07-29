@@ -488,6 +488,16 @@ class TenantSupervisor:
         for preset_id in profile["preset_ids"]:
             preset = preset_by_id(preset_id)
             execution_profile = dict(preset.get("execution_profile") or {})
+            strategy_name = str(preset["strategy"])
+            # The whitelist wins at runtime, but keeping both YAML strategy
+            # blocks aligned prevents profile saves, backtests, and fallback
+            # resolution from silently describing different configurations.
+            cfg.setdefault("strategy", {}).setdefault("config", {}).setdefault(
+                strategy_name, {}
+            ).update(execution_profile)
+            cfg.setdefault("strategies", {}).setdefault(
+                strategy_name, {}
+            ).update(execution_profile)
             cdc_pure = bool(preset.get("cdc_pure_certified"))
             params: dict[str, Any] = {
                 "disable_stop_loss": bool(execution_profile.get("disable_stop_loss", False)),
@@ -708,15 +718,28 @@ class TenantSupervisor:
             if bool(params.get("disable_stop_loss")) and not cdc_pure:
                 raise ValueError("live activation requires a stop loss")
             if cdc_pure:
-                # CDC ActionZone stop-and-reverse: long + short, D1 filter off
-                # (July 2026 PAXGUSDT study: full-cycle +105% vs +78% long-only,
-                # max DD 8.4% at 1x, net of fee/slippage/funding).
-                params["disable_stop_loss"] = True
-                params["position_pct"] = 0.95
-                params["enable_short"] = True
-                params["use_d1_regime_filter"] = False
-                if market == "swap":
-                    asset["allowed_sides"] = ["long", "short"]
+                # Re-apply the fingerprinted preset instead of hard-coding an
+                # old CDC shape here. The former long+short/D1-off override
+                # could silently undo a newly certified profile at the exact
+                # moment Live was enabled.
+                preset_id = str(asset.get("preset_id") or "")
+                preset = preset_by_id(preset_id)
+                if not preset.get("cdc_pure_certified"):
+                    raise ValueError("CDC Pure asset does not match its preset")
+                execution_profile = dict(preset.get("execution_profile") or {})
+                params.update(execution_profile)
+                strategy_name = str(preset["strategy"])
+                cfg.setdefault("strategy", {}).setdefault("config", {}).setdefault(
+                    strategy_name, {}
+                ).update(execution_profile)
+                cfg.setdefault("strategies", {}).setdefault(
+                    strategy_name, {}
+                ).update(execution_profile)
+                sides = [
+                    side for side in (preset.get("allowed_sides") or ["long"])
+                    if side in {"long", "short"}
+                ]
+                asset["allowed_sides"] = sides or ["long"]
             else:
                 params["disable_stop_loss"] = False
                 params["position_pct"] = min(float(params.get("position_pct", 0.1) or 0.1), 0.1)

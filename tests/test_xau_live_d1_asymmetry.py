@@ -1,13 +1,8 @@
-"""Pin the shipped XAU D1 asymmetry.
+"""Pin the shipped XAU long-only + D1 profile.
 
-XAU runs an asymmetric daily gate: SHORT entries require D1 confirmation, LONG
-entries do not. That combination was chosen from measurement
-(docs/research/xau_per_side_d1_test_2026-07-26.md) and is easy to invert by
-accident, because the whitelist expresses it as `use_d1_regime_filter: true`
-plus `use_d1_regime_filter_long: false` rather than naming the short side.
-
-These tests fail loudly if the sides swap, if the gate silently turns off, or if
-the engine stops loading the 1d frame the gate depends on.
+The 2026-07-29 certificate disables automated SHORT entries and requires D1
+confirmation for LONG entries. These tests fail loudly if shorts are re-enabled,
+the long gate turns off, or the engine stops loading the 1d frame it depends on.
 """
 from __future__ import annotations
 
@@ -46,21 +41,23 @@ def _effective_sides(cfg):
     return pick("use_d1_regime_filter_long"), pick("use_d1_regime_filter_short")
 
 
-class TestWhitelistAsymmetry(unittest.TestCase):
-    def test_shorts_gated_longs_free(self):
+class TestWhitelistLongOnlyD1(unittest.TestCase):
+    def test_long_entries_are_d1_gated(self):
         params = _xau_entry()["strategy_params"]
         long_gated, short_gated = _effective_sides(params)
-        self.assertFalse(long_gated, "XAU longs must NOT be D1-gated")
-        self.assertTrue(short_gated, "XAU shorts MUST be D1-gated")
+        self.assertTrue(long_gated, "XAU longs MUST be D1-gated")
+        # Kept explicit for fingerprint completeness even though shorts are off.
+        self.assertTrue(short_gated)
 
-    def test_shorts_are_enabled_at_all(self):
-        # A D1 gate on shorts is meaningless if shorts are off; that would make
-        # the config silently equivalent to plain long-only D1-off.
-        self.assertTrue(bool(_xau_entry()["strategy_params"].get("enable_short")))
+    def test_automated_short_entries_are_disabled(self):
+        entry = _xau_entry()
+        self.assertFalse(bool(entry["strategy_params"].get("enable_short")))
+        self.assertEqual(entry["allowed_sides"], ["long"])
+        self.assertFalse(entry["short_live_enabled"])
 
     def test_confirm_timeframe_present(self):
         # The gate reads the D1 zone; without a confirm timeframe there is no
-        # regime frame to read and every short would be blocked.
+        # regime frame to read and every long entry would be blocked.
         self.assertEqual(str(_xau_entry().get("confirm_timeframe")), "1d")
 
     def test_engine_will_load_the_regime_frame(self):
@@ -77,15 +74,16 @@ class TestWhitelistAsymmetry(unittest.TestCase):
 class TestResolvedConfigAgrees(unittest.TestCase):
     """bot_config.yaml and the whitelist must not disagree on this."""
 
-    def test_resolver_produces_the_asymmetry(self):
+    def test_resolver_produces_long_only_d1(self):
         cfg = load_bot_config(os.path.join(REPO_ROOT, "bot_config.yaml"))
         name = resolve_strategy_name("XAUUSDT", cfg, None)
         _merged, strat, _ptf, regime_tf, use_d1, _used = _prepare_backtest_config(
             "XAUUSDT", name, cfg, None
         )
         long_gated, short_gated = _effective_sides(strat)
-        self.assertFalse(long_gated)
+        self.assertTrue(long_gated)
         self.assertTrue(short_gated)
+        self.assertFalse(strat["enable_short"])
         self.assertEqual(regime_tf, "1d")
         self.assertTrue(use_d1)
 
@@ -95,7 +93,12 @@ class TestResolvedConfigAgrees(unittest.TestCase):
             "xauby_actionzone"
         ) or {}
         wl = _xau_entry()["strategy_params"]
-        for key in ("use_d1_regime_filter", "use_d1_regime_filter_long"):
+        for key in (
+            "enable_short",
+            "use_d1_regime_filter",
+            "use_d1_regime_filter_long",
+            "use_d1_regime_filter_short",
+        ):
             self.assertEqual(
                 block.get(key), wl.get(key),
                 f"{key} disagrees between bot_config.yaml and coin_whitelist.json; "

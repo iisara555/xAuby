@@ -61,7 +61,7 @@ class TestOkxXauMigrationTools(unittest.TestCase):
         self.assertGreater(decision.modes["long_short"].net_pct, decision.modes["long_only"].net_pct)
         self.assertTrue(decision.passed)
 
-    def test_okx_profile_loads_xau_as_paper_long_short(self):
+    def test_okx_profile_loads_xau_as_paper_long_only(self):
         with open(ROOT / "configs" / "okx_xau_paper.yaml", "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
 
@@ -71,7 +71,7 @@ class TestOkxXauMigrationTools(unittest.TestCase):
 
         self.assertIsNotNone(spec)
         self.assertEqual(spec.execution_mode, "sim")
-        self.assertEqual(spec.allowed_sides, ("long", "short"))
+        self.assertEqual(spec.allowed_sides, ("long",))
         self.assertEqual(spec.leverage, 1.0)
         self.assertFalse(spec.short_live_enabled)
 

@@ -4,13 +4,13 @@ English reference for operators and contributors. The root [README.md](../README
 
 ## Current baseline
 
-The committed runtime uses OKX USDT-settled perpetual swaps through CCXT. Both
-active pairs are live-enabled for long and short at 1x leverage; their
-RegimeRouter gates remain off.
+The committed runtime uses OKX USDT-settled perpetual swaps through CCXT. XAU is
+long-only with D1-gated entries; BTC remains long + short. Both run at 1x and
+their RegimeRouter gates remain off.
 
 | Symbol | Mode | Strategy | Sides | Router |
 |--------|------|----------|-------|--------|
-| `XAUUSDT` | `live` | `xauby_actionzone` | Long + short | Off |
+| `XAUUSDT` | `live` | `xauby_actionzone` | Long only, D1-gated | Off |
 | `BTCUSDT` | `live` | `supertrend_ema200` | Long + short | Off |
 
 ## Documents
@@ -24,7 +24,8 @@ RegimeRouter gates remain off.
 | [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
 | [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
 | [roadmap_2026H2.md](roadmap_2026H2.md) | CTO roadmap for H2 2026: phased plan, findings, exit criteria (Thai) |
-| [research/xau_4strategy_comparison_2026-07-13.md](research/xau_4strategy_comparison_2026-07-13.md) | **Certificate for the live XAU config** — 4-strategy comparison, WFA + bootstrap |
+| [research/xau_long_only_d1_certificate_2026-07-29.md](research/xau_long_only_d1_certificate_2026-07-29.md) | Certificate for the exact live XAU long-only + D1 preset |
+| [research/xau_okx_pf_grid_2026-07-29.md](research/xau_okx_pf_grid_2026-07-29.md) | 432-cell OKX XAU grid and balanced-candidate selection |
 | [research/btc_supertrend_ema200_certificate_2026-07.md](research/btc_supertrend_ema200_certificate_2026-07.md) | Certificate for the live BTC config |
 | [screenshots/](screenshots/) | TUI captures in SVG format |
 

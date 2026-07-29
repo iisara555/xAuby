@@ -91,7 +91,7 @@ class SaaSControlPlaneTests(unittest.TestCase):
         # real four-year measurement of THIS config, in the right neighbourhood.
         self.assertRegex(xau["score_label"], r"^PF \d+\.\d+$")
         self.assertAlmostEqual(float(xau["score_label"].removeprefix("PF ")),
-                               1.37, delta=0.15)
+                               2.18, delta=0.15)
         self.assertTrue(xau["duration"].startswith("4.0 years"), xau["duration"])
         # Two headlines have been wrong here; neither may return.
         # PF 2.00 came from the 2026-07-13 report, which measured long-only +
@@ -107,11 +107,14 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(xau["status"], "validated")
         self.assertIn("OKX XAUT-USDT", xau["source"])
 
-        # The preset must describe the asymmetric D1 gate that actually runs:
-        # shorts gated on the daily zone, longs entering on the 4H flip.
+        # The preset must describe the certified long-only + D1 profile that
+        # actually runs.
         xau_exec = presets["okx-xau-actionzone-v1"]["execution_profile"]
         self.assertTrue(xau_exec["use_d1_regime_filter"])
-        self.assertFalse(xau_exec["use_d1_regime_filter_long"])
+        self.assertTrue(xau_exec["use_d1_regime_filter_long"])
+        self.assertFalse(xau_exec["enable_short"])
+        self.assertFalse(xau_exec["require_slow_slope"])
+        self.assertEqual(xau_exec["entry_thrust_min"], 0.5)
         self.assertFalse(
             [t for t in presets["okx-xau-actionzone-v1"]["strategy_traits"]
              if "D1 regime filter: off" in t.lower()],
@@ -126,21 +129,17 @@ class SaaSControlPlaneTests(unittest.TestCase):
             [t for t in presets["okx-xau-actionzone-v1"]["strategy_traits"]
              if "Partial TP" in t]
         )
-        self.assertEqual(presets["okx-xau-actionzone-v1"]["allowed_sides"], ["long", "short"])
+        self.assertEqual(presets["okx-xau-actionzone-v1"]["allowed_sides"], ["long"])
         self.assertTrue(presets["okx-xau-actionzone-v1"]["cdc_pure_certified"])
         self.assertFalse(presets["okx-xau-actionzone-v1"]["stop_loss_required"])
-        # Three axes, three fields — collapsing them is what let this preset
-        # advertise a certificate it never had.
+        # Three axes, three fields — they agree for this run but remain sourced
+        # independently so a future failure cannot be hidden by approval.
         xau_preset = presets["okx-xau-actionzone-v1"]
         self.assertEqual(xau_preset["backtest"]["status"], "validated")   # EVIDENCE
-        self.assertEqual(xau_preset["certification_status"], "failed")    # VERDICT
+        self.assertEqual(xau_preset["certification_status"], "certified") # VERDICT
         self.assertTrue(xau_preset["live_certified"])                     # APPROVAL
-        # The margin is measured, not typed, so assert that one is stated
-        # rather than pinning whichever run last produced it.
-        self.assertRegex(xau_preset["certification_note"], r"-\d+\.\d+pp")
-        self.assertIn("acceptance", xau_preset["certification_note"])
-        # Approval despite a failing verdict must name a person and a reason.
-        self.assertTrue(xau_preset["operator_override"]["reason"].strip())
+        self.assertIn("432-cell", xau_preset["certification_note"])
+        self.assertNotIn("operator_override", xau_preset)
         # The one preset with a real certificate, re-validated on venue data.
         self.assertEqual(presets["okx-btc-supertrend-v1"]["certification_status"], "certified")
 
@@ -996,12 +995,7 @@ if __name__ == "__main__":
 
 
 class CatalogCertificationAxesTest(unittest.TestCase):
-    """Approval, verdict, and evidence must stay three separate things.
-
-    They genuinely disagree: XAU is approved for live, failed the gate, and has
-    good evidence. Any code that derives one from another reintroduces the
-    conflation that produced the mislabelled July 2026 certificate.
-    """
+    """Approval, verdict, and evidence must stay three separate things."""
 
     def test_every_trading_preset_declares_a_verdict(self):
         from xauby.saas.catalog import CERTIFICATION_STATUSES, PRESETS
@@ -1015,28 +1009,24 @@ class CatalogCertificationAxesTest(unittest.TestCase):
                 )
                 self.assertTrue(str(preset.get("certification_note") or "").strip())
 
-    def test_verdict_is_not_derived_from_approval(self):
-        from xauby.saas.catalog import PRESETS
+    def test_approval_and_verdict_are_independently_sourced(self):
+        from xauby.saas.certification import load_record
+        from xauby.saas.preset_specs import PRESET_SPECS
 
-        approved_but_uncertified = [
-            p["id"] for p in PRESETS
-            if p.get("live_certified") and p.get("certification_status") != "certified"
-        ]
-        self.assertIn(
-            "okx-xau-actionzone-v1", approved_but_uncertified,
-            "XAU is deliberately approved for live while failing the gate; if "
-            "this list is empty the two fields have been collapsed again",
-        )
+        spec = next(p for p in PRESET_SPECS if p["id"] == "okx-xau-actionzone-v1")
+        record = load_record(spec["id"])
+        self.assertTrue(spec["live_certified"])
+        self.assertNotIn("certification_status", spec)
+        self.assertEqual(record["verdict"], "certified")
 
-    def test_verdict_is_not_derived_from_evidence(self):
+    def test_verdict_and_evidence_remain_separate_fields(self):
         from xauby.saas.catalog import PRESETS
 
         by_id = {p["id"]: p for p in PRESETS}
         xau = by_id["okx-xau-actionzone-v1"]
-        btc = by_id["okx-btc-supertrend-v1"]
-        # Same evidence quality, opposite verdicts.
-        self.assertEqual(xau["backtest"]["status"], btc["backtest"]["status"])
-        self.assertNotEqual(xau["certification_status"], btc["certification_status"])
+        self.assertEqual(xau["backtest"]["status"], "validated")
+        self.assertEqual(xau["certification_status"], "certified")
+        self.assertNotIn("verdict", xau["backtest"])
 
     def test_failed_verdict_explains_itself(self):
         from xauby.saas.catalog import PRESETS

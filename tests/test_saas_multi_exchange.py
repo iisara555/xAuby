@@ -170,8 +170,18 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         self.assertTrue(assets["XAU"]["live_certified"])
         self.assertTrue(assets["BTC"]["live_certified"])
         self.assertEqual(assets["XAU"]["sim_fee_pct"], 0.05)
-        self.assertEqual(assets["XAU"]["allowed_sides"], ["long", "short"])
+        self.assertEqual(assets["XAU"]["allowed_sides"], ["long"])
         self.assertEqual(assets["BTC"]["allowed_sides"], ["long", "short"])
+        self.assertFalse(assets["XAU"]["strategy_params"]["enable_short"])
+        self.assertTrue(
+            assets["XAU"]["strategy_params"]["use_d1_regime_filter_long"]
+        )
+        self.assertFalse(
+            cfg["strategy"]["config"]["xauby_actionzone"]["require_slow_slope"]
+        )
+        self.assertEqual(
+            cfg["strategies"]["xauby_actionzone"]["entry_thrust_min"], 0.5
+        )
         self.assertEqual(
             assets["BTC"]["strategy_params"]["supertrend_mult"], 4.0
         )
@@ -236,6 +246,12 @@ class MultiExchangeControlPlaneTests(unittest.TestCase):
         self.assertFalse(cfg["simulate_only"])
         self.assertEqual(assets["XAU"]["manual_allowed_sides"], ["long", "short"])
         self.assertTrue(assets["XAU"]["manual_short_live_enabled"])
+        self.assertEqual(assets["XAU"]["allowed_sides"], ["long"])
+        self.assertFalse(assets["XAU"]["short_live_enabled"])
+        self.assertFalse(assets["XAU"]["strategy_params"]["enable_short"])
+        self.assertTrue(
+            assets["XAU"]["strategy_params"]["use_d1_regime_filter_long"]
+        )
         self.assertTrue(assets["BTC"]["manual_short_live_enabled"])
         self.assertTrue(assets["BTC"]["short_live_enabled"])
 
