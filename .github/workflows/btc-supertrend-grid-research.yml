@@ -9,27 +9,94 @@ permissions:
   contents: read
 
 jobs:
-  backtest:
+  prepare-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: requirements.txt
       - name: Install Python dependencies
-        run: pip install -r requirements-dev.txt
-      - name: Validate the research grid
-        run: pytest -q tests/test_btc_supertrend_okx_pf_grid.py
-      - name: Run BTC SuperTrend grid on native OKX history
+        run: pip install -r requirements.txt
+      - name: Fetch native OKX candles once
         run: >-
-          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid.py
+          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid_shard.py fetch
+          --data-dir core/btc_supertrend_okx_grid_data
+      - uses: actions/upload-artifact@v4
+        with:
+          name: btc-supertrend-okx-data-${{ github.run_id }}
+          path: core/btc_supertrend_okx_grid_data/
+          if-no-files-found: error
+          retention-days: 7
+
+  grid:
+    needs: prepare-data
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: btc-supertrend-okx-data-${{ github.run_id }}
+          path: core/btc_supertrend_okx_grid_data
+      - name: Run grid shard
+        run: >-
+          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid_shard.py grid
+          --data-dir core/btc_supertrend_okx_grid_data
+          --out-dir core/btc_supertrend_okx_grid_shard
+          --workers 2
+          --shard-index ${{ matrix.shard }}
+          --shard-count 8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: btc-supertrend-grid-shard-${{ matrix.shard }}-${{ github.run_id }}
+          path: core/btc_supertrend_okx_grid_shard/grid-shard-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  finalize:
+    needs: grid
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: btc-supertrend-okx-data-${{ github.run_id }}
+          path: core/btc_supertrend_okx_grid_data
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: btc-supertrend-grid-shard-*-${{ github.run_id }}
+          path: core/btc_supertrend_okx_grid_shards
+          merge-multiple: true
+      - name: Merge exact grid and run finalist checks
+        run: >-
+          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid_shard.py finalize
+          --data-dir core/btc_supertrend_okx_grid_data
+          --shards-dir core/btc_supertrend_okx_grid_shards
           --out-dir core/btc_supertrend_okx_pf_grid
-          --workers 4
+          --workers 2
           --top-n 12
       - name: Record reproducibility metadata
         if: always()
@@ -37,7 +104,7 @@ jobs:
           mkdir -p core/btc_supertrend_okx_pf_grid
           git rev-parse HEAD > core/btc_supertrend_okx_pf_grid/git_commit.txt
           date -u +%Y-%m-%dT%H:%M:%SZ > core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
-      - name: Upload backtest artifacts
+      - name: Upload final backtest artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:

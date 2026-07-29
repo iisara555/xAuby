@@ -1,4 +1,5 @@
 from scripts import btc_supertrend_okx_pf_grid as grid
+from scripts import btc_supertrend_okx_pf_grid_shard as shard
 
 
 def test_grid_is_predeclared_and_has_unique_ids():
@@ -34,3 +35,23 @@ def test_repo_live_btc_shape_is_the_expected_anchor():
     prep = grid.prepare(cfg)
     assert prep.primary_timeframe == "4h"
     assert grid.variant_name(prep.base_strategy_config) == "long+short D1 off"
+
+
+def test_shards_partition_the_grid_exactly_once():
+    items = grid.grid_items()
+    partitions = [shard.shard_items(items, index, 8) for index in range(8)]
+    ids = [item["id"] for partition in partitions for item in partition]
+    assert len(ids) == len(items)
+    assert len(set(ids)) == len(items)
+    assert {len(partition) for partition in partitions} == {72}
+
+
+def test_shard_union_verifier_rejects_missing_or_duplicate_cells():
+    rows = [{"id": item["id"]} for item in grid.grid_items()]
+    assert len(shard.verify_shard_rows(rows)) == len(rows)
+    try:
+        shard.verify_shard_rows(rows[:-1] + [rows[0]])
+    except RuntimeError as exc:
+        assert "invalid shard union" in str(exc)
+    else:
+        raise AssertionError("invalid shard union was accepted")
