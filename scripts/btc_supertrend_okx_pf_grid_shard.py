@@ -209,9 +209,87 @@ def cmd_finalize(
     print(f"wrote final artifacts in {out_dir}")
 
 
+def cmd_summarize(
+    *,
+    config: Path,
+    data_dir: Path,
+    shards_dir: Path,
+    out_dir: Path,
+    top_n: int,
+) -> None:
+    """Merge completed grid shards without executing another replay.
+
+    This is also the recovery path when GitHub accepts every CPU-heavy shard
+    but refuses to schedule the lightweight finalist job because of an account
+    billing/spending-limit gate.  The grid evidence stays complete; the output
+    marks the optional full-history/fold checks as unavailable rather than
+    pretending they ran.
+    """
+    data = data_bundle(data_dir)
+    rows = _load_shard_rows(shards_dir)
+    ranked = grid._rank(rows)
+    balanced = grid._balanced_rank(rows)
+    if not ranked:
+        raise RuntimeError("no grid cell passed the pre-declared validity gates")
+    live = grid._anchor(rows, "anchor_live")
+    long_only = grid._anchor(rows, "anchor_long_only_d1")
+    items = grid.grid_items()
+    cfg = grid.load_bot_config(str(config))
+    live_variant = grid.variant_name(grid.prepare(cfg).base_strategy_config)
+    split = int(data["ranges"]["native4"]["bars"] * grid.SPLIT_RATIO)
+    payload = {
+        "protocol": {
+            "selection_source": grid.VENUE,
+            "split_ratio": grid.SPLIT_RATIO,
+            "split_bar": split,
+            "warmup_bars": grid.WARMUP_BARS,
+            "warmup_traded": False,
+            "minimum_trades": {
+                "is": grid.MIN_IS_TRADES,
+                "oos": grid.MIN_OOS_TRADES,
+            },
+            "grid_cells": len(items),
+            "variant_count": len(grid.VARIANTS),
+            "structural_cells_per_variant": len(items) // len(grid.VARIANTS),
+            "ranking": "OOS PF after positive-net and trade-count gates",
+            "balanced_ranking": "maximize min(IS PF, OOS PF) under same gates",
+            "execution_sharded": True,
+        },
+        "data": data["ranges"],
+        "live_variant": live_variant,
+        "anchors": {"live": live, "long_only_d1": long_only},
+        "winners": {
+            "highest_oos_pf": ranked[0],
+            "highest_min_is_oos_pf": balanced[0],
+        },
+        "top_oos_pf": ranked[: max(20, top_n)],
+        "valid_cells": len(ranked),
+        "failed_cells": sum(1 for row in rows if row.get("error")),
+        "full_history": [],
+        "folds": [],
+        "finalist_checks": {
+            "status": "not_run",
+            "reason": "GitHub finalize job rejected before runner assignment by account billing/spending-limit gate",
+        },
+        "grid": rows,
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "results.json").write_text(
+        json.dumps(payload, indent=2, default=str), encoding="utf-8"
+    )
+    (out_dir / "report.md").write_text(
+        grid._render_report(payload) + "\n", encoding="utf-8"
+    )
+    print(grid._summary_line("LIVE", live))
+    print(grid._summary_line("LONG-ONLY + D1", long_only))
+    print(grid._summary_line("HIGHEST OOS PF", ranked[0]))
+    print(grid._summary_line("HIGHEST MIN(IS,OOS) PF", balanced[0]))
+    print(f"wrote merged grid artifacts in {out_dir}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("fetch", "grid", "finalize"))
+    parser.add_argument("command", choices=("fetch", "grid", "finalize", "summarize"))
     parser.add_argument("--config", default="bot_config.yaml")
     parser.add_argument("--data-dir", default="core/btc_supertrend_okx_grid_data")
     parser.add_argument("--out-dir", default="core/btc_supertrend_okx_pf_grid")
@@ -234,13 +312,21 @@ def main() -> int:
             shard_index=args.shard_index,
             shard_count=args.shard_count,
         )
-    else:
+    elif args.command == "finalize":
         cmd_finalize(
             config=Path(args.config),
             data_dir=Path(args.data_dir),
             shards_dir=Path(args.shards_dir),
             out_dir=Path(args.out_dir),
             workers=args.workers,
+            top_n=args.top_n,
+        )
+    else:
+        cmd_summarize(
+            config=Path(args.config),
+            data_dir=Path(args.data_dir),
+            shards_dir=Path(args.shards_dir),
+            out_dir=Path(args.out_dir),
             top_n=args.top_n,
         )
     return 0
