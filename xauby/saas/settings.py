@@ -15,7 +15,15 @@ class SaaSSettings:
     public_base_url: str
     session_secret: str
     credential_master_key: str = ""
+    credential_master_key_version: int = 1
+    credential_previous_keys: str = ""
     credential_runtime_root: Path | None = None
+    backup_encryption_key: str = ""
+    backup_rclone_destination: str = ""
+    backup_rclone_config: Path | None = None
+    backup_gpg_recipient: str = ""
+    backup_gpg_homedir: Path | None = None
+    backup_offsite_retention_days: int = 30
     google_client_id: str = ""
     google_client_secret: str = ""
     owner_email: str = "iisara555@gmail.com"
@@ -42,13 +50,16 @@ class SaaSSettings:
     @classmethod
     def from_env(cls, project_root: str | None = None) -> SaaSSettings:
         control_env = os.environ.get("XAUBY_CONTROL_ENV", "/etc/xauby/control.env")
-        if os.path.isfile(control_env):
+        backup_env = os.environ.get("XAUBY_BACKUP_ENV", "/etc/xauby/backup.env")
+        for env_file in (control_env, backup_env):
+            if not os.path.isfile(env_file):
+                continue
             try:
                 from dotenv import load_dotenv
 
-                load_dotenv(control_env, override=False)
+                load_dotenv(env_file, override=False)
             except OSError:
-                pass
+                continue
         root = Path(project_root or os.environ.get("XAUBY_PROJECT_ROOT") or os.getcwd()).resolve()
         data = Path(os.environ.get("XAUBY_SAAS_DATA_ROOT") or root / "saas-data").resolve()
         secret = os.environ.get("XAUBY_SAAS_SESSION_SECRET", "")
@@ -73,9 +84,29 @@ class SaaSSettings:
             public_base_url=os.environ.get("XAUBY_PUBLIC_BASE_URL", "http://127.0.0.1:8790").rstrip("/"),
             session_secret=secret or "dev-only-session-secret",
             credential_master_key=credential_key,
+            credential_master_key_version=max(
+                1, int(os.environ.get("XAUBY_CREDENTIAL_MASTER_KEY_VERSION", "1"))
+            ),
+            credential_previous_keys=os.environ.get(
+                "XAUBY_CREDENTIAL_PREVIOUS_KEYS", ""
+            ).strip(),
             credential_runtime_root=Path(
                 os.environ.get("XAUBY_CREDENTIAL_RUNTIME_ROOT", "/run/xauby/credentials")
             ).resolve(),
+            backup_encryption_key=os.environ.get("XAUBY_BACKUP_ENCRYPTION_KEY", "").strip(),
+            backup_rclone_destination=os.environ.get(
+                "XAUBY_BACKUP_RCLONE_DESTINATION", ""
+            ).strip(),
+            backup_rclone_config=Path(
+                os.environ.get("XAUBY_BACKUP_RCLONE_CONFIG", "/etc/xauby/rclone.conf")
+            ).resolve(),
+            backup_gpg_recipient=os.environ.get("XAUBY_BACKUP_GPG_RECIPIENT", "").strip(),
+            backup_gpg_homedir=Path(
+                os.environ.get("XAUBY_BACKUP_GPG_HOMEDIR", "/var/lib/xauby/backup-gpg")
+            ).resolve(),
+            backup_offsite_retention_days=max(
+                1, int(os.environ.get("XAUBY_BACKUP_OFFSITE_RETENTION_DAYS", "30"))
+            ),
             google_client_id=os.environ.get("XAUBY_GOOGLE_CLIENT_ID", ""),
             google_client_secret=os.environ.get("XAUBY_GOOGLE_CLIENT_SECRET", ""),
             owner_email=os.environ.get("XAUBY_OWNER_EMAIL", "iisara555@gmail.com").lower(),

@@ -13,6 +13,8 @@ import time
 from contextlib import closing
 from pathlib import Path
 
+from xauby.saas.backup_crypto import BackupCipher
+from xauby.saas.credentials import CredentialKeyring
 from xauby.saas.settings import SaaSSettings
 
 SCHEMA_VERSION = 2
@@ -83,10 +85,20 @@ def _safe_extract(archive: tarfile.TarFile, destination: Path) -> None:
         archive.extractall(destination)
 
 
-def verify_backup(path: Path) -> dict[str, object]:
+def _materialize_archive(path: Path, workspace: Path, encryption_key: str = "") -> Path:
+    if not BackupCipher.is_encrypted(path):
+        return path
+    if not encryption_key:
+        raise ValueError("encrypted backup requires XAUBY_BACKUP_ENCRYPTION_KEY")
+    destination = workspace / "backup.tar.gz"
+    return BackupCipher(encryption_key).decrypt_file(path, destination)
+
+
+def verify_backup(path: Path, *, encryption_key: str = "") -> dict[str, object]:
     with tempfile.TemporaryDirectory(prefix="xauby-verify-") as name:
         root = Path(name)
-        with tarfile.open(path, "r:gz") as archive:
+        archive_path = _materialize_archive(path, root, encryption_key)
+        with tarfile.open(archive_path, "r:gz") as archive:
             _safe_extract(archive, root)
         bundle = root / "xauby-saas"
         manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
@@ -160,6 +172,107 @@ def create_backup(settings: SaaSSettings, output: Path, *, kind: str, release_id
     return final
 
 
+def _rclone_destination(destination: str, filename: str) -> str:
+    remote = str(destination or "").strip()
+    remote_name, separator, remote_path = remote.partition(":")
+    if (
+        not remote
+        or not separator
+        or not remote_name
+        or remote.startswith(("/", "./", "../"))
+        or any(not (char.isalnum() or char in "_.-") for char in remote_name)
+    ):
+        raise ValueError("XAUBY_BACKUP_RCLONE_DESTINATION must be an rclone remote path")
+    if ".." in remote_path.split("/"):
+        raise ValueError("XAUBY_BACKUP_RCLONE_DESTINATION must not contain '..'")
+    return f"{remote.rstrip('/')}/{filename}"
+
+
+def _run_checked(command: list[str], *, input_data: bytes | None = None) -> None:
+    result = subprocess.run(
+        command, input=input_data, capture_output=True, timeout=300, check=False,
+    )
+    if result.returncode:
+        # Do not include command output: rclone and GPG diagnostics can contain
+        # configured remote paths or recipient identity.  The operator has the
+        # unit journal for detailed local diagnosis.
+        raise RuntimeError(f"backup off-site command failed ({Path(command[0]).name})")
+
+
+def _recovery_payload(settings: SaaSSettings) -> bytes:
+    keyring = CredentialKeyring(
+        settings.credential_master_key,
+        active_version=settings.credential_master_key_version,
+        previous_keys=settings.credential_previous_keys,
+    )
+    payload = {
+        "format": 1,
+        "created_at": time.time(),
+        "backup_encryption_key": settings.backup_encryption_key,
+        "credential_active_key_version": keyring.active_version,
+        "credential_keys": {str(version): value for version, value in keyring.keys_for_recovery().items()},
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _encrypt_recovery_bundle(settings: SaaSSettings, destination: Path) -> None:
+    if not settings.backup_gpg_recipient:
+        raise ValueError("XAUBY_BACKUP_GPG_RECIPIENT is required for off-site backup")
+    homedir = settings.backup_gpg_homedir
+    if homedir is None:
+        raise ValueError("XAUBY_BACKUP_GPG_HOMEDIR is required for off-site backup")
+    homedir.mkdir(parents=True, exist_ok=True)
+    os.chmod(homedir, 0o700)
+    _run_checked([
+        "gpg", "--batch", "--yes", "--homedir", str(homedir), "--trust-model", "always",
+        "--armor", "--output", str(destination), "--encrypt", "--recipient",
+        settings.backup_gpg_recipient,
+    ], input_data=_recovery_payload(settings))
+    os.chmod(destination, 0o600)
+
+
+def upload_offsite_backup(archive: Path, settings: SaaSSettings) -> dict[str, str]:
+    """Encrypt and upload an archive plus a separately PGP-wrapped recovery key.
+
+    The remote receives neither a plaintext archive nor a plaintext master key.
+    The recovery key is decryptable only by the offline private key paired with
+    ``XAUBY_BACKUP_GPG_RECIPIENT``.
+    """
+
+    if not settings.backup_rclone_destination:
+        return {}
+    if not settings.backup_encryption_key:
+        raise ValueError("XAUBY_BACKUP_ENCRYPTION_KEY is required for off-site backup")
+    if not shutil.which("rclone"):
+        raise RuntimeError("rclone is required for off-site backup")
+    if not shutil.which("gpg"):
+        raise RuntimeError("gpg is required for off-site backup")
+    config = settings.backup_rclone_config
+    if config is None or not config.is_file():
+        raise RuntimeError("XAUBY_BACKUP_RCLONE_CONFIG is missing")
+    with tempfile.TemporaryDirectory(prefix="xauby-offsite-") as temp_name:
+        temp = Path(temp_name)
+        encrypted = BackupCipher(settings.backup_encryption_key).encrypt_file(
+            archive, temp / f"{archive.name}.enc"
+        )
+        recovery = temp / f"{archive.name.replace('xauby-saas-', 'xauby-recovery-')}.asc"
+        _encrypt_recovery_bundle(settings, recovery)
+        encrypted_target = _rclone_destination(settings.backup_rclone_destination, encrypted.name)
+        recovery_target = _rclone_destination(settings.backup_rclone_destination, recovery.name)
+        base = ["rclone", "--config", str(config), "copyto"]
+        _run_checked([*base, str(recovery), recovery_target])
+        # Upload the recovery material first.  If the second upload fails, the
+        # remote has no archive that cannot be recovered with its key bundle.
+        _run_checked([*base, str(encrypted), encrypted_target])
+    retention = max(1, int(settings.backup_offsite_retention_days))
+    _run_checked([
+        "rclone", "--config", str(config), "delete", settings.backup_rclone_destination,
+        "--min-age", f"{retention}d", "--include", "xauby-saas-*.tar.gz.enc",
+        "--include", "xauby-recovery-*.tar.gz.asc",
+    ])
+    return {"archive": encrypted_target, "recovery_bundle": recovery_target}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Create and verify a consistent xAuby SaaS backup")
     parser.add_argument("--output", required=True)
@@ -171,7 +284,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-only")
     args = parser.parse_args(argv)
     if args.verify_only:
-        print(json.dumps(verify_backup(Path(args.verify_only).resolve()), sort_keys=True))
+        settings = SaaSSettings.from_env()
+        print(json.dumps(
+            verify_backup(Path(args.verify_only).resolve(), encryption_key=settings.backup_encryption_key),
+            sort_keys=True,
+        ))
         return 0
     settings = SaaSSettings.from_env()
     final = create_backup(
@@ -179,7 +296,11 @@ def main(argv: list[str] | None = None) -> int:
         retention_days=args.retention_days, include_secrets=args.include_secrets,
         host_config=[Path(item) for item in args.host_config],
     )
-    print(final)
+    uploaded = upload_offsite_backup(final, settings)
+    if uploaded:
+        print(json.dumps({"local": str(final), "offsite": uploaded}, sort_keys=True))
+    else:
+        print(final)
     return 0
 
 

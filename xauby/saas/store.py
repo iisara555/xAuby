@@ -669,24 +669,29 @@ class ControlPlaneStore:
     def set_exchange_connection(self, tenant_id: str, exchange_id: str, key_last4: str,
                                 *, target_id: str = "okx-swap", status: str = "stored",
                                 capabilities: dict[str, Any] | None = None,
-                                credential_blob: str | None = None) -> dict[str, Any]:
+                                credential_blob: str | None = None,
+                                key_version: int = 1) -> dict[str, Any]:
+        if int(key_version) < 1:
+            raise ValueError("credential key version must be positive")
         with self.connection() as conn:
             conn.execute(
                 """
                 INSERT INTO exchange_connections
                 (tenant_id,exchange_id,key_last4,status,capabilities_json,updated_at,
                  target_id,credential_blob,key_version,tested_at)
-                VALUES (?,?,?,?,?,?,?,?,1,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(tenant_id) DO UPDATE SET
                   exchange_id=excluded.exchange_id,key_last4=excluded.key_last4,
                   status=excluded.status,capabilities_json=excluded.capabilities_json,
                   updated_at=excluded.updated_at,target_id=excluded.target_id,
                   credential_blob=coalesce(excluded.credential_blob,exchange_connections.credential_blob),
-                  key_version=excluded.key_version,tested_at=excluded.tested_at
+                  key_version=CASE WHEN excluded.credential_blob IS NULL
+                    THEN exchange_connections.key_version ELSE excluded.key_version END,
+                  tested_at=excluded.tested_at
                 """,
                 (tenant_id, exchange_id, key_last4, status,
                  json.dumps(capabilities or {}, sort_keys=True), time.time(), target_id,
-                 credential_blob, time.time() if status == "tested" else None),
+                 credential_blob, int(key_version), time.time() if status == "tested" else None),
             )
             row = conn.execute(
                 "SELECT * FROM exchange_connections WHERE tenant_id=?", (tenant_id,)
@@ -711,14 +716,18 @@ class ControlPlaneStore:
         return result
 
     def encrypted_credentials(self, tenant_id: str) -> tuple[str, str] | None:
+        row = self.encrypted_credentials_with_version(tenant_id)
+        return None if row is None else (row[0], row[1])
+
+    def encrypted_credentials_with_version(self, tenant_id: str) -> tuple[str, str, int] | None:
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT target_id,credential_blob FROM exchange_connections WHERE tenant_id=?",
+                "SELECT target_id,credential_blob,key_version FROM exchange_connections WHERE tenant_id=?",
                 (tenant_id,),
             ).fetchone()
         if not row or not row["credential_blob"]:
             return None
-        return str(row["target_id"]), str(row["credential_blob"])
+        return str(row["target_id"]), str(row["credential_blob"]), int(row["key_version"] or 1)
 
     # --- Telegram alert connection -------------------------------------------
     # New columns on this table must be double-written: once into the CREATE
@@ -736,24 +745,30 @@ class ControlPlaneStore:
     def set_telegram_connection(self, tenant_id: str, chat_id: str, token_last4: str, *,
                                 status: str = "stored", enabled: bool = True,
                                 bot_username: str = "",
-                                credential_blob: str | None = None) -> dict[str, Any]:
+                                credential_blob: str | None = None,
+                                key_version: int = 1) -> dict[str, Any]:
+        if int(key_version) < 1:
+            raise ValueError("credential key version must be positive")
         with self.connection() as conn:
             conn.execute(
                 """
                 INSERT INTO telegram_connections
                 (tenant_id,chat_id,token_last4,bot_username,status,enabled,
                  credential_blob,key_version,tested_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,1,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(tenant_id) DO UPDATE SET
                   chat_id=excluded.chat_id,token_last4=excluded.token_last4,
                   bot_username=excluded.bot_username,status=excluded.status,
                   enabled=excluded.enabled,
                   credential_blob=coalesce(excluded.credential_blob,telegram_connections.credential_blob),
-                  key_version=excluded.key_version,tested_at=excluded.tested_at,
+                  key_version=CASE WHEN excluded.credential_blob IS NULL
+                    THEN telegram_connections.key_version ELSE excluded.key_version END,
+                  tested_at=excluded.tested_at,
                   updated_at=excluded.updated_at
                 """,
                 (tenant_id, chat_id, token_last4, bot_username, status, int(bool(enabled)),
-                 credential_blob, time.time() if status == "tested" else None, time.time()),
+                 credential_blob, int(key_version), time.time() if status == "tested" else None,
+                 time.time()),
             )
             row = conn.execute(
                 "SELECT * FROM telegram_connections WHERE tenant_id=?", (tenant_id,)
@@ -772,14 +787,18 @@ class ControlPlaneStore:
         return None if row is None else self._telegram_view(row)
 
     def encrypted_telegram_token(self, tenant_id: str) -> str | None:
+        row = self.encrypted_telegram_token_with_version(tenant_id)
+        return None if row is None else row[0]
+
+    def encrypted_telegram_token_with_version(self, tenant_id: str) -> tuple[str, int] | None:
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT credential_blob FROM telegram_connections WHERE tenant_id=?",
+                "SELECT credential_blob,key_version FROM telegram_connections WHERE tenant_id=?",
                 (tenant_id,),
             ).fetchone()
         if not row or not row["credential_blob"]:
             return None
-        return str(row["credential_blob"])
+        return str(row["credential_blob"]), int(row["key_version"] or 1)
 
     def delete_telegram_connection(self, tenant_id: str) -> None:
         with self.connection() as conn:

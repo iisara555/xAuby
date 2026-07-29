@@ -808,13 +808,22 @@ len(telegram_lines) == 1`) แต่เพราะ script ไม่เคย wi
 - 15 เทสต์ใน `tests/test_materialize_credentials.py` — เส้นทาง ExecStartPre นี้
   **ไม่เคยมีเทสต์เลย** ซึ่งคือเหตุผลที่ทั้งสามข้อมองไม่เห็น
 
-**P2.2 — การเก็บกุญแจและ backup นอกเครื่อง**
+**P2.2 — การเก็บกุญแจและ backup นอกเครื่อง** ✅ **โค้ดพร้อม 2026-07-29; ต้องตั้ง remote/PGP recipient ก่อนเปิดใช้งานจริง**
 master key (`/etc/xauby/control.env`), DB ที่เข้ารหัส และ backup
 (`/var/lib/xauby/backups`, เก็บ 7 วัน) อยู่บน VPS เครื่องเดียวกันทั้งหมด
 เครื่องหายเมื่อไหร่ = exchange connection ของทุก tenant หายถาวร ย้าย backup ออกนอก
 เครื่องและเขียนขั้นตอนดูแลกุญแจให้ชัด — คอลัมน์ `key_version` มีอยู่แต่ไม่มีโค้ด
 rotation เลย เลือกเอาว่าจะทำ rotation จริง หรือลบคอลัมน์ทิ้งเพื่อไม่ให้สื่อว่ามี
 ความสามารถที่ไม่มี
+
+**สิ่งที่ทำ:** daily backup เข้ารหัส AES-256-GCM ก่อนส่งผ่าน rclone และส่ง recovery
+bundle ที่มี backup key + credential-key lineage ซึ่ง PGP-encrypt ด้วย public key ของ
+operator (private key ไม่อยู่ VPS) · `scripts/saas_restore.py --restore-drill` ตรวจ
+archive/SQLite/checksum และ decrypt credential ทุกแถวโดยไม่เขียน plaintext ·
+`scripts/rotate_credential_master_key.py` ใช้ `key_version` จริง: stage keyring ใหม่
+ก่อน แล้ว re-encrypt credential ทั้งหมดใน transaction เดียว โดยเก็บ key เก่าไว้เพื่อ
+กู้ backup ตาม retention · ดู `docs/offsite_backup_runbook.md` สำหรับการตั้ง remote,
+GPG recipient และ disaster recovery
 
 **P2.3 — สแกน dependency/CVE และรัน linter ที่ตั้งค่าไว้แล้ว** ✅ **ทำแล้ว 2026-07-28**
 CI ไม่มี Dependabot, CodeQL, `pip-audit`/`npm audit`, SBOM หรือ scheduled run

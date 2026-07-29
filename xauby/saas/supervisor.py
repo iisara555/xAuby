@@ -37,11 +37,13 @@ def attach_tenant_loaders(supervisor: "TenantSupervisor", store: Any, cipher: An
         tenant = store.tenant_by_slug(slug)
         if not tenant:
             return None
-        encrypted = store.encrypted_credentials(tenant["id"])
+        encrypted = store.encrypted_credentials_with_version(tenant["id"])
         if not encrypted:
             return None
-        target_id, envelope = encrypted
-        return target_id, cipher.decrypt(tenant["id"], target_id, envelope)
+        target_id, envelope, key_version = encrypted
+        return target_id, cipher.decrypt(
+            tenant["id"], target_id, envelope, key_version=key_version
+        )
 
     def load_telegram(slug: str) -> dict[str, str] | None:
         tenant = store.tenant_by_slug(slug)
@@ -50,10 +52,13 @@ def attach_tenant_loaders(supervisor: "TenantSupervisor", store: Any, cipher: An
         row = store.telegram_connection(tenant["id"])
         if not row or not row.get("enabled"):
             return None
-        envelope = store.encrypted_telegram_token(tenant["id"])
-        if not envelope:
+        encrypted = store.encrypted_telegram_token_with_version(tenant["id"])
+        if not encrypted:
             return None
-        token = cipher.decrypt(tenant["id"], "telegram", envelope)["bot_token"]
+        envelope, key_version = encrypted
+        token = cipher.decrypt(
+            tenant["id"], "telegram", envelope, key_version=key_version
+        )["bot_token"]
         return {"bot_token": token, "chat_id": str(row["chat_id"])}
 
     supervisor.set_credential_loader(load_credentials)

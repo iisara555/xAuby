@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from xauby.saas.catalog import public_catalog, target_by_id, validate_profile
-from xauby.saas.credentials import CredentialCipher
+from xauby.saas.credentials import CredentialKeyring
 from xauby.saas.mailer import Mailer
 from xauby.saas.order_sizing import resolve_pair_atr, risk_based_stop_distance
 from xauby.saas.runtime import RuntimeGateway
@@ -238,8 +238,10 @@ def create_app(
     store = store or ControlPlaneStore(settings.database_path)
     store.migrate()
     supervisor = supervisor or TenantSupervisor(settings)
-    cipher = CredentialCipher(
+    cipher = CredentialKeyring(
         settings.credential_master_key,
+        active_version=settings.credential_master_key_version,
+        previous_keys=settings.credential_previous_keys,
         fallback_secret=settings.session_secret if settings.dev_login_enabled else "",
     )
 
@@ -1083,6 +1085,7 @@ def create_app(
         connection = store.set_exchange_connection(
             tenant["id"], target["exchange_id"], body.api_key[-4:],
             target_id=target["id"], credential_blob=envelope,
+            key_version=cipher.active_version,
             capabilities={"withdraw_disabled_attested": True},
         )
         return {"ok": True, "connection": connection}
@@ -1094,11 +1097,13 @@ def create_app(
         if not connection:
             raise HTTPException(status_code=409, detail="exchange credentials are not configured")
         try:
-            encrypted = store.encrypted_credentials(tenant["id"])
+            encrypted = store.encrypted_credentials_with_version(tenant["id"])
             if not encrypted:
                 raise ValueError("encrypted exchange credentials are missing")
-            target_id, envelope = encrypted
-            credentials = cipher.decrypt(tenant["id"], target_id, envelope)
+            target_id, envelope, key_version = encrypted
+            credentials = cipher.decrypt(
+                tenant["id"], target_id, envelope, key_version=key_version
+            )
             result = supervisor.probe_exchange(tenant["slug"], credentials)
         except Exception as exc:
             store.set_exchange_connection(
@@ -1171,6 +1176,7 @@ def create_app(
         connection = store.set_telegram_connection(
             tenant["id"], body.chat_id, body.bot_token[-4:],
             status="stored", enabled=True, credential_blob=envelope,
+            key_version=cipher.active_version,
         )
         preferences = supervisor.update_notification_config(tenant["slug"], {
             # alert_channel must be forced: "console" short-circuits delivery
@@ -1196,10 +1202,13 @@ def create_app(
                 status_code=429, detail="too many telegram tests",
                 headers={"Retry-After": str(int(retry_after))},
             )
-        envelope = store.encrypted_telegram_token(tenant["id"])
-        if not envelope:
+        encrypted = store.encrypted_telegram_token_with_version(tenant["id"])
+        if not encrypted:
             raise HTTPException(status_code=409, detail="telegram token is missing")
-        token = cipher.decrypt(tenant["id"], "telegram", envelope)["bot_token"]
+        envelope, key_version = encrypted
+        token = cipher.decrypt(
+            tenant["id"], "telegram", envelope, key_version=key_version
+        )["bot_token"]
         status_code: int | None = None
         payload: dict[str, Any] = {}
         try:
