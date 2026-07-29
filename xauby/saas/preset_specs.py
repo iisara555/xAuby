@@ -19,10 +19,10 @@ from __future__ import annotations
 #                                      is a switch, not a research result: it
 #                                      gates canGoLive in the SaaS UI.
 #
-# They genuinely disagree in practice. XAU has solid evidence (4 years of OKX
-# venue data, reproducible), a FAILED verdict (-7.87pp against the gate), and
-# operator approval to run anyway. All three facts are true at once and the UI
-# must be able to say so.
+# They genuinely can disagree in practice. The previous XAU profile had solid
+# evidence, a FAILED verdict, and operator approval to run anyway. The current
+# profile is long-only and has its own measured record; keeping the axes
+# separate still matters because a future record may fail or become stale.
 #
 # EVIDENCE and VERDICT are no longer written here (P1.4). They are derived from
 # xauby/saas/certificates/<preset_id>.json, which scripts/certify_preset.py
@@ -46,34 +46,24 @@ PRESET_SPECS = [
         "strategy": "xauby_actionzone",
         "primary_timeframe": "4h",
         "confirm_timeframe": "1d",
-        "allowed_sides": ["long", "short"],
+        "allowed_sides": ["long"],
         "max_leverage": 1,
         "allocation_pct": 65.0,
         "max_position_per_trade_pct": 25.0,
-        # APPROVAL: the operator chose to run this live on 2026-07-26, knowing
-        # the verdict. Kept true so the SaaS UI can still activate it — and the
-        # override below is what makes that a decision on the record rather than
-        # a True nobody remembers setting.
+        # APPROVAL: independent from the venue-backed certificate record. The
+        # exact long-only profile below must still carry a matching fingerprint
+        # before this preset can build or be activated.
         "live_certified": True,
-        "operator_override": {
-            "decided_by": "owner",
-            "decided_at": "2026-07-26",
-            "reason": (
-                "Failed the acceptance gate and shipped anyway: it is the "
-                "strongest cell in a falling gold market and gold has been "
-                "falling since 2026-02. Accepted worse PF and drawdown than "
-                "long-only + D1 on in exchange for that. Revisit when the "
-                "decline ends."
-            ),
-        },
         "cdc_pure_certified": True,
         "stop_loss_required": False,
         "execution_profile": {
             "name": "cdc_pure",
-            "enable_short": True,
-            # Asymmetric D1 gating (2026-07-26): the daily zone gates SHORT
-            # entries only; longs enter on the 4H flip alone. Keep in sync with
-            # coin_whitelist.json — the tenant whitelist is what runs.
+            "backtest_data_proxy": "PAXGUSDT",
+            "enable_short": False,
+            # Balanced grid winner (2026-07-29): daily GREEN gates new LONG
+            # entries. SHORT gating remains explicit even though new automated
+            # shorts are disabled, so the measured profile cannot inherit it
+            # from an unrelated bot_config.yaml.
             #
             # All three keys are stated even though `_short: True` is what the
             # shared flag already resolves to. A profile that sets part of the
@@ -82,21 +72,33 @@ PRESET_SPECS = [
             # preset does not control — see CONTROL_GROUPS in
             # xauby/backtest/walkforward.py.
             "use_d1_regime_filter": True,
-            "use_d1_regime_filter_long": False,
+            "use_d1_regime_filter_long": True,
             "use_d1_regime_filter_short": True,
+            "ap_smoothing": 2,
+            "require_fresh_zone": True,
             "fresh_zone_window": 3,
+            "require_slow_slope": False,
+            "slow_slope_bars": 3,
+            "entry_thrust_min": 0.5,
+            "exit_on_bear_cross": False,
+            "rsi_min": 0.0,
+            "rsi_max": 100.0,
+            "vol_min_ratio": 0.0,
+            "sl_atr_mult": 2.0,
+            "trailing_atr_mult": 1.8,
+            "fixed_tp_pct": 0.0,
             "disable_stop_loss": True,
             "breakeven_sl_enabled": False,
+            "breakeven_activation_atr_mult": 1.5,
+            "breakeven_buffer_atr_mult": 0.1,
             "minimal_roi": {"0": 8.0, "1440": 5.0, "4320": 3.0},
-            "ap_smoothing": 2,
-            "require_slow_slope": True,
-            "slow_slope_bars": 3,
+            "cool_down_minutes": 240,
             "position_pct": 0.95,
         },
         "strategy_traits": [
-            "Long + short · stop-and-reverse",
-            "D1 regime filter: shorts only · longs enter on the 4H flip",
-            "Slope filter: on (EMA26, 3 bars)",
+            "Long only · automated short entries disabled",
+            "D1 regime filter: long entries require a daily GREEN zone",
+            "Fresh-zone window: 3 · thrust ≥ 0.5 · slope filter off",
             "Exit: CDC zone flip / ROI ladder 8→5→3% · no exchange stop",
         ],
     },
