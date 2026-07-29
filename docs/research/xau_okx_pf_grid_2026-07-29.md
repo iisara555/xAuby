@@ -34,6 +34,13 @@ as the next rollout candidate, not as a new certificate: 432 cells were searched
 and the native contract only has 1.30 years of data. No production config was
 changed by this research run.
 
+**2026-07-29 addendum:** after the operator selected this rollout, the exact
+preset was replayed through `scripts/certify_preset.py` and received certificate
+fingerprint `6b01b6f2598f3881`. See
+`docs/research/xau_long_only_d1_certificate_2026-07-29.md`. The new certificate
+uses the repository's narrow long-only gate and retains the selection/holdout
+limitations above; it is not an all-weather claim.
+
 ## Required comparisons
 
 | case | structural settings | IS PF / net / trades | OOS PF / net / MDD / trades |

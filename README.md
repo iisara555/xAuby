@@ -121,7 +121,7 @@ including `XAUUSDT` → `XAU/USDT:USDT` and `BTCUSDT` → `BTC/USDT:USDT`.
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides |
 |--------|------|----------|------------|------------|-------|
-| `XAUUSDT` | `live` | `xauby_actionzone` (CDC ActionZone) | `4h` | `1d` | `long` + `short` (stop-and-reverse) |
+| `XAUUSDT` | `live` | `xauby_actionzone` (CDC ActionZone) | `4h` | `1d` | `long` only, D1-gated |
 | `BTCUSDT` | `live` | `supertrend_ema200` | `4h` | — | `long` + `short` |
 
 Both pairs run with the regime router off (`regime_router_enabled: false`) and
@@ -129,14 +129,13 @@ Both pairs run with the regime router off (`regime_router_enabled: false`) and
 
 **XAUUSDT** runs **CDC-pure**: `disable_stop_loss: true`, so exits are zone-flip
 driven rather than exchange-stop driven, and sizing uses a fixed fraction of
-equity (`position_pct: 0.95`) instead of an SL-distance formula. Layered exits:
+equity (`position_pct: 0.95`) instead of an SL-distance formula. New entries are
+long-only and require a daily GREEN zone. Layered exits:
 
-- **Partial take-profit** — one-shot, banks 50% of the position at **+12%**
-  (`partial_tp_pct: 12.0`, `partial_tp_fraction: 0.5`); dashboards show it as
-  `PTP` / `Partial TP` with `pending` or `banked` state.
 - **Minimal ROI decay** — take-profit floor decays with holding time: `8%`
   immediately, `5%` after 24h, `3%` after 72h.
-- **CDC flip** — a zone flip closes (and reverses) the position.
+- **CDC flip** — an opposite zone closes the position; automated SHORT entry is
+  disabled.
 
 **BTCUSDT** keeps a real exchange-side stop (`sl_atr_mult: 3.0`,
 `trailing_atr_mult: 2.0`, `breakeven_sl_enabled: true`), so it uses the standard
@@ -315,8 +314,8 @@ aliased in `xauby/strategies/registry.py` (`cdc_action_zone` →
 
 Shorts: strategies emit `open_short` / `close_short`; execution is gated
 per-pair by `allowed_sides` + `short_live_enabled` plus the swap adapter's
-capabilities. On the current baseline both XAU and BTC run long + short in live;
-XAU uses stop-and-reverse signals.
+capabilities. On the current baseline BTC runs long + short; XAU is automated
+long-only while manual swap-side controls remain a separate operator capability.
 
 Research plugins (tagged `research`, e.g. `donchian_short`,
 `supertrend_short`, `rsi2_short`, `rsi2_meanrev`, `vol_breakout`) are

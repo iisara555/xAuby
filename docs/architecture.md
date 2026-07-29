@@ -121,7 +121,7 @@ Current committed pattern:
 
 | Symbol | Mode | Strategy baseline | Sides | Router state |
 |--------|------|-------------------|-------|--------------|
-| `XAU` (XAUUSDT) | Live | `xauby_actionzone` (CDC Action Zone V3) | Long + short | Off |
+| `XAU` (XAUUSDT) | Live | `xauby_actionzone` (CDC Action Zone V3) | Long only, D1-gated | Off |
 | `BTC` (BTCUSDT) | Live | `supertrend_ema200` | Long + short | Off |
 
 ## Notification pipeline
