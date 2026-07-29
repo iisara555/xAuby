@@ -24,6 +24,7 @@ fi
 install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/control
 install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/runtime
 install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/backups
+install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/backup-gpg
 install -d -o root -g xauby-engines -m 0770 /var/lib/xauby/account_locks
 install -d -o xauby-control -g xauby-control -m 0700 /etc/xauby/tenants
 install -d -m 0755 /usr/local/libexec
@@ -52,6 +53,10 @@ if [[ ! -f /etc/xauby/control.env ]]; then
     "$repo/.env.saas.example" > /etc/xauby/control.env
   chmod 0640 /etc/xauby/control.env
   chown root:xauby-control /etc/xauby/control.env
+fi
+
+if [[ ! -f /etc/xauby/backup.env ]]; then
+  install -o root -g xauby-control -m 0640 "$repo/deploy/xauby-backup.env.example" /etc/xauby/backup.env
 fi
 
 if [[ ! -x "$install_root/venv/bin/python" ]]; then

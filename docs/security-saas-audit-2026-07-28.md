@@ -72,19 +72,25 @@ carried neither `secure` nor `path`, while also creating the session with
 copy of a security-relevant helper sitting behind one flag is the shape of a
 future incident. It now calls the shared helper.
 
-### 3. `key_version` implies a capability that does not exist — OPEN (P2.2)
+### 3. Credential-key rotation is now implemented — CONFIGURATION REQUIRED (P2.2)
 
-The `encrypted_credentials` table carries `key_version`, written on every
-insert. There is no rotation code anywhere. A column that names a capability
-nobody implemented invites the assumption that keys can be rotated. Either
-implement rotation or drop the column.
+`key_version` now controls a real keyring: new writes use the active version,
+retained prior versions decrypt old rows and backups, and
+`scripts/rotate_credential_master_key.py` stages a new keyring before it
+re-encrypts all exchange and Telegram blobs in one transaction. The prior key
+must remain until the off-site retention window has expired and a restore drill
+has passed. Rotation remains an operator-controlled action requiring stopped
+services; it is not an API endpoint.
 
-### 4. Master key, database and backups share one host — OPEN (P2.2)
+### 4. Off-site encrypted recovery is implemented — CONFIGURATION REQUIRED (P2.2)
 
-`/etc/xauby/control.env` (master key), the encrypted control database and
-`/var/lib/xauby/backups` (7-day retention) are all on the same VPS. Loss of the
-host is permanent loss of every tenant's exchange connection. This is the single
-largest availability risk in the deployment.
+The backup unit now supports an AES-256-GCM encrypted rclone archive plus a
+separate recovery bundle encrypted to an offline GPG public key. The VPS never
+receives the matching GPG private key. It remains unconfigured until the
+operator supplies a dedicated rclone remote, backup key, and public-key
+recipient in `/etc/xauby/backup.env`; without every component the service fails
+closed rather than uploading a partial or plaintext backup. See
+`docs/offsite_backup_runbook.md`.
 
 ### 5. One direct dependency cannot be audited — OPEN (P2.3)
 

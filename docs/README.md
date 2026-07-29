@@ -24,6 +24,7 @@ their RegimeRouter gates remain off.
 | [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
 | [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
 | [roadmap_2026H2.md](roadmap_2026H2.md) | CTO roadmap for H2 2026: phased plan, findings, exit criteria (Thai) |
+| [offsite_backup_runbook.md](offsite_backup_runbook.md) | P2.2 encrypted off-site backup, recovery-key custody, restore drill and key rotation |
 | [research/xau_long_only_d1_certificate_2026-07-29.md](research/xau_long_only_d1_certificate_2026-07-29.md) | Certificate for the exact live XAU long-only + D1 preset |
 | [research/xau_okx_pf_grid_2026-07-29.md](research/xau_okx_pf_grid_2026-07-29.md) | 432-cell OKX XAU grid and balanced-candidate selection |
 | [research/btc_supertrend_ema200_certificate_2026-07.md](research/btc_supertrend_ema200_certificate_2026-07.md) | Certificate for the live BTC config |

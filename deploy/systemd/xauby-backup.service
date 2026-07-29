@@ -6,6 +6,7 @@ Type=oneshot
 User=xauby-control
 Group=xauby-control
 EnvironmentFile=/etc/xauby/control.env
+EnvironmentFile=-/etc/xauby/backup.env
 WorkingDirectory=/opt/xauby/current
 ExecStart=/opt/xauby/current/venv/bin/python -m scripts.saas_backup --output /var/lib/xauby/backups --retention-days 7
 NoNewPrivileges=true

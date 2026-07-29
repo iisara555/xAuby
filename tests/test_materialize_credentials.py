@@ -36,6 +36,9 @@ def _store(*, has_keys=True, telegram_enabled=True, has_token=True):
     store = MagicMock()
     store.tenant_by_slug.return_value = {"id": "t1", "slug": "acme"}
     store.encrypted_credentials.return_value = ("okx-swap", "envelope") if has_keys else None
+    store.encrypted_credentials_with_version.return_value = (
+        ("okx-swap", "envelope", 1) if has_keys else None
+    )
     store.telegram_connection.return_value = (
         {"enabled": telegram_enabled, "chat_id": 42} if telegram_enabled is not None else None
     )
@@ -43,13 +46,16 @@ def _store(*, has_keys=True, telegram_enabled=True, has_token=True):
     # literal here reads as a real token assignment.
     envelope = "tg-" + "envelope"
     store.encrypted_telegram_token.return_value = envelope if has_token else None
+    store.encrypted_telegram_token_with_version.return_value = (
+        (envelope, 1) if has_token else None
+    )
     return store
 
 
 def _cipher():
     cipher = MagicMock()
 
-    def decrypt(tenant_id, target_id, envelope):
+    def decrypt(tenant_id, target_id, envelope, **_kwargs):
         if target_id == "telegram":
             return {"bot_token": "tg-secret"}
         return {"api_key": "ak", "api_secret": "as"}
