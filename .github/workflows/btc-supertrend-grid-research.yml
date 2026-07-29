@@ -1,0 +1,47 @@
+name: BTC SuperTrend OKX grid research
+
+on:
+  push:
+    branches:
+      - codex/btc-supertrend-grid-20260729
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install Python dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Validate the research grid
+        run: pytest -q tests/test_btc_supertrend_okx_pf_grid.py
+      - name: Run BTC SuperTrend grid on native OKX history
+        run: >-
+          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid.py
+          --out-dir core/btc_supertrend_okx_pf_grid
+          --workers 4
+          --top-n 12
+      - name: Record reproducibility metadata
+        if: always()
+        run: |
+          mkdir -p core/btc_supertrend_okx_pf_grid
+          git rev-parse HEAD > core/btc_supertrend_okx_pf_grid/git_commit.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
+      - name: Upload backtest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-supertrend-okx-grid-${{ github.run_id }}
+          path: core/btc_supertrend_okx_pf_grid/
+          if-no-files-found: error
+          retention-days: 30
