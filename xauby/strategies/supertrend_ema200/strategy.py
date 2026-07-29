@@ -55,6 +55,13 @@ class SuperTrendEMA200Strategy(Strategy):
             # Mirrored short side (SuperTrend bear below EMA200).
             # Default off: live long-only behavior is unchanged.
             "enable_short": False,
+            # Optional higher-timeframe confirmation.  This is config-gated so
+            # the certified/live BTC profile (D1 off) is byte-for-byte
+            # unchanged.  When enabled, entries require the last CLOSED D1 bar
+            # to have the same SuperTrend+EMA200 alignment as the 4H signal.
+            "use_d1_regime_filter": False,
+            "use_d1_regime_filter_long": None,
+            "use_d1_regime_filter_short": None,
         }
 
     def _cfg_int(self, key: str, default: int, cfg: Optional[Dict[str, Any]] = None) -> int:
@@ -77,6 +84,105 @@ class SuperTrendEMA200Strategy(Strategy):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    def _cfg_optional_bool(
+        self,
+        key: str,
+        fallback: bool,
+        cfg: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        src = cfg if cfg is not None else self.config
+        value = src.get(key)
+        if value is None:
+            return fallback
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    def _d1_alignment(
+        self,
+        ctx: MarketContext,
+        *,
+        ema_n: int,
+        atr_n: int,
+        st_mult: float,
+    ) -> Dict[str, Any]:
+        """Alignment from the last D1 candle known closed at the 4H decision.
+
+        Historical OKX frames contain candles that are closed *now*.  During a
+        replay, however, the newest D1 row whose open is before the 4H cutoff
+        may still have been forming then.  Requiring ``D1 open + 1d <= 4H
+        close`` prevents that future daily close from leaking into the signal.
+        """
+        result: Dict[str, Any] = {
+            "ready": False,
+            "long_ok": False,
+            "short_ok": False,
+            "close": 0.0,
+            "ema": 0.0,
+            "supertrend_bull": None,
+            "bars": 0,
+        }
+        regime = ctx.df_regime
+        if regime is None or regime.empty:
+            return result
+
+        frame = regime
+        if "timestamp" in frame.columns and "timestamp" in ctx.df_primary.columns:
+            from xauby.runtime.candle_utils import timeframe_seconds
+
+            primary_open = int(ctx.df_primary["timestamp"].iloc[-1])
+            decision_ts = primary_open + timeframe_seconds(ctx.timeframe_primary)
+            d1_span = timeframe_seconds(ctx.timeframe_regime or "1d")
+            frame = frame[
+                frame["timestamp"].astype("int64") + d1_span <= decision_ts
+            ]
+        if frame.empty:
+            return result
+
+        minimum = max(self.min_bars, ema_n + atr_n + 5)
+        if len(frame) < minimum:
+            result["bars"] = len(frame)
+            return result
+        max_calc = max(minimum, self._cfg_int("max_calc_bars", 420))
+        frame = frame.tail(max_calc)
+        try:
+            high = frame["high"].to_numpy(dtype="float64", copy=False)
+            low = frame["low"].to_numpy(dtype="float64", copy=False)
+            close = frame["close"].to_numpy(dtype="float64", copy=False)
+        except (TypeError, ValueError):
+            numeric = frame[["high", "low", "close"]].apply(
+                pd.to_numeric, errors="coerce"
+            )
+            high = numeric["high"].to_numpy(dtype="float64", copy=False)
+            low = numeric["low"].to_numpy(dtype="float64", copy=False)
+            close = numeric["close"].to_numpy(dtype="float64", copy=False)
+        finite = np.isfinite(high) & np.isfinite(low) & np.isfinite(close)
+        high, low, close = high[finite], low[finite], close[finite]
+        result["bars"] = len(close)
+        if len(close) < minimum:
+            return result
+
+        prev_close = np.roll(close, 1)
+        prev_close[0] = close[0]
+        tr = np.maximum.reduce(
+            [high - low, np.abs(high - prev_close), np.abs(low - prev_close)]
+        )
+        atr = self._rolling_mean_np(tr, atr_n)
+        ema = self._ema_np(close, ema_n)
+        trend, _line = self._supertrend_np(high, low, close, atr, st_mult)
+        last_close = float(close[-1])
+        last_ema = float(ema[-1])
+        bull = bool(trend[-1])
+        result.update(
+            ready=True,
+            long_ok=bull and last_close > last_ema,
+            short_ok=(not bull) and last_close < last_ema,
+            close=last_close,
+            ema=last_ema,
+            supertrend_bull=bull,
+        )
+        return result
 
     def validate_config(self) -> List[str]:
         warnings: List[str] = []
@@ -206,6 +312,13 @@ class SuperTrendEMA200Strategy(Strategy):
         trail_mult = self._cfg_float("trailing_atr_mult", 1.5, runtime_cfg)
         exit_on_st_flip = self._cfg_bool("exit_on_supertrend_flip", True, runtime_cfg)
         exit_on_ema_loss = self._cfg_bool("exit_on_ema_loss", True, runtime_cfg)
+        use_d1 = self._cfg_bool("use_d1_regime_filter", False, runtime_cfg)
+        use_d1_long = self._cfg_optional_bool(
+            "use_d1_regime_filter_long", use_d1, runtime_cfg
+        )
+        use_d1_short = self._cfg_optional_bool(
+            "use_d1_regime_filter_short", use_d1, runtime_cfg
+        )
         min_required = max(self.min_bars, ema_n + atr_n + 5, vol_n + rsi_n + 5, confirm_bars + 2)
         max_calc_bars = max(min_required, self._cfg_int("max_calc_bars", 420, runtime_cfg))
 
@@ -275,6 +388,24 @@ class SuperTrendEMA200Strategy(Strategy):
         short_timing_ok = flip_bear if entry_on_flip_only else bear_confirmed
 
         entry_timing_ok = flip_bull if entry_on_flip_only else bull_confirmed
+        d1 = (
+            self._d1_alignment(
+                ctx,
+                ema_n=ema_n,
+                atr_n=atr_n,
+                st_mult=st_mult,
+            )
+            if use_d1_long or use_d1_short
+            else {
+                "ready": True,
+                "long_ok": True,
+                "short_ok": True,
+                "close": 0.0,
+                "ema": 0.0,
+                "supertrend_bull": None,
+                "bars": 0,
+            }
+        )
         indicators = {
             "atr": current_atr,
             "ema": ema_now,
@@ -284,6 +415,10 @@ class SuperTrendEMA200Strategy(Strategy):
             "rsi": rsi_now,
             "vol_ratio": vol_ratio,
             "body_atr": body_atr,
+            "d1_ready": bool(d1["ready"]),
+            "d1_close": float(d1["close"]),
+            "d1_ema": float(d1["ema"]),
+            "d1_supertrend_bull": d1["supertrend_bull"],
         }
         candidate_short = enable_short and not st_now
         ema_check = ema_short_ok if candidate_short else ema_ok
@@ -301,6 +436,23 @@ class SuperTrendEMA200Strategy(Strategy):
             {"label": "RSI", "value": f"{rsi_now:.1f}", "ok": rsi_ok, "hint": f"{rsi_min:.0f}-{rsi_max:.0f}"},
             {"label": "Volume", "value": f"{vol_ratio:.2f}x", "ok": vol_ok, "hint": f">={vol_min_ratio:.2f}x"},
         ]
+        candidate_d1_enabled = use_d1_short if candidate_short else use_d1_long
+        candidate_d1_ok = bool(d1["short_ok"] if candidate_short else d1["long_ok"])
+        if candidate_d1_enabled:
+            d1_side = "Bear" if candidate_short else "Bull"
+            d1_value = (
+                d1_side
+                if d1["ready"]
+                else f"Not ready ({int(d1['bars'])} bars)"
+            )
+            checklist.append(
+                {
+                    "label": "D1 ST+EMA",
+                    "value": d1_value,
+                    "ok": candidate_d1_ok,
+                    "hint": "Last closed D1 candle only",
+                }
+            )
 
         if ctx.has_position and str(ctx.position_side or "").upper() == "SHORT":
             if ctx.sl_confirmed:
@@ -320,7 +472,14 @@ class SuperTrendEMA200Strategy(Strategy):
                 return sell("Close lost EMA200", confidence=0.68, volatility=current_atr, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
             return hold("SuperTrend EMA200 position managed by ATR trailing stop", confidence=0.5, volatility=current_atr, trail_distance=current_atr * trail_mult if current_atr > 0 else None, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
 
-        if ema_ok and entry_timing_ok and rsi_ok and vol_ok and current_atr > 0:
+        if (
+            ema_ok
+            and entry_timing_ok
+            and rsi_ok
+            and vol_ok
+            and current_atr > 0
+            and (not use_d1_long or bool(d1["long_ok"]))
+        ):
             return buy(
                 "SuperTrend bull above EMA200",
                 confidence=0.64,
@@ -334,7 +493,15 @@ class SuperTrendEMA200Strategy(Strategy):
                 timeframe=ctx.timeframe_primary,
             )
 
-        if enable_short and ema_short_ok and short_timing_ok and rsi_ok and vol_ok and current_atr > 0:
+        if (
+            enable_short
+            and ema_short_ok
+            and short_timing_ok
+            and rsi_ok
+            and vol_ok
+            and current_atr > 0
+            and (not use_d1_short or bool(d1["short_ok"]))
+        ):
             return open_short(
                 "SuperTrend bear below EMA200",
                 confidence=0.64,
