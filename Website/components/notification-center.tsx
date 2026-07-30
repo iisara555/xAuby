@@ -44,11 +44,18 @@ export function NotificationCenter({ user }: { user: User }) {
 
   useEffect(() => setSeenAt(Number(window.localStorage.getItem(storageKey) ?? 0)), [storageKey]);
   useEffect(() => {
-    const close = (event: MouseEvent) => {
+    const close = (event: PointerEvent) => {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    const closeWithKeyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", closeWithKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", closeWithKeyboard);
+    };
   }, []);
 
   function markRead() {
