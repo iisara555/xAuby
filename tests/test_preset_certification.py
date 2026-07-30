@@ -213,6 +213,28 @@ class TestRecordIntegrity(_WithCertificateDir):
         with self.assertRaises(CertificationError):
             load_records()
 
+    def test_protocol_v2_proxy_cannot_certify_a_venue_preset(self):
+        record = _record(
+            "binance-th-btcusdt-supertrend-v1",
+            protocol={"name": "saas-preset-acceptance", "version": "2"},
+            data_source={"venue": "binance_th", "symbol": "BTCUSDT", "timeframe": "1h", "native": False},
+            gate={"native_history_sufficient": True},
+        )
+        self.write(record)
+        with self.assertRaisesRegex(CertificationError, "proxy evidence"):
+            apply_certification(_spec("binance-th-btcusdt-supertrend-v1"))
+
+    def test_protocol_v2_requires_sufficient_native_history(self):
+        record = _record(
+            "binance-th-btcusdt-supertrend-v1",
+            protocol={"name": "saas-preset-acceptance", "version": "2"},
+            data_source={"venue": "binance_th", "symbol": "BTCUSDT", "timeframe": "1h", "native": True},
+            gate={"native_history_sufficient": False},
+        )
+        self.write(record)
+        with self.assertRaisesRegex(CertificationError, "sufficient native history"):
+            apply_certification(_spec("binance-th-btcusdt-supertrend-v1"))
+
 
 class TestShippedRecords(unittest.TestCase):
     """The certificates actually in the repo, checked against the live specs."""

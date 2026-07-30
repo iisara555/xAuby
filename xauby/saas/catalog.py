@@ -54,6 +54,17 @@ TARGETS = [
         "manual_long_live_certified": True,
         "manual_short_live_certified": False,
     },
+    {
+        "id": "binance-th-spot-usdt",
+        "exchange_id": "binance_th",
+        "label": "Binance TH Spot · USDT",
+        "market_type": "spot",
+        "credential_fields": ["api_key", "api_secret"],
+        "live_certified": False,
+        "manual_allowed_sides": ["long"],
+        "manual_long_live_certified": False,
+        "manual_short_live_certified": False,
+    },
 ]
 
 # Full per-target recipe for the tenant ``exchange:`` block plus the
@@ -138,6 +149,22 @@ EXCHANGE_PROFILES: dict[str, dict[str, Any]] = {
         },
         "derivatives": {"market_type": "spot"},
         "whitelist": {"quote_asset": "THB", "sim_fee_pct": 0.25, "min_quote_balance": 350.0},
+    },
+    "binance-th-spot-usdt": {
+        "exchange": {
+            "provider": "binance",
+            "name": "binance_th",
+            "quote_asset": "USDT",
+            "settle_asset": "USDT",
+            "fee_pct": 0.001,
+            "market_type": "spot",
+            "base_url": "https://api.binance.th",
+            "api_key_env": "BINANCE_TH_API_KEY",
+            "api_secret_env": "BINANCE_TH_API_SECRET",
+            "base_url_env": "BINANCE_TH_BASE_URL",
+        },
+        "derivatives": {"market_type": "spot"},
+        "whitelist": {"quote_asset": "USDT", "sim_fee_pct": 0.1, "min_quote_balance": 10.0},
     },
 }
 

@@ -115,6 +115,20 @@ def load_record(preset_id: str) -> dict[str, Any] | None:
         raise CertificationError(f"{path}: verdict must be one of {CERTIFICATION_STATUSES}")
     if record.get("verdict") != "not_assessed" and not record.get("config_fingerprint"):
         raise CertificationError(f"{path}: a verdict without a fingerprint cannot be checked")
+    protocol = record.get("protocol") or {}
+    if str(protocol.get("version") or "1") == "2":
+        source = record.get("data_source")
+        if not isinstance(source, Mapping):
+            raise CertificationError(f"{path}: protocol v2 requires structured data_source")
+        missing = [key for key in ("venue", "symbol", "timeframe", "native") if key not in source]
+        if missing:
+            raise CertificationError(f"{path}: protocol v2 data_source missing {missing}")
+        if record.get("verdict") == "certified" and not bool(source.get("native")):
+            raise CertificationError(f"{path}: proxy evidence cannot certify a venue preset")
+        if record.get("verdict") == "certified" and not bool((record.get("gate") or {}).get("native_history_sufficient")):
+            raise CertificationError(f"{path}: protocol v2 certification requires sufficient native history")
+        if record.get("verdict") == "certified" and not bool((record.get("gate") or {}).get("fold_gate_passed")):
+            raise CertificationError(f"{path}: protocol v2 certification requires the 4/5 profitable-fold gate")
     return record
 
 

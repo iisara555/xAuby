@@ -36,6 +36,7 @@ import datetime as dt
 import json
 import os
 import sys
+from copy import deepcopy
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -65,10 +66,35 @@ from xauby.saas.preset_specs import PRESET_SPECS
 #: Venue series to certify each preset against. A preset with no entry here has
 #: no data path yet, which is a reason to leave it unassessed — not to certify
 #: it against whatever series happens to be handy.
-DATA_SYMBOLS: Dict[str, str] = {
-    "okx-xau-actionzone-v1": "XAUT-USDT",
-    "okx-btc-supertrend-v1": "BTC-USDT-SWAP",
+DATA_SOURCES: Dict[str, Dict[str, Any]] = {
+    "okx-xau-actionzone-v1": {"venue": "okx", "symbol": "XAUT-USDT", "base_url": "https://www.okx.com", "native": True},
+    "okx-btc-supertrend-v1": {"venue": "okx", "symbol": "BTC-USDT-SWAP", "base_url": "https://www.okx.com", "native": True},
+    "binance-th-btcusdt-supertrend-v1": {"venue": "binance_th", "symbol": "BTCUSDT", "base_url": "https://api.binance.th", "native": True, "fee_pct": 0.001},
+    "binance-th-xautusdt-actionzone-v1": {
+        "venue": "binance_th", "symbol": "XAUTUSDT", "base_url": "https://api.binance.th", "native": True, "fee_pct": 0.001,
+        "proxy": {"venue": "binance_global", "symbol": "PAXGUSDT", "base_url": "https://api.binance.com", "native": False},
+    },
 }
+# Backwards-compatible read-only view used by older tooling.
+DATA_SYMBOLS: Dict[str, str] = {key: str(value["symbol"]) for key, value in DATA_SOURCES.items()}
+
+MIN_NATIVE_HISTORY_DAYS = 365
+MIN_NATIVE_TRADES = 30
+MIN_BOOTSTRAP_PROBABILITY = 0.90
+MAX_DRAWDOWN_PCT = 25.0
+
+
+def _frame(source: Dict[str, Any], timeframe: str) -> pd.DataFrame:
+    """Load a normalized frame from its declared venue, never from ambient config."""
+    from xauby.backtest.data import load_or_download_candles, normalize_ohlcv_df, prepare_raw_dataframe
+
+    df = load_or_download_candles(
+        str(source["symbol"]), timeframe, limit=20000,
+        base_url=str(source["base_url"]),
+    )
+    if df.empty:
+        raise SystemExit(f"{source['venue']} returned no candles for {source['symbol']} {timeframe}")
+    return prepare_raw_dataframe(normalize_ohlcv_df(df))
 
 
 def spec_by_id(preset_id: str) -> Dict[str, Any]:
@@ -201,13 +227,19 @@ def build_record(
     note: str = "",
     n_trials: int = 1,
     sharpe_variance: Optional[float] = None,
+    data_source: Optional[Dict[str, Any]] = None,
+    fold_results: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    from scripts.validate_on_venue_data import _okx_frame
+    source = dict(data_source or {"venue": "okx", "symbol": data_symbol, "base_url": "https://www.okx.com", "native": True})
+    primary_tf = str(spec.get("primary_timeframe") or "4h")
+    df4 = _frame(source, primary_tf)
+    df1 = _frame(source, "1d")
 
-    df4 = _okx_frame(data_symbol, str(spec.get("primary_timeframe") or "4h"))
-    df1 = _okx_frame(data_symbol, "1d")
-
-    stats = _measure(spec, engine_config, df4, df1, label=data_symbol)
+    measured_config = deepcopy(engine_config)
+    if source.get("fee_pct") is not None:
+        measured_config["exchange"] = {**dict(measured_config.get("exchange") or {}), "fee_pct": float(source["fee_pct"]), "market_type": spec.get("market_type")}
+        measured_config["derivatives"] = {**dict(measured_config.get("derivatives") or {}), "market_type": spec.get("market_type")}
+    stats = _measure(spec, measured_config, df4, df1, label=data_symbol)
     net = float(stats.get("net_profit_pct", 0.0) or 0.0)
 
     acceptance = ((engine_config.get("backtest") or {}).get("acceptance") or {})
@@ -236,6 +268,33 @@ def build_record(
             "passed": bool(net > 0.0 and edge >= min_edge),
         })
         verdict = "certified" if gate["passed"] else "failed"
+    elif str(source.get("venue")) == "binance_th":
+        significance = _significance(stats, n_trials=n_trials, sharpe_variance=sharpe_variance)
+        history_days = max(0, int((int(df4["open_time"].iloc[-1]) - int(df4["open_time"].iloc[0])) / 86_400_000))
+        trades = int(stats.get("total_trades", 0) or 0)
+        profit_factor = float(stats.get("profit_factor", 0.0) or 0.0)
+        max_dd = float(stats.get("max_drawdown_pct", 0.0) or 0.0)
+        probability = float(((significance.get("bootstrap") or {}).get("prob_profitable") or 0.0))
+        native_sufficient = bool(source.get("native")) and history_days >= MIN_NATIVE_HISTORY_DAYS
+        folds_supplied = len(fold_results or []) == 5
+        profitable_folds = sum(float(fold.get("net_profit_pct") or 0) > 0 for fold in (fold_results or []))
+        fold_gate_passed = folds_supplied and profitable_folds >= 4
+        passed = bool(native_sufficient and net > 0 and profit_factor > 1 and trades >= MIN_NATIVE_TRADES and max_dd <= MAX_DRAWDOWN_PCT and probability >= MIN_BOOTSTRAP_PROBABILITY and fold_gate_passed)
+        gate.update({
+            "criterion": "protocol v2: native history >= 12 months, PF > 1, net > 0, trades >= 30, MDD <= 25%, bootstrap P(profit) >= 90%",
+            "native_history_days": history_days,
+            "native_history_sufficient": native_sufficient,
+            "candidate_net_pct": round(net, 2),
+            "profit_factor": round(profit_factor, 3),
+            "trades": trades,
+            "max_drawdown_pct": round(max_dd, 2),
+            "bootstrap_prob_profitable": probability,
+            "folds_supplied": folds_supplied,
+            "profitable_folds": profitable_folds,
+            "fold_gate_passed": fold_gate_passed,
+            "passed": passed,
+        })
+        verdict = "certified" if passed else ("not_assessed" if not native_sufficient else "failed")
     else:
         # A long-only preset has no short side to justify, so the edge test does
         # not apply. Net-positive over the sample is the whole bar it can clear,
@@ -253,7 +312,16 @@ def build_record(
     win_rate = stats.get("win_rate")
     max_dd = stats.get("max_drawdown_pct")
 
-    if not note:
+    if not note and str(source.get("venue")) == "binance_th":
+        if verdict == "certified":
+            note = f"Clears protocol v2 on native {data_symbol} over {duration}, including {gate['profitable_folds']}/5 profitable folds."
+        elif verdict == "not_assessed":
+            note = f"Native {data_symbol} history is {gate['native_history_days']} days; protocol v2 requires at least {MIN_NATIVE_HISTORY_DAYS}."
+        else:
+            note = "Fails one or more protocol v2 evidence gates; see the structured gate fields."
+        if document:
+            note = f"{note} See {document}."
+    elif not note:
         if verdict == "certified":
             note = (
                 f"Clears the pre-registered backtest.acceptance gate "
@@ -271,6 +339,7 @@ def build_record(
         if document:
             note = f"{note} See {document}."
 
+    significance = locals().get("significance") or _significance(stats, n_trials=n_trials, sharpe_variance=sharpe_variance)
     return {
         "record_version": RECORD_VERSION,
         "preset_id": spec["id"],
@@ -278,18 +347,21 @@ def build_record(
         "measured_at": dt.date.today().isoformat(),
         "protocol": {
             "name": "saas-preset-acceptance",
-            "version": "1",
+            "version": "2" if str(source.get("venue")) == "binance_th" else "1",
             "script": "scripts/certify_preset.py",
         },
-        "data_source": f"OKX {data_symbol} {spec.get('primary_timeframe') or '4h'}",
+        "data_source": ({
+            "venue": source.get("venue"), "symbol": source.get("symbol"),
+            "timeframe": primary_tf, "native": bool(source.get("native")),
+            **({"proxy_symbol": source["proxy"]["symbol"], "proxy_venue": source["proxy"]["venue"]} if source.get("proxy") else {}),
+        } if str(source.get("venue")) == "binance_th" else f"OKX {data_symbol} {primary_tf}"),
         "gate": gate,
         "verdict": verdict,
         "note": note,
         "document": document,
-        "significance": _significance(stats, n_trials=n_trials,
-                                      sharpe_variance=sharpe_variance),
+        "significance": significance,
         "evidence": {
-            "status": "validated",
+            "status": "insufficient" if verdict == "not_assessed" else "validated",
             "score_label": f"PF {profit_factor:.2f}",
             "period": period,
             "duration": duration,
@@ -297,7 +369,7 @@ def build_record(
             "max_drawdown_pct": round(float(max_dd), 1) if max_dd is not None else None,
             "trades": int(stats.get("total_trades", 0) or 0),
             "source": (
-                f"OKX {data_symbol} · this preset's execution_profile · "
+                f"{source.get('venue')} {data_symbol} · this preset's execution_profile · "
                 f"net of fee/slippage/funding · measured "
                 f"{dt.date.today().isoformat()}"
             ),
@@ -315,6 +387,7 @@ def main() -> int:
     ap.add_argument("--document", default="",
                     help="path to the human-readable write-up this record points at")
     ap.add_argument("--note", default="", help="override the generated note")
+    ap.add_argument("--grid-result", default="", help="JSON from scripts/binance_th_spot_grid.py; required for the protocol-v2 4/5 fold gate")
     ap.add_argument("--trials", type=int, default=1,
                     help="how many configurations were evaluated before this "
                          "one was chosen — the whole grid, not the shortlist. "
@@ -337,7 +410,8 @@ def main() -> int:
         return 0
 
     spec = spec_by_id(args.preset)
-    data_symbol: Optional[str] = args.data_symbol or DATA_SYMBOLS.get(spec["id"])
+    source = dict(DATA_SOURCES.get(spec["id"]) or {})
+    data_symbol: Optional[str] = args.data_symbol or str(source.get("symbol") or "") or None
     if not data_symbol:
         raise SystemExit(
             f"no venue data path for {spec['id']!r}. Add one to DATA_SYMBOLS or "
@@ -345,10 +419,22 @@ def main() -> int:
         )
 
     engine_config = load_bot_config(args.config)
+    if args.data_symbol:
+        source["symbol"] = args.data_symbol
+    fold_results = None
+    if args.grid_result:
+        with open(args.grid_result, "r", encoding="utf-8") as fh:
+            grid = json.load(fh)
+        key = "btc" if str(spec.get("asset")).upper() == "BTC" else "xaut"
+        fold_results = (((grid.get(key) or {}).get("winner") or {}).get("folds"))
+        if not isinstance(fold_results, list):
+            raise SystemExit(f"{args.grid_result}: no {key}.winner.folds list")
     record = build_record(spec, engine_config, data_symbol,
                           document=args.document, note=args.note,
                           n_trials=args.trials,
-                          sharpe_variance=args.sharpe_variance)
+                          sharpe_variance=args.sharpe_variance,
+                          data_source=source or None,
+                          fold_results=fold_results)
 
     text = json.dumps(record, indent=2) + "\n"
     if args.dry_run:

@@ -653,3 +653,26 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 @keyframes dashMarch { to { stroke-dashoffset: -16; } }
 @keyframes livePricePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
 @keyframes meterSlide { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Incremental mobile workspace improvements and in-app alerts. */
+.workspace-toolbar { position: relative; display: flex; align-items: center; }
+.workspace-toolbar > :first-child { flex: 1; min-width: 0; }
+.notification-center { position: relative; z-index: 48; margin-right: clamp(15px, 4vw, 64px); }
+.notification-trigger { position: relative; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(15,15,14,.94); cursor: pointer; }
+.notification-trigger > span { position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--bg); border-radius: 99px; background: var(--accent); color: white; font-size: 9px; font-weight: 750; }
+.notification-popover { position: absolute; top: 51px; right: 0; width: min(380px, calc(100vw - 30px)); max-height: min(560px, 72dvh); overflow: auto; border: 1px solid var(--line-strong); background: #0d0d0c; box-shadow: 0 22px 70px rgba(0,0,0,.55); }
+.notification-popover header { position: sticky; top: 0; z-index: 1; padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); background: #0d0d0c; }
+.notification-popover header div { display: grid; gap: 3px; }.notification-popover header small { color: var(--label); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }.notification-popover header strong { font-size: 13px; }
+.notification-popover header button { min-height: 36px; display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+.notification-popover ol { margin: 0; padding: 0; list-style: none; }.notification-popover li { padding: 13px 14px; display: grid; grid-template-columns: auto 1fr; gap: 10px; border-bottom: 1px solid var(--line); }.notification-popover li > svg { margin-top: 2px; color: var(--accent); }.notification-popover li div { min-width: 0; display: grid; gap: 4px; }.notification-popover li strong { font-size: 12px; text-transform: capitalize; }.notification-popover li p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }.notification-popover time { color: var(--label); font-size: 10px; }.notification-empty { margin: 0; padding: 30px 18px; color: var(--muted); font-size: 12px; text-align: center; }
+
+@media (max-width: 640px) {
+  .workspace-toolbar { align-items: flex-start; }.notification-center { margin: 10px 15px 0 0; }.notification-popover { position: fixed; top: 62px; right: 15px; }
+  .dashboard-grid .hero-card { min-height: 300px; order: 1; }.dashboard-grid .position-card { order: 2; }.dashboard-grid .control-card { order: 3; }.dashboard-grid .candle-card { order: 4; }.dashboard-grid .signal-detail { order: 5; }.dashboard-grid .market-context-card { order: 6; }.dashboard-grid .signal-card { order: 7; }.dashboard-grid .market-card { order: 8; }.dashboard-grid .recent-card { order: 9; }.dashboard-grid :is(.signal-card, .control-card, .market-card, .recent-card) { min-height: 0; }
+  .settings-tabs > .tab-list { position: sticky; top: 0; z-index: 8; width: 100%; overflow-x: auto; flex-wrap: nowrap; }.settings-tabs > .tab-list button { flex: 0 0 auto; min-height: 44px; padding-inline: 12px; }
+  .console-main { padding-bottom: 98px; }
+  .console-shell:has(.mobile-health-strip.open) .console-main { padding-bottom: 150px; }
+  .mobile-health-strip { height: auto; }
+  .mobile-health-strip > button { width: 100%; min-height: 34px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; color: var(--label); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }.mobile-health-strip > button svg { transition: transform .18s ease; }.mobile-health-strip:not(.open) > button svg { transform: rotate(180deg); }
+  .trade-table-wrap { overflow: visible; }.trade-table { min-width: 0; }.trade-table thead { display: none; }.trade-table, .trade-table tbody, .trade-table tr, .trade-table td { display: block; width: 100%; }.trade-table tr { margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--line); background: #10100f; }.trade-table td { min-height: 34px; padding: 7px 0; display: grid; grid-template-columns: minmax(88px, .7fr) 1fr; gap: 10px; text-align: right; border-bottom: 1px solid var(--line); }.trade-table td::before { content: attr(data-label); color: var(--label); font-size: 10px; letter-spacing: .04em; text-align: left; text-transform: uppercase; }.trade-table td:last-child { border-bottom: 0; }
+}

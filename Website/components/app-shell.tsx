@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  ChevronUp,
   Gauge,
   LogOut,
   Settings,
@@ -9,13 +10,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { api, csrfHeaders, User } from "@/lib/api";
 import { useMe } from "@/lib/hooks";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { ServerHealth } from "@/components/server-health";
 import { PairSwitcher } from "@/components/pair-switcher";
 import { WorkspacePairProvider } from "@/components/workspace-pair";
+import { NotificationCenter } from "@/components/notification-center";
 
 const UserContext = createContext<User | null>(null);
 
@@ -35,6 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: user, error, isLoading } = useMe();
+  const [healthOpen, setHealthOpen] = useState(false);
 
   useEffect(() => {
     if (!user && error && "status" in error && error.status === 401) {
@@ -87,8 +90,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button onClick={logout} aria-label="Sign out"><LogOut size={17} /></button>
             </div>
           </aside>
-          <main className="console-main"><PairSwitcher />{children}</main>
-          <div className="mobile-health-strip"><ServerHealth compact /></div>
+          <main className="console-main"><div className="workspace-toolbar"><PairSwitcher /><NotificationCenter user={user} /></div>{children}</main>
+          <div className={healthOpen ? "mobile-health-strip open" : "mobile-health-strip"}>
+            <button type="button" onClick={() => setHealthOpen((value) => !value)} aria-expanded={healthOpen}><span>System health</span><ChevronUp size={15} /></button>
+            {healthOpen && <ServerHealth compact />}
+          </div>
           <nav className="mobile-nav" aria-label="Mobile navigation">
             {items.map(({ href, label, icon: Icon }) => {
               const active = href === "/app" ? pathname === href : pathname.startsWith(href);

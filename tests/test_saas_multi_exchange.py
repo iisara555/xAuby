@@ -25,7 +25,7 @@ class CatalogMultiExchangeTests(unittest.TestCase):
         target_ids = [target["id"] for target in TARGETS]
         self.assertEqual(
             target_ids,
-            ["okx-swap", "binance-global-futures", "binance-global-spot", "binance-th-spot"],
+            ["okx-swap", "binance-global-futures", "binance-global-spot", "binance-th-spot", "binance-th-spot-usdt"],
         )
         self.assertEqual(set(EXCHANGE_PROFILES), set(target_ids))
         self.assertEqual(CATALOG["limits"], {"configured_pairs": 3, "active_pairs": 3})
@@ -40,6 +40,7 @@ class CatalogMultiExchangeTests(unittest.TestCase):
         )
         self.assertFalse(targets["binance-global-spot"]["manual_short_live_certified"])
         self.assertFalse(targets["binance-th-spot"]["manual_short_live_certified"])
+        self.assertFalse(targets["binance-th-spot-usdt"]["manual_short_live_certified"])
 
     def test_certified_okx_presets_publish_pair_sizing_metadata(self):
         presets = {item["id"]: item for item in CATALOG["presets"]}
@@ -68,6 +69,28 @@ class CatalogMultiExchangeTests(unittest.TestCase):
         self.assertNotIn("ccxt_id", exchange)
         self.assertEqual(exchange["base_url"], "https://api.binance.th")
         self.assertEqual(exchange["quote_asset"], "THB")
+        usdt = EXCHANGE_PROFILES["binance-th-spot-usdt"]
+        self.assertEqual(usdt["exchange"]["provider"], "binance")
+        self.assertNotIn("ccxt_id", usdt["exchange"])
+        self.assertEqual(usdt["exchange"]["quote_asset"], "USDT")
+        self.assertEqual(usdt["exchange"]["fee_pct"], 0.001)
+        self.assertEqual(usdt["whitelist"]["sim_fee_pct"], 0.1)
+
+    def test_binance_th_usdt_presets_are_spot_long_only_and_sim_only(self):
+        presets = {item["id"]: item for item in CATALOG["presets"]}
+        for preset_id in (
+            "binance-th-btcusdt-supertrend-v1",
+            "binance-th-xautusdt-actionzone-v1",
+        ):
+            preset = presets[preset_id]
+            self.assertEqual(preset["target_id"], "binance-th-spot-usdt")
+            self.assertEqual(preset["market_type"], "spot")
+            self.assertEqual(preset["allowed_sides"], ["long"])
+            self.assertEqual(preset["max_leverage"], 1)
+            self.assertFalse(preset["live_certified"])
+            self.assertTrue(preset["stop_loss_required"])
+        self.assertEqual(presets["binance-th-xautusdt-actionzone-v1"]["certification_status"], "not_assessed")
+        self.assertEqual(presets["binance-th-xautusdt-actionzone-v1"]["backtest"]["status"], "insufficient")
 
     def test_validate_profile_multi_pair_rules(self):
         result = validate_profile(
