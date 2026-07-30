@@ -53,11 +53,11 @@ self-hosted CI run the full suite/build. See the resource rules below.
 
 ### Home self-hosted runner
 
-GitHub Actions compute belongs on the operator's dedicated Linux x64 home
+GitHub Actions compute belongs on the operator's dedicated Windows x64 home
 runner, not on GitHub-hosted runners and never on the trading VPS:
 
-- CI jobs use `[self-hosted, linux, x64, xauby-ci]`.
-- Optimizers and backtests use `[self-hosted, linux, x64, xauby-backtest]` and
+- CI jobs use `[self-hosted, windows, x64, xauby-ci]`.
+- Optimizers and backtests use `[self-hosted, windows, x64, xauby-backtest]` and
   must be manually dispatched; do not add a push/schedule trigger for them.
 - The runner account must not contain exchange keys, tenant config, production
   `.env`, rclone credentials, VPS SSH credentials, or personal files.
