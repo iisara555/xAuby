@@ -1,9 +1,9 @@
 name: BTC SuperTrend OKX grid research
 
 on:
-  push:
-    branches:
-      - codex/btc-supertrend-grid-20260729
+  # The authoritative one-off grid is preserved as an artifact.  Keep reruns
+  # explicit so ordinary branch maintenance does not spend eight runners.
+  workflow_dispatch:
 
 permissions:
   contents: read
