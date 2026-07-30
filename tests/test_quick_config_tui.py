@@ -43,6 +43,17 @@ async def _open_submenu(app, pilot, submenu_id):
     return app.screen
 
 
+async def _choose_option(app, pilot, option_id):
+    """Select a mounted choice deterministically and drain its dismiss callback."""
+    await pilot.wait_for_scheduled_animations()
+    choices = app.screen.query_one("#qc-choice-list", OptionList)
+    choices.highlighted = choices.get_option_index(option_id)
+    await pilot.pause()
+    assert choices.get_option_at_index(choices.highlighted).id == option_id
+    await pilot.press("enter")
+    await pilot.wait_for_scheduled_animations()
+
+
 async def _edit_number(app, pilot, submenu_id, key, value):
     """Open a submenu, edit a number field, then return to a stable screen."""
     scr = await _open_submenu(app, pilot, submenu_id)
@@ -307,12 +318,7 @@ async def test_regime_mapping_write(temp_config):
         await pilot.pause()
         ol.action_select()
         await pilot.pause()
-        cl = app.screen.query_one("#qc-choice-list", OptionList)
-        cl.highlighted = cl.get_option_index("xauby_actionzone")
-        await pilot.pause()
-        cl.action_select()
-        await pilot.pause()
-        await pilot.pause()
+        await _choose_option(app, pilot, "xauby_actionzone")
     assert _load_cfg(temp_config)["regime_router"]["mapping"][reg] == "xauby_actionzone"
 
 
@@ -331,12 +337,7 @@ async def test_regime_mapping_no_trade_stays_visible_and_runtime_no_trade(temp_c
         await pilot.pause()
         ol.action_select()
         await pilot.pause()
-        cl = app.screen.query_one("#qc-choice-list", OptionList)
-        cl.highlighted = cl.get_option_index("NO_TRADE")
-        await pilot.pause()
-        cl.action_select()
-        await pilot.pause()
-        await pilot.pause()
+        await _choose_option(app, pilot, "NO_TRADE")
 
     cfg = _load_cfg(temp_config)
     assert cfg["regime_router"]["mapping"][reg] is None
