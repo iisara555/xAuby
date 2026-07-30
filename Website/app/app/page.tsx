@@ -1,5 +1,6 @@
 "use client";
 
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Activity as ActivityIcon, ArrowRight, BarChart3, Bot as BotIcon, Pause, Play, Radio, ShieldCheck, TrendingDown, TrendingUp, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -62,6 +63,7 @@ export default function DashboardPage() {
   const { pairs, selectedPair, selectedSymbol: symbol } = useWorkspacePair();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [engineConfirmOpen, setEngineConfirmOpen] = useState(false);
   const running = bot?.tenant.status === "running";
   const state = snapshot?.state ?? {};
   const focus = runtimePairState(state, symbol);
@@ -246,7 +248,7 @@ export default function DashboardPage() {
           <div className="card-kicker"><span>Engine control</span>{snapshot?.ok ? <StatusPill label="Connected" tone="good" /> : <WifiOff size={17} />}</div>
           <h2>{running ? "Automation is running" : bot?.tenant.status === "queued" ? "Waiting for capacity" : "Automation is paused"}</h2>
           <p>Starting the engine monitors your selected preset. Live orders remain gated separately.</p>
-          <button className={running ? "button-secondary wide" : "button-primary wide"} onClick={toggleEngine} disabled={busy || !bot?.exchange_connection}>
+          <button className={running ? "button-secondary wide" : "button-primary wide"} onClick={() => setEngineConfirmOpen(true)} disabled={busy || !bot?.exchange_connection}>
             {running ? <Pause size={18} /> : <Play size={18} />}{busy ? "Working…" : running ? "Stop engine" : "Start engine"}
           </button>
           {message && <p className="form-error" role="alert">{message}</p>}
@@ -258,6 +260,16 @@ export default function DashboardPage() {
           {!events.length && <p className="section-copy">Events will appear as the tenant engine evaluates the market.</p>}
         </article>
       </section>
+      <AlertDialog.Root open={engineConfirmOpen} onOpenChange={setEngineConfirmOpen}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="dialog-overlay" />
+          <AlertDialog.Content className="dialog-content">
+            <AlertDialog.Title>{running ? "Stop automation?" : "Start automation?"}</AlertDialog.Title>
+            <AlertDialog.Description>{running ? "The engine will stop evaluating new entries. Existing exchange exposure is still managed by the controlled backend workflow." : "The engine will begin monitoring the selected preset. Live execution remains gated separately by the existing security checks."}</AlertDialog.Description>
+            <div className="dialog-actions"><AlertDialog.Cancel className="button-secondary" type="button">Cancel</AlertDialog.Cancel><AlertDialog.Action className={running ? "button-danger" : "button-primary"} type="button" onClick={toggleEngine}>{running ? "Stop engine" : "Start engine"}</AlertDialog.Action></div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </div>
   );
 }

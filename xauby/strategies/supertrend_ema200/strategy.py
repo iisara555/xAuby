@@ -129,7 +129,7 @@ class SuperTrendEMA200Strategy(Strategy):
 
         frame = regime
         if "timestamp" in frame.columns and "timestamp" in ctx.df_primary.columns:
-            from xauby.runtime.candle_utils import timeframe_seconds
+            from xauby.strategies.timeframes import timeframe_seconds
 
             primary_open = int(ctx.df_primary["timestamp"].iloc[-1])
             decision_ts = primary_open + timeframe_seconds(ctx.timeframe_primary)

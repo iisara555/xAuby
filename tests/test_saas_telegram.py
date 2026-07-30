@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -89,7 +90,7 @@ class TelegramWorkspaceTests(unittest.TestCase):
         self.assertEqual(connection["token_last4"], "xxxx")
         self.assertEqual(connection["status"], "stored")
 
-        with sqlite3.connect(str(self.settings.database_path)) as conn:
+        with closing(sqlite3.connect(str(self.settings.database_path))) as conn:
             blob = conn.execute(
                 "SELECT credential_blob FROM telegram_connections WHERE tenant_id=?",
                 (self.tenant["id"],),
@@ -290,7 +291,7 @@ class TelegramWorkspaceTests(unittest.TestCase):
 
     def test_audit_events_carry_no_secrets(self):
         self.connect()
-        with sqlite3.connect(str(self.settings.database_path)) as conn:
+        with closing(sqlite3.connect(str(self.settings.database_path))) as conn:
             rows = conn.execute(
                 "SELECT event_type,payload_json FROM audit_events "
                 "WHERE event_type LIKE 'telegram%'"
@@ -316,7 +317,7 @@ class TelegramWorkspaceTests(unittest.TestCase):
         # back without the token that was just saved.
         self.assertEqual(calls, [self.tenant["slug"]])
 
-        with sqlite3.connect(str(self.settings.database_path)) as conn:
+        with closing(sqlite3.connect(str(self.settings.database_path))) as conn:
             events = [row[0] for row in conn.execute(
                 "SELECT event_type FROM audit_events WHERE tenant_id=?",
                 (self.tenant["id"],),

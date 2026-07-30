@@ -1,0 +1,41 @@
+{
+  "record_version": 1,
+  "preset_id": "binance-th-xautusdt-actionzone-v1",
+  "config_fingerprint": "9400d63c5bc9290f",
+  "measured_at": "2026-07-30",
+  "protocol": {
+    "name": "saas-preset-acceptance",
+    "version": "2",
+    "script": "scripts/certify_preset.py"
+  },
+  "data_source": {
+    "venue": "binance_th",
+    "symbol": "XAUTUSDT",
+    "timeframe": "4h",
+    "native": true,
+    "proxy_symbol": "PAXGUSDT",
+    "proxy_venue": "binance_global"
+  },
+  "gate": {
+    "passed": false,
+    "native_history_months_required": 12,
+    "reason": "Binance TH XAUTUSDT native history is shorter than the pre-registered 12-month minimum. Proxy research cannot certify a venue preset."
+  },
+  "verdict": "not_assessed",
+  "note": "SIM only. PAXGUSDT may be used for research and parameter selection, but certification remains blocked until Binance TH XAUTUSDT has at least 12 months of native evidence and passes the full protocol.",
+  "document": "",
+  "significance": {
+    "computed": false,
+    "reason": "Native evidence is not yet sufficient for certification."
+  },
+  "evidence": {
+    "status": "insufficient",
+    "score_label": "Native history pending",
+    "period": "Mar 2026 – present",
+    "duration": "< 12 months",
+    "win_rate_pct": null,
+    "max_drawdown_pct": null,
+    "trades": null,
+    "source": "Binance TH XAUTUSDT native validation; Binance Global PAXGUSDT is research-only proxy evidence"
+  }
+}

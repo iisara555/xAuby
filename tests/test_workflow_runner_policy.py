@@ -26,7 +26,7 @@ def test_no_workflow_uses_metered_github_hosted_runner() -> None:
 def test_pr_ci_uses_internal_only_home_runner() -> None:
     for name in ("secret-scan.yml", "security.yml"):
         text = _workflow(name)
-        job_count = text.count("runs-on: [self-hosted, linux, x64, xauby-ci]")
+        job_count = text.count("runs-on: [self-hosted, windows, x64, xauby-ci]")
         assert job_count > 0
         assert text.count(INTERNAL_PR_GUARD) == job_count
 
@@ -36,6 +36,6 @@ def test_backtest_is_manual_and_uses_local_multiprocessing() -> None:
     assert "workflow_dispatch:" in text
     assert "push:" not in text
     assert "matrix:" not in text
-    assert "runs-on: [self-hosted, linux, x64, xauby-backtest]" in text
+    assert "runs-on: [self-hosted, windows, x64, xauby-backtest]" in text
     assert "scripts/btc_supertrend_okx_pf_grid.py" in text
     assert '--workers "${{ inputs.workers }}"' in text

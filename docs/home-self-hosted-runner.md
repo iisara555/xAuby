@@ -1,6 +1,6 @@
 # Home self-hosted GitHub Actions runner
 
-The repository uses a dedicated Linux x64 runner on the operator's home PC for
+The repository uses a dedicated Windows x64 runner on the operator's home PC for
 PR CI and compute-heavy research. This keeps full pytest, the Next.js build,
 dependency audits, optimizers, and backtests off the 1 vCPU / 2 GB live trading
 VPS and avoids GitHub-hosted runner minutes.
@@ -17,28 +17,28 @@ runner. Do not remove that guard and do not add public repositories to this
 runner. Keep production deployment manual; the runner is build/research
 infrastructure, never a trading-engine host.
 
-Recommended capacity is Linux x64 with at least 4 CPU cores, 8 GB RAM, and
+Recommended capacity is Windows x64 with at least 4 CPU cores, 8 GB RAM, and
 20 GB free disk. Eight cores and 16 GB RAM are preferable for a four-worker BTC
-grid. Native Ubuntu is simplest; Windows users should install the Linux runner
-inside WSL2 with systemd enabled. The PC must stay awake and online while jobs
-run.
+grid. Use the native Windows runner from an ordinary dedicated local account;
+WSL is not required. The PC must stay awake and online while jobs run.
 
 ## One-time registration
 
 1. Sign in to GitHub as the repository owner and open
    **xAuby → Settings → Actions → Runners → New self-hosted runner**.
-2. Select **Linux / x64**. On the home PC, under a dedicated account such as
+2. Select **Windows / x64**. On the home PC, under a dedicated account such as
    `xauby-runner`, run the download and checksum commands GitHub displays.
-3. Run GitHub's generated `config.sh` command. Use runner name
+3. Run GitHub's generated `config.cmd` command. Use runner name
    `xauby-home-01` and add both custom labels:
 
    ```text
    xauby-ci,xauby-backtest
    ```
 
-4. Install and start it as a service using the `svc.sh` commands shown by
-   GitHub. In the repository runner page, require status **Idle** and labels
-   `self-hosted`, `linux`, `x64`, `xauby-ci`, and `xauby-backtest`.
+4. Install and start it as a Windows service when `config.cmd` prompts, or use
+   the generated `svc.cmd` commands from an Administrator terminal. In the
+   repository runner page, require status **Idle** and labels
+   `self-hosted`, `Windows`, `X64`, `xauby-ci`, and `xauby-backtest`.
 
 The registration token is short-lived and secret. Enter it only on the home PC;
 never paste it into chat, a repository file, an Actions secret, or a shell log.
@@ -46,9 +46,9 @@ never paste it into chat, a repository file, an Actions secret, or a shell log.
 ## Workflows
 
 - `.github/workflows/secret-scan.yml` and `security.yml` target
-  `[self-hosted, linux, x64, xauby-ci]` for PR and `main` gates.
+  `[self-hosted, windows, x64, xauby-ci]` for PR and `main` gates.
 - `.github/workflows/btc-supertrend-grid-research.yml` targets
-  `[self-hosted, linux, x64, xauby-backtest]` and starts only from
+  `[self-hosted, windows, x64, xauby-backtest]` and starts only from
   **Actions → BTC SuperTrend OKX grid research → Run workflow**.
 - The BTC grid is one job using local multiprocessing. Start with four workers;
   reduce to two if the PC becomes memory-bound. Only one research grid may own

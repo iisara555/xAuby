@@ -137,7 +137,8 @@ def update_environment(path: Path, values: dict[str, str]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temporary, stat.st_mode & 0o777)
-        os.chown(temporary, stat.st_uid, stat.st_gid)
+        if hasattr(os, "chown"):
+            os.chown(temporary, stat.st_uid, stat.st_gid)
         os.replace(temporary, path)
     finally:
         try:

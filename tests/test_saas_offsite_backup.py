@@ -183,7 +183,8 @@ class CredentialRotationTests(unittest.TestCase):
             path.read_text(encoding="utf-8"),
             "OTHER=value\nXAUBY_CREDENTIAL_MASTER_KEY=new\nXAUBY_CREDENTIAL_MASTER_KEY_VERSION=2\n",
         )
-        self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+        if os.name != "nt":
+            self.assertEqual(path.stat().st_mode & 0o777, 0o640)
 
     def test_rotation_command_stages_keyring_then_reencrypts_database(self) -> None:
         old = CredentialKeyring(self.old_key)

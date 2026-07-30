@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 
+@unittest.skipIf(os.name == "nt", "requires POSIX shell and permission semantics")
 class DeployFromGitHubScriptTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

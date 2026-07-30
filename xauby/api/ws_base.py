@@ -155,11 +155,12 @@ class ThreadedWebSocketBase(ABC):
     def _on_open(self, ws: Any) -> None:
         logger.info("Websocket connected")
         downtime = 0.0
-        if self._disconnected_at > 0:
-            downtime = time.time() - self._disconnected_at
+        was_disconnected = self._disconnected_at > 0
+        if was_disconnected:
+            downtime = max(0.0, time.time() - self._disconnected_at)
             self._disconnected_at = 0.0
         self.reconnect_delay = 1.0
-        if downtime > 0:
+        if was_disconnected:
             self._emit_status("ws_reconnected", downtime_sec=downtime)
 
     def _on_message(self, ws: Any, message: str) -> None:

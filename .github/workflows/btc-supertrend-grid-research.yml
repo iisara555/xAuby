@@ -35,7 +35,7 @@ concurrency:
 
 jobs:
   grid:
-    runs-on: [self-hosted, linux, x64, xauby-backtest]
+    runs-on: [self-hosted, windows, x64, xauby-backtest]
     timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4
@@ -48,17 +48,18 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run native OKX grid and finalist checks locally
         run: >-
-          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid.py
+          python scripts/btc_supertrend_okx_pf_grid.py
           --out-dir core/btc_supertrend_okx_pf_grid
           --workers "${{ inputs.workers }}"
           --top-n "${{ inputs.top_n }}"
       - name: Record reproducibility metadata
         if: always()
+        shell: pwsh
         run: |
-          mkdir -p core/btc_supertrend_okx_pf_grid
-          git rev-parse HEAD > core/btc_supertrend_okx_pf_grid/git_commit.txt
-          date -u +%Y-%m-%dT%H:%M:%SZ > core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
-          printf '%s\n' "$RUNNER_NAME" > core/btc_supertrend_okx_pf_grid/runner_name.txt
+          New-Item -ItemType Directory -Force core/btc_supertrend_okx_pf_grid | Out-Null
+          git rev-parse HEAD | Set-Content core/btc_supertrend_okx_pf_grid/git_commit.txt
+          (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") | Set-Content core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
+          $env:RUNNER_NAME | Set-Content core/btc_supertrend_okx_pf_grid/runner_name.txt
       - name: Upload compact final artifacts
         if: always()
         uses: actions/upload-artifact@v4

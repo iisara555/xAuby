@@ -25,7 +25,7 @@ permissions:
 jobs:
   python-dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, xauby-ci]
+    runs-on: [self-hosted, windows, x64, xauby-ci]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,14 +47,11 @@ jobs:
       # (requirements.txt points at MerlinR/Pandas-ta-fork), or replacing the
       # library. Revisit when any of those happens.
       - name: pip-audit
-        run: |
-          pip-audit -r requirements.txt \
-            --ignore-vuln PYSEC-2026-3447 \
-            --progress-spinner off
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2026-3447 --progress-spinner off
 
   node-dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, xauby-ci]
+    runs-on: [self-hosted, windows, x64, xauby-ci]
     steps:
       - uses: actions/checkout@v4
         with:
