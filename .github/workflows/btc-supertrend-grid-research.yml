@@ -1,0 +1,69 @@
+name: BTC SuperTrend OKX grid research
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: Local worker processes on the home runner
+        required: true
+        default: "4"
+        type: choice
+        options:
+          - "2"
+          - "4"
+          - "6"
+          - "8"
+      top_n:
+        description: OOS-ranked finalists to replay on full history
+        required: true
+        default: "12"
+        type: choice
+        options:
+          - "5"
+          - "12"
+          - "20"
+
+permissions:
+  contents: read
+
+# One research process owns the home runner at a time.  The Python harness uses
+# multiprocessing internally, so a hosted-runner matrix would only duplicate
+# setup and consume metered minutes.
+concurrency:
+  group: xauby-home-backtest
+  cancel-in-progress: false
+
+jobs:
+  grid:
+    runs-on: [self-hosted, linux, x64, xauby-backtest]
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Run native OKX grid and finalist checks locally
+        run: >-
+          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid.py
+          --out-dir core/btc_supertrend_okx_pf_grid
+          --workers "${{ inputs.workers }}"
+          --top-n "${{ inputs.top_n }}"
+      - name: Record reproducibility metadata
+        if: always()
+        run: |
+          mkdir -p core/btc_supertrend_okx_pf_grid
+          git rev-parse HEAD > core/btc_supertrend_okx_pf_grid/git_commit.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
+          printf '%s\n' "$RUNNER_NAME" > core/btc_supertrend_okx_pf_grid/runner_name.txt
+      - name: Upload compact final artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-supertrend-okx-grid-${{ github.run_id }}
+          path: core/btc_supertrend_okx_pf_grid/
+          if-no-files-found: error
+          retention-days: 30

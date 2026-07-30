@@ -259,6 +259,11 @@ position is LONG or SHORT so it can pick the right exit.
 
 Plain `unittest`, no extra runner. Always set `PYTHONPATH=.`.
 
+The full suite and frontend build run on the dedicated Linux x64 home
+self-hosted runner (`xauby-ci`). Never run them on the 1 vCPU / 2 GB trading
+VPS. On the VPS, run only the targeted tests for the files changed and leave the
+full gate to the PR workflow.
+
 ```bash
 # Full suite (139 modules)
 PYTHONPATH=. python3 -m unittest discover -s tests -q
@@ -274,6 +279,13 @@ PYTHONPATH=. python3 -m unittest \
 New plugins require strategy tests, indicator tests, and chart legend coverage.
 
 ## Backtest, optimization, and R&D
+
+Compute-heavy backtests, grids, and optimizers run only on the home self-hosted
+runner (`xauby-backtest`) or directly on that home PC. Do not run them on the
+trading VPS or change a workflow to a metered GitHub-hosted runner when the home
+runner is offline. The BTC SuperTrend grid is manually dispatched from Actions
+and uses local multiprocessing in one job. Setup and recovery are documented in
+`docs/home-self-hosted-runner.md`.
 
 - Backtests pull from **Global Binance** (`api.binance.com`) by default for
   longer history (`backtest.data_base_url`, env override `BINANCE_BACKTEST_URL`);
@@ -338,6 +350,10 @@ the single source of truth for both Claude and Codex; the essentials:
 
 - `main` is what CI validates, what Vercel deploys, **and what the live trading
   engine pulls and restarts on** (`scripts/deploy_from_github.sh` defaults to it).
+- PR CI targets `[self-hosted, linux, x64, xauby-ci]`; manual research targets
+  `[self-hosted, linux, x64, xauby-backtest]`. If `xauby-home-01` is offline,
+  leave jobs queued and ask the operator to bring it online — never bypass the
+  gate, use a metered hosted runner, or run the workload on the trading VPS.
 - **Never force-push `main`** — the VPS deploys with `git merge --ff-only`, so a
   rewritten history makes deployment refuse to proceed.
 - One branch, one agent. Prefix Claude's work `claude/*`.

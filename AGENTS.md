@@ -34,10 +34,13 @@ release and restart the systemd units; the checkout-scoped
 - **Never force-push `main`.** The VPS deploys with `git merge origin/main
   --ff-only`, so a rewritten history makes deployment refuse to proceed.
 - Land work through a PR. CI (`secret-scan` + `test`) is the gate; it runs on
-  every PR. An agent may merge its own PR once CI is green — human review is not
-  required, so work continues when another agent is unavailable.
+  the dedicated home self-hosted runner for every same-repository PR. An agent
+  may merge its own PR once CI is green — human review is not required, so work
+  continues when another agent is unavailable.
 
 ### Before you push
+
+On a capable workstation or the home runner:
 
 ```bash
 PYTHONPATH=. python3 -m pytest -q          # full suite must pass
@@ -45,8 +48,28 @@ python3 scripts/scan_secrets.py --tracked --history
 cd Website && npm run build                # only if you touched Website/
 ```
 
-Run these where there is room for them — see below before running any of them on
-the VPS.
+On the VPS, substitute focused tests for the full suite and let the PR's
+self-hosted CI run the full suite/build. See the resource rules below.
+
+### Home self-hosted runner
+
+GitHub Actions compute belongs on the operator's dedicated Linux x64 home
+runner, not on GitHub-hosted runners and never on the trading VPS:
+
+- CI jobs use `[self-hosted, linux, x64, xauby-ci]`.
+- Optimizers and backtests use `[self-hosted, linux, x64, xauby-backtest]` and
+  must be manually dispatched; do not add a push/schedule trigger for them.
+- The runner account must not contain exchange keys, tenant config, production
+  `.env`, rclone credentials, VPS SSH credentials, or personal files.
+- Same-repository PRs only may execute on it. Keep the fork-PR guard in every
+  `pull_request` workflow.
+- An offline runner leaves jobs queued. Do not switch `runs-on` back to a
+  metered GitHub-hosted label, bypass CI, or move the workload to the VPS. Ask
+  the operator to bring `xauby-home-01` online, then rerun the jobs.
+
+One-time installation and labels are documented in
+`docs/home-self-hosted-runner.md`. GitHub registration tokens are short-lived
+secrets and must never be requested in chat or committed.
 
 ### Resource limits on the VPS
 
@@ -64,16 +87,16 @@ Do **not** run these on the VPS:
 - the optimizer or a backtest (`scripts/optimize_pair_configs.py`,
   `scripts/replay_backtest.py`)
 
-Let CI do that work: `secret-scan` and `test` already run both the full suite and
-the frontend build on a GitHub runner for every PR. On the VPS, keep to targeted
-checks:
+Let self-hosted CI do that work: `secret-scan` and `test` run the full suite and
+frontend build on the home runner for every same-repository PR. On the VPS, keep
+to targeted checks:
 
 ```bash
 PYTHONPATH=. python3 -m pytest -q tests/test_<the_thing_you_changed>.py
 ```
 
-If something heavy genuinely has to run on the VPS, do it when no position is
-open.
+Do not move a heavy job to the VPS merely because the home runner is offline.
+Wait for the home runner or ask the operator to bring it online.
 
 ### Deploying
 
