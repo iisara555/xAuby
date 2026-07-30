@@ -77,6 +77,18 @@ DEFAULT_REALERT_SEC = 3600.0
 TELEGRAM_TIMEOUT_SEC = 15
 
 
+def configure_stdio() -> None:
+    """Keep watchdog output printable on Windows' legacy console encoding."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
+
 def parse_env_file(path: str) -> Dict[str, str]:
     """Read KEY=VALUE lines. Never sourced as shell — a token is data.
 
@@ -213,6 +225,7 @@ def build_alert(
 
 
 def main() -> int:
+    configure_stdio()
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
