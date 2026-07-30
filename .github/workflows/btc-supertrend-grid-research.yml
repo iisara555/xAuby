@@ -1,110 +1,65 @@
 name: BTC SuperTrend OKX grid research
 
 on:
-  # The authoritative one-off grid is preserved as an artifact.  Keep reruns
-  # explicit so ordinary branch maintenance does not spend eight runners.
   workflow_dispatch:
+    inputs:
+      workers:
+        description: Local worker processes on the home runner
+        required: true
+        default: "4"
+        type: choice
+        options:
+          - "2"
+          - "4"
+          - "6"
+          - "8"
+      top_n:
+        description: OOS-ranked finalists to replay on full history
+        required: true
+        default: "12"
+        type: choice
+        options:
+          - "5"
+          - "12"
+          - "20"
 
 permissions:
   contents: read
 
+# One research process owns the home runner at a time.  The Python harness uses
+# multiprocessing internally, so a hosted-runner matrix would only duplicate
+# setup and consume metered minutes.
+concurrency:
+  group: xauby-home-backtest
+  cancel-in-progress: false
+
 jobs:
-  prepare-data:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-      - name: Fetch native OKX candles once
-        run: >-
-          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid_shard.py fetch
-          --data-dir core/btc_supertrend_okx_grid_data
-      - uses: actions/upload-artifact@v4
-        with:
-          name: btc-supertrend-okx-data-${{ github.run_id }}
-          path: core/btc_supertrend_okx_grid_data/
-          if-no-files-found: error
-          retention-days: 7
-
   grid:
-    needs: prepare-data
-    runs-on: ubuntu-latest
-    timeout-minutes: 150
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    runs-on: [self-hosted, linux, x64, xauby-backtest]
+    timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
       - name: Install Python dependencies
         run: pip install -r requirements.txt
-      - uses: actions/download-artifact@v4
-        with:
-          name: btc-supertrend-okx-data-${{ github.run_id }}
-          path: core/btc_supertrend_okx_grid_data
-      - name: Run grid shard
+      - name: Run native OKX grid and finalist checks locally
         run: >-
-          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid_shard.py grid
-          --data-dir core/btc_supertrend_okx_grid_data
-          --out-dir core/btc_supertrend_okx_grid_shard
-          --workers 2
-          --shard-index ${{ matrix.shard }}
-          --shard-count 8
-      - uses: actions/upload-artifact@v4
-        with:
-          name: btc-supertrend-grid-shard-${{ matrix.shard }}-${{ github.run_id }}
-          path: core/btc_supertrend_okx_grid_shard/grid-shard-*.json
-          if-no-files-found: error
-          retention-days: 7
-
-  finalize:
-    needs: grid
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-      - uses: actions/download-artifact@v4
-        with:
-          name: btc-supertrend-okx-data-${{ github.run_id }}
-          path: core/btc_supertrend_okx_grid_data
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: btc-supertrend-grid-shard-*-${{ github.run_id }}
-          path: core/btc_supertrend_okx_grid_shards
-          merge-multiple: true
-      - name: Merge exact grid and run finalist checks
-        run: >-
-          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid_shard.py finalize
-          --data-dir core/btc_supertrend_okx_grid_data
-          --shards-dir core/btc_supertrend_okx_grid_shards
+          PYTHONPATH=. python3 scripts/btc_supertrend_okx_pf_grid.py
           --out-dir core/btc_supertrend_okx_pf_grid
-          --workers 2
-          --top-n 12
+          --workers "${{ inputs.workers }}"
+          --top-n "${{ inputs.top_n }}"
       - name: Record reproducibility metadata
         if: always()
         run: |
           mkdir -p core/btc_supertrend_okx_pf_grid
           git rev-parse HEAD > core/btc_supertrend_okx_pf_grid/git_commit.txt
           date -u +%Y-%m-%dT%H:%M:%SZ > core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
-      - name: Upload final backtest artifacts
+          printf '%s\n' "$RUNNER_NAME" > core/btc_supertrend_okx_pf_grid/runner_name.txt
+      - name: Upload compact final artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
