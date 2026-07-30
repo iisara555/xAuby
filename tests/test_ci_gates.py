@@ -8,6 +8,7 @@ self-audit is actually wired rather than only that it computes correctly.
 `ruff` was configured in `pyproject.toml` and never invoked by anything.
 """
 import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -20,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CI = ROOT / ".github" / "workflows" / "secret-scan.yml"
 SECURITY = ROOT / ".github" / "workflows" / "security.yml"
 DEPENDABOT = ROOT / ".github" / "dependabot.yml"
+GITIGNORE = ROOT / ".gitignore"
 
 #: Rules the blocking gate must keep. Each catches a defect, not a style
 #: preference, and dropping one silently widens what can reach `main`.
@@ -147,6 +149,31 @@ class TestDependabot(unittest.TestCase):
         cfg = yaml.safe_load(DEPENDABOT.read_text(encoding="utf-8"))
         npm = next(u for u in cfg["updates"] if u["package-ecosystem"] == "npm")
         self.assertEqual(npm["directory"], "/Website")
+
+
+class TestRepositoryHygiene(unittest.TestCase):
+    def test_core_runtime_directory_is_blanket_ignored(self):
+        rules = {
+            line.strip()
+            for line in GITIGNORE.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        self.assertIn("core/", rules)
+
+    def test_core_runtime_directory_has_no_tracked_files(self):
+        result = subprocess.run(
+            ["git", "ls-files", "--", "core"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        self.assertEqual(
+            result.stdout.strip(),
+            "",
+            f"runtime files must not be tracked:\n{result.stdout}",
+        )
 
 
 if __name__ == "__main__":
