@@ -5,6 +5,7 @@ import sqlite3
 import tarfile
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from scripts.legacy_handoff_backup import create_backup, verify_backup
@@ -24,9 +25,10 @@ class LegacyHandoffBackupTests(unittest.TestCase):
             (project / ".env").write_text(
                 f"OKX_API_KEY={secret}\nOKX_API_SECRET={secret}\nOKX_API_PASSPHRASE={secret}\n"
             )
-            with sqlite3.connect(runtime / "xauby.db") as conn:
+            with closing(sqlite3.connect(runtime / "xauby.db")) as conn:
                 conn.execute("CREATE TABLE closed_trades (id INTEGER PRIMARY KEY)")
                 conn.execute("INSERT INTO closed_trades DEFAULT VALUES")
+                conn.commit()
             (runtime / "logs" / "xauby_bot_state.json").write_text(json.dumps({
                 "symbol": "XAUUSDT",
                 "position": {"state": "bought", "position_side": "SHORT", "quantity": 0.1},

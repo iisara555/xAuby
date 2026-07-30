@@ -14,6 +14,7 @@ PROJECT_ID = "prj_m653cHTPdEVORx8WNAYsRRPvKmKZ"
 ORG_ID = "team_bVwJhoMi3IPSnRxtu3fageUS"
 
 
+@unittest.skipIf(os.name == "nt", "requires POSIX shell and executable scripts")
 class DeployVercelScriptTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 
+@unittest.skipIf(os.name == "nt", "requires POSIX shell and executable scripts")
 class ProductionHealthcheckScriptTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

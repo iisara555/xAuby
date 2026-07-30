@@ -12,6 +12,7 @@ from xauby.runtime.manual_orders import (
 
 
 class ManualOrderIPCTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "Windows does not expose POSIX file modes")
     def test_request_opens_acl_read_mask_for_isolated_engine(self):
         with tempfile.TemporaryDirectory() as root:
             write_manual_order_request("BTCUSDT", "BUY", project_root=root)

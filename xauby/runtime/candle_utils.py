@@ -7,21 +7,12 @@ agreement.
 """
 from __future__ import annotations
 
-import re
 import time
 from typing import Optional, Tuple
 
 import pandas as pd
 
-_UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
-
-
-def timeframe_seconds(timeframe: str, default: int = 14400) -> int:
-    """Convert a timeframe string like '4h', '1d', '15m' to seconds."""
-    m = re.fullmatch(r"(\d+)([mhdw])", str(timeframe or "").strip().lower())
-    if not m:
-        return default
-    return int(m.group(1)) * _UNIT_SECONDS[m.group(2)]
+from xauby.strategies.timeframes import timeframe_seconds
 
 
 def drop_forming_bar(

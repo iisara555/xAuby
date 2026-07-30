@@ -137,20 +137,21 @@ class TestMultiPairReplayPairing(unittest.TestCase):
         ]
         seen = []
         strategy = _Strategy(seen)
-        with tempfile.NamedTemporaryFile("w", suffix=".yaml") as cfg:
-            yaml.safe_dump({
-                "strategy": {"active": "test_strategy", "use_closed_candles": False},
-                "strategies": {"test_strategy": {"timeframe": "4h"}},
-                "trading": {"timeframe": "4h"},
-            }, cfg)
-            cfg.flush()
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = os.path.join(tmp, "bot_config.yaml")
+            with open(config_path, "w", encoding="utf-8") as cfg:
+                yaml.safe_dump({
+                    "strategy": {"active": "test_strategy", "use_closed_candles": False},
+                    "strategies": {"test_strategy": {"timeframe": "4h"}},
+                    "trading": {"timeframe": "4h"},
+                }, cfg)
             with patch(
                 "xauby.observability.replay_validation.load_strategy",
                 return_value=strategy,
             ):
                 report = validate_run(
                     _Store(events), _DB(), run,
-                    symbol="BTCUSDT", config_path=cfg.name,
+                    symbol="BTCUSDT", config_path=config_path,
                     strategy_name="test_strategy", min_bars=1,
                 )
 

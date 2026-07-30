@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 import yaml
@@ -88,7 +89,7 @@ class RuntimeGatewayTests(unittest.TestCase):
     def test_native_trade_log_defaults_to_all_symbols_and_summarizes(self):
         path = self.supervisor.runtime_dir("customer-one") / "xauby.db"
         path.parent.mkdir(parents=True)
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn:
             conn.execute(
                 "CREATE TABLE closed_trades (id INTEGER PRIMARY KEY, symbol TEXT, side TEXT, "
                 "net_pnl REAL, total_fees REAL, closed_at TEXT)"
@@ -98,6 +99,7 @@ class RuntimeGatewayTests(unittest.TestCase):
                 [(1, "XAUUSDT", "SHORT", 3.0, 0.2, "2026-07-15"),
                  (2, "BTCUSDT", "LONG", -1.0, 0.1, "2026-07-16")],
             )
+            conn.commit()
         gateway = RuntimeGateway(self.settings, self.supervisor)
         payload = gateway.trades("customer-one", outcome="all", limit=50)
         self.assertEqual([item["symbol"] for item in payload["items"]], ["BTCUSDT", "XAUUSDT"])
@@ -143,7 +145,7 @@ class RuntimeGatewayTests(unittest.TestCase):
         }), encoding="utf-8")
 
         path = self.supervisor.runtime_dir(slug) / "xauby.db"
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn:
             conn.execute(
                 "CREATE TABLE prices (symbol TEXT, timeframe TEXT, timestamp INTEGER, "
                 "open REAL, high REAL, low REAL, close REAL, volume REAL)"
@@ -156,6 +158,7 @@ class RuntimeGatewayTests(unittest.TestCase):
                     close - 20, close + 80, close - 90, close, 100 + index,
                 ))
             conn.executemany("INSERT INTO prices VALUES (?,?,?,?,?,?,?,?)", rows)
+            conn.commit()
 
         payload = RuntimeGateway(self.settings, self.supervisor).candles(
             slug, symbol="BTCUSDT", timeframe="4h", limit=120
