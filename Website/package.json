@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "build:webgl": "node scripts/build-webgl.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -20,6 +21,8 @@
     "@types/node": "25.0.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "esbuild": "^0.25.0",
+    "three": "0.185.1",
     "typescript": "5.9.3"
   },
   "overrides": {
