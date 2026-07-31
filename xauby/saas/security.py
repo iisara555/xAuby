@@ -6,11 +6,22 @@ import json
 import re
 import secrets
 import struct
+import threading
 import time
 from base64 import b32decode, b32encode, urlsafe_b64decode, urlsafe_b64encode
 from typing import Any
 
 TENANT_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$")
+
+# Each argon2 call below allocates memory_cost KiB (64 MiB) and FastAPI runs
+# the control plane's sync routes on AnyIO's 40-thread pool, so unbounded
+# concurrency here is a memory-exhaustion DoS: a handful of parallel
+# /auth/login requests can allocate more than the service's systemd MemoryMax
+# and get the whole process OOM-killed, with no account needed. Serialise
+# password/PIN hashing to a budget the cgroup can absorb rather than weakening
+# the hash parameters, which are the point of using argon2 at all.
+_HASH_CONCURRENCY = 2
+_HASH_SLOTS = threading.BoundedSemaphore(_HASH_CONCURRENCY)
 
 
 class AttemptThrottle:
@@ -116,6 +127,11 @@ def verify_state(secret: str, signed: str) -> dict[str, Any] | None:
 
 
 def hash_trade_pin(pin: str) -> str:
+    with _HASH_SLOTS:
+        return _hash_trade_pin_unguarded(pin)
+
+
+def _hash_trade_pin_unguarded(pin: str) -> str:
     _validate_trade_pin(pin)
     try:
         from argon2 import PasswordHasher
@@ -135,6 +151,11 @@ def hash_trade_pin(pin: str) -> str:
 
 
 def hash_password(password: str) -> str:
+    with _HASH_SLOTS:
+        return _hash_password_unguarded(password)
+
+
+def _hash_password_unguarded(password: str) -> str:
     _validate_password(password)
     try:
         from argon2 import PasswordHasher
@@ -194,6 +215,11 @@ def verify_totp(secret: str, supplied: str, *, timestamp: float | None = None) -
 
 
 def verify_trade_pin(encoded: str, pin: str) -> bool:
+    with _HASH_SLOTS:
+        return _verify_trade_pin_unguarded(encoded, pin)
+
+
+def _verify_trade_pin_unguarded(encoded: str, pin: str) -> bool:
     if str(encoded).startswith("$scrypt$"):
         try:
             _, _, n, r, p, salt_text, digest_text = str(encoded).split("$")

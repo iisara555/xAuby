@@ -21,6 +21,12 @@ from xauby.saas.security import (
 
 
 class ControlPlaneStore:
+    # Deliberately above the per-address AttemptThrottle's 8, so ordinary users
+    # meet the short IP throttle first. This one only engages for a caller who
+    # can vary their apparent address — the case the IP throttle cannot see.
+    LOGIN_MAX_FAILURES = 10
+    LOGIN_LOCKOUT_SECONDS = 900
+
     def __init__(self, path: str | Path):
         self.path = str(path)
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
@@ -29,7 +35,12 @@ class ControlPlaneStore:
         conn = sqlite3.connect(self.path, timeout=10.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA journal_mode=WAL")
+        # journal_mode is a persistent property of the database file and is set
+        # once in migrate(); re-issuing it per connection only costs a lock
+        # acquisition and can itself return SQLITE_BUSY. synchronous is
+        # per-connection, and NORMAL is the correct pairing for WAL.
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=10000")
         return conn
 
     @contextmanager
@@ -44,6 +55,9 @@ class ControlPlaneStore:
 
     def migrate(self) -> None:
         with self.connection() as conn:
+            # Persistent in the database file, so this is the one place it
+            # belongs. journal_mode cannot be changed inside a transaction.
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -57,7 +71,10 @@ class ControlPlaneStore:
                     pending_totp_secret TEXT,
                     pending_email TEXT,
                     trade_pin_hash TEXT, pin_failures INTEGER NOT NULL DEFAULT 0,
-                    pin_locked_until REAL NOT NULL DEFAULT 0, created_at REAL NOT NULL
+                    pin_locked_until REAL NOT NULL DEFAULT 0,
+                    login_failures INTEGER NOT NULL DEFAULT 0,
+                    login_locked_until REAL NOT NULL DEFAULT 0,
+                    created_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS tenants (
                     id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE,
@@ -148,6 +165,8 @@ class ControlPlaneStore:
                 "display_name": "TEXT", "avatar_ext": "TEXT",
                 "avatar_version": "INTEGER NOT NULL DEFAULT 0",
                 "pending_totp_secret": "TEXT",
+                "login_failures": "INTEGER NOT NULL DEFAULT 0",
+                "login_locked_until": "REAL NOT NULL DEFAULT 0",
             }
             for name, declaration in additions.items():
                 if name not in columns:
@@ -179,6 +198,13 @@ class ControlPlaneStore:
         created = time.time()
         payload_json = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
         with self.connection() as conn:
+            # The chain read below decides what this row commits, so the write
+            # lock has to be held from the start. Under a DEFERRED transaction
+            # in WAL, a concurrent commit makes the upgrade to write fail with
+            # SQLITE_BUSY_SNAPSHOT, which busy_timeout cannot retry away — and
+            # two audits reading the same previous_hash would fork the
+            # tamper-evident chain silently.
+            conn.execute("BEGIN IMMEDIATE")
             previous = conn.execute(
                 "SELECT event_hash FROM audit_events ORDER BY seq DESC LIMIT 1"
             ).fetchone()
@@ -202,6 +228,7 @@ class ControlPlaneStore:
             raise ValueError("valid owner email is required")
         now = time.time()
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             user = conn.execute("SELECT * FROM users WHERE email=?", (normalized_email,)).fetchone()
             if user is None:
                 user_id = uuid.uuid4().hex
@@ -236,6 +263,7 @@ class ControlPlaneStore:
         created = False
         now = time.time()
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT * FROM users WHERE email=?", (normalized_email,)).fetchone()
             if row is None:
                 user_id = uuid.uuid4().hex
@@ -388,11 +416,54 @@ class ControlPlaneStore:
         self.audit("signup", user_id=user_id)
         return self.user_by_id(user_id) or {}, token
 
+    def login_retry_after(self, email: str) -> int:
+        """Seconds until this account may attempt a password login again.
+
+        The in-process AttemptThrottle is keyed on the client address, which
+        arrives from a reverse proxy and is therefore only as trustworthy as
+        the proxy in front of it. This lockout lives with the account itself,
+        so brute-force protection does not depend on the network layer being
+        configured correctly. Mirrors the Trade PIN lockout in check_trade_pin.
+        """
+        user = self.user_by_email(email)
+        if not user:
+            return 0
+        remaining = float(user.get("login_locked_until") or 0) - time.time()
+        return max(0, int(remaining)) if remaining > 0 else 0
+
     def authenticate_password(self, email: str, password: str) -> dict[str, Any] | None:
         user = self.user_by_email(email)
         if not user or not user.get("password_hash"):
             return None
-        return user if verify_password(str(user["password_hash"]), password) else None
+        if float(user.get("login_locked_until") or 0) > time.time():
+            return None
+        if not verify_password(str(user["password_hash"]), password):
+            self._record_login_failure(str(user["id"]))
+            return None
+        self.clear_login_failures(str(user["id"]))
+        return user
+
+    def _record_login_failure(self, user_id: str) -> None:
+        now = time.time()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT login_failures FROM users WHERE id=?", (user_id,)
+            ).fetchone()
+            if row is None:
+                return
+            failures = int(row["login_failures"] or 0) + 1
+            locked_until = now + self.LOGIN_LOCKOUT_SECONDS if failures >= self.LOGIN_MAX_FAILURES else 0
+            conn.execute(
+                "UPDATE users SET login_failures=?,login_locked_until=? WHERE id=?",
+                (0 if locked_until else failures, locked_until, user_id),
+            )
+
+    def clear_login_failures(self, user_id: str) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE users SET login_failures=0,login_locked_until=0 WHERE id=?", (user_id,)
+            )
 
     def create_auth_token(self, user_id: str, purpose: str, *, ttl_seconds: int,
                           payload: dict[str, Any] | None = None) -> str:
@@ -436,7 +507,13 @@ class ControlPlaneStore:
     def set_password(self, user_id: str, password: str) -> None:
         encoded = hash_password(password)
         with self.connection() as conn:
-            conn.execute("UPDATE users SET password_hash=? WHERE id=?", (encoded, user_id))
+            # Setting a new password clears the lockout: the credential being
+            # guessed no longer exists, and a legitimate reset must not leave
+            # the owner locked out of the account they just recovered.
+            conn.execute(
+                "UPDATE users SET password_hash=?,login_failures=0,login_locked_until=0 WHERE id=?",
+                (encoded, user_id),
+            )
             conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             conn.execute(
                 "UPDATE auth_tokens SET used_at=? WHERE user_id=? AND purpose='password_reset' AND used_at IS NULL",
@@ -833,6 +910,7 @@ class ControlPlaneStore:
     def check_trade_pin(self, user_id: str, pin: str) -> tuple[bool, str]:
         now = time.time()
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
             if not row or not row["trade_pin_hash"]:
                 return False, "Trade PIN is not configured"

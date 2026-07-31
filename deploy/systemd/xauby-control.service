@@ -16,8 +16,12 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/xauby/control /var/lib/xauby/runtime /etc/xauby/tenants
-MemoryHigh=220M
-MemoryMax=280M
+# argon2 allocates 64 MiB per password/PIN hash (bounded to 2 concurrent in
+# xauby/saas/security.py) and the chart endpoint pulls pandas into the process
+# on first use. 280M left no room for either and made a handful of parallel
+# logins an OOM kill of the whole control plane.
+MemoryHigh=340M
+MemoryMax=420M
 CPUQuota=25%
 TasksMax=96
 UMask=0077
