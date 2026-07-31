@@ -23,7 +23,7 @@
     "@types/react-dom": "19.2.3",
     "esbuild": "^0.25.0",
     "three": "0.185.1",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "overrides": {
     "postcss": "8.5.19"
