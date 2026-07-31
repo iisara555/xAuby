@@ -8,8 +8,8 @@ values with or without the real library:
 
 - ``ema``: SMA-seeded EMA (first ``length`` values seed an SMA, then a
   recursive ``ewm(span=length, adjust=False)`` continues from it).
-- ``rsi``: Wilder's RSI via RMA smoothing (``ewm(alpha=1/length)``, pandas
-  default ``adjust=True`` — matching pandas_ta's ``rma``).
+- ``rsi``: Wilder's RSI via RMA smoothing (``ewm(alpha=1/length,
+  adjust=False)`` — matching pandas_ta's ``rma``).
 - ``atr``: true range smoothed with the same RMA.
 
 ``tests/test_ta_fallback.py`` asserts parity against the real pandas_ta when
@@ -41,8 +41,16 @@ def ema(close: pd.Series, length: int = 10) -> Optional[pd.Series]:
 
 
 def _rma(series: pd.Series, length: int) -> pd.Series:
-    """Wilder smoothing as pandas_ta implements it (``adjust`` left at default True)."""
-    return series.ewm(alpha=1.0 / length, min_periods=length).mean()
+    """Wilder smoothing as pandas_ta implements it (recursive, ``adjust=False``).
+
+    This used to leave ``adjust`` at pandas' default of True on the assumption
+    that pandas_ta did the same. It does not: measured against
+    ``pandas_ta.rsi``, ``adjust=False`` reproduces it exactly while the default
+    drifts. Wilder's RMA is defined recursively, so ``adjust=False`` is also the
+    mathematically correct reading. The gap only closes asymptotically, which is
+    why the parity tests failed on their early rows and passed further out.
+    """
+    return series.ewm(alpha=1.0 / length, min_periods=length, adjust=False).mean()
 
 
 def rsi(close: pd.Series, length: int = 14) -> Optional[pd.Series]:
@@ -77,8 +85,14 @@ def atr(
     true_range = pd.concat(
         [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
     ).max(axis=1)
-    # pandas_ta's true_range is NaN on the first bar (no previous close).
-    true_range.iloc[0] = np.nan
+    # pandas_ta.atr runs with `presma=True` by default: the first `length` true
+    # ranges collapse into a single SMA placed at index length-1, and the
+    # recursive RMA continues from that seed. Without this the fallback drifted
+    # ~0.9% against the real library. The first bar keeps its true range
+    # (high - low) rather than being blanked, which is what feeds that SMA.
+    seed = true_range.iloc[:length].mean()
+    true_range.iloc[: length - 1] = np.nan
+    true_range.iloc[length - 1] = seed
     out = _rma(true_range, length)
     out.name = f"ATRr_{length}"
     return out
