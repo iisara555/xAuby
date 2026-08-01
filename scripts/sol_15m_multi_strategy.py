@@ -17,7 +17,7 @@ Protocol
     window with a 70/30 IS/OOS split. The 2021 melt-up is deliberately excluded
     from tuning — it is held out.
   * Stage B (``finalists``): the top configs per strategy are replayed on the
-    full span, on N non-overlapping folds, and at 1.0x / 1.5x / 2.0x costs.
+    full span, on N non-overlapping folds, and at 2.0x costs.
   * ``report`` renders the markdown; ``okx`` cross-checks the winner on the
     venue actually traded (OKX SOL-USDT-SWAP).
 
@@ -27,7 +27,7 @@ Usage:
   python scripts/sol_15m_multi_strategy.py fetch
   python scripts/sol_15m_multi_strategy.py calibrate
   python scripts/sol_15m_multi_strategy.py grid --jobs 4
-  python scripts/sol_15m_multi_strategy.py finalists --jobs 4 --top 3
+  python scripts/sol_15m_multi_strategy.py finalists --jobs 4 --top 2
   python scripts/sol_15m_multi_strategy.py report --md docs/research/<name>.md
   python scripts/sol_15m_multi_strategy.py okx
 
@@ -67,7 +67,7 @@ WARMUP_BARS = 750
 # Tuning window for the grid. Starts after the 2021 melt-up so parameters are
 # not selected on a once-in-a-cycle regime, and ends before the recent leg.
 TUNE_START = "2022-01-01"
-TUNE_END = "2024-01-01"
+TUNE_END = "2023-10-01"
 FULL_START = "2021-01-01"
 SUBPERIOD_START = "2023-01-01"   # reported separately: post-melt-up regime
 
@@ -88,7 +88,11 @@ PF_SENTINEL = 99.9
 PF_CLAMP = 5.0
 MDD_REF = 10.0     # a 10% drawdown halves the score — a chosen exchange rate
 
-COST_SCENARIOS = {"1.0x": 1.0, "1.5x": 1.5, "2.0x": 2.0}
+# 1.0x is the baseline run, reused rather than replayed. 2.0x is the binding
+# disqualifier; 1.5x is omitted because at ~100-200 bars/s each extra full-span
+# scenario costs ~10 core-hours across the shortlist and 2.0x is the test that
+# actually decides anything.
+COST_SCENARIOS = {"1.0x": 1.0, "2.0x": 2.0}
 
 METRIC_KEYS = (
     "net_profit_pct", "win_rate", "profit_factor", "max_drawdown_pct",
@@ -216,21 +220,19 @@ PF_GRIDS: dict = {
         },
     ),
     "bbrsi_mean_reversion": _grid(
-        {"enable_short": True, "max_calc_bars": 400},
+        {"enable_short": True, "max_calc_bars": 400, "sl_atr_mult": 2.5},
         {
             "bb_std": [2.0, 2.5, 3.0],
             "rsi_oversold": [20.0, 25.0, 30.0],
             "rsi_exit": [50.0, 60.0],
-            "sl_atr_mult": [2.0, 3.0],
         },
     ),
     "ut_bot_atr": _grid(
-        {"enable_short": True, "max_calc_bars": 300},
+        {"enable_short": True, "max_calc_bars": 300, "atr_period": 10},
         {
             # key_value drives trade count, which drives the fee bill; the low
             # end is included so the cost table has something to kill.
             "key_value": [1.0, 2.0, 3.0],
-            "atr_period": [10, 14],
             "confirm_bars": [1, 3],
             "min_atr_pct": [0.0, 0.35],
             "stop_and_reverse": [True, False],
@@ -241,7 +243,7 @@ PF_GRIDS: dict = {
         {
             "lookback_days": [1, 2, 4],
             "k_upper": [0.3, 0.5, 0.7],
-            "k_lower": [0.3, 0.5, 0.7],
+            "k_lower": [0.3, 0.7],
             "exit_at_session_end": [False, True],
         },
     ),
@@ -502,7 +504,14 @@ def _fold_bounds(df, n_folds: int) -> list:
 
 
 def eval_finalist(item):
-    strategy, cid, ov = item
+    """Full-span replay plus, unless ``full_only``, sub-period/IS-OOS/folds/costs.
+
+    ``full_only`` exists for the long-only appendix: it needs one comparable
+    number per strategy, not the whole validation stack, and at ~150 bars/s the
+    full stack costs roughly 1.8 core-hours per config.
+    """
+    strategy, cid, ov = item[0], item[1], item[2]
+    full_only = bool(item[3]) if len(item) > 3 else False
     gid = f"{strategy}:{cid}"
     try:
         df = _G["df15"]
@@ -513,6 +522,8 @@ def eval_finalist(item):
         full_stats = _run(strategy, frame, ov, skip)
         out["trade_returns"] = full_stats.pop("trade_returns", [])
         out["full"] = full_stats
+        if full_only:
+            return out
 
         sub = _window(df, _ts(SUBPERIOD_START), None, WARMUP_BARS)
         if sub is not None:
@@ -540,9 +551,12 @@ def eval_finalist(item):
             folds.append(fs)
         out["folds"] = folds
 
-        # Cost sensitivity
-        costs = {}
+        # Cost sensitivity. The 1.0x scenario IS the full-span run, so reuse it
+        # rather than paying for a second identical replay.
+        costs = {"1.0x": dict(full_stats)}
         for label, scale in COST_SCENARIOS.items():
+            if scale == 1.0:
+                continue
             cs = _run(strategy, frame, ov, skip, cost_scale=scale)
             cs.pop("trade_returns", None)
             costs[label] = cs
@@ -611,10 +625,10 @@ def cmd_long_only(jobs: int) -> None:
         ov = dict(best[0]["override"]) if best else {}
         ov["enable_short"] = False
         if f"{name}:long_only" not in done:
-            items.append((name, "long_only", ov))
+            items.append((name, "long_only", ov, True))
     for name in LONG_ONLY_EXTRA:
         if f"{name}:long_only" not in done:
-            items.append((name, "long_only", {}))
+            items.append((name, "long_only", {}, True))
     print(f"long-only: {len(items)} configs", flush=True)
     if not items:
         return
@@ -856,12 +870,12 @@ def cmd_report(md_path: str | None, top: int) -> None:
     emit("Round trip at 1.0x is taker fee + slippage on both sides. A strategy "
          "that cannot clear PF > 1 at 2.0x is disqualified regardless of score.")
     emit()
-    emit("| Strategy | Trades | Net 1.0x | PF 1.0x | Net 1.5x | PF 1.5x | Net 2.0x | PF 2.0x |")
-    emit("|---|---|---|---|---|---|---|---|")
+    emit("| Strategy | Trades | Net 1.0x | PF 1.0x | Net 2.0x | PF 2.0x |")
+    emit("|---|---|---|---|---|---|")
     for row in ordered:
         c = row.get("costs") or {}
         cells = []
-        for label in ("1.0x", "1.5x", "2.0x"):
+        for label in ("1.0x", "2.0x"):
             s = c.get(label) or {}
             cells.append(_fmt(s.get("net_profit_pct")))
             cells.append(_fmt(s.get("profit_factor"), ".3f"))
@@ -994,7 +1008,7 @@ def main() -> None:
                             "long-only", "report", "okx"])
     p.add_argument("--strategy", default=None, help="grid: run a single strategy")
     p.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
-    p.add_argument("--top", type=int, default=3,
+    p.add_argument("--top", type=int, default=2,
                    help="finalists: configs per strategy")
     p.add_argument("--md", default=None, help="report: write markdown here")
     p.add_argument("--okx-limit", type=int, default=100_000,
