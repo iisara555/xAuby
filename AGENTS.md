@@ -52,26 +52,6 @@ cd Website && npm run build                # only if you touched Website/
 On the VPS, substitute focused tests for the full suite and let the PR's
 self-hosted CI run the full suite/build. See the resource rules below.
 
-### Home self-hosted runner
-
-GitHub Actions compute belongs on the operator's dedicated Windows x64 home
-runner, not on GitHub-hosted runners and never on the trading VPS:
-
-- CI jobs use `[self-hosted, windows, x64, xauby-ci]`.
-- Optimizers and backtests use `[self-hosted, windows, x64, xauby-backtest]` and
-  must be manually dispatched; do not add a push/schedule trigger for them.
-- The runner account must not contain exchange keys, tenant config, production
-  `.env`, rclone credentials, VPS SSH credentials, or personal files.
-- Same-repository PRs only may execute on it. Keep the fork-PR guard in every
-  `pull_request` workflow.
-- An offline runner leaves jobs queued. Do not switch `runs-on` back to a
-  metered GitHub-hosted label, bypass CI, or move the workload to the VPS. Ask
-  the operator to bring `xauby-home-01` online, then rerun the jobs.
-
-One-time installation and labels are documented in
-`docs/home-self-hosted-runner.md`. GitHub registration tokens are short-lived
-secrets and must never be requested in chat or committed.
-
 ### Resource limits on the VPS
 
 The trading VPS is a **1 vCPU / 2 GB** droplet, and the live engine shares it with
