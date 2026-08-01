@@ -513,10 +513,12 @@ def eval_finalist(item):
     """
     strategy, cid, ov = item[0], item[1], item[2]
     full_only = bool(item[3]) if len(item) > 3 else False
+    passed_gate = bool(item[4]) if len(item) > 4 else False
     gid = f"{strategy}:{cid}"
     try:
         df = _G["df15"]
-        out: dict = {"id": gid, "strategy": strategy, "combo": cid, "override": ov}
+        out: dict = {"id": gid, "strategy": strategy, "combo": cid,
+                     "override": ov, "passed_gate": passed_gate}
 
         full = _window(df, _ts(FULL_START), None, WARMUP_BARS)
         frame, skip = full
@@ -568,15 +570,31 @@ def eval_finalist(item):
                 "override": ov, "error": f"{type(exc).__name__}: {exc}"}
 
 
-def _rank_grid_rows(rows: list) -> dict:
-    """Best-first grid rows per strategy, gated then scored."""
+def _rank_grid_rows(rows: list, *, gated_only: bool = True) -> dict:
+    """Best-first grid rows per strategy, gated then scored.
+
+    ``gated_only=False`` ranks every completed row on worst-window PF instead.
+    That is the fallback for the case where nothing passes: a negative result
+    still has to be evidenced on the full span, folds and cost scenarios, so the
+    best-of-a-bad-slate configs are promoted and clearly flagged rather than
+    leaving the report with no numbers at all.
+    """
     by_strategy: dict = {}
     for row in rows:
-        if row.get("error") or not row.get("gate"):
+        if row.get("error"):
             continue
-        score = robust_score(row["is"], row["oos"], row["oos"])
-        if score == float("-inf"):
+        if gated_only and not row.get("gate"):
             continue
+        if gated_only:
+            score = robust_score(row["is"], row["oos"], row["oos"])
+            if score == float("-inf"):
+                continue
+        else:
+            pf_is = float(row["is"].get("profit_factor") or 0.0)
+            pf_oos = float(row["oos"].get("profit_factor") or 0.0)
+            if pf_is >= PF_SENTINEL or pf_oos >= PF_SENTINEL:
+                continue
+            score = min(pf_is, pf_oos)
         row["_score"] = score
         by_strategy.setdefault(row["strategy"], []).append(row)
     for name in by_strategy:
@@ -589,6 +607,12 @@ def cmd_finalists(jobs: int, top: int) -> None:
     if not rows:
         raise SystemExit("no grid results — run `grid` first")
     ranked = _rank_grid_rows(rows)
+    gated = bool(ranked)
+    if not gated:
+        print("NO config passed the gate in any strategy. Promoting the best "
+              "worst-window PF per strategy anyway so the negative result is "
+              "evidenced on the full span, folds and cost scenarios.", flush=True)
+        ranked = _rank_grid_rows(rows, gated_only=False)
     path = _checkpoint_path("finalists.jsonl")
     done = _load_done(path)
 
@@ -596,10 +620,10 @@ def cmd_finalists(jobs: int, top: int) -> None:
     for name in STRATEGIES:
         for row in ranked.get(name, [])[:top]:
             if f"{name}:{row['combo']}" not in done:
-                items.append((name, row["combo"], row["override"]))
+                items.append((name, row["combo"], row["override"], False, gated))
     for name in STRATEGIES:
         if not ranked.get(name):
-            print(f"note: {name} had no combo pass the gate", flush=True)
+            print(f"note: {name} produced no usable combo", flush=True)
 
     print(f"finalists: {len(items)} configs, jobs={jobs}", flush=True)
     if not items:
@@ -910,11 +934,42 @@ def cmd_report(md_path: str | None, top: int) -> None:
 
     emit("## Verdict")
     emit()
+    gate_passers = [r for r in fin_rows if r.get("passed_gate")]
+    gated_grid = [r for r in valid_grid if r.get("gate")]
+    both_positive = [
+        r for r in valid_grid
+        if float(r["is"].get("net_profit_pct") or 0) > 0
+        and float(r["oos"].get("net_profit_pct") or 0) > 0
+    ]
+    if not gate_passers:
+        emit(f"**No configuration is recommended.** Of the {len(valid_grid)} "
+             f"configurations searched, {len(gated_grid)} passed the "
+             f"pre-registered gates and {len(both_positive)} were profitable in "
+             "both the in-sample and out-of-sample windows.")
+        emit()
+        emit("The configs tabulated below are the best of a losing slate, "
+             "promoted so the negative result carries full-span evidence rather "
+             "than an empty table. They are **not** candidates.")
+        emit()
+        emit("Read this as a statement about SOL at 15m with these five "
+             "strategies and these cost assumptions — not as a claim that no "
+             "15m strategy can work. The dominant term is the fee bill: a "
+             "round trip costs ~14bp, and configs here turn over hundreds to "
+             "thousands of times per window.")
+        emit()
     if not ordered:
-        emit("No configuration passed the gates. No config is recommended.")
+        emit("No finalist results to tabulate.")
     else:
         win = ordered[0]
         f = win.get("full", {})
+        if not gate_passers:
+            emit(f"Least-bad of the slate: `{win['strategy']}` ({win['combo']}) "
+                 f"— PF {_fmt(f.get('profit_factor'), '.3f')}, "
+                 f"MDD {_fmt(f.get('max_drawdown_pct'))}%, "
+                 f"{f.get('total_trades')} trades on the full span. "
+                 "It is reported for completeness only.")
+            emit()
+
         c2 = (win.get("costs") or {}).get("2.0x") or {}
         pf2 = clean_pf(c2)
         folds = win.get("folds") or []
