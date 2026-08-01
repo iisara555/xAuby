@@ -1,9 +1,20 @@
 # Home self-hosted GitHub Actions runner
 
 The repository uses a dedicated Windows x64 runner on the operator's home PC for
-PR CI and compute-heavy research. This keeps full pytest, the Next.js build,
-dependency audits, optimizers, and backtests off the 1 vCPU / 2 GB live trading
-VPS and avoids GitHub-hosted runner minutes.
+**compute-heavy research only** — optimizers and backtest grids that would
+starve the 1 vCPU / 2 GB live trading VPS.
+
+> **PR CI no longer runs here.** When the repository became public on
+> 2026-08-01, CI moved to GitHub-hosted `ubuntu-latest`. GitHub's hardening
+> guidance is to use self-hosted runners only with private repositories,
+> because a fork can otherwise run arbitrary code on this machine through a
+> pull request; and hosted runners are free and unmetered for public
+> repositories, which removed the reason CI was here in the first place. See
+> "Where CI runs" in `AGENTS.md`.
+>
+> The only workflow still targeting this machine is
+> `btc-supertrend-grid-research.yml`, which is `workflow_dispatch`-only and so
+> cannot be triggered by a fork.
 
 ## Trust boundary
 
@@ -12,10 +23,21 @@ OKX API key, tenant config, production `.env`, rclone credentials, SSH access to
 the trading VPS, or personal files. A workflow executes repository code with the
 runner account's permissions.
 
-The checked-in PR workflows refuse fork PRs before assigning a self-hosted
-runner. Do not remove that guard and do not add public repositories to this
-runner. Keep production deployment manual; the runner is build/research
-infrastructure, never a trading-engine host.
+**This repository is public**, which is exactly the configuration GitHub warns
+against for self-hosted runners: a fork can attempt to run its own code here
+through a pull request. Two things keep that shut, and both must stay:
+
+1. the only workflow targeting this machine is `workflow_dispatch`-only, so no
+   pull request of any kind can trigger it;
+2. every `pull_request` workflow keeps the fork guard
+   (`head.repo.full_name == github.repository`) and runs on GitHub-hosted
+   runners anyway.
+
+Also set **Settings → Actions → General → Fork pull request workflows from
+outside collaborators** to *Require approval for all outside collaborators*.
+
+Do not add other public repositories to this runner. Keep production deployment
+manual; the runner is research infrastructure, never a trading-engine host.
 
 Recommended capacity is Windows x64 with at least 4 CPU cores, 8 GB RAM, and
 20 GB free disk. Eight cores and 16 GB RAM are preferable for a four-worker BTC
@@ -29,30 +51,31 @@ WSL is not required. The PC must stay awake and online while jobs run.
 2. Select **Windows / x64**. On the home PC, under a dedicated account such as
    `xauby-runner`, run the download and checksum commands GitHub displays.
 3. Run GitHub's generated `config.cmd` command. Use runner name
-   `xauby-home-01` and add both custom labels:
+   `xauby-home-01` and add one custom label:
 
    ```text
-   xauby-ci,xauby-backtest
+   xauby-backtest
    ```
+
+   The `xauby-ci` label is deliberately gone — CI runs on GitHub-hosted
+   runners. An existing runner still carrying it should have it removed, so
+   nothing can accidentally be scheduled here by label alone.
 
 4. Install and start it as a Windows service when `config.cmd` prompts, or use
    the generated `svc.cmd` commands from an Administrator terminal. In the
    repository runner page, require status **Idle** and labels
-   `self-hosted`, `Windows`, `X64`, `xauby-ci`, and `xauby-backtest`.
+   `self-hosted`, `Windows`, `X64`, and `xauby-backtest`.
 
 The registration token is short-lived and secret. Enter it only on the home PC;
 never paste it into chat, a repository file, an Actions secret, or a shell log.
 
 ## Workflows
 
-- `.github/workflows/secret-scan.yml` (`lint`, `secret-scan`),
-  `test-python.yml`, `test-frontend.yml` and `security.yml` target
-  `[self-hosted, windows, x64, xauby-ci]` for PR and `main` gates.
-- `secret-scan.yml` runs on every PR. The other three are path-filtered: the
-  Python suite is skipped when no Python changed, the frontend build when
-  `Website/` is untouched, and the dependency audit unless a dependency
-  manifest changed. A workflow that is skipped this way reports nothing at
-  all — that is expected, not a stuck check.
+- `secret-scan.yml` (`lint`, `secret-scan`), `test-python.yml`,
+  `test-frontend.yml` and `security.yml` run on GitHub-hosted `ubuntu-latest`,
+  **not on this machine**. `secret-scan.yml` runs on every PR; the other three
+  are path-filtered, and a workflow skipped that way reports nothing at all —
+  expected, not a stuck check.
 - `.github/workflows/btc-supertrend-grid-research.yml` targets
   `[self-hosted, windows, x64, xauby-backtest]` and starts only from
   **Actions → BTC SuperTrend OKX grid research → Run workflow**.
@@ -82,45 +105,19 @@ start`) rather than `run.cmd` in a console window. A console session ends when
 the user logs out or the window closes; the service survives both and restarts
 with the machine.
 
-## Running more than one runner
+## Unblocking a dispatched backtest
 
-GitHub assigns at most one job per runner at a time, so a single runner
-serialises the whole PR gate: on 2026-08-01 `secret-scan` → `lint` →
-`test` → `node-dependencies` ran strictly back to back, each starting within
-three seconds of the previous finishing, for ~6-7 minutes of wall time that
-was almost entirely idle waiting.
-
-Registering additional runners on the same PC restores parallelism. Each needs
-its own directory and its own registration token, with **identical labels** so
-any of them can claim any job:
-
-```powershell
-mkdir C:\actions-runner-2 ; cd C:\actions-runner-2
-# unpack the same runner package, then register with the same labels
-./config.cmd --url https://github.com/iisara555/xAuby --token <TOKEN> `
-             --name xauby-home-02 `
-             --labels self-hosted,windows,x64,xauby-ci `
-             --work _work
-./svc.cmd install ; ./svc.cmd start
-```
-
-Two or three instances suit a typical desktop: `lint`, `secret-scan`,
-`test-python` and `test-frontend` then overlap instead of queueing. Do not give
-the extra instances the `xauby-backtest` label — a research grid is expected to
-own the machine alone, and the note above about one grid at a time still holds.
-
-## Unblocking a PR
-
-If checks say **Waiting for a runner to pick up this job**, verify:
+If a manually dispatched grid says **Waiting for a runner to pick up this job**,
+verify:
 
 1. the PC is awake and the runner service is active;
 2. GitHub shows the runner as **Idle** rather than **Offline**;
-3. all five required labels match exactly;
-4. another backtest or CI job is not already using the single runner.
+3. the labels match `self-hosted`, `Windows`, `X64`, `xauby-backtest`;
+4. another grid is not already using the machine.
 
-After registering this runner, open the failed PR run and choose
-**Re-run all jobs**. Merge to `main` only after every blocking check is green.
+Only one research grid may own the runner at a time. PR CI is unaffected by any
+of this — it runs on GitHub-hosted runners and does not depend on this machine
+being online.
 
-Do not work around an offline runner by changing `runs-on` back to
-`ubuntu-latest`, running the full suite on the trading VPS, or bypassing the PR
-gate.
+There is no longer a reason to register extra runner instances here: the
+parallelism that once required them now comes free from GitHub-hosted runners.

@@ -8,13 +8,10 @@ name: Dependency Audit
 # against a dependency we already ship does not arrive with a push, so a
 # push-only audit would never see it.
 
-# Gated on the dependency manifests rather than running per PR. pip-audit
-# resolves the entire requirements set and is by far the slowest job here: on
-# PR #51 — a change touching no dependency file at all — it was killed at the
-# 30-minute ceiling mid-resolution, having reported nothing. Auditing an
-# unchanged dependency set re-derives main's own verdict, so the trigger now
-# follows the manifests. The schedule below is what actually catches newly
-# disclosed advisories, and it is unchanged.
+# Gated on the dependency manifests rather than running per PR: auditing an
+# unchanged dependency set only re-derives main's own verdict. The schedule
+# below is what actually catches newly disclosed advisories, and it is
+# unchanged.
 on:
   pull_request:
     paths:
@@ -50,13 +47,16 @@ permissions:
 jobs:
   python-dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, windows, x64, xauby-ci]
-    # pip-audit resolves the whole requirements set, and pandas-ta is a git
-    # dependency with no wheel to fall back on, so this job is the slowest of
-    # the set even when it behaves. A cold run on 2026-07-31 sat on the audit
-    # step past 28 minutes against a 1-9 minute norm and had to be cancelled by
-    # hand; a ceiling turns that into a failed job instead of a blocked queue.
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    # This job used to hit a 30-minute ceiling on every run — three times in a
+    # row on 2026-08-01, always reporting nothing. The comment here previously
+    # blamed pandas-ta resolution; the stack trace at cancellation disproved
+    # that, pointing instead at pip-audit writing its advisory HTTP cache
+    # (pip_audit/_cache.py -> NamedTemporaryFile) on Windows, and pip-audit
+    # skips pandas-ta entirely ("not found on PyPI"). The same command on Linux
+    # finishes in 22 seconds, so the ceiling is now headroom rather than a
+    # guillotine.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,8 +64,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          # The runner is long-lived but the pip cache was not being reused
-          # between runs, so every audit re-downloaded numpy, pandas and scipy.
           cache: pip
           cache-dependency-path: requirements.txt
       - name: Install pip-audit
@@ -86,7 +84,7 @@ jobs:
 
   node-dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, windows, x64, xauby-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

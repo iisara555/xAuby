@@ -34,10 +34,46 @@ release and restart the systemd units; the checkout-scoped
 - **Never force-push `main`.** The VPS deploys with `git merge origin/main
   --ff-only`, so a rewritten history makes deployment refuse to proceed.
 - Land work through a PR. CI (`lint`, `secret-scan`, `test-python`,
-  `test-frontend`, dependency audit) is the gate; it runs on
-  the dedicated home self-hosted runner for every same-repository PR. An agent
-  may merge its own PR once CI is green — human review is not required, so work
-  continues when another agent is unavailable.
+  `test-frontend`, dependency audit) is the gate; it runs on GitHub-hosted
+  `ubuntu-latest` for every same-repository PR. An agent may merge its own PR
+  once CI is green — human review is not required, so work continues when
+  another agent is unavailable.
+
+### Where CI runs
+
+**CI runs on GitHub-hosted `ubuntu-latest`. The home runner is for backtests
+only.** This inverted the previous rule when the repository became public on
+2026-08-01, and the reasoning is worth keeping:
+
+- GitHub's hardening guidance is to use self-hosted runners **only with private
+  repositories** — a fork can otherwise run arbitrary code on the operator's
+  machine through a pull request.
+- Standard GitHub-hosted runners are free and unmetered for public
+  repositories, so the original reason for the home runner ("avoids
+  GitHub-hosted runner minutes") no longer exists.
+- Linux CI matches production. The engine runs on a Linux VPS; Windows CI was
+  testing a platform nothing deploys to.
+- It is faster and far more reliable. One runner serialised every job, and on
+  2026-08-01 jobs sat queued for hours, died mid-run with `The runner has
+  received a shutdown signal`, and timed out three times at a 30-minute
+  ceiling. The same `pip-audit` command finishes in **22 seconds** on Linux.
+
+Rules that still hold:
+
+- Optimizers and backtests use `[self-hosted, windows, x64, xauby-backtest]`
+  and must be manually dispatched; do not add a push/schedule trigger for them.
+  That workflow is `workflow_dispatch`-only, so a fork PR cannot reach it.
+- The runner account must not contain exchange keys, tenant config, production
+  `.env`, rclone credentials, VPS SSH credentials, or personal files.
+- Keep the fork-PR guard (`head.repo.full_name == github.repository`) in every
+  `pull_request` workflow, and keep every workflow at `permissions: contents:
+  read`. Nothing in CI needs to write.
+- Never run the full suite, a frontend build, an optimizer, or a backtest on
+  the trading VPS.
+
+Installation and labels for the backtest runner are documented in
+`docs/home-self-hosted-runner.md`. GitHub registration tokens are short-lived
+secrets and must never be requested in chat or committed.
 
 ### Before you push
 
@@ -68,19 +104,19 @@ Do **not** run these on the VPS:
 - the optimizer or a backtest (`scripts/optimize_pair_configs.py`,
   `scripts/replay_backtest.py`)
 
-Let self-hosted CI do that work: `test-python` runs the full suite and
-`test-frontend` the frontend build, on the home runner for every
-same-repository PR that touches the relevant files. Each workflow is
-path-filtered, so a PR that changes no Python skips the suite entirely and a
-skipped workflow reports nothing — that is expected, not a stuck check. On the
-VPS, keep to targeted checks:
+Let CI do that work: `test-python` runs the full suite and `test-frontend` the
+frontend build, on GitHub-hosted runners for every same-repository PR that
+touches the relevant files. Each workflow is path-filtered, so a PR that
+changes no Python skips the suite entirely and a skipped workflow reports
+nothing — that is expected, not a stuck check. On the VPS, keep to targeted
+checks:
 
 ```bash
 PYTHONPATH=. python3 -m pytest -q tests/test_<the_thing_you_changed>.py
 ```
 
-Do not move a heavy job to the VPS merely because the home runner is offline.
-Wait for the home runner or ask the operator to bring it online.
+Never move a heavy job to the VPS. It shares 1 vCPU with a live engine holding
+real positions.
 
 ### Deploying
 
