@@ -33,7 +33,8 @@ release and restart the systemd units; the checkout-scoped
 - Prefix by agent: `claude/*`, `codex/*`.
 - **Never force-push `main`.** The VPS deploys with `git merge origin/main
   --ff-only`, so a rewritten history makes deployment refuse to proceed.
-- Land work through a PR. CI (`secret-scan` + `test`) is the gate; it runs on
+- Land work through a PR. CI (`lint`, `secret-scan`, `test-python`,
+  `test-frontend`, dependency audit) is the gate; it runs on
   the dedicated home self-hosted runner for every same-repository PR. An agent
   may merge its own PR once CI is green — human review is not required, so work
   continues when another agent is unavailable.
@@ -87,9 +88,12 @@ Do **not** run these on the VPS:
 - the optimizer or a backtest (`scripts/optimize_pair_configs.py`,
   `scripts/replay_backtest.py`)
 
-Let self-hosted CI do that work: `secret-scan` and `test` run the full suite and
-frontend build on the home runner for every same-repository PR. On the VPS, keep
-to targeted checks:
+Let self-hosted CI do that work: `test-python` runs the full suite and
+`test-frontend` the frontend build, on the home runner for every
+same-repository PR that touches the relevant files. Each workflow is
+path-filtered, so a PR that changes no Python skips the suite entirely and a
+skipped workflow reports nothing — that is expected, not a stuck check. On the
+VPS, keep to targeted checks:
 
 ```bash
 PYTHONPATH=. python3 -m pytest -q tests/test_<the_thing_you_changed>.py
