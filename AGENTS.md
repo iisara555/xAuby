@@ -34,14 +34,14 @@ release and restart the systemd units; the checkout-scoped
 - **Never force-push `main`.** The VPS deploys with `git merge origin/main
   --ff-only`, so a rewritten history makes deployment refuse to proceed.
 - Land work through a PR. CI (`lint`, `secret-scan`, `test-python`,
-  `test-frontend`, dependency audit) is the gate; it runs on
-  the dedicated home self-hosted runner for every same-repository PR. An agent
+  `test-frontend`, dependency audit) is the gate; it runs on standard
+  GitHub-hosted Ubuntu runners for every same-repository PR. An agent
   may merge its own PR once CI is green — human review is not required, so work
   continues when another agent is unavailable.
 
 ### Before you push
 
-On a capable workstation or the home runner:
+On a capable workstation:
 
 ```bash
 PYTHONPATH=. python3 -m pytest -q          # full suite must pass
@@ -50,7 +50,7 @@ cd Website && npm run build                # only if you touched Website/
 ```
 
 On the VPS, substitute focused tests for the full suite and let the PR's
-self-hosted CI run the full suite/build. See the resource rules below.
+GitHub-hosted CI run the full suite/build. See the resource rules below.
 
 ### Resource limits on the VPS
 
@@ -68,8 +68,8 @@ Do **not** run these on the VPS:
 - the optimizer or a backtest (`scripts/optimize_pair_configs.py`,
   `scripts/replay_backtest.py`)
 
-Let self-hosted CI do that work: `test-python` runs the full suite and
-`test-frontend` the frontend build, on the home runner for every
+Let GitHub-hosted CI do that work: `test-python` runs the full suite and
+`test-frontend` the frontend build on `ubuntu-latest` for every
 same-repository PR that touches the relevant files. Each workflow is
 path-filtered, so a PR that changes no Python skips the suite entirely and a
 skipped workflow reports nothing — that is expected, not a stuck check. On the
@@ -79,8 +79,8 @@ VPS, keep to targeted checks:
 PYTHONPATH=. python3 -m pytest -q tests/test_<the_thing_you_changed>.py
 ```
 
-Do not move a heavy job to the VPS merely because the home runner is offline.
-Wait for the home runner or ask the operator to bring it online.
+Do not move a heavy job to the VPS merely because a hosted job is queued or
+failing. Diagnose or re-run it in GitHub Actions instead.
 
 ### Deploying
 

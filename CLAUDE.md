@@ -259,10 +259,9 @@ position is LONG or SHORT so it can pick the right exit.
 
 Plain `unittest`, no extra runner. Always set `PYTHONPATH=.`.
 
-The full suite and frontend build run on the dedicated Windows x64 home
-self-hosted runner (`xauby-ci`). Never run them on the 1 vCPU / 2 GB trading
-VPS. On the VPS, run only the targeted tests for the files changed and leave the
-full gate to the PR workflow.
+The full suite and frontend build run on standard GitHub-hosted Ubuntu runners.
+Never run them on the 1 vCPU / 2 GB trading VPS. On the VPS, run only the
+targeted tests for the files changed and leave the full gate to the PR workflow.
 
 ```bash
 # Full suite (139 modules)
@@ -280,12 +279,11 @@ New plugins require strategy tests, indicator tests, and chart legend coverage.
 
 ## Backtest, optimization, and R&D
 
-Compute-heavy backtests, grids, and optimizers run only on the home self-hosted
-runner (`xauby-backtest`) or directly on that home PC. Do not run them on the
-trading VPS or change a workflow to a metered GitHub-hosted runner when the home
-runner is offline. The BTC SuperTrend grid is manually dispatched from Actions
-and uses local multiprocessing in one job. Setup and recovery are documented in
-`docs/home-self-hosted-runner.md`.
+Compute-heavy backtests, grids, and optimizers run only on GitHub-hosted Actions
+or directly on a capable workstation. Do not run them on the trading VPS. The
+BTC SuperTrend grid is manually dispatched from Actions and uses multiprocessing
+in one job, capped by GitHub's six-hour hosted-job limit. CI and research runner
+policy is documented in `docs/github-hosted-actions.md`.
 
 - Backtests pull from **Global Binance** (`api.binance.com`) by default for
   longer history (`backtest.data_base_url`, env override `BINANCE_BACKTEST_URL`);

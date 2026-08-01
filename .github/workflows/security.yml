@@ -50,7 +50,7 @@ permissions:
 jobs:
   python-dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, windows, x64, xauby-ci]
+    runs-on: ubuntu-latest
     # pip-audit resolves the whole requirements set, and pandas-ta is a git
     # dependency with no wheel to fall back on, so this job is the slowest of
     # the set even when it behaves. A cold run on 2026-07-31 sat on the audit
@@ -64,8 +64,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          # The runner is long-lived but the pip cache was not being reused
-          # between runs, so every audit re-downloaded numpy, pandas and scipy.
+          # Reuse the shared Actions cache so each fresh runner does not need to
+          # re-download numpy, pandas and scipy.
           cache: pip
           cache-dependency-path: requirements.txt
       - name: Install pip-audit
@@ -86,7 +86,7 @@ jobs:
 
   node-dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, windows, x64, xauby-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
