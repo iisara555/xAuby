@@ -14,6 +14,7 @@ full observability, and Telegram/TUI fallbacks.
 [![Console](https://img.shields.io/badge/Console-xAuby%20Pilot%20(Web)-e8451c)](https://xauby.vercel.app/)
 [![Docs](https://img.shields.io/badge/Docs-docs%2F-blue)](docs/README.md)
 [![Research](https://img.shields.io/badge/Research-Live%20on%20Vercel-000000?logo=vercel)](https://x-auby.vercel.app/)
+[![Buy us a coffee](https://img.shields.io/badge/Buy%20us%20a%20coffee-Donate-ffdd00?logo=buymeacoffee&logoColor=000000)](https://donate.stripe.com/4gM9AU5lOc2s9o88d74Ni00)
 
 [Pilot Console](https://xauby.vercel.app/) | [Web Console](#xauby-pilot--the-web-console) | [Quick Start](#quick-start) | [Runtime Baseline](#current-runtime-baseline) | [Configuration](#configuration) | [Backtest](#backtest-optimization-and-rd) | [Deploy](#deployment)
 
