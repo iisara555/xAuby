@@ -45,8 +45,14 @@ never paste it into chat, a repository file, an Actions secret, or a shell log.
 
 ## Workflows
 
-- `.github/workflows/secret-scan.yml` and `security.yml` target
+- `.github/workflows/secret-scan.yml` (`lint`, `secret-scan`),
+  `test-python.yml`, `test-frontend.yml` and `security.yml` target
   `[self-hosted, windows, x64, xauby-ci]` for PR and `main` gates.
+- `secret-scan.yml` runs on every PR. The other three are path-filtered: the
+  Python suite is skipped when no Python changed, the frontend build when
+  `Website/` is untouched, and the dependency audit unless a dependency
+  manifest changed. A workflow that is skipped this way reports nothing at
+  all — that is expected, not a stuck check.
 - `.github/workflows/btc-supertrend-grid-research.yml` targets
   `[self-hosted, windows, x64, xauby-backtest]` and starts only from
   **Actions → BTC SuperTrend OKX grid research → Run workflow**.
@@ -56,6 +62,52 @@ never paste it into chat, a repository file, an Actions secret, or a shell log.
 
 Final BTC JSON/report artifacts are uploaded for 30 days. They are compact; raw
 candle and per-shard interchange files stay on the runner and are not uploaded.
+
+## Keeping the runner awake
+
+A job that dies within seconds of starting and logs `The runner has received a
+shutdown signal` was not failed by the code — the runner process went away
+underneath it. This happened on 2026-08-01 to a job that started four seconds
+after four others had completed normally. Two settings prevent it:
+
+```powershell
+# Never sleep or hibernate on AC. A sleeping PC drops in-flight jobs and
+# leaves later ones queued with no runner to claim them.
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0
+```
+
+Run the runner as a **Windows service** (`svc.cmd install` then `svc.cmd
+start`) rather than `run.cmd` in a console window. A console session ends when
+the user logs out or the window closes; the service survives both and restarts
+with the machine.
+
+## Running more than one runner
+
+GitHub assigns at most one job per runner at a time, so a single runner
+serialises the whole PR gate: on 2026-08-01 `secret-scan` → `lint` →
+`test` → `node-dependencies` ran strictly back to back, each starting within
+three seconds of the previous finishing, for ~6-7 minutes of wall time that
+was almost entirely idle waiting.
+
+Registering additional runners on the same PC restores parallelism. Each needs
+its own directory and its own registration token, with **identical labels** so
+any of them can claim any job:
+
+```powershell
+mkdir C:\actions-runner-2 ; cd C:\actions-runner-2
+# unpack the same runner package, then register with the same labels
+./config.cmd --url https://github.com/iisara555/xAuby --token <TOKEN> `
+             --name xauby-home-02 `
+             --labels self-hosted,windows,x64,xauby-ci `
+             --work _work
+./svc.cmd install ; ./svc.cmd start
+```
+
+Two or three instances suit a typical desktop: `lint`, `secret-scan`,
+`test-python` and `test-frontend` then overlap instead of queueing. Do not give
+the extra instances the `xauby-backtest` label — a research grid is expected to
+own the machine alone, and the note above about one grid at a time still holds.
 
 ## Unblocking a PR
 

@@ -1,0 +1,52 @@
+name: Test (Python)
+
+# Split out of secret-scan.yml so the Python suite and the frontend build can
+# be skipped independently. `paths` is a workflow-level key, not a job-level
+# one, which is why this is its own file rather than an `if:` on a job — the
+# alternative was a third-party path-filter action, and CI is the only gate
+# between an agent's commit and real money, so this repo does not add
+# supply-chain surface to the self-hosted runner for convenience.
+
+on:
+  pull_request:
+    paths:
+      - '**.py'
+      - requirements.txt
+      - requirements-dev.txt
+      - pyproject.toml
+      # tests/test_saas_hardening.py reads this file to assert the proxy still
+      # strips client-authored forwarding headers, so editing it alone can
+      # legitimately fail the Python suite.
+      - Website/lib/server/api-proxy.ts
+      - .github/workflows/test-python.yml
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-python:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, windows, x64, xauby-ci]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          # requirements-dev.txt is a one-line `-r requirements.txt` plus the
+          # test tools, so both files have to key the cache or a change to the
+          # runtime set would be served a stale one.
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install Python dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run Python test suite
+        run: pytest -q
