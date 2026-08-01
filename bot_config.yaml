@@ -823,6 +823,12 @@ architecture:
     - ema200
     squeeze_momentum:
     - squeeze_momentum
+    # Research-only 15m plugins (SOL 15m study). maturity: research, so the
+    # engine refuses them on a live pair.
+    ut_bot_atr:
+    - ut_bot_atr
+    dual_thrust:
+    - dual_thrust
   tui_indicator_registry: true
   per_symbol_execution_mode: true
   sim_broker_enabled: true

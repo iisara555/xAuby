@@ -41,6 +41,8 @@ DEFAULT_STRATEGY_CHART_MAP: Dict[str, List[str]] = {
     "vol_breakout": ["vol_breakout"],
     "supertrend_short": ["supertrend", "ema200"],
     "squeeze_momentum": ["squeeze_momentum"],
+    "ut_bot_atr": ["ut_bot_atr"],
+    "dual_thrust": ["dual_thrust"],
 }
 
 
