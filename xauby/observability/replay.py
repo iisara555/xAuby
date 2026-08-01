@@ -46,10 +46,26 @@ class ContextBuilder:
         engine_config: Optional[Dict[str, Any]] = None,
         extras: Optional[Dict[str, Any]] = None,
         end_index: Optional[int] = None,
+        window_bars: Optional[int] = None,
     ) -> MarketContext:
-        """Slice candles up to ``end_index`` (inclusive) for bar-by-bar replay."""
+        """Slice candles up to ``end_index`` (inclusive) for bar-by-bar replay.
+
+        ``window_bars`` caps how much history the slice carries. Copying the
+        whole prefix on every bar makes a replay quadratic in bar count, which
+        is invisible at 4h (~10k bars) but fatal at 15m (~200k bars). Bounding
+        the window keeps per-bar cost constant. Default ``None`` = unbounded,
+        i.e. the exact behaviour every existing caller already relies on; only
+        pass a window when the strategy's deepest lookback fits inside it.
+        """
         if end_index is not None:
-            df_p = df_primary.iloc[: end_index + 1].copy()
+            lo = 0
+            if window_bars is not None:
+                lo = max(0, end_index + 1 - int(window_bars))
+            df_p = df_primary.iloc[lo : end_index + 1].copy()
+            if lo:
+                # Hand the strategy a frame that looks like any other: a fresh
+                # 0-based index, not one starting at ``lo``.
+                df_p.reset_index(drop=True, inplace=True)
             if df_regime is not None and not df_regime.empty and not df_p.empty:
                 cutoff_ts = int(df_p.iloc[-1].get("timestamp", 0) or 0)
                 df_r = _slice_regime_by_timestamp(df_regime, cutoff_ts)
@@ -769,7 +785,9 @@ class ReplayEngine:
         timeframe_regime: Optional[str] = None,
         strategy_config: Optional[Dict[str, Any]] = None,
         engine_config: Optional[Dict[str, Any]] = None,
+        ctx_window_bars: Optional[int] = None,
     ):
+        self.ctx_window_bars = ctx_window_bars
         self.runner = runner
         self.simulator = simulator
         self.symbol = symbol
@@ -850,6 +868,7 @@ class ReplayEngine:
                     "last_bar_is_forming": last_bar_is_forming,
                 },
                 end_index=i - 1,
+                window_bars=self.ctx_window_bars,
             )
             signal = self.runner.run(ctx)
 

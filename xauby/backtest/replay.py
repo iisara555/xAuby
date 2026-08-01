@@ -34,6 +34,7 @@ def run_plugin_replay(
     primary_timeframe: Optional[str] = None,
     regime_timeframe: Optional[str] = None,
     min_bars_override: Optional[int] = None,
+    ctx_window_bars: Optional[int] = None,
 ) -> Dict[str, Any]:
     # TODO: make strategy_name a required parameter in a future breaking release
     """Run bar-by-bar replay using the real strategy plugin (ReplayEngine).
@@ -119,6 +120,7 @@ def run_plugin_replay(
         timeframe_regime=regime_tf,
         strategy_config=strat_cfg,
         engine_config=cfg,
+        ctx_window_bars=ctx_window_bars,
     )
     regime_df = normalize_ohlcv_df(df_regime) if df_regime is not None else None
     # min_bars_override lets walk-forward callers prepend a warmup lead-in of
