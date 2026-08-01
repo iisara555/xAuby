@@ -269,7 +269,8 @@ LONG_ONLY_EXTRA = ["sol_ema_pullback", "xauby_vwap_pullback"]
 # Replay plumbing                                                             #
 # --------------------------------------------------------------------------- #
 def _ts(day: str) -> int:
-    return int(datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+    """Epoch SECONDS — the unit normalize_ohlcv_df writes into `timestamp`."""
+    return int(datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
 
 
 def _load_frames():
