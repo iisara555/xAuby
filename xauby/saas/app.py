@@ -4,6 +4,7 @@ import base64
 import binascii
 import hashlib
 import json
+import logging
 import re
 import secrets
 import time
@@ -36,8 +37,15 @@ from xauby.saas.supervisor import TenantSupervisor, attach_tenant_loaders
 from xauby.runtime.trading_config import bounded_position_fraction
 from xauby.utils.atomic_io import atomic_bytes_write
 
+logger = logging.getLogger("xauby.saas")
+
 SESSION_COOKIE = "xauby_saas_session"
 OAUTH_STATE_COOKIE = "xauby_saas_oauth_state"
+# Starlette buffers the whole body into memory before Pydantic's field
+# max_length ever runs, so an unbounded body is a memory-exhaustion path into
+# the service's systemd MemoryMax on unauthenticated routes. The largest
+# legitimate body is the 1.5 MB avatar data URL in ProfileAppearanceBody.
+MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024
 TRADE_PIN_PATTERN = r"^[0-9]{8,12}$"
 TELEGRAM_TOKEN_PATTERN = r"^[0-9]{5,16}:[A-Za-z0-9_-]{35}$"
 TELEGRAM_CHAT_PATTERN = r"^(-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
@@ -217,6 +225,81 @@ def _is_safe_live_pair_addition(
     ) <= 95.0
 
 
+class _BodyTooLarge(Exception):
+    """Internal signal raised while reading an oversized request body."""
+
+
+class BodySizeLimitMiddleware:
+    """Reject oversized request bodies before they are buffered into memory.
+
+    Content-Length alone would not enforce anything here: the Next.js proxy
+    streams the body through and drops content-length as a hop-by-hop header,
+    so proxied requests arrive chunked with no declared size. The limit has to
+    be counted while reading, which is why this is raw ASGI rather than an
+    http middleware — the latter only runs once the body is already buffered.
+    """
+
+    def __init__(self, app: Any, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = int(max_bytes)
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = dict(scope.get("headers") or {}).get(b"content-length")
+        if declared and declared.isdigit() and int(declared) > self.max_bytes:
+            await self._reject(send)
+            return
+
+        received = 0
+        overflowed = False
+        answered = False
+
+        async def limited_receive() -> dict[str, Any]:
+            nonlocal received, overflowed
+            message = await receive()
+            if message.get("type") == "http.request":
+                received += len(message.get("body") or b"")
+                if received > self.max_bytes:
+                    overflowed = True
+                    raise _BodyTooLarge
+            return message
+
+        async def guarded_send(message: dict[str, Any]) -> None:
+            nonlocal answered
+            # Once the cap is hit the app's own answer is misleading — FastAPI
+            # turns the read failure into a generic 400 "error parsing the
+            # body". Replace it so the caller learns the actual reason, and
+            # swallow whatever the app streams afterwards.
+            if overflowed:
+                if not answered:
+                    answered = True
+                    await self._reject(send)
+                return
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, guarded_send)
+        except _BodyTooLarge:
+            if not answered:
+                answered = True
+                await self._reject(send)
+
+    @staticmethod
+    async def _reject(send: Any) -> None:
+        body = json.dumps({"detail": "request body is too large"}).encode()
+        await send({
+            "type": "http.response.start", "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+
 def _safe_slug_from_email(email: str, fallback: str) -> str:
     local = str(email).split("@", 1)[0].lower()
     # Keep room for the ``xauby-`` prefix used by the tenant-specific Linux
@@ -257,6 +340,7 @@ def create_app(
     # The only tenant-triggered outbound HTTP in the app besides OAuth.
     telegram_test_throttle = AttemptThrottle(max_attempts=5, window_seconds=300, lockout_seconds=300)
     app = FastAPI(title="xAuby SaaS Control Plane", version="0.1.0")
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
     app.state.settings = settings
     app.state.store = store
     app.state.supervisor = supervisor
@@ -264,6 +348,49 @@ def create_app(
     app.state.runtime = runtime
     avatar_root = settings.data_root / "avatars"
     avatar_root.mkdir(parents=True, exist_ok=True)
+
+    def _json_response(payload: dict[str, Any], status_code: int,
+                       headers: dict[str, str] | None = None) -> Response:
+        return Response(
+            content=json.dumps(payload), status_code=status_code,
+            media_type="application/json", headers=headers,
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_error(request: Request, exc: Exception) -> Response:
+        """Record the trace, return an opaque body.
+
+        _telegram_error below already establishes that raw exception text must
+        never reach a client — a bot token travels in a URL that requests
+        embeds in its exception strings. The same rule applies everywhere else,
+        so the trace goes to the log and the caller gets a request id to quote.
+        """
+        request_id = getattr(request.state, "request_id", "")
+        logger.exception(
+            "unhandled error on %s %s (request_id=%s)",
+            request.method, request.url.path, request_id,
+        )
+        return _json_response(
+            {"detail": "internal error", "request_id": request_id}, 500,
+            {"X-Request-Id": request_id} if request_id else None,
+        )
+
+    @app.middleware("http")
+    async def observability(request: Request, call_next):
+        request_id = secrets.token_hex(8)
+        request.state.request_id = request_id
+        started = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - started) * 1000, 1)
+        # One structured line per request: without it an incident leaves
+        # nothing behind but uvicorn's access log.
+        logger.info(
+            "request method=%s path=%s status=%s duration_ms=%s request_id=%s",
+            request.method, request.url.path, response.status_code,
+            duration_ms, request_id,
+        )
+        response.headers["X-Request-Id"] = request_id
+        return response
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -452,6 +579,16 @@ def create_app(
     def password_login(body: LoginBody, request: Request, response: Response):
         key = throttle_key(request, body.email)
         require_not_throttled(login_throttle, key)
+        # The throttle above is keyed on the client address, which reaches us
+        # through a reverse proxy; this one lives on the account row, so it
+        # holds even if the forwarding chain is ever misconfigured.
+        account_retry_after = store.login_retry_after(body.email)
+        if account_retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="too many attempts; try again later",
+                headers={"Retry-After": str(account_retry_after)},
+            )
         user = store.authenticate_password(body.email, body.password)
         if not user:
             login_throttle.record_failure(key)
