@@ -861,13 +861,18 @@ F702,F706,F707,F502,F601,B006,B008,B012,B017,B018,B023,B026,B904`) ผ่าน�
   เสนอคือ `next@14.2.35` ซึ่งเป็นการ *ถอย* semver-major** จากสาย 16.2.x ที่เว็บ
   รันอยู่ และช่วงที่มีช่องโหว่ครอบ **ทุก** รุ่น 16.x จึงไม่มี patch ให้ take
   → gate ที่ `--audit-level=critical` (high สองตัวนี้ผ่าน, critical ใหม่บล็อก)
-  บรรเทาบางส่วน: `next/image` ถูกใช้ที่เดียว (`profile-avatar.tsx`) และส่ง
-  `unoptimized` จึงไม่วิ่งผ่าน optimizer ที่ไปถึง libvips — **ยังไม่ได้ตรวจครบทุก route**
+  บรรเทาและล็อกไว้แล้ว: scan source ทั้ง Website ยืนยันว่า `next/image` ถูกใช้
+  ที่เดียว (`profile-avatar.tsx`) และส่ง `unoptimized`; frontend CI รัน
+  `scripts/check_image_optimizer_policy.py` เพื่อห้าม import ใหม่, direct
+  `/_next/image` และการเอา `unoptimized` ออกโดยไม่ผ่าน security review
 - **`pandas-ta` audit ไม่ได้เลย** เพราะติดตั้งจาก git ไม่ใช่ PyPI (pip-audit skip)
   คือ direct dependency ที่ไม่มีใครสแกนได้
 
-**ยังเหลือ:** CodeQL กับ SBOM ยังไม่ได้ทำ · ต้องตัดสินใจเรื่อง pandas-ta และ
-เรื่องยอมรับความเสี่ยง sharp/libvips
+**ปิดส่วนที่เหลือ 2026-08-01:** CodeQL Default Setup รัน Actions,
+JavaScript/TypeScript และ Python บน PR แล้ว · `security.yml` สร้าง SPDX SBOM
+ด้วย Anchore/Syft ที่ pin commit และเก็บ artifact 30 วัน · บันทึกการยอมรับความเสี่ยง
+`pandas-ta` กับ sharp/libvips พร้อมเงื่อนไขทบทวนและ CI guard ใน
+`docs/threat-model.md` — เป็น accepted risk ที่มองเห็นได้ ไม่ใช่การอ้างว่า CVE หาย
 
 **P2.4 — Audit ความปลอดภัยใหม่บนสถาปัตยกรรมปัจจุบัน** ✅ **ทำแล้ว 2026-07-28**
 `docs/security-saas-audit.md` (2026-07-09) audit `xauby/webui/server.py` ซึ่ง
@@ -899,12 +904,14 @@ F702,F706,F707,F502,F601,B006,B008,B012,B017,B018,B023,B026,B904`) ผ่าน�
   `mfa_verified=True` — มี 404 gate จาก `dev_login_enabled` คุมอยู่ จึงไม่
   exploit ได้ในโปรดักชัน แต่การมีสำเนาที่อ่อนกว่าซ่อนอยู่หลัง flag เดียวคือรูปทรง
   ของอุบัติเหตุในอนาคต แก้ให้เรียก helper เดียวกันแล้ว
-- **ยังเปิดอยู่ (บันทึกในเอกสาร):** `key_version` มีคอลัมน์แต่ไม่มีโค้ด rotation ·
-  master key + DB + backup อยู่เครื่องเดียวกัน · `pandas-ta` audit ไม่ได้ ·
-  sharp/libvips ไม่มีทางแก้ไปข้างหน้า · ยังไม่มี CodeQL/SBOM
+- **สถานะ residual risk ปัจจุบัน:** key rotation และ off-site encrypted recovery
+  มี implementation แล้วแต่ต้องตั้ง remote/GPG และผ่าน restore drill ·
+  `pandas-ta` audit ไม่ได้และ sharp/libvips ยังไม่มีทางแก้ไปข้างหน้า จึงอยู่ใน
+  risk register พร้อม CI guard · CodeQL/SBOM ทำแล้ว
 - **สิ่งที่ audit นี้ *ไม่* ครอบ** (เขียนไว้ในเอกสารเพื่อไม่ให้ช่องว่างถูกอ่านเป็น
   ผลสะอาด): ไม่ได้ทำ penetration test · ไม่ได้ตรวจบนเครื่องจริง (อ่านจาก `deploy/`
-  ไม่ได้ไปดู VPS) · ยังไม่มี threat model ที่เป็นทางการ
+  ไม่ได้ไปดู VPS) · threat model ทำแล้วใน `docs/threat-model.md` แต่ยังไม่ได้
+  validate สมมติฐานกับ production host
 
 **P2.5 — รับ design partner ฟรี 2 ราย** ผ่าน invite flow ที่มีอยู่ แบบ SIM-only
 capacity ตั้ง hardcode ไว้ (`max_users=3`, `max_active_engines=2` ใน

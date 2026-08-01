@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'Website/**'
+      - scripts/check_image_optimizer_policy.py
       - .github/workflows/test-frontend.yml
   push:
     branches:
@@ -32,6 +33,8 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: Website/package-lock.json
+      - name: Enforce image optimizer security policy
+        run: python3 scripts/check_image_optimizer_policy.py Website
       - name: Install frontend dependencies
         working-directory: Website
         run: npm ci
