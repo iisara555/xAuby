@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       workers:
-        description: Local worker processes on the home runner
+        description: Worker processes on the GitHub-hosted runner
         required: true
         default: "4"
         type: choice
@@ -26,17 +26,16 @@ on:
 permissions:
   contents: read
 
-# One research process owns the home runner at a time.  The Python harness uses
-# multiprocessing internally, so a hosted-runner matrix would only duplicate
-# setup and consume metered minutes.
+# Run one research process at a time. The Python harness uses multiprocessing
+# internally, so a matrix would only duplicate setup and artifact output.
 concurrency:
-  group: xauby-home-backtest
+  group: xauby-github-hosted-backtest
   cancel-in-progress: false
 
 jobs:
   grid:
-    runs-on: [self-hosted, windows, x64, xauby-backtest]
-    timeout-minutes: 720
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +45,7 @@ jobs:
           python-version: "3.12"
       - name: Install Python dependencies
         run: pip install -r requirements.txt
-      - name: Run native OKX grid and finalist checks locally
+      - name: Run native OKX grid and finalist checks
         run: >-
           python scripts/btc_supertrend_okx_pf_grid.py
           --out-dir core/btc_supertrend_okx_pf_grid
@@ -54,12 +53,12 @@ jobs:
           --top-n "${{ inputs.top_n }}"
       - name: Record reproducibility metadata
         if: always()
-        shell: pwsh
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force core/btc_supertrend_okx_pf_grid | Out-Null
-          git rev-parse HEAD | Set-Content core/btc_supertrend_okx_pf_grid/git_commit.txt
-          (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") | Set-Content core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
-          $env:RUNNER_NAME | Set-Content core/btc_supertrend_okx_pf_grid/runner_name.txt
+          mkdir -p core/btc_supertrend_okx_pf_grid
+          git rev-parse HEAD > core/btc_supertrend_okx_pf_grid/git_commit.txt
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
+          printf '%s\n' "$RUNNER_NAME" > core/btc_supertrend_okx_pf_grid/runner_name.txt
       - name: Upload compact final artifacts
         if: always()
         uses: actions/upload-artifact@v4
