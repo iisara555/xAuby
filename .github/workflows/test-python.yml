@@ -5,7 +5,7 @@ name: Test (Python)
 # one, which is why this is its own file rather than an `if:` on a job — the
 # alternative was a third-party path-filter action, and CI is the only gate
 # between an agent's commit and real money, so this repo does not add
-# supply-chain surface to the self-hosted runner for convenience.
+# supply-chain surface for path filtering convenience.
 
 on:
   pull_request:
@@ -23,6 +23,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -30,7 +33,7 @@ concurrency:
 jobs:
   test-python:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, windows, x64, xauby-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
