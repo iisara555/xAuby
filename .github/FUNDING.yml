@@ -1,0 +1,10 @@
+# FUNDING.yml has no `stripe:` provider key — the supported ones are github,
+# patreon, open_collective, ko_fi, tidelift, community_bridge, liberapay,
+# issuehunt, lfx_mentorship, polar, buy_me_a_coffee and thanks_dev — so a
+# Stripe payment link goes under `custom`, which accepts up to four URLs.
+#
+# GitHub only renders the Sponsor button on public repositories, and this one
+# is private, so nothing appears yet. The file is here so the button works the
+# day visibility changes; the link that is live today is the one in the footer
+# of the landing page (Website/public/link-fixes.js).
+custom: ["https://donate.stripe.com/4gM9AU5lOc2s9o88d74Ni00"]

@@ -1,5 +1,11 @@
 (() => {
   const sourceUrl = "https://github.com/iisara555/xAuby";
+  // A Stripe-hosted payment link, so this is a plain outbound navigation and
+  // nothing has to be loaded from Stripe. Embedding Checkout or a pricing
+  // table would need js.stripe.com, which the page's CSP (script-src 'self',
+  // set in Website/next.config.ts) blocks — and relaxing that for a donate
+  // widget would weaken the whole page.
+  const donateUrl = "https://donate.stripe.com/4gM9AU5lOc2s9o88d74Ni00";
 
   // The product UI (Website/app/globals.css) is built on cut corners, not
   // rounded rectangles — the landing page's own design agrees, using radius
@@ -316,6 +322,36 @@
         min-height: 38px;
         padding-inline: 15px !important;
       }
+      /* Outline rather than solid: Sign in is the page's primary action and
+         should stay the only filled control in the footer. */
+      .xauby-donate-link {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        margin-top: 8px;
+        padding: 0 15px !important;
+        border: 1px solid rgba(255,122,77,.62) !important;
+        border-radius: 999px !important;
+        background: transparent !important;
+        color: #ff7a4d !important;
+        font-size: 12.5px !important;
+        font-weight: 600 !important;
+        letter-spacing: .02em !important;
+        line-height: 1 !important;
+        text-decoration: none !important;
+        white-space: nowrap;
+        transition: border-color .18s ease, color .18s ease, background .18s ease;
+      }
+      .xauby-donate-link:hover {
+        border-color: #ff6a3c !important;
+        background: rgba(255,122,77,.1) !important;
+        color: #ff9468 !important;
+      }
+      .xauby-donate-link:focus-visible {
+        outline: 2px solid #ece9e2;
+        outline-offset: 3px;
+      }
       header nav {
         flex-wrap: nowrap;
         min-width: 0;
@@ -431,6 +467,28 @@
     link.className = "xauby-login-link";
     link.dataset.xaubyLogin = "true";
     link.setAttribute("aria-label", "Sign in to xAuby");
+    nav.append(link);
+  };
+
+  /**
+   * Footer only, deliberately. The mobile rule above hides everything in the
+   * header nav except the Sign in action, so a donate link placed there would
+   * simply vanish below 1024px. The footer nav has no such rule and is where
+   * a support link conventionally belongs anyway.
+   *
+   * "Support development" rather than anything implying signals or returns:
+   * this is a donation toward the project, not the purchase of a service.
+   */
+  const addDonateLink = (nav) => {
+    if (!nav || nav.querySelector("[data-xauby-donate]")) return;
+    const link = document.createElement("a");
+    link.href = donateUrl;
+    link.textContent = "Support development";
+    link.className = "xauby-donate-link";
+    link.dataset.xaubyDonate = "true";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.setAttribute("aria-label", "Support xAuby development via Stripe");
     nav.append(link);
   };
 
@@ -692,6 +750,7 @@
       addLoginLink(nav);
       sortNavBySectionOrder(nav);
     });
+    document.querySelectorAll("footer nav").forEach(addDonateLink);
     // Only start the shutdown countdown once the header actually carries the
     // Sign in link — the bundled page can take longer than any fixed delay to
     // unpack on a slow mobile connection.
