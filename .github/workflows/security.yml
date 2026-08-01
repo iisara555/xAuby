@@ -126,3 +126,24 @@ jobs:
         working-directory: Website
         continue-on-error: true
         run: npm audit --omit=dev
+
+  sbom:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # GitHub recommends Anchore/Syft as an SBOM generator. Pin the immutable
+      # commit behind v0.24.0: this job inventories the supply chain, so a
+      # floating third-party action would undermine the control it provides.
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: spdx-json
+          output-file: xauby-${{ github.sha }}.spdx.json
+          artifact-name: xauby-sbom-${{ github.sha }}
+          upload-artifact-retention: 30
+          upload-release-assets: false

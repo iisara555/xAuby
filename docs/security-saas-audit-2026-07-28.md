@@ -92,26 +92,35 @@ recipient in `/etc/xauby/backup.env`; without every component the service fails
 closed rather than uploading a partial or plaintext backup. See
 `docs/offsite_backup_runbook.md`.
 
-### 5. One direct dependency cannot be audited — OPEN (P2.3)
+### 5. One direct dependency cannot be audited — ACCEPTED RISK (P2.3)
 
 `pandas-ta` is installed from a git fork (`MerlinR/Pandas-ta-fork`), so
 `pip-audit` skips it entirely: a direct dependency that no scanner covers. It
 also declares `setuptools (<=80)`, which pins a version with a known advisory
 (PYSEC-2026-3447, fixed in 83.0.0) and prevents raising the floor.
+The exception is named in the blocking audit rather than suppressing the job.
+The decision and triggers for removing it are recorded in
+`docs/threat-model.md`; weekly audits and dependency PRs keep it visible.
 
-### 6. Two npm advisories have no forward fix — OPEN (P2.3)
+### 6. Two npm advisories have no forward fix — ACCEPTED RISK (P2.3)
 
 `sharp < 0.35.0` inherits four libvips CVEs. The vulnerable range covers every
 Next 16.x release and npm's only remediation is `next@14.2.35`, a semver-major
 downgrade. Partial mitigation: the single `next/image` usage passes
 `unoptimized`, so it does not route through the optimizer that reaches libvips —
-**this has not been verified for every route.** Gated at `critical` so new
-advisories still block.
+the complete tracked Website source has now been scanned, and
+`scripts/check_image_optimizer_policy.py` runs in frontend CI to reject any new
+`next/image` import, direct `/_next/image` call, or removal of `unoptimized`
+without an explicit security review. The audit remains gated at `critical` so
+new advisories block, while the known highs stay visible in the full report.
 
-### 7. No CodeQL, no SBOM — OPEN
+### 7. CodeQL and SBOM — IMPLEMENTED (P2.3)
 
-Static analysis and a dependency manifest are both absent. Lower priority than
-the items above for a two-tenant deployment, but both are cheap to add.
+GitHub CodeQL Default Setup analyzes Actions, JavaScript/TypeScript, and Python
+on PRs. `.github/workflows/security.yml` also runs a commit-SHA-pinned
+Anchore/Syft generator on dependency changes and weekly, retaining an SPDX JSON
+SBOM artifact for 30 days. CI tests lock the generator, format, retention, and
+immutable action reference in place.
 
 ---
 
@@ -122,11 +131,11 @@ From the 2026-07-09 list, updated against the current architecture.
 | Risk | Then | Now |
 |---|---|---|
 | Tenant identity, authz, per-tenant audit logs | absent | **present** — sessions, roles, `store.audit`, tenant-scoped queries |
-| Do not expose the WebUI directly | applied to the stdlib WebUI | **obsolete** — that server is deleted; Caddy terminates TLS in front of the control plane |
+| Do not expose the WebUI directly | applied to the stdlib WebUI | **obsolete** — that server is deleted; Tailscale Funnel is the trusted production TLS origin and Caddy only redirects the HTTP compatibility hostname |
 | Manual trading needs authz/CSRF/replay protection/audit | open | **present** — Trade PIN, TOTP, per-request challenge with a digest, idempotency key |
 | Credentials should move to a secret manager | open | **partially** — envelope encryption with a host-held master key is better than `.env`, and is still not a managed secret store (finding 4) |
 | One OS user/namespace per tenant | open | **partially** — separate `XAUBY_HOME` / `XAUBY_CONFIG_DIR` per tenant, `xauby-engines` group, systemd hardening; not separate OS users, no resource quotas |
-| Dependency/SBOM scanning and scheduled CVE review | open | **mostly done** (P2.3) — SBOM still missing (finding 7) |
+| Dependency/SBOM scanning and scheduled CVE review | open | **present** — weekly audits, Dependabot, CodeQL Default Setup and retained SPDX SBOM (P2.3) |
 | Plugin execution isolation | open | **open** — still static checks and convention. The maturity gate added in P1.4 stops an uncertified plugin reaching a live pair, which narrows the blast radius but is not isolation |
 
 ---
@@ -135,7 +144,9 @@ From the 2026-07-09 list, updated against the current architecture.
 
 Replaces the WebUI-era baseline. Every item refers to something that exists.
 
-- Terminate TLS at Caddy; `XAUBY_SAAS_COOKIE_SECURE=true` in production.
+- Terminate production TLS at the trusted Tailscale Funnel origin; keep Caddy's
+  IP-derived hostname as an HTTP-only redirect; set
+  `XAUBY_SAAS_COOKIE_SECURE=true` in production.
 - `XAUBY_SAAS_DEV_LOGIN` must be unset or false. It bypasses MFA by design.
 - `XAUBY_SAAS_SESSION_SECRET` set and at least 32 bytes; the settings loader
   refuses to start without it outside dev-login mode.
@@ -150,9 +161,11 @@ Replaces the WebUI-era baseline. Every item refers to something that exists.
 - `sudoers.d/xauby-control` grants exactly the wrapper scripts, nothing broader.
 - Run `python scripts/scan_secrets.py --tracked --history` before release — in
   CI on every push and PR.
-- Keep backups off this host (finding 4). Not yet done.
-- Rotate exchange credentials after any suspected exposure; there is no key
-  rotation, so rotation means the tenant reconnecting their keys (finding 3).
+- Configure the encrypted off-site remote and prove a restore drill (finding 4);
+  the code fails closed until the remote, backup key and GPG recipient exist.
+- Rotate the credential master key with
+  `scripts/rotate_credential_master_key.py`, retain prior keys through the
+  backup-retention window, and validate both current rows and retained backups.
 
 ---
 
@@ -164,5 +177,6 @@ Stated so the gaps are not mistaken for clean results:
 - **No live-host verification.** Findings about file modes and unit behaviour
   come from reading `deploy/`, not from inspecting the running VPS.
 - **The withdrawal check has never run against a real exchange key.**
-- **No formal threat model.** The trust boundaries are described where they came
-  up, not enumerated.
+- **Threat model maintained separately.** `docs/threat-model.md` enumerates the
+  trust boundaries and risks, but its production assumptions have not been
+  validated by a live-host inspection or penetration test.

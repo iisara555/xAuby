@@ -136,6 +136,20 @@ class TestDependencyAudit(unittest.TestCase):
         self.assertIn("sharp", text)
         self.assertIn("audit-level=critical", text)
 
+    def test_spdx_sbom_is_generated_as_a_retained_artifact(self):
+        self.assertIn("sbom", self.security["jobs"])
+        steps = _steps(self.security, "sbom")
+        generator = next(
+            (step for step in steps if str(step.get("uses", "")).startswith("anchore/sbom-action@")),
+            None,
+        )
+        self.assertIsNotNone(generator, "SBOM job does not invoke an SBOM generator")
+        action_ref = str(generator["uses"]).split("@", 1)[1]
+        self.assertRegex(action_ref, r"^[0-9a-f]{40}$", "third-party action must be SHA-pinned")
+        self.assertEqual(generator["with"]["format"], "spdx-json")
+        self.assertGreaterEqual(int(generator["with"]["upload-artifact-retention"]), 30)
+        self.assertFalse(generator.get("continue-on-error", False))
+
 
 class TestDependabot(unittest.TestCase):
     def test_it_covers_both_ecosystems_and_the_actions_themselves(self):
