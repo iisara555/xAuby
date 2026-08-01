@@ -51,12 +51,18 @@ jobs:
   python-dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # pip-audit resolves the whole requirements set, and pandas-ta is a git
-    # dependency with no wheel to fall back on, so this job is the slowest of
-    # the set even when it behaves. A cold run on 2026-07-31 sat on the audit
-    # step past 28 minutes against a 1-9 minute norm and had to be cancelled by
-    # hand; a ceiling turns that into a failed job instead of a blocked queue.
-    timeout-minutes: 30
+    # This job used to hit its ceiling on every run — three times in a row on
+    # 2026-08-01, each time reporting nothing. The explanation here used to
+    # blame pandas-ta resolution; that was wrong on two counts. The stack trace
+    # at cancellation pointed at pip-audit writing its advisory HTTP cache
+    # (pip_audit/_cache.py -> NamedTemporaryFile) on the old Windows runner,
+    # and pip-audit skips pandas-ta outright ("Dependency not found on PyPI"),
+    # so it was never the thing being resolved.
+    #
+    # On ubuntu-latest the same command takes 22 seconds locally and completed
+    # in 23 in CI, so this ceiling is headroom against a hung network call
+    # rather than something a normal run approaches.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
