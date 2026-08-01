@@ -1,0 +1,121 @@
+name: SOL 15m strategy comparison research
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: Worker processes on the GitHub-hosted runner
+        required: true
+        default: "4"
+        type: choice
+        options:
+          - "2"
+          - "4"
+          - "6"
+          - "8"
+      top_n:
+        description: Configs per strategy promoted to the full-span stage
+        required: true
+        default: "3"
+        type: choice
+        options:
+          - "1"
+          - "3"
+          - "5"
+
+permissions:
+  contents: read
+
+# One research process at a time. The harness uses multiprocessing internally,
+# so a matrix would only duplicate setup and artifact output. Shares the group
+# with the BTC grid so two heavy backtests never contend for a runner.
+concurrency:
+  group: xauby-github-hosted-backtest
+  cancel-in-progress: false
+
+jobs:
+  # Stage A gets its own 6h budget. At ~100-200 bars/s a 15m replay is slow
+  # enough that grid and finalists will not both fit in one job.
+  grid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Fetch SOLUSDT 15m + 1d archives
+        run: python scripts/sol_15m_multi_strategy.py fetch
+      - name: Calibrate replay throughput
+        run: python scripts/sol_15m_multi_strategy.py calibrate
+      - name: Run the parameter grid on the tuning window
+        run: >-
+          python scripts/sol_15m_multi_strategy.py grid
+          --jobs "${{ inputs.workers }}"
+      - name: Record reproducibility metadata
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p core/sol_15m
+          git rev-parse HEAD > core/sol_15m/git_commit.txt
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > core/sol_15m/completed_at_utc.txt
+          printf '%s\n' "$RUNNER_NAME" > core/sol_15m/runner_name.txt
+      - name: Upload grid artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sol-15m-grid-${{ github.run_id }}
+          path: |
+            core/sol_15m/pf_grid.jsonl
+            core/sol_15m/calibration.json
+            core/sol_15m/git_commit.txt
+            core/sol_15m/completed_at_utc.txt
+            core/sol_15m/runner_name.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  # Stage B replays the shortlist on the full span, folds and cost scenarios.
+  finalists:
+    needs: grid
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Restore grid results
+        uses: actions/download-artifact@v4
+        with:
+          name: sol-15m-grid-${{ github.run_id }}
+          path: core/sol_15m
+      - name: Re-fetch candles
+        run: python scripts/sol_15m_multi_strategy.py fetch
+      - name: Replay finalists on the full span
+        run: >-
+          python scripts/sol_15m_multi_strategy.py finalists
+          --jobs "${{ inputs.workers }}" --top "${{ inputs.top_n }}"
+      - name: Long-only appendix
+        run: >-
+          python scripts/sol_15m_multi_strategy.py long-only
+          --jobs "${{ inputs.workers }}"
+      - name: Render the report
+        run: >-
+          python scripts/sol_15m_multi_strategy.py report
+          --md core/sol_15m/report.md
+      - name: Upload final artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sol-15m-final-${{ github.run_id }}
+          path: core/sol_15m/
+          if-no-files-found: error
+          retention-days: 30

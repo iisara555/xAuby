@@ -19,6 +19,12 @@ trading VPS, or deployment credentials. Production deployment remains manual.
   workflow change, on a weekly schedule, and on manual dispatch.
 - `btc-supertrend-grid-research.yml` is manual-only and runs the BTC grid as one
   multiprocessing job.
+- `sol-15m-strategy-research.yml` is manual-only and runs the SOL 15m
+  five-strategy comparison as two chained jobs: `grid` (tuning-window parameter
+  search) then `finalists` (full span, folds, cost scenarios, report). It is
+  split because a 15m replay runs at roughly 100-200 bars/s over ~206,000 bars,
+  so both stages will not fit in a single six-hour job. It shares the
+  `xauby-github-hosted-backtest` concurrency group with the BTC grid.
 
 The PR workflows retain their same-repository guard. A path-filtered workflow
 that does not apply reports no check at all; that is expected, not a stuck job.
