@@ -394,8 +394,16 @@ TF_BARS_PER_SESSION = {"15m": 96, "1h": 24, "4h": 6, "1d": 1}
 def _tf_slate(tf: str) -> dict:
     grids = _tf_grids()
     bps = TF_BARS_PER_SESSION.get(tf, 24)
-    for _cid, ov in grids["dual_thrust"]:
-        ov["bars_per_session"] = bps
+    if bps < 2:
+        # Dual Thrust is an INTRADAY range-breakout system: it needs several
+        # bars inside a session to define "this session's open" and to gate
+        # one entry per session. At 1d one bar IS one session, so the concept
+        # is undefined and the strategy's own validate_config rejects the
+        # config. Excluded rather than run on a config it calls invalid.
+        grids.pop("dual_thrust", None)
+    else:
+        for _cid, ov in grids["dual_thrust"]:
+            ov["bars_per_session"] = bps
     min_is, min_oos = TF_GATES.get(tf, (30, 10))
     return {
         "grids": grids,
