@@ -4,13 +4,16 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from xauby.saas.app import create_app
+from xauby.saas.app import StrategyEvaluationBody, _explicit_flat_runtime_snapshot, create_app
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
 from xauby.saas.strategy_pool import (
     DEFAULT_POLICY,
     append_candidate,
+    append_evaluation,
     candidate_from_preset,
+    evaluation_provenance_reasons,
+    evaluations_comparable,
     new_pool,
     promotion_eligibility,
     score_metrics,
@@ -81,6 +84,147 @@ class StrategyPoolTests(unittest.TestCase):
         self.assertFalse(candidate["eligible_for_promotion"])
         self.assertEqual(candidate["evaluation"]["source"], "certificate")
 
+    @staticmethod
+    def _forward_metrics(
+        run_id: str,
+        *,
+        score_boost: float = 0.0,
+        config_fingerprint: str = "b" * 16,
+    ) -> dict:
+        return {
+            "forward_days": 30,
+            "trades": 30,
+            "profit_factor": 1.4 + score_boost,
+            "net_return_pct": 8.0,
+            "max_drawdown_pct": 8.0,
+            "run_id": run_id,
+            "artifact_sha256": "a" * 64,
+            "config_fingerprint": config_fingerprint,
+            "venue": "okx",
+            "timeframe": "4h",
+            "data_window_start": "2026-01-01",
+            "data_window_end": "2026-02-01",
+            "fill_model": "candle_close_v1",
+            "fees_pct": 0.05,
+            "slippage_pct": 0.02,
+        }
+
+    def test_forward_history_derives_streak_and_is_idempotent(self):
+        pool = new_pool("BTCUSDT", "okx-swap", _preset())
+        append_candidate(pool, _preset("strategy-b"))
+        champion_fp = pool["candidates"][0]["certificate_config_fingerprint"]
+        challenger_fp = pool["candidates"][1]["certificate_config_fingerprint"]
+        append_evaluation(
+            pool, "strategy-a", self._forward_metrics("champion-1", config_fingerprint=champion_fp)
+        )
+        for index in range(3):
+            pool, record, inserted = append_evaluation(
+                pool,
+                "strategy-b",
+                self._forward_metrics(
+                    f"challenger-{index}", score_boost=0.4, config_fingerprint=challenger_fp
+                ),
+            )
+            self.assertTrue(inserted)
+        challenger = next(item for item in pool["candidates"] if item["preset_id"] == "strategy-b")
+        self.assertEqual(challenger["winning_evaluations"], 3)
+        self.assertTrue(challenger["eligible_for_promotion"])
+        self.assertTrue(record["eligible_for_promotion"])
+
+        _, duplicate, inserted = append_evaluation(
+            pool,
+            "strategy-b",
+            self._forward_metrics(
+                "challenger-2", score_boost=0.4, config_fingerprint=challenger_fp
+            ),
+        )
+        self.assertFalse(inserted)
+        self.assertEqual(duplicate["run_id"], "challenger-2")
+        self.assertEqual(len(pool["evaluation_history"]), 4)
+
+    def test_incomplete_forward_result_cannot_be_promotion_ready(self):
+        pool = new_pool("BTCUSDT", "okx-swap", _preset())
+        append_candidate(pool, _preset("strategy-b"))
+        pool, record, _ = append_evaluation(
+            pool,
+            "strategy-b",
+            {
+                "forward_days": 30,
+                "trades": 30,
+                "profit_factor": 1.5,
+                "net_return_pct": 10,
+                "max_drawdown_pct": 5,
+                "winning_evaluations": 3,
+            },
+        )
+        self.assertFalse(record["eligible_for_promotion"])
+        self.assertEqual(record["winning_evaluations"], 0)
+        self.assertTrue(evaluation_provenance_reasons(record))
+
+    def test_flat_runtime_check_is_fail_closed(self):
+        base = {
+            "ok": True,
+            "read_only": False,
+            "stale": False,
+            "age_sec": 1,
+            "state": {
+                "by_symbol": {
+                    "BTCUSDT": {
+                        "position": {
+                            "state": "idle",
+                            "quantity": 0,
+                            "exchange_position_id": None,
+                        }
+                    }
+                }
+            },
+        }
+        self.assertTrue(_explicit_flat_runtime_snapshot(base, "BTCUSDT"))
+        self.assertFalse(_explicit_flat_runtime_snapshot({**base, "stale": True}, "BTCUSDT"))
+        bought = {
+            **base,
+            "state": {
+                "by_symbol": {
+                    "BTCUSDT": {
+                        "position": {"state": "bought", "quantity": 0.01}
+                    }
+                }
+            },
+        }
+        self.assertFalse(_explicit_flat_runtime_snapshot(bought, "BTCUSDT"))
+        self.assertFalse(_explicit_flat_runtime_snapshot({**base, "age_sec": "nan"}, "BTCUSDT"))
+        self.assertFalse(
+            _explicit_flat_runtime_snapshot(
+                {
+                    **base,
+                    "state": {
+                        "by_symbol": {
+                            "BTCUSDT": {"position": {"state": "idle", "quantity": "nan"}}
+                        }
+                    },
+                },
+                "BTCUSDT",
+            )
+        )
+
+    def test_zero_cost_forward_runs_have_valid_provenance(self):
+        metrics = self._forward_metrics("zero-cost")
+        metrics["source"] = "forward_sim"
+        metrics["fees_pct"] = 0.0
+        metrics["slippage_pct"] = 0.0
+        self.assertEqual(evaluation_provenance_reasons(metrics), [])
+        self.assertTrue(evaluations_comparable(metrics, metrics))
+
+    def test_evaluation_body_rejects_non_finite_numbers(self):
+        with self.assertRaises(ValueError):
+            StrategyEvaluationBody(
+                forward_days=30,
+                trades=20,
+                profit_factor=float("nan"),
+                net_return_pct=1,
+                max_drawdown_pct=2,
+            )
+
 
 class StrategyPoolApiTests(unittest.TestCase):
     def setUp(self):
@@ -136,3 +280,42 @@ class StrategyPoolApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
         self.assertIn("certified", response.json()["detail"])
+
+    def test_evaluation_endpoint_ignores_claimed_streak_without_provenance(self):
+        saved = self.client.put(
+            "/api/v1/profile",
+            headers=self.headers,
+            json={
+                "preset_ids": ["okx-xau-actionzone-v1"],
+                "active_preset_id": "okx-xau-actionzone-v1",
+                "risk": {},
+            },
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+        pools = self.client.get("/api/v1/strategy-pools")
+        self.assertEqual(pools.status_code, 200, pools.text)
+        response = self.client.patch(
+            "/api/v1/strategy-pools/XAUUSDT/candidates/okx-xau-actionzone-v1/evaluation",
+            headers=self.headers,
+            json={
+                "forward_days": 30,
+                "trades": 30,
+                "profit_factor": 1.4,
+                "net_return_pct": 8,
+                "max_drawdown_pct": 8,
+                "winning_evaluations": 3,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertFalse(body["eligible"])
+        self.assertEqual(body["evaluation"]["winning_evaluations"], 0)
+        self.assertTrue(any("run id" in reason for reason in body["reasons"]))
+
+    def test_strategy_pool_save_rejects_stale_revision(self):
+        user, tenant = self.store.bootstrap_owner("revision@example.com", "revision-owner")
+        pool = new_pool("BTCUSDT", "okx-swap", _preset())
+        saved = self.store.save_strategy_pool(tenant["id"], user["id"], pool)
+        self.assertEqual(saved["revision"], 1)
+        with self.assertRaises(ControlPlaneStore.StrategyPoolConflict):
+            self.store.save_strategy_pool(tenant["id"], user["id"], pool)

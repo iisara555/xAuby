@@ -132,11 +132,16 @@ function CandidateCard({ candidate, champion = false, liveEnabled = false }: { c
   const score = Number(evaluation.score);
   const scoreLabel = Number.isFinite(score) && score > -999 ? formatNumber(score, 1) : "—";
   const tone = candidate.certification_status === "certified" ? "good" : "warn";
-  const liveLabel = champion && candidate.mode === "live" ? (liveEnabled ? "LIVE" : "LIVE READY") : candidate.status;
+  const liveLabel = champion && candidate.mode === "live"
+    ? (liveEnabled ? "LIVE" : "LIVE READY")
+    : candidate.mode === "shadow" && candidate.shadow_runtime_status === "not_connected"
+      ? "NOT RUNNING"
+      : candidate.status;
   return <article className={champion ? "strategy-candidate champion" : "strategy-candidate"}>
     <div className="strategy-candidate-top"><div><span className="strategy-candidate-role">{champion ? <Trophy size={14} /> : <FlaskConical size={14} />} {champion ? "Champion" : "Challenger"}</span><h3>{candidate.label}</h3><p>{candidate.strategy.replaceAll("_", " ")} · {candidate.mode === "live" ? "Live lane" : "Shadow SIM"}</p></div><StatusPill label={liveLabel} tone={champion && candidate.mode === "live" ? "warn" : tone} /></div>
     <div className="strategy-candidate-metrics"><span><small>Score</small><strong>{scoreLabel}</strong></span><span><small>PF</small><strong>{formatNumber(evaluation.profit_factor, 2)}</strong></span><span><small>Max DD</small><strong>{formatNumber(evaluation.max_drawdown_pct, 1)}%</strong></span><span><small>Trades</small><strong>{formatNumber(evaluation.trades, 0)}</strong></span></div>
     <div className="strategy-candidate-footer"><span className={candidate.certification_status === "certified" ? "positive" : "negative"}>{candidate.certification_status === "certified" ? "Certificate passed" : "Certificate gate required"}</span><span>{evaluation.source === "forward_sim" ? `${formatNumber(evaluation.forward_days, 0)}d forward SIM` : "Certificate baseline"}</span></div>
+    {candidate.mode === "shadow" && candidate.shadow_runtime_status === "not_connected" && <p className="field-help strategy-candidate-reason">Shadow runner is not connected; this card is registry state only.</p>}
     {!champion && candidate.eligibility_reasons.length > 0 && <p className="strategy-candidate-reason"><LockKeyhole size={13} /> {candidate.eligibility_reasons[0]}</p>}
   </article>;
 }

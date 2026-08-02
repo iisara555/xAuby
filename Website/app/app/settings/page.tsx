@@ -191,7 +191,10 @@ export default function SettingsPage() {
         : { tone: "form-note", text: "Withdrawal permission not verified with the exchange — your confirmation is on file, but it has not been checked." };
 
   useEffect(() => {
-    if (seeded || !catalog) return;
+    // Catalog and profile load independently. Seeding as soon as the catalog
+    // arrives loses a saved profile when that request wins the race, leaving
+    // the page looking empty until a full reload.
+    if (seeded || !catalog || !profile) return;
     const seedTarget = savedTargetId ?? bot?.exchange_connection?.target_id ?? catalog.targets[0]?.id ?? "";
     setTargetId(seedTarget);
     if (savedProfile) {
@@ -199,7 +202,7 @@ export default function SettingsPage() {
       setFocusId(savedProfile.active_preset_id ?? savedIds[0] ?? "");
     }
     setSeeded(true);
-  }, [bot?.exchange_connection?.target_id, catalog, savedIds, savedProfile, savedTargetId, seeded]);
+  }, [bot?.exchange_connection?.target_id, catalog, profile, savedIds, savedProfile, savedTargetId, seeded]);
 
   function chooseTarget(nextId: string) {
     if (nextId === targetId) return;

@@ -44,6 +44,7 @@ export function ServerHealth({ compact = false }: { compact?: boolean }) {
 }
 
 function finite(value: unknown): number | null {
+  if (value == null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }

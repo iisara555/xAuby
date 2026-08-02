@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 import uuid
@@ -19,6 +20,8 @@ from xauby.saas.security import (
     verify_trade_pin,
 )
 
+logger = logging.getLogger("xauby.saas.store")
+
 
 class ControlPlaneStore:
     # Deliberately above the per-address AttemptThrottle's 8, so ordinary users
@@ -26,6 +29,9 @@ class ControlPlaneStore:
     # can vary their apparent address — the case the IP throttle cannot see.
     LOGIN_MAX_FAILURES = 10
     LOGIN_LOCKOUT_SECONDS = 900
+
+    class StrategyPoolConflict(RuntimeError):
+        """Raised when a stale pool revision would overwrite newer state."""
 
     def __init__(self, path: str | Path):
         self.path = str(path)
@@ -146,6 +152,7 @@ class ControlPlaneStore:
                     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
                     symbol TEXT NOT NULL,
                     pool_json TEXT NOT NULL,
+                    revision INTEGER NOT NULL DEFAULT 0,
                     updated_by TEXT NOT NULL REFERENCES users(id),
                     updated_at REAL NOT NULL,
                     PRIMARY KEY (tenant_id, symbol)
@@ -196,6 +203,11 @@ class ControlPlaneStore:
                     conn.execute(
                         f"ALTER TABLE exchange_connections ADD COLUMN {name} {declaration}"
                     )
+            pool_columns = {row[1] for row in conn.execute("PRAGMA table_info(strategy_pools)")}
+            if "revision" not in pool_columns:
+                conn.execute(
+                    "ALTER TABLE strategy_pools ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
+                )
 
     @staticmethod
     def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -630,43 +642,97 @@ class ControlPlaneStore:
         return json.loads(row[0]) if row else None
 
     def save_strategy_pool(self, tenant_id: str, user_id: str, pool: dict[str, Any]) -> dict[str, Any]:
-        """Persist one pair arena as a small versioned JSON document."""
+        """Persist one pair arena with an optimistic-concurrency revision.
+
+        The pool JSON is intentionally kept small, but a stale evaluator or
+        browser must never overwrite a newer promotion.  Existing pilot rows
+        start at revision zero and are upgraded on their first successful save.
+        """
         symbol = str(pool.get("symbol") or "").strip().upper()
         if not symbol:
             raise ValueError("strategy pool symbol is required")
+        try:
+            expected_revision = max(0, int(pool.get("revision", 0) or 0))
+        except (TypeError, ValueError):
+            expected_revision = 0
         now = time.time()
-        encoded = json.dumps(pool, sort_keys=True, separators=(",", ":"))
         with self.connection() as conn:
-            conn.execute(
-                "INSERT INTO strategy_pools (tenant_id,symbol,pool_json,updated_by,updated_at) "
-                "VALUES (?,?,?,?,?) ON CONFLICT(tenant_id,symbol) DO UPDATE SET "
-                "pool_json=excluded.pool_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
-                (tenant_id, symbol, encoded, user_id, now),
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT revision FROM strategy_pools WHERE tenant_id=? AND symbol=?",
+                (tenant_id, symbol),
+            ).fetchone()
+            current_revision = int(row[0]) if row is not None else 0
+            if row is None and expected_revision != 0:
+                raise self.StrategyPoolConflict(
+                    f"strategy pool {symbol} does not exist at revision {expected_revision}"
+                )
+            if row is not None and current_revision != expected_revision:
+                raise self.StrategyPoolConflict(
+                    f"strategy pool {symbol} changed (expected revision "
+                    f"{expected_revision}, current {current_revision})"
+                )
+            new_revision = current_revision + 1
+            stored = dict(pool)
+            stored["revision"] = new_revision
+            encoded = json.dumps(stored, sort_keys=True, separators=(",", ":"))
+            if row is None:
+                conn.execute(
+                    "INSERT INTO strategy_pools "
+                    "(tenant_id,symbol,pool_json,revision,updated_by,updated_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (tenant_id, symbol, encoded, new_revision, user_id, now),
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE strategy_pools SET pool_json=?,revision=?,updated_by=?,updated_at=? "
+                    "WHERE tenant_id=? AND symbol=? AND revision=?",
+                    (encoded, new_revision, user_id, now, tenant_id, symbol, expected_revision),
+                )
+                if cursor.rowcount != 1:
+                    raise self.StrategyPoolConflict("strategy pool update lost its revision race")
+        # The pool row is already committed at this point.  A transient audit
+        # database failure must not make the API report a failed write (and
+        # trigger a rollback that cannot undo the committed row).  Keep the
+        # state durable and leave an operator-visible trace instead.
+        try:
+            self.audit(
+                "strategy_pool_updated",
+                tenant_id=tenant_id,
+                user_id=user_id,
+                payload={"symbol": symbol, "champion_id": pool.get("champion_id")},
             )
-        self.audit(
-            "strategy_pool_updated",
-            tenant_id=tenant_id,
-            user_id=user_id,
-            payload={"symbol": symbol, "champion_id": pool.get("champion_id")},
-        )
+        except Exception:
+            logger.exception("strategy pool saved but audit append failed for %s", symbol)
         return json.loads(encoded)
 
     def strategy_pool(self, tenant_id: str, symbol: str) -> dict[str, Any] | None:
         normalized = str(symbol or "").strip().upper()
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT pool_json FROM strategy_pools WHERE tenant_id=? AND symbol=?",
+                "SELECT pool_json,revision FROM strategy_pools WHERE tenant_id=? AND symbol=?",
                 (tenant_id, normalized),
             ).fetchone()
-        return json.loads(row[0]) if row else None
+        if not row:
+            return None
+        pool = json.loads(row[0])
+        if isinstance(pool, dict):
+            pool["revision"] = int(row[1] or 0)
+        return pool
 
     def strategy_pools(self, tenant_id: str) -> list[dict[str, Any]]:
         with self.connection() as conn:
             rows = conn.execute(
-                "SELECT pool_json FROM strategy_pools WHERE tenant_id=? ORDER BY symbol",
+                "SELECT pool_json,revision FROM strategy_pools WHERE tenant_id=? ORDER BY symbol",
                 (tenant_id,),
             ).fetchall()
-        return [json.loads(row[0]) for row in rows]
+        pools = []
+        for row in rows:
+            pool = json.loads(row[0])
+            if isinstance(pool, dict):
+                pool["revision"] = int(row[1] or 0)
+            pools.append(pool)
+        return pools
 
     def ensure_tenant(self, user_id: str, preferred_slug: str) -> tuple[dict[str, Any], bool]:
         with self.connection() as conn:

@@ -332,6 +332,15 @@ class TelegramWorkspaceTests(unittest.TestCase):
                 200,
             )
 
+    def test_restart_of_stopped_tenant_respects_capacity(self):
+        self.connect()
+        with patch.object(self.store, "reserve_engine_slot", return_value=False) as reserve, \
+                patch.object(self.supervisor, "restart") as restart:
+            response = self.client.post("/api/v1/bot/restart", headers=self.headers)
+        self.assertEqual(response.status_code, 409, response.text)
+        reserve.assert_called_once_with(self.tenant["id"], self.settings.max_active_engines)
+        restart.assert_not_called()
+
     def test_restart_is_csrf_protected(self):
         self.assertEqual(self.client.post("/api/v1/bot/restart").status_code, 403)
 

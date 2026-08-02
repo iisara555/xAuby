@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time
 import uuid
@@ -116,12 +117,17 @@ def claim_manual_order_request(
         intent = "OPEN_LONG" if action == "BUY" else "CLOSE_POSITION"
     try:
         created_at = float(payload.get("created_at") or 0.0)
-    except (TypeError, ValueError):
+        current_time = float(time.time() if now is None else now)
+    except (TypeError, ValueError, OverflowError):
         created_at = 0.0
-    age = float(time.time() if now is None else now) - created_at
+        current_time = 0.0
+    age = current_time - created_at
     if (
         action not in VALID_MANUAL_ACTIONS
         or intent not in VALID_MANUAL_INTENTS
+        or not math.isfinite(created_at)
+        or not math.isfinite(current_time)
+        or not math.isfinite(age)
         or created_at <= 0
         or age < -5
         or age > MANUAL_ORDER_MAX_AGE_SECONDS

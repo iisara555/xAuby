@@ -18,6 +18,7 @@ import { runtimePairState } from "@/lib/runtime-pair-state";
 import { marketSummary, strategyFacts, strategyMarker, strategyName } from "@/lib/strategy-presentation";
 
 function numberOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -64,7 +65,11 @@ export default function DashboardPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [engineConfirmOpen, setEngineConfirmOpen] = useState(false);
-  const running = bot?.tenant.status === "running";
+  const engineStatus = bot?.tenant.status ?? "";
+  const running = engineStatus === "running" || engineStatus === "degraded";
+  const engineLabel = engineStatus === "degraded"
+    ? "Engine degraded"
+    : running ? "Engine online" : "Engine stopped";
   const state = snapshot?.state ?? {};
   const focus = runtimePairState(state, symbol);
   const pairReady = Object.keys(focus).length > 0;
@@ -76,7 +81,7 @@ export default function DashboardPage() {
   const equity = valueAt(state, "aggregate", "total_equity_usdt") ?? valueAt(focus, "total_equity_usdt") ?? valueAt(focus, "equity_breakdown", "portfolio_total_usdt") ?? snapshot?.currency?.equity_usdt;
   const cash = valueAt(focus, "equity_breakdown", "usdt_balance_usdt") ?? valueAt(focus, "portfolio", "USDT") ?? snapshot?.currency?.usdt_balance_usdt;
   const exposure = valueAt(focus, "equity_breakdown", "symbol_exposure_usdt") ?? snapshot?.currency?.symbol_exposure_usdt;
-  const positionOpen = String(valueAt(position, "state") ?? "idle") === "bought";
+  const positionOpen = String(valueAt(position, "state") ?? "idle").toLowerCase() === "bought";
   const lastClosed = valueAt(focus, "last_closed_trade") as Record<string, unknown> | undefined;
   const lastPnlConfirmed = Boolean(lastClosed && Number(valueAt(lastClosed, "pnl_confirmed") ?? 0));
   const pnl = Number(positionOpen ? valueAt(position, "unrealized_pnl") ?? 0 : valueAt(lastClosed ?? {}, "net_pnl") ?? 0);
@@ -145,7 +150,7 @@ export default function DashboardPage() {
       <PageHeading
         eyebrow="Pilot workspace"
         title={<>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {user.display_name || user.email.split("@")[0]}. <span className="page-heading-market">{marketSummary(focus, Boolean(snapshot?.stale), !snapshot)}</span></>}
-        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : running ? "Engine online" : "Engine stopped"} tone={snapshot?.stale ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={live} shortAvailable={shortAvailable} marketZone={marketMarker} engineRunning={running} profileReady={pairs.length > 0} /></div>}
+        aside={<div className="heading-actions"><StatusPill label={snapshot?.stale ? "Data delayed" : engineLabel} tone={snapshot?.stale || engineStatus === "degraded" ? "warn" : running ? "good" : "neutral"} /><TradeDrawer user={user} symbol={symbol} positionOpen={positionOpen} enabled={Boolean(catalog?.features.manual_trading && bot?.exchange_connection)} live={live} shortAvailable={shortAvailable} marketZone={marketMarker} engineRunning={running} profileReady={pairs.length > 0} /></div>}
       />
 
       {!bot?.exchange_connection && (

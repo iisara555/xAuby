@@ -248,8 +248,12 @@ class RuntimeGateway:
     @staticmethod
     def _focus_state(state: dict[str, Any], symbol: str) -> dict[str, Any]:
         by_symbol = state.get("by_symbol")
-        if isinstance(by_symbol, dict) and isinstance(by_symbol.get(symbol), dict):
-            return by_symbol[symbol]
+        if isinstance(by_symbol, dict):
+            # Once the engine publishes pair-scoped state, falling back to the
+            # root snapshot for an unknown pair shows another market's price,
+            # events, or equity. Return an empty view instead; callers then
+            # fail closed until that pair has published its own state.
+            return by_symbol[symbol] if isinstance(by_symbol.get(symbol), dict) else {}
         return state
 
     def _native_db(self, slug: str) -> Path:
