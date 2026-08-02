@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
@@ -163,6 +164,7 @@ def audit_runtime(
     require_short: bool = False,
 ) -> list[Check]:
     from xauby.database.db import LiteDB, SCHEMA_VERSION
+    from xauby.observability.incidents import load_run_timeline
     from xauby.observability.replay_validation import validate_run
     from xauby.observability.store import EventStore
 
@@ -178,24 +180,76 @@ def audit_runtime(
         f"runtime schema={version}, release requires >= {SCHEMA_VERSION}",
     ))
     if run_id:
-        report = validate_run(
-            EventStore(db=db), db, run_id,
-            symbol=symbol, config_path=config_path,
+        store = EventStore(db=db)
+        timeline = load_run_timeline(
+            store, run_id, limit=10_000, notable_only=False,
         )
-        checked = report.matched + report.mismatched
-        checks.append(Check(
-            "runtime_replay",
-            report.ok and checked > 0,
-            f"matched={report.matched}, mismatched={report.mismatched}, "
-            f"skipped={report.skipped}",
-        ))
-        if require_short:
+        symbols = _runtime_symbols(timeline, explicit=symbol)
+        if not symbols:
             checks.append(Check(
-                "runtime_short_replay",
-                report.short_signals_checked > 0,
-                f"short_signals_checked={report.short_signals_checked}",
+                "runtime_replay",
+                False,
+                "no pair symbol metadata found for the requested run",
             ))
+            return checks
+
+        multi_pair = len(symbols) > 1
+        for pair in symbols:
+            check_name = f"runtime_replay:{pair}" if multi_pair else "runtime_replay"
+            try:
+                report = validate_run(
+                    store, db, run_id,
+                    symbol=pair, config_path=config_path,
+                )
+            except Exception as exc:
+                checks.append(Check(
+                    check_name,
+                    False,
+                    f"{type(exc).__name__}: {exc}",
+                ))
+                continue
+
+            checked = report.matched + report.mismatched
+            checks.append(Check(
+                check_name,
+                report.ok and checked > 0,
+                f"matched={report.matched}, mismatched={report.mismatched}, "
+                f"skipped={report.skipped}",
+            ))
+            if require_short:
+                short_name = (
+                    f"runtime_short_replay:{pair}"
+                    if multi_pair else "runtime_short_replay"
+                )
+                checks.append(Check(
+                    short_name,
+                    report.short_signals_checked > 0,
+                    f"short_signals_checked={report.short_signals_checked}",
+                ))
     return checks
+
+
+def _runtime_symbols(
+    events: list[dict[str, Any]], *, explicit: Optional[str] = None,
+) -> list[str]:
+    """Return pair symbols from a run, including aggregate startup metadata.
+
+    ``engine_started`` records all configured pairs as one comma-separated
+    value (for example ``"BTCUSDT, XAUUSDT"``), while tick and signal events
+    carry one pair each.  The readiness audit must validate every pair instead
+    of trying to resolve the aggregate string as a strategy name.
+    """
+    if explicit:
+        return [str(explicit).upper().replace("_", "").strip()]
+
+    symbols: set[str] = set()
+    for event in events:
+        raw = str(event.get("symbol") or "")
+        for token in re.split(r"[,\s]+", raw):
+            normalized = token.upper().replace("_", "").strip()
+            if normalized:
+                symbols.add(normalized)
+    return sorted(symbols)
 
 
 def main() -> int:
