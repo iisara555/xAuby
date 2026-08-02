@@ -418,6 +418,15 @@ def _explicit_flat_runtime_snapshot(
     return True
 
 
+def _finite_float(value: Any) -> float | None:
+    """Parse an untrusted runtime/config number without admitting NaN/Inf."""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
 def create_app(
     settings: SaaSSettings | None = None,
     *,
@@ -663,8 +672,8 @@ def create_app(
         snapshot = runtime.snapshot(tenant["slug"])
         if not snapshot.get("ok") or snapshot.get("read_only") or snapshot.get("stale"):
             raise HTTPException(status_code=409, detail="fresh tenant-engine data is required")
-        snapshot_age = snapshot.get("age_sec")
-        if snapshot_age is None or float(snapshot_age) > 30:
+        snapshot_age = _finite_float(snapshot.get("age_sec"))
+        if snapshot_age is None or snapshot_age < 0 or snapshot_age > 30:
             raise HTTPException(status_code=409, detail="market snapshot is too old")
         state = snapshot.get("state") if isinstance(snapshot.get("state"), dict) else {}
         clean_symbol = RuntimeGateway._symbol(symbol)
@@ -683,7 +692,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="symbol is not a configured trading pair")
         focus = RuntimeGateway._focus_state(state, clean_symbol)
         position = focus.get("position") if isinstance(focus.get("position"), dict) else {}
-        is_open = str(position.get("state") or "idle") == "bought"
+        is_open = str(position.get("state") or "idle").strip().lower() == "bought"
         if intent == "CLOSE_POSITION" and not is_open:
             raise HTTPException(status_code=409, detail="there is no tracked position to close")
         if intent != "CLOSE_POSITION" and is_open:
@@ -696,8 +705,11 @@ def create_app(
         certification = f"manual_{requested_side}_live_certified"
         if live and intent != "CLOSE_POSITION" and not target.get(certification):
             raise HTTPException(status_code=409, detail=f"Live {requested_side.upper()} is not certified")
-        mark = float(focus.get("current_price") or position.get("mark_price") or 0.0)
-        if mark <= 0:
+        raw_mark = focus.get("current_price")
+        if raw_mark is None or raw_mark == "":
+            raw_mark = position.get("mark_price")
+        mark = _finite_float(raw_mark)
+        if mark is None or mark <= 0:
             raise HTTPException(status_code=409, detail="a valid market price is required")
         return {
             "snapshot": snapshot, "focus": focus, "position": position,
@@ -1647,10 +1659,14 @@ def create_app(
         """Apply config the engine only reads at construction (e.g. Telegram).
 
         supervisor.restart re-runs materialize_credentials first, so the engine
-        comes back with the current env file. Unlike start this does not reserve
-        a slot: a restart keeps the slot the tenant already holds.
+        comes back with the current env file. A restart of a stopped/error
+        tenant is also a start in practice, so reserve capacity before calling
+        the supervisor; otherwise this endpoint could bypass max_active_engines.
         """
         tenant = own_tenant(user)
+        if tenant.get("status") not in {"starting", "running", "degraded"} \
+                and not store.reserve_engine_slot(tenant["id"], settings.max_active_engines):
+            raise HTTPException(status_code=409, detail="engine capacity is full; tenant queued")
         try:
             result = supervisor.restart(tenant["slug"])
         except Exception as exc:
@@ -1785,7 +1801,11 @@ def create_app(
                 tenant["id"], tenant["exchange_id"], connection["key_last4"],
                 target_id=connection["target_id"], status="failed"
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            logger.exception("exchange probe failed for tenant %s", tenant["slug"])
+            raise HTTPException(
+                status_code=502,
+                detail="exchange connection test failed; check credentials and venue",
+            ) from exc
         capabilities = dict(result.get("capabilities") or {})
         # The venue's answer, kept apart from the user's claim. This used to set
         # withdraw_disabled_attested = True unconditionally and store it beside
@@ -1983,11 +2003,16 @@ def create_app(
         if not ok:
             raise HTTPException(status_code=403, detail=reason)
         connection = store.exchange_connection(tenant["id"])
+        tested_at = _finite_float((connection or {}).get("tested_at"))
+        test_age = None if tested_at is None else time.time() - tested_at
         if (
             not connection
             or connection["status"] != "tested"
-            or not connection.get("tested_at")
-            or time.time() - float(connection["tested_at"]) > 1800
+            or tested_at is None
+            or tested_at <= 0
+            or test_age is None
+            or test_age < -5
+            or test_age > 1800
         ):
             raise HTTPException(status_code=409, detail="test the exchange connection again")
         if not withdrawal_permission_verified(connection):
@@ -2047,9 +2072,13 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         position = context["position"]
-        mark = float(context["mark_price"])
+        mark = _finite_float(context["mark_price"])
+        if mark is None or mark <= 0:
+            raise HTTPException(status_code=409, detail="a valid market price is required")
         if body.intent == "CLOSE_POSITION":
-            quantity = float(position.get("quantity") or 0.0)
+            quantity = _finite_float(position.get("quantity"))
+            if quantity is None or quantity <= 0:
+                raise HTTPException(status_code=409, detail="tracked position quantity is unavailable")
             side = str(position.get("position_side") or "LONG").upper()
             estimated_notional = quantity * mark
             sizing_mode = "close_position"
@@ -2058,8 +2087,11 @@ def create_app(
             config = supervisor.read_curated_config(tenant["slug"])
             focus = context["focus"]
             breakdown = focus.get("equity_breakdown") if isinstance(focus.get("equity_breakdown"), dict) else {}
-            equity = float(focus.get("total_equity_usdt") or breakdown.get("portfolio_total_usdt") or 0.0)
-            if equity <= 0:
+            raw_equity = focus.get("total_equity_usdt")
+            if raw_equity is None or raw_equity == "":
+                raw_equity = breakdown.get("portfolio_total_usdt")
+            equity = _finite_float(raw_equity)
+            if equity is None or equity <= 0:
                 raise HTTPException(status_code=409, detail="portfolio equity is unavailable")
             preset = context["preset"]
             # A certified pair's own cap is authoritative.  The profile-level
@@ -2069,10 +2101,14 @@ def create_app(
             preset_position_cap = preset.get("max_position_per_trade_pct")
             if preset_position_cap is None:
                 preset_position_cap = config.get("max_position_per_trade_pct") or 10.0
-            max_allocation = min(
-                float(preset_position_cap),
-                float(preset.get("allocation_pct", 100.0)),
-            ) / 100.0
+            max_position_pct = _finite_float(preset_position_cap)
+            allocation_pct_limit = _finite_float(preset.get("allocation_pct", 100.0))
+            if (
+                max_position_pct is None or allocation_pct_limit is None
+                or max_position_pct <= 0 or allocation_pct_limit <= 0
+            ):
+                raise HTTPException(status_code=409, detail="pair sizing limits are unavailable")
+            max_allocation = min(max_position_pct, allocation_pct_limit) / 100.0
             execution_profile = preset.get("execution_profile") or {}
             cdc_pure = bool(preset.get("cdc_pure_certified"))
             if cdc_pure:
@@ -2088,7 +2124,11 @@ def create_app(
                 allocation_pct = effective_pct * 100.0
                 sizing_mode = "cdc_pure"
             else:
-                risk_fraction = float(preset.get("risk_pct", config.get("risk_pct") or 0.01))
+                risk_fraction = _finite_float(
+                    preset.get("risk_pct", config.get("risk_pct") or 0.01)
+                )
+                if risk_fraction is None or risk_fraction <= 0:
+                    raise HTTPException(status_code=409, detail="pair risk settings are unavailable")
                 # Size off the pair's live ATR at the preset's own sl_atr_mult —
                 # the same distance the strategy itself would stop at — instead
                 # of a synthetic fixed percent, so a manual preview isn't
@@ -2106,6 +2146,11 @@ def create_app(
                 allocation_pct = (estimated_notional / equity) * 100.0
                 sizing_mode = "risk_based"
             quantity = estimated_notional / mark
+            if (
+                not math.isfinite(estimated_notional) or estimated_notional <= 0
+                or not math.isfinite(quantity) or quantity <= 0
+            ):
+                raise HTTPException(status_code=409, detail="pair sizing data is unavailable")
             side = "SHORT" if body.intent == "OPEN_SHORT" else "LONG"
         payload = {
             "version": 1,

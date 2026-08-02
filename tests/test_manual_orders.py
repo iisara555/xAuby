@@ -48,6 +48,17 @@ class ManualOrderIPCTests(unittest.TestCase):
             )
             self.assertIsNone(claim_manual_order_request("BTCUSDT", project_root=root))
 
+    def test_non_finite_created_at_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            request = write_manual_order_request("BTCUSDT", "BUY", project_root=root)
+            path = os.path.join(root, "core", "manual_order_request.json")
+            request["created_at"] = float("nan")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(request, handle)
+            self.assertIsNone(
+                claim_manual_order_request("BTCUSDT", project_root=root)
+            )
+
     def test_invalid_action_is_rejected_before_write(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):

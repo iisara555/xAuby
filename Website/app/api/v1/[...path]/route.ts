@@ -1,4 +1,4 @@
-import { proxyApiRequest } from "@/lib/server/api-proxy";
+import { proxyApiRequest, scopedPath } from "@/lib/server/api-proxy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -7,7 +7,9 @@ type RouteContext = { params: Promise<{ path: string[] }> };
 
 async function handler(request: Request, context: RouteContext) {
   const { path } = await context.params;
-  return proxyApiRequest(request, `/api/v1/${path.join("/")}`);
+  const pathname = scopedPath("/api/v1", path);
+  if (!pathname) return Response.json({ detail: "invalid path" }, { status: 400 });
+  return proxyApiRequest(request, pathname);
 }
 
 export {

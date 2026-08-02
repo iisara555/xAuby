@@ -241,6 +241,27 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertNotIn("state", payload)
         self.assertNotIn("currency", payload)
 
+    def test_runtime_price_does_not_fall_back_to_another_pair(self):
+        runtime = self.supervisor.runtime_dir("owner-itsara") / "logs"
+        runtime.mkdir(parents=True, exist_ok=True)
+        (runtime / "xauby_bot_state.json").write_text(
+            json.dumps({
+                "focus_symbol": "XAUUSDT",
+                "current_price": 3991.25,
+                "by_symbol": {
+                    "XAUUSDT": {"current_price": 3991.25},
+                },
+            }),
+            encoding="utf-8",
+        )
+        response = self.client.get(
+            "/api/v1/runtime/price", params={"symbol": "BTCUSDT"}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertFalse(payload["ok"])
+        self.assertIsNone(payload["price"])
+
     def test_runtime_queries_validate_public_inputs(self):
         bad_symbol = self.client.get(
             "/api/v1/runtime/candles", params={"symbol": "../secret", "timeframe": "4h"}
@@ -315,6 +336,38 @@ class SaaSControlPlaneTests(unittest.TestCase):
             f"/api/v1/admin/tenants/{tenant_id}/approve-live", headers=self.headers
         )
         self.assertEqual(response.status_code, 409)
+
+    def test_live_activation_rejects_non_finite_connection_test_time(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        profile = self.client.put(
+            "/api/v1/profile", headers=self.headers,
+            json={"preset_ids": ["okx-xau-actionzone-v1"],
+                  "active_preset_id": "okx-xau-actionzone-v1", "risk": {}},
+        )
+        self.assertEqual(profile.status_code, 200, profile.text)
+        connection = self.store.set_exchange_connection(
+            tenant["id"], "okx", "1234", target_id="okx-swap", status="tested",
+            capabilities={
+                "withdraw_permission_checked": True,
+                "withdraw_disabled_verified": True,
+            },
+        )
+        self.assertIsNotNone(connection["tested_at"])
+        with self.store.connection() as conn:
+            conn.execute(
+                "UPDATE exchange_connections SET tested_at=? WHERE tenant_id=?",
+                ("nan", tenant["id"]),
+            )
+        self.client.post(
+            "/api/v1/trade-pin", headers=self.headers, json={"pin": "12345678"}
+        )
+        response = self.client.post(
+            "/api/v1/live/activate", headers=self.headers,
+            json={"trade_pin": "12345678", "risk_acknowledged": True},
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn("test the exchange connection", response.json()["detail"])
 
     def test_self_service_live_materializes_credentials_only_while_running(self):
         me = self.client.get("/api/v1/me").json()
@@ -578,6 +631,36 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertAlmostEqual(payload["allocation_pct"], 65.0)
         self.assertAlmostEqual(payload["estimated_notional"], 6500.0)
         self.assertAlmostEqual(payload["estimated_quantity"], 1.625)
+
+    def test_manual_order_preview_fails_closed_on_malformed_runtime_age(self):
+        me = self.client.get("/api/v1/me").json()
+        tenant = me["tenant"]
+        profile = self.client.put(
+            "/api/v1/profile", headers=self.headers,
+            json={"preset_ids": ["okx-xau-actionzone-v1"],
+                  "active_preset_id": "okx-xau-actionzone-v1", "risk": {}},
+        )
+        self.assertEqual(profile.status_code, 200, profile.text)
+        self.store.update_tenant(tenant["id"], status="running")
+        object.__setattr__(self.settings, "manual_trading_enabled", True)
+        with patch.object(self.supervisor, "status", return_value="active"), \
+                patch.object(
+                    self.app.state.runtime,
+                    "snapshot",
+                    return_value={
+                        "ok": True,
+                        "read_only": False,
+                        "stale": False,
+                        "age_sec": "not-a-number",
+                        "state": {"focus_symbol": "XAUUSDT", "current_price": 4000.0},
+                    },
+                ):
+            response = self.client.post(
+                "/api/v1/orders/preview", headers=self.headers,
+                json={"symbol": "XAUUSDT", "intent": "OPEN_LONG"},
+            )
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn("snapshot", response.json()["detail"])
 
     def test_manual_order_preview_keeps_multi_pair_position_sizes_distinct(self):
         me = self.client.get("/api/v1/me").json()

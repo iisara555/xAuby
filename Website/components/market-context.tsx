@@ -22,6 +22,7 @@ function label(value: unknown, fallback = "—"): string {
 }
 
 function scorePercent(value: unknown): number | null {
+  if (value == null || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   const percent = Math.abs(parsed) <= 1 ? parsed * 100 : parsed;
@@ -42,6 +43,7 @@ function tone(value: unknown): "good" | "warn" | "bad" | "neutral" {
 }
 
 function metricValue(value: unknown, digits = 1): string {
+  if (value == null || value === "") return "—";
   const parsed = Number(value);
   return Number.isFinite(parsed) ? formatNumber(parsed, digits) : "—";
 }

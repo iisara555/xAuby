@@ -285,7 +285,27 @@ export type Catalog = {
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
     super(message);
+    this.name = "ApiError";
   }
+}
+
+function errorMessage(detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail === "object") {
+    const record = detail as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) {
+      const reasons = Array.isArray(record.reasons)
+        ? record.reasons.filter((item): item is string => typeof item === "string")
+        : [];
+      return reasons.length ? `${record.message}: ${reasons.join(", ")}` : record.message;
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return "Something went wrong";
+    }
+  }
+  return "Something went wrong";
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -296,10 +316,30 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: { "Content-Type": "application/json", ...init.headers },
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new ApiError(payload.detail ?? "Something went wrong", response.status);
+    const body = await response.text().catch(() => "");
+    let payload: Record<string, unknown> = {};
+    try {
+      const parsed = body ? JSON.parse(body) : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        payload = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Keep the status-specific fallback below for non-JSON proxy errors.
+    }
+    throw new ApiError(
+      errorMessage(payload.detail ?? (body.trim() || undefined)),
+      response.status,
+    );
   }
-  return response.json() as Promise<T>;
+  // DELETE and action endpoints may legitimately return 204. Reading text
+  // first also avoids a second body-consumption failure for an empty 200.
+  const body = await response.text();
+  if (!body.trim()) return undefined as T;
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new ApiError("Invalid API response", response.status);
+  }
 }
 
 export function csrfHeaders(user: User): HeadersInit {
@@ -316,6 +356,7 @@ export function valueAt(source: Record<string, unknown>, ...keys: string[]): unk
 }
 
 export function formatNumber(value: unknown, digits = 2): string {
+  if (value == null || value === "") return "—";
   const parsed = Number(value);
   return Number.isFinite(parsed)
     ? new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(parsed)

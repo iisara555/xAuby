@@ -3,6 +3,7 @@ import { StatusPill } from "@/components/status-pill";
 import { valueAt } from "@/lib/api";
 
 function confidenceLabel(value: unknown): string {
+  if (value == null || value === "") return "—";
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return "—";
   const percent = Math.abs(parsed) <= 1 ? parsed * 100 : parsed;
@@ -20,7 +21,7 @@ export function SignalDetail({ state, stale }: { state: Record<string, unknown>;
   const meta = (valueAt(state, "signal_meta") as Record<string, unknown> | undefined) ?? {};
   const regimeData = (valueAt(state, "regime") as Record<string, unknown> | undefined) ?? {};
   const position = (valueAt(state, "position") as Record<string, unknown> | undefined) ?? {};
-  const positionOpen = String(valueAt(position, "state") ?? "idle") === "bought";
+  const positionOpen = String(valueAt(position, "state") ?? "idle").toLowerCase() === "bought";
   const rawAction = String(meta.action ?? "WAIT");
   const action = !positionOpen && rawAction.toUpperCase() === "HOLD" ? "WAIT" : rawAction;
   const checklist = Array.isArray(meta.checklist) ? meta.checklist as Array<Record<string, unknown>> : [];

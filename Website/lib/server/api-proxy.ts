@@ -56,6 +56,20 @@ function upstreamUrl(request: Request, pathname: string): URL {
   return target;
 }
 
+export function scopedPath(prefix: string, segments: string[]): string | null {
+  // Catch-all route params are user controlled. Reject traversal and encoded
+  // separators before URL resolution can normalize them outside the route's
+  // intended /auth or /api/v1 namespace.
+  if (!Array.isArray(segments) || segments.length === 0) return null;
+  if (segments.some((segment) => (
+    !segment || segment === "." || segment === ".."
+    || /[\\/?#%]/.test(segment)
+  ))) {
+    return null;
+  }
+  return `${prefix}/${segments.join("/")}`;
+}
+
 export async function proxyApiRequest(request: Request, pathname: string): Promise<Response> {
   const headers = new Headers(request.headers);
   for (const header of HOP_BY_HOP_HEADERS) headers.delete(header);
