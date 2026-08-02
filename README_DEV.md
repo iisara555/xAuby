@@ -153,8 +153,23 @@ The Arena is available at `/app/strategies`. The backend endpoints are:
 - `PATCH /api/v1/strategy-pools/{symbol}/candidates/{id}/evaluation` (admin/evaluator)
 - `POST /api/v1/strategy-pools/{symbol}/promote`
 
-Heavy replay/backtest work stays on the runner. The control plane only stores
-the reviewed forward-SIM result and the promotion audit event.
+Heavy replay/backtest work stays on the runner. The control plane stores the
+reviewed forward-SIM result together with a run id, artifact hash, strategy
+fingerprint, venue/timeframe, and exact data window. Those fields are the
+review/audit boundary; the evaluator or administrator remains responsible for
+the artifact itself. Results are idempotent by run id; the consecutive-winning
+count is derived from the pool's bounded history, never trusted from a browser
+field. A result without that provenance cannot become promotion-ready. The
+current live engine still runs one selected strategy per pair;
+`xauby.engine.shadow.ShadowRunnerPool` is a signal-only, candidate-isolated
+primitive for an external evaluator and is intentionally not imported by the
+live tick loop. The control-plane API reports that runtime as `not_connected`
+until a separately supervised evaluator is wired in.
+
+Promotion requires fresh explicit flat runtime state, a comparable forward-SIM
+Champion result, an optimistic pool revision, and a Trade PIN. A live promotion
+stays at the safe re-approval boundary and forces simulation if any partial
+handoff fails.
 
 ## Backtest and live parity
 

@@ -5,9 +5,13 @@ import binascii
 import hashlib
 import json
 import logging
+import math
 import re
 import secrets
+import stat
+import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -20,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from xauby.runtime.trading_config import bounded_position_fraction
 from xauby.saas.catalog import preset_by_id, public_catalog, target_by_id, validate_profile
+from xauby.saas.certification import config_fingerprint
 from xauby.saas.credentials import CredentialKeyring
 from xauby.saas.mailer import Mailer
 from xauby.saas.order_sizing import resolve_pair_atr, risk_based_stop_distance
@@ -35,13 +40,17 @@ from xauby.saas.security import (
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
 from xauby.saas.strategy_pool import (
+    MAX_CANDIDATES,
     append_candidate,
+    append_evaluation,
+    candidate_evaluation_provenance_reasons,
     candidate,
+    evaluations_comparable,
     new_pool,
+    normalize_pool,
     normalize_symbol,
     preset_for_candidate,
     promotion_eligibility,
-    score_metrics,
 )
 from xauby.saas.supervisor import TenantSupervisor, attach_tenant_loaders
 from xauby.utils.atomic_io import atomic_bytes_write
@@ -198,9 +207,23 @@ class StrategyPromotionBody(BaseModel):
 class StrategyEvaluationBody(BaseModel):
     forward_days: int = Field(ge=0, le=3650)
     trades: int = Field(ge=0, le=100000)
-    profit_factor: float = Field(ge=0, le=1000)
-    net_return_pct: float = Field(ge=-100, le=100000)
-    max_drawdown_pct: float = Field(ge=0, le=100)
+    profit_factor: float = Field(ge=0, le=1000, allow_inf_nan=False)
+    net_return_pct: float = Field(ge=-100, le=100000, allow_inf_nan=False)
+    max_drawdown_pct: float = Field(ge=0, le=100, allow_inf_nan=False)
+    # A worker retry with the same run_id is idempotent.  Empty values are
+    # accepted for diagnostics, but such a record can never be promotion-ready.
+    run_id: str = Field(default="", max_length=256)
+    artifact_sha256: str = Field(default="", max_length=128)
+    config_fingerprint: str = Field(default="", max_length=128)
+    venue: str = Field(default="", max_length=128)
+    timeframe: str = Field(default="", max_length=32)
+    data_window_start: str = Field(default="", max_length=128)
+    data_window_end: str = Field(default="", max_length=128)
+    fill_model: str = Field(default="", max_length=128)
+    fees_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    slippage_pct: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    # Kept for wire compatibility with the MVP client.  The server ignores it
+    # and derives the consecutive streak from immutable evaluation history.
     winning_evaluations: int = Field(default=0, ge=0, le=1000)
 
 
@@ -335,6 +358,66 @@ def _safe_slug_from_email(email: str, fallback: str) -> str:
     return slug if slug else f"user-{fallback[:8]}"
 
 
+def _explicit_flat_runtime_snapshot(
+    snapshot: dict[str, Any] | None,
+    symbol: str,
+    *,
+    max_age_seconds: float = 30.0,
+) -> bool:
+    """Validate the minimum runtime evidence needed before a handoff.
+
+    This is intentionally independent of the tenant supervisor so it can be
+    regression-tested with a captured snapshot.  It is not an exchange
+    reconciliation substitute; unknown data is always rejected.
+    """
+    payload = snapshot or {}
+    try:
+        age = float(payload.get("age_sec"))
+        age_limit = float(max_age_seconds)
+    except (TypeError, ValueError):
+        return False
+    if (
+        not payload.get("ok")
+        or payload.get("read_only")
+        or payload.get("stale")
+        or not math.isfinite(age)
+        or age < 0
+        or not math.isfinite(age_limit)
+        or age > age_limit
+    ):
+        return False
+    state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+    by_symbol = state.get("by_symbol")
+    if not isinstance(by_symbol, dict):
+        return False
+    compact = normalize_symbol(symbol)
+    value = next(
+        (
+            item for key, item in by_symbol.items()
+            if normalize_symbol(str(key)) == compact and isinstance(item, dict)
+        ),
+        None,
+    )
+    if value is None:
+        return False
+    position = value.get("position") if isinstance(value.get("position"), dict) else value
+    position_state = str(position.get("state") or value.get("state") or "").strip().lower()
+    if position_state not in {"idle", "flat", "closed", "none"}:
+        return False
+    try:
+        quantity = float(position.get("quantity", value.get("quantity", 0.0)) or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if not math.isfinite(quantity) or quantity < 0 or quantity > 1e-12:
+        return False
+    if position.get("exchange_position_id") or value.get("exchange_position_id"):
+        return False
+    open_orders = position.get("open_orders", value.get("open_orders"))
+    if open_orders is not None and open_orders != [] and open_orders != {}:
+        return False
+    return True
+
+
 def create_app(
     settings: SaaSSettings | None = None,
     *,
@@ -361,6 +444,11 @@ def create_app(
     attach_tenant_loaders(supervisor, store, cipher)
     mailer = mailer or Mailer(settings)
     runtime = runtime or RuntimeGateway(settings, supervisor)
+    # The pool state is guarded in-process as well as by the database revision.
+    # The revision remains the authority when multiple control-plane workers
+    # are deployed, while this lock avoids needless local read/modify races.
+    pool_locks: dict[str, Any] = {}
+    pool_locks_guard = threading.Lock()
     login_throttle = AttemptThrottle(max_attempts=8, window_seconds=300, lockout_seconds=900)
     email_throttle = AttemptThrottle(max_attempts=5, window_seconds=900, lockout_seconds=900)
     trade_pin_reset_throttle = AttemptThrottle(max_attempts=5, window_seconds=300, lockout_seconds=900)
@@ -486,7 +574,17 @@ def create_app(
         return tenant
 
     def _pool_for_symbol(tenant_id: str, symbol: str) -> dict[str, Any] | None:
-        return store.strategy_pool(tenant_id, normalize_symbol(symbol))
+        pool = store.strategy_pool(tenant_id, normalize_symbol(symbol))
+        return normalize_pool(pool) if pool is not None else None
+
+    def _pool_lock(tenant_id: str, symbol: str):
+        key = f"{tenant_id}:{normalize_symbol(symbol)}"
+        with pool_locks_guard:
+            lock = pool_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                pool_locks[key] = lock
+            return lock
 
     def _pool_response(pool: dict[str, Any]) -> dict[str, Any]:
         """Add current catalog evidence without storing mutable catalog data."""
@@ -502,28 +600,60 @@ def create_app(
             item["certification_note"] = preset.get("certification_note")
             item["certification_status"] = preset.get("certification_status")
             item["live_certified"] = bool(preset.get("live_certified"))
+            if item.get("mode") == "shadow":
+                # A pool candidate is not a running shadow process yet.  Keep
+                # this explicit so the UI never presents metadata as telemetry.
+                item.setdefault("shadow_runtime_status", "not_connected")
         return result
 
+    def _current_candidate_preset(item: dict[str, Any]) -> dict[str, Any]:
+        """Require a pool entry to still match the certified catalogue."""
+        try:
+            preset = preset_for_candidate(str(item.get("preset_id") or ""))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="candidate certificate is no longer valid; refresh the pair pool",
+            ) from exc
+        expected = str(item.get("certificate_config_fingerprint") or "").strip()
+        if expected and expected != config_fingerprint(preset):
+            raise HTTPException(
+                status_code=409,
+                detail="candidate certificate configuration changed; re-add the strategy",
+            )
+        return preset
+
     def _pair_is_flat(tenant: dict[str, Any], symbol: str) -> bool:
-        """Fail closed only when the running engine explicitly reports exposure."""
+        """Return true only for a fresh, explicit flat runtime snapshot.
+
+        Missing, stale, ambiguous, or stopped-engine state is deliberately not
+        treated as flat.  This endpoint cannot prove exchange reconciliation by
+        itself, so the safe default is to refuse promotion until the engine has
+        published a fresh position snapshot.
+        """
         if tenant.get("status") not in {"running", "degraded", "starting"}:
-            return True
-        state = supervisor.read_state(tenant["slug"]) or {}
-        by_symbol = state.get("by_symbol") if isinstance(state, dict) else None
-        if not isinstance(by_symbol, dict):
-            return True
-        compact = normalize_symbol(symbol)
-        for key, value in by_symbol.items():
-            if normalize_symbol(str(key)) != compact or not isinstance(value, dict):
+            return False
+        return _explicit_flat_runtime_snapshot(runtime.snapshot(tenant["slug"]), symbol)
+
+    def _profile_files_snapshot(slug: str) -> dict[str, tuple[bytes, int] | None]:
+        """Capture tenant profile files before a promotion can rewrite them."""
+        supervisor.provision(slug)
+        snapshot: dict[str, tuple[bytes, int] | None] = {}
+        for name in ("bot_config.yaml", "coin_whitelist.json"):
+            path = supervisor.config_dir(slug) / name
+            try:
+                mode = stat.S_IMODE(path.stat().st_mode)
+                snapshot[name] = (path.read_bytes(), mode)
+            except OSError:
+                snapshot[name] = None
+        return snapshot
+
+    def _restore_profile_files(slug: str, snapshot: dict[str, tuple[bytes, int] | None]) -> None:
+        for name, item in snapshot.items():
+            if item is None:
                 continue
-            side = str(
-                value.get("position_side")
-                or value.get("side")
-                or value.get("position")
-                or "FLAT"
-            ).upper()
-            return side in {"", "FLAT", "NONE", "CLOSED", "0"}
-        return True
+            data, mode = item
+            atomic_bytes_write(str(supervisor.config_dir(slug) / name), data, mode=mode)
 
     def manual_order_context(tenant: dict[str, Any], symbol: str, intent: str) -> dict[str, Any]:
         if not settings.manual_trading_enabled:
@@ -1088,16 +1218,24 @@ def create_app(
                 symbol = normalize_symbol(str(preset.get("symbol") or ""))
                 if not symbol or _pool_for_symbol(tenant["id"], symbol):
                     continue
-                store.save_strategy_pool(
-                    tenant["id"],
-                    user["id"],
-                    new_pool(symbol, str(preset.get("target_id") or ""), preset),
-                )
+                try:
+                    with _pool_lock(tenant["id"], symbol):
+                        if _pool_for_symbol(tenant["id"], symbol) is None:
+                            store.save_strategy_pool(
+                                tenant["id"],
+                                user["id"],
+                                new_pool(symbol, str(preset.get("target_id") or ""), preset),
+                            )
+                except ControlPlaneStore.StrategyPoolConflict:
+                    # Another browser or worker created the same lazy pool.
+                    # The subsequent read is authoritative.
+                    pass
         pools = [_pool_response(pool) for pool in store.strategy_pools(tenant["id"])]
         return {
             "pools": pools,
             "promotion_mode": "manual",
-            "max_candidates": 4,
+            "max_candidates": MAX_CANDIDATES,
+            "shadow_runtime": "not_connected",
             "tenant_live_status": tenant.get("live_status", "not_requested"),
         }
 
@@ -1110,6 +1248,7 @@ def create_app(
         return {
             "pool": _pool_response(pool),
             "promotion_mode": "manual",
+            "shadow_runtime": "not_connected",
             "tenant_live_status": tenant.get("live_status", "not_requested"),
         }
 
@@ -1130,19 +1269,22 @@ def create_app(
         profile = store.trading_profile(tenant["id"])
         if profile and str(profile.get("target_id")) != str(preset.get("target_id")):
             raise HTTPException(status_code=422, detail="strategy target does not match the saved profile")
-        pool = _pool_for_symbol(tenant["id"], compact)
         try:
-            if pool is None:
-                pool = new_pool(compact, str(preset.get("target_id") or ""), preset)
-            else:
-                append_candidate(pool, preset)
-            pool.setdefault("history", []).append({
-                "event": "candidate_added",
-                "preset_id": preset["id"],
-                "at": time.time(),
-                "by": user["id"],
-            })
-            saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
+            with _pool_lock(tenant["id"], compact):
+                pool = _pool_for_symbol(tenant["id"], compact)
+                if pool is None:
+                    pool = new_pool(compact, str(preset.get("target_id") or ""), preset)
+                else:
+                    append_candidate(pool, preset)
+                pool.setdefault("history", []).append({
+                    "event": "candidate_added",
+                    "preset_id": preset["id"],
+                    "at": time.time(),
+                    "by": user["id"],
+                })
+                saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
+        except ControlPlaneStore.StrategyPoolConflict as exc:
+            raise HTTPException(status_code=409, detail="strategy pool changed; refresh and retry") from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True, "pool": _pool_response(saved)}
@@ -1154,40 +1296,46 @@ def create_app(
         body: StrategyEvaluationBody,
         user: dict[str, Any] = Depends(admin_user),
     ):
-        """Record a trusted evaluator result.
+        """Record a reviewed evaluator result.
 
-        The heavy replay/backtest stays on the runner.  This small endpoint only
-        records its signed/ reviewed result, and is admin-gated so a browser
-        cannot manufacture a promotion-ready score.
+        Heavy replay/backtest stays on the runner.  This endpoint stores the
+        run provenance and is admin-gated; missing or mismatched provenance is
+        retained for diagnostics but can never make a candidate eligible.
         """
         tenant = own_tenant(user)
-        pool = _pool_for_symbol(tenant["id"], symbol)
-        if pool is None:
-            raise HTTPException(status_code=404, detail="strategy pool not found")
-        item = candidate(pool, candidate_id)
-        if item is None:
-            raise HTTPException(status_code=404, detail="strategy candidate not found")
-        metrics = body.model_dump()
-        metrics["source"] = "forward_sim"
-        metrics["evaluated_at"] = time.time()
-        metrics["score"] = score_metrics(metrics)
-        champion = candidate(pool, str(pool.get("champion_id") or ""))
-        champion_score = None if champion is None or champion["preset_id"] == candidate_id else float(
-            (champion.get("evaluation") or {}).get("score", -9999.0)
-        )
-        eligible, reasons = promotion_eligibility(
-            metrics,
-            policy=pool.get("policy"),
-            champion_score=champion_score,
-            winning_evaluations=body.winning_evaluations,
-        )
-        item["evaluation"] = metrics
-        item["winning_evaluations"] = body.winning_evaluations
-        item["eligible_for_promotion"] = eligible
-        item["eligibility_reasons"] = reasons
-        item["status"] = "eligible" if eligible else "warming"
-        saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
-        return {"ok": True, "eligible": eligible, "reasons": reasons, "pool": _pool_response(saved)}
+        compact = normalize_symbol(symbol)
+        try:
+            with _pool_lock(tenant["id"], compact):
+                pool = _pool_for_symbol(tenant["id"], compact)
+                if pool is None:
+                    raise HTTPException(status_code=404, detail="strategy pool not found")
+                item = candidate(pool, candidate_id)
+                if item is None:
+                    raise HTTPException(status_code=404, detail="strategy candidate not found")
+                _current_candidate_preset(item)
+                metrics = body.model_dump(exclude={"winning_evaluations"})
+                pool, record, inserted = append_evaluation(pool, candidate_id, metrics)
+                if not inserted:
+                    return {
+                        "ok": True,
+                        "idempotent": True,
+                        "eligible": bool(record.get("eligible_for_promotion")),
+                        "reasons": list(record.get("eligibility_reasons") or []),
+                        "pool": _pool_response(pool),
+                    }
+                saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
+        except ControlPlaneStore.StrategyPoolConflict as exc:
+            raise HTTPException(status_code=409, detail="strategy pool changed; refresh and retry") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "idempotent": False,
+            "eligible": bool(record.get("eligible_for_promotion")),
+            "reasons": list(record.get("eligibility_reasons") or []),
+            "evaluation": record,
+            "pool": _pool_response(saved),
+        }
 
     @app.post("/api/v1/strategy-pools/{symbol}/promote")
     def strategy_pool_promote(
@@ -1199,86 +1347,204 @@ def create_app(
         ok, reason = store.check_trade_pin(user["id"], body.trade_pin)
         if not ok:
             raise HTTPException(status_code=403, detail=reason)
-        pool = _pool_for_symbol(tenant["id"], symbol)
-        if pool is None:
-            raise HTTPException(status_code=404, detail="strategy pool not found")
-        challenger = candidate(pool, body.challenger_id)
-        if challenger is None:
-            raise HTTPException(status_code=404, detail="strategy candidate not found")
-        if challenger.get("role") == "champion":
-            return {"ok": True, "pool": _pool_response(pool), "changed": False}
-        champion = candidate(pool, str(pool.get("champion_id") or ""))
-        champion_score = None if champion is None else float(
-            (champion.get("evaluation") or {}).get("score", -9999.0)
-        )
-        eligible, reasons = promotion_eligibility(
-            challenger.get("evaluation"),
-            policy=pool.get("policy"),
-            champion_score=champion_score,
-            winning_evaluations=int(challenger.get("winning_evaluations") or 0),
-        )
-        if not eligible:
-            raise HTTPException(status_code=409, detail={"message": "candidate is not ready", "reasons": reasons})
         compact = normalize_symbol(symbol)
-        if not _pair_is_flat(tenant, compact):
-            raise HTTPException(status_code=409, detail="wait until the pair has no open position")
+        with _pool_lock(tenant["id"], compact):
+            pool = _pool_for_symbol(tenant["id"], compact)
+            if pool is None:
+                raise HTTPException(status_code=404, detail="strategy pool not found")
+            challenger = candidate(pool, body.challenger_id)
+            if challenger is None:
+                raise HTTPException(status_code=404, detail="strategy candidate not found")
+            challenger_preset = _current_candidate_preset(challenger)
+            if challenger.get("role") == "champion":
+                return {"ok": True, "pool": _pool_response(pool), "changed": False}
+            champion = candidate(pool, str(pool.get("champion_id") or ""))
+            champion_score = None if champion is None else float(
+                (champion.get("evaluation") or {}).get("score", -9999.0)
+            )
+            comparable = None if champion is None else evaluations_comparable(
+                challenger.get("evaluation"), champion.get("evaluation")
+            )
+            eligible, reasons = promotion_eligibility(
+                challenger.get("evaluation"),
+                policy=pool.get("policy"),
+                champion_score=champion_score,
+                winning_evaluations=int(challenger.get("winning_evaluations") or 0),
+                comparable_champion=comparable,
+                require_provenance=True,
+            )
+            for provenance_reason in candidate_evaluation_provenance_reasons(
+                challenger, challenger.get("evaluation")
+            ):
+                if provenance_reason not in reasons:
+                    reasons.append(provenance_reason)
+            eligible = not reasons
+            if not eligible:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"message": "candidate is not ready", "reasons": reasons},
+                )
+            if not _pair_is_flat(tenant, compact):
+                raise HTTPException(
+                    status_code=409,
+                    detail="fresh explicit flat runtime state is required before promotion",
+                )
 
-        profile = store.trading_profile(tenant["id"])
-        if not profile:
-            raise HTTPException(status_code=409, detail="save the pair in Settings before promoting it")
-        current_ids = list(profile.get("preset_ids") or [])
-        old_id = champion.get("preset_id") if champion else None
-        if old_id in current_ids:
-            current_ids[current_ids.index(old_id)] = body.challenger_id
-        elif body.challenger_id not in current_ids:
-            raise HTTPException(status_code=409, detail="the pair is not active in the saved trading profile")
-        active_id = body.challenger_id if profile.get("active_preset_id") == old_id else profile.get("active_preset_id")
-        try:
-            replacement = validate_profile(current_ids, active_id, profile.get("risk") or {})
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            live_was_enabled = tenant["live_status"] in {"requested", "approved", "active"}
+            if live_was_enabled and not bool(challenger_preset.get("live_certified")):
+                raise HTTPException(
+                    status_code=409,
+                    detail="a live tenant may only promote a live-certified strategy",
+                )
+            profile = store.trading_profile(tenant["id"])
+            if not profile:
+                raise HTTPException(status_code=409, detail="save the pair in Settings before promoting it")
+            current_ids = list(profile.get("preset_ids") or [])
+            old_id = champion.get("preset_id") if champion else None
+            if old_id in current_ids:
+                current_ids[current_ids.index(old_id)] = body.challenger_id
+            elif body.challenger_id not in current_ids:
+                raise HTTPException(
+                    status_code=409,
+                    detail="the pair is not active in the saved trading profile",
+                )
+            active_id = (
+                body.challenger_id
+                if profile.get("active_preset_id") == old_id
+                else profile.get("active_preset_id")
+            )
+            try:
+                replacement = validate_profile(current_ids, active_id, profile.get("risk") or {})
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        live_was_enabled = tenant["live_status"] in {"requested", "approved", "active"}
-        if live_was_enabled:
-            # A strategy handoff is intentionally a safe re-approval boundary
-            # in the MVP.  It never hot-switches a running Live engine.
-            supervisor.stop(tenant["slug"])
-            store.update_tenant(tenant["id"], status="stopped")
-            store.reset_live_approval(tenant["id"], user["id"], "strategy champion promoted")
-        supervisor.apply_profile(
-            tenant["slug"], replacement["preset_ids"], replacement["active_preset_id"],
-            replacement["risk"], preserve_live=False,
-        )
-        store.save_trading_profile(tenant["id"], user["id"], replacement)
-        if champion:
-            champion["role"] = "challenger"
-            champion["mode"] = "shadow"
-            champion["status"] = "active"
-        challenger["role"] = "champion"
-        challenger["mode"] = "live" if challenger.get("live_certified") else "shadow"
-        challenger["status"] = "active"
-        pool["champion_id"] = body.challenger_id
-        pool["promotion"] = {
-            "from": old_id,
-            "to": body.challenger_id,
-            "status": "applied_requires_live_reapproval" if live_was_enabled else "applied_simulation",
-            "at": time.time(),
-            "by": user["id"],
-        }
-        pool.setdefault("history", []).append(pool["promotion"])
-        saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
-        store.audit(
-            "strategy_champion_promoted",
-            tenant_id=tenant["id"],
-            user_id=user["id"],
-            payload={"symbol": compact, "from": old_id, "to": body.challenger_id},
-        )
-        return {
-            "ok": True,
-            "changed": True,
-            "requires_live_reapproval": live_was_enabled,
-            "pool": _pool_response(saved),
-        }
+            # Files and the control-plane rows live in different stores.  Keep a
+            # rollback target and force simulation on a partial live failure so
+            # an exception cannot leave a stopped service with live credentials.
+            old_profile = deepcopy(profile)
+            file_snapshot = _profile_files_snapshot(tenant["slug"])
+            mutation_started = False
+            try:
+                if live_was_enabled:
+                    # A strategy handoff remains a safe re-approval boundary;
+                    # it never hot-switches a running Live engine.
+                    supervisor.stop(tenant["slug"])
+                    store.update_tenant(tenant["id"], status="stopped")
+                    store.reset_live_approval(
+                        tenant["id"], user["id"], "strategy champion promoted"
+                    )
+                mutation_started = True
+                supervisor.apply_profile(
+                    tenant["slug"], replacement["preset_ids"], replacement["active_preset_id"],
+                    replacement["risk"], preserve_live=False,
+                )
+                store.save_trading_profile(tenant["id"], user["id"], replacement)
+
+                next_pool = deepcopy(pool)
+                next_champion = candidate(next_pool, str(next_pool.get("champion_id") or ""))
+                next_challenger = candidate(next_pool, body.challenger_id)
+                if next_challenger is None:
+                    raise ValueError("strategy candidate disappeared during promotion")
+                if next_champion:
+                    next_champion["role"] = "challenger"
+                    next_champion["mode"] = "shadow"
+                    next_champion["status"] = "active"
+                next_challenger["role"] = "champion"
+                next_challenger["mode"] = "live" if next_challenger.get("live_certified") else "shadow"
+                next_challenger["status"] = "active"
+                next_challenger["winning_evaluations"] = 0
+                next_challenger["eligible_for_promotion"] = False
+                next_challenger["eligibility_reasons"] = ["already Champion"]
+                next_pool["champion_id"] = body.challenger_id
+                next_pool["promotion"] = {
+                    "from": old_id,
+                    "to": body.challenger_id,
+                    "status": (
+                        "applied_requires_live_reapproval"
+                        if live_was_enabled
+                        else "applied_simulation"
+                    ),
+                    "at": time.time(),
+                    "by": user["id"],
+                }
+                next_pool.setdefault("history", []).append(next_pool["promotion"])
+                saved = store.save_strategy_pool(tenant["id"], user["id"], next_pool)
+            except ControlPlaneStore.StrategyPoolConflict as exc:
+                if mutation_started:
+                    if live_was_enabled:
+                        try:
+                            # Put the previous strategy back first, then force
+                            # every execution gate to simulation.  Restoring
+                            # the old files alone could accidentally re-enable
+                            # Live credentials after the approval was reset.
+                            _restore_profile_files(tenant["slug"], file_snapshot)
+                        except Exception:
+                            logger.exception("failed to restore tenant profile after pool conflict")
+                        try:
+                            supervisor.set_sim_mode(tenant["slug"])
+                        except Exception:
+                            logger.exception("failed to force simulation after pool conflict")
+                    else:
+                        try:
+                            _restore_profile_files(tenant["slug"], file_snapshot)
+                        except Exception:
+                            logger.exception("failed to restore tenant profile after pool conflict")
+                    try:
+                        # Do not overwrite a profile changed concurrently by a
+                        # settings request while this handoff was unwinding.
+                        current_profile = store.trading_profile(tenant["id"])
+                        if current_profile == replacement:
+                            store.save_trading_profile(tenant["id"], user["id"], old_profile)
+                    except Exception:
+                        logger.exception("failed to restore trading profile after pool conflict")
+                raise HTTPException(
+                    status_code=409,
+                    detail="strategy pool changed; no promotion was committed, refresh and retry",
+                ) from exc
+            except Exception as exc:
+                if mutation_started:
+                    if live_was_enabled:
+                        try:
+                            _restore_profile_files(tenant["slug"], file_snapshot)
+                        except Exception:
+                            logger.exception("failed to restore tenant profile after promotion failure")
+                        try:
+                            supervisor.set_sim_mode(tenant["slug"])
+                        except Exception:
+                            logger.exception("failed to force simulation after promotion failure")
+                    else:
+                        try:
+                            _restore_profile_files(tenant["slug"], file_snapshot)
+                        except Exception:
+                            logger.exception("failed to restore tenant profile after promotion failure")
+                    try:
+                        current_profile = store.trading_profile(tenant["id"])
+                        if current_profile == replacement:
+                            store.save_trading_profile(tenant["id"], user["id"], old_profile)
+                    except Exception:
+                        logger.exception("failed to restore trading profile after promotion failure")
+                logger.exception("strategy promotion failed safely for %s", compact)
+                raise HTTPException(
+                    status_code=502,
+                    detail="promotion failed safely; Live remains disabled until re-approval",
+                ) from exc
+            try:
+                store.audit(
+                    "strategy_champion_promoted",
+                    tenant_id=tenant["id"],
+                    user_id=user["id"],
+                    payload={"symbol": compact, "from": old_id, "to": body.challenger_id},
+                )
+            except Exception:
+                # The pool write is already committed; do not report a failed
+                # handoff that could cause a caller to retry and promote twice.
+                logger.exception("promotion committed but audit append failed for %s", compact)
+            return {
+                "ok": True,
+                "changed": True,
+                "requires_live_reapproval": live_was_enabled,
+                "pool": _pool_response(saved),
+            }
 
     @app.get("/api/v1/bot")
     def bot(user: dict[str, Any] = Depends(current_user)):

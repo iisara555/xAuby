@@ -182,11 +182,14 @@ export type StrategyCandidate = {
   role: "champion" | "challenger" | "retired";
   mode: "live" | "shadow";
   status: "active" | "warming" | "eligible" | "paused" | string;
+  shadow_runtime_status?: "not_connected" | "healthy" | "stale" | string;
   certification_status: "certified" | "failed" | "not_assessed" | string;
   live_certified: boolean;
+  certificate_config_fingerprint?: string;
   eligible_for_promotion: boolean;
   eligibility_reasons: string[];
   winning_evaluations: number;
+  evaluation_history_count?: number;
   evaluation?: {
     source?: "certificate" | "forward_sim" | string;
     score?: number;
@@ -196,6 +199,17 @@ export type StrategyCandidate = {
     trades?: number;
     forward_days?: number;
     evaluated_at?: number;
+    run_id?: string;
+    artifact_sha256?: string;
+    config_fingerprint?: string;
+    venue?: string;
+    timeframe?: string;
+    data_window_start?: string;
+    data_window_end?: string;
+    fill_model?: string;
+    fees_pct?: number;
+    slippage_pct?: number;
+    provenance_valid?: boolean;
     note?: string;
   };
   backtest?: Preset["backtest"];
@@ -205,6 +219,7 @@ export type StrategyCandidate = {
 
 export type StrategyPool = {
   version: number;
+  revision?: number;
   symbol: string;
   target_id: string;
   policy: {
@@ -224,12 +239,14 @@ export type StrategyPool = {
     at?: number;
   } | null;
   history: Array<Record<string, unknown>>;
+  evaluation_history?: Array<Record<string, unknown>>;
 };
 
 export type StrategyPoolsResponse = {
   pools: StrategyPool[];
   promotion_mode: "manual" | string;
   max_candidates: number;
+  shadow_runtime?: "not_connected" | "healthy" | "degraded" | string;
   tenant_live_status: string;
 };
 
