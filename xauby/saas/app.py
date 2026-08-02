@@ -18,7 +18,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from xauby.saas.catalog import public_catalog, target_by_id, validate_profile
+from xauby.runtime.trading_config import bounded_position_fraction
+from xauby.saas.catalog import preset_by_id, public_catalog, target_by_id, validate_profile
 from xauby.saas.credentials import CredentialKeyring
 from xauby.saas.mailer import Mailer
 from xauby.saas.order_sizing import resolve_pair_atr, risk_based_stop_distance
@@ -33,8 +34,16 @@ from xauby.saas.security import (
 )
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.store import ControlPlaneStore
+from xauby.saas.strategy_pool import (
+    append_candidate,
+    candidate,
+    new_pool,
+    normalize_symbol,
+    preset_for_candidate,
+    promotion_eligibility,
+    score_metrics,
+)
 from xauby.saas.supervisor import TenantSupervisor, attach_tenant_loaders
-from xauby.runtime.trading_config import bounded_position_fraction
 from xauby.utils.atomic_io import atomic_bytes_write
 
 logger = logging.getLogger("xauby.saas")
@@ -175,6 +184,24 @@ class TradingProfileBody(BaseModel):
     preset_ids: list[str] = Field(min_length=1, max_length=3)
     active_preset_id: str
     risk: dict[str, Any]
+
+
+class StrategyCandidateBody(BaseModel):
+    preset_id: str = Field(min_length=3, max_length=128)
+
+
+class StrategyPromotionBody(BaseModel):
+    challenger_id: str = Field(min_length=3, max_length=128)
+    trade_pin: str = Field(pattern=TRADE_PIN_PATTERN)
+
+
+class StrategyEvaluationBody(BaseModel):
+    forward_days: int = Field(ge=0, le=3650)
+    trades: int = Field(ge=0, le=100000)
+    profit_factor: float = Field(ge=0, le=1000)
+    net_return_pct: float = Field(ge=-100, le=100000)
+    max_drawdown_pct: float = Field(ge=0, le=100)
+    winning_evaluations: int = Field(default=0, ge=0, le=1000)
 
 
 class AccountStatusBody(BaseModel):
@@ -457,6 +484,46 @@ def create_app(
         if tenant is None:
             raise HTTPException(status_code=409, detail="tenant is not provisioned")
         return tenant
+
+    def _pool_for_symbol(tenant_id: str, symbol: str) -> dict[str, Any] | None:
+        return store.strategy_pool(tenant_id, normalize_symbol(symbol))
+
+    def _pool_response(pool: dict[str, Any]) -> dict[str, Any]:
+        """Add current catalog evidence without storing mutable catalog data."""
+        result = json.loads(json.dumps(pool))
+        for item in result.get("candidates", []):
+            try:
+                preset = preset_by_id(str(item.get("preset_id") or ""))
+            except ValueError:
+                item["catalog_status"] = "removed"
+                continue
+            item["backtest"] = preset.get("backtest")
+            item["strategy_traits"] = preset.get("strategy_traits") or []
+            item["certification_note"] = preset.get("certification_note")
+            item["certification_status"] = preset.get("certification_status")
+            item["live_certified"] = bool(preset.get("live_certified"))
+        return result
+
+    def _pair_is_flat(tenant: dict[str, Any], symbol: str) -> bool:
+        """Fail closed only when the running engine explicitly reports exposure."""
+        if tenant.get("status") not in {"running", "degraded", "starting"}:
+            return True
+        state = supervisor.read_state(tenant["slug"]) or {}
+        by_symbol = state.get("by_symbol") if isinstance(state, dict) else None
+        if not isinstance(by_symbol, dict):
+            return True
+        compact = normalize_symbol(symbol)
+        for key, value in by_symbol.items():
+            if normalize_symbol(str(key)) != compact or not isinstance(value, dict):
+                continue
+            side = str(
+                value.get("position_side")
+                or value.get("side")
+                or value.get("position")
+                or "FLAT"
+            ).upper()
+            return side in {"", "FLAT", "NONE", "CLOSED", "0"}
+        return True
 
     def manual_order_context(tenant: dict[str, Any], symbol: str, intent: str) -> dict[str, Any]:
         if not settings.manual_trading_enabled:
@@ -1006,6 +1073,211 @@ def create_app(
             "profile_changed": True,
             "exchange_switched": exchange_switched,
             "reconnect_required": reconnect_required,
+        }
+
+    @app.get("/api/v1/strategy-pools")
+    def strategy_pools_get(user: dict[str, Any] = Depends(current_user)):
+        tenant = own_tenant(user)
+        # Existing profiles get an Arena automatically.  This keeps the first
+        # rollout additive: opening the page never changes the running engine.
+        profile = store.trading_profile(tenant["id"])
+        if profile:
+            for preset in profile.get("presets", []):
+                if preset.get("certification_status") != "certified":
+                    continue
+                symbol = normalize_symbol(str(preset.get("symbol") or ""))
+                if not symbol or _pool_for_symbol(tenant["id"], symbol):
+                    continue
+                store.save_strategy_pool(
+                    tenant["id"],
+                    user["id"],
+                    new_pool(symbol, str(preset.get("target_id") or ""), preset),
+                )
+        pools = [_pool_response(pool) for pool in store.strategy_pools(tenant["id"])]
+        return {
+            "pools": pools,
+            "promotion_mode": "manual",
+            "max_candidates": 4,
+            "tenant_live_status": tenant.get("live_status", "not_requested"),
+        }
+
+    @app.get("/api/v1/strategy-pools/{symbol}")
+    def strategy_pool_get(symbol: str, user: dict[str, Any] = Depends(current_user)):
+        tenant = own_tenant(user)
+        pool = _pool_for_symbol(tenant["id"], symbol)
+        if pool is None:
+            raise HTTPException(status_code=404, detail="strategy pool not found")
+        return {
+            "pool": _pool_response(pool),
+            "promotion_mode": "manual",
+            "tenant_live_status": tenant.get("live_status", "not_requested"),
+        }
+
+    @app.post("/api/v1/strategy-pools/{symbol}/candidates", status_code=201)
+    def strategy_candidate_add(
+        symbol: str,
+        body: StrategyCandidateBody,
+        user: dict[str, Any] = Depends(csrf_user),
+    ):
+        tenant = own_tenant(user)
+        try:
+            preset = preset_for_candidate(body.preset_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        compact = normalize_symbol(symbol)
+        if normalize_symbol(str(preset.get("symbol") or "")) != compact:
+            raise HTTPException(status_code=422, detail="strategy symbol does not match the pair")
+        profile = store.trading_profile(tenant["id"])
+        if profile and str(profile.get("target_id")) != str(preset.get("target_id")):
+            raise HTTPException(status_code=422, detail="strategy target does not match the saved profile")
+        pool = _pool_for_symbol(tenant["id"], compact)
+        try:
+            if pool is None:
+                pool = new_pool(compact, str(preset.get("target_id") or ""), preset)
+            else:
+                append_candidate(pool, preset)
+            pool.setdefault("history", []).append({
+                "event": "candidate_added",
+                "preset_id": preset["id"],
+                "at": time.time(),
+                "by": user["id"],
+            })
+            saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": True, "pool": _pool_response(saved)}
+
+    @app.patch("/api/v1/strategy-pools/{symbol}/candidates/{candidate_id}/evaluation")
+    def strategy_candidate_evaluate(
+        symbol: str,
+        candidate_id: str,
+        body: StrategyEvaluationBody,
+        user: dict[str, Any] = Depends(admin_user),
+    ):
+        """Record a trusted evaluator result.
+
+        The heavy replay/backtest stays on the runner.  This small endpoint only
+        records its signed/ reviewed result, and is admin-gated so a browser
+        cannot manufacture a promotion-ready score.
+        """
+        tenant = own_tenant(user)
+        pool = _pool_for_symbol(tenant["id"], symbol)
+        if pool is None:
+            raise HTTPException(status_code=404, detail="strategy pool not found")
+        item = candidate(pool, candidate_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="strategy candidate not found")
+        metrics = body.model_dump()
+        metrics["source"] = "forward_sim"
+        metrics["evaluated_at"] = time.time()
+        metrics["score"] = score_metrics(metrics)
+        champion = candidate(pool, str(pool.get("champion_id") or ""))
+        champion_score = None if champion is None or champion["preset_id"] == candidate_id else float(
+            (champion.get("evaluation") or {}).get("score", -9999.0)
+        )
+        eligible, reasons = promotion_eligibility(
+            metrics,
+            policy=pool.get("policy"),
+            champion_score=champion_score,
+            winning_evaluations=body.winning_evaluations,
+        )
+        item["evaluation"] = metrics
+        item["winning_evaluations"] = body.winning_evaluations
+        item["eligible_for_promotion"] = eligible
+        item["eligibility_reasons"] = reasons
+        item["status"] = "eligible" if eligible else "warming"
+        saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
+        return {"ok": True, "eligible": eligible, "reasons": reasons, "pool": _pool_response(saved)}
+
+    @app.post("/api/v1/strategy-pools/{symbol}/promote")
+    def strategy_pool_promote(
+        symbol: str,
+        body: StrategyPromotionBody,
+        user: dict[str, Any] = Depends(csrf_user),
+    ):
+        tenant = own_tenant(user)
+        ok, reason = store.check_trade_pin(user["id"], body.trade_pin)
+        if not ok:
+            raise HTTPException(status_code=403, detail=reason)
+        pool = _pool_for_symbol(tenant["id"], symbol)
+        if pool is None:
+            raise HTTPException(status_code=404, detail="strategy pool not found")
+        challenger = candidate(pool, body.challenger_id)
+        if challenger is None:
+            raise HTTPException(status_code=404, detail="strategy candidate not found")
+        if challenger.get("role") == "champion":
+            return {"ok": True, "pool": _pool_response(pool), "changed": False}
+        champion = candidate(pool, str(pool.get("champion_id") or ""))
+        champion_score = None if champion is None else float(
+            (champion.get("evaluation") or {}).get("score", -9999.0)
+        )
+        eligible, reasons = promotion_eligibility(
+            challenger.get("evaluation"),
+            policy=pool.get("policy"),
+            champion_score=champion_score,
+            winning_evaluations=int(challenger.get("winning_evaluations") or 0),
+        )
+        if not eligible:
+            raise HTTPException(status_code=409, detail={"message": "candidate is not ready", "reasons": reasons})
+        compact = normalize_symbol(symbol)
+        if not _pair_is_flat(tenant, compact):
+            raise HTTPException(status_code=409, detail="wait until the pair has no open position")
+
+        profile = store.trading_profile(tenant["id"])
+        if not profile:
+            raise HTTPException(status_code=409, detail="save the pair in Settings before promoting it")
+        current_ids = list(profile.get("preset_ids") or [])
+        old_id = champion.get("preset_id") if champion else None
+        if old_id in current_ids:
+            current_ids[current_ids.index(old_id)] = body.challenger_id
+        elif body.challenger_id not in current_ids:
+            raise HTTPException(status_code=409, detail="the pair is not active in the saved trading profile")
+        active_id = body.challenger_id if profile.get("active_preset_id") == old_id else profile.get("active_preset_id")
+        try:
+            replacement = validate_profile(current_ids, active_id, profile.get("risk") or {})
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        live_was_enabled = tenant["live_status"] in {"requested", "approved", "active"}
+        if live_was_enabled:
+            # A strategy handoff is intentionally a safe re-approval boundary
+            # in the MVP.  It never hot-switches a running Live engine.
+            supervisor.stop(tenant["slug"])
+            store.update_tenant(tenant["id"], status="stopped")
+            store.reset_live_approval(tenant["id"], user["id"], "strategy champion promoted")
+        supervisor.apply_profile(
+            tenant["slug"], replacement["preset_ids"], replacement["active_preset_id"],
+            replacement["risk"], preserve_live=False,
+        )
+        store.save_trading_profile(tenant["id"], user["id"], replacement)
+        if champion:
+            champion["role"] = "challenger"
+            champion["mode"] = "shadow"
+            champion["status"] = "active"
+        challenger["role"] = "champion"
+        challenger["mode"] = "live" if challenger.get("live_certified") else "shadow"
+        challenger["status"] = "active"
+        pool["champion_id"] = body.challenger_id
+        pool["promotion"] = {
+            "from": old_id,
+            "to": body.challenger_id,
+            "status": "applied_requires_live_reapproval" if live_was_enabled else "applied_simulation",
+            "at": time.time(),
+            "by": user["id"],
+        }
+        pool.setdefault("history", []).append(pool["promotion"])
+        saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
+        store.audit(
+            "strategy_champion_promoted",
+            tenant_id=tenant["id"],
+            user_id=user["id"],
+            payload={"symbol": compact, "from": old_id, "to": body.challenger_id},
+        )
+        return {
+            "ok": True,
+            "changed": True,
+            "requires_live_reapproval": live_was_enabled,
+            "pool": _pool_response(saved),
         }
 
     @app.get("/api/v1/bot")

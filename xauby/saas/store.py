@@ -142,6 +142,14 @@ class ControlPlaneStore:
                     profile_json TEXT NOT NULL, updated_by TEXT NOT NULL REFERENCES users(id),
                     updated_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS strategy_pools (
+                    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                    symbol TEXT NOT NULL,
+                    pool_json TEXT NOT NULL,
+                    updated_by TEXT NOT NULL REFERENCES users(id),
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (tenant_id, symbol)
+                );
                 CREATE TABLE IF NOT EXISTS invitations (
                     id TEXT PRIMARY KEY, email TEXT NOT NULL,
                     token_hash TEXT NOT NULL UNIQUE,
@@ -620,6 +628,45 @@ class ControlPlaneStore:
         with self.connection() as conn:
             row = conn.execute("SELECT profile_json FROM trading_profiles WHERE tenant_id=?", (tenant_id,)).fetchone()
         return json.loads(row[0]) if row else None
+
+    def save_strategy_pool(self, tenant_id: str, user_id: str, pool: dict[str, Any]) -> dict[str, Any]:
+        """Persist one pair arena as a small versioned JSON document."""
+        symbol = str(pool.get("symbol") or "").strip().upper()
+        if not symbol:
+            raise ValueError("strategy pool symbol is required")
+        now = time.time()
+        encoded = json.dumps(pool, sort_keys=True, separators=(",", ":"))
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT INTO strategy_pools (tenant_id,symbol,pool_json,updated_by,updated_at) "
+                "VALUES (?,?,?,?,?) ON CONFLICT(tenant_id,symbol) DO UPDATE SET "
+                "pool_json=excluded.pool_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at",
+                (tenant_id, symbol, encoded, user_id, now),
+            )
+        self.audit(
+            "strategy_pool_updated",
+            tenant_id=tenant_id,
+            user_id=user_id,
+            payload={"symbol": symbol, "champion_id": pool.get("champion_id")},
+        )
+        return json.loads(encoded)
+
+    def strategy_pool(self, tenant_id: str, symbol: str) -> dict[str, Any] | None:
+        normalized = str(symbol or "").strip().upper()
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT pool_json FROM strategy_pools WHERE tenant_id=? AND symbol=?",
+                (tenant_id, normalized),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def strategy_pools(self, tenant_id: str) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT pool_json FROM strategy_pools WHERE tenant_id=? ORDER BY symbol",
+                (tenant_id,),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
 
     def ensure_tenant(self, user_id: str, preferred_slug: str) -> tuple[dict[str, Any], bool]:
         with self.connection() as conn:

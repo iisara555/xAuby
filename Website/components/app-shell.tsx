@@ -4,6 +4,7 @@ import {
   Activity,
   ChevronUp,
   Gauge,
+  Swords,
   LogOut,
   Settings,
   ShieldCheck,
@@ -29,6 +30,7 @@ export function useCurrentUser(): User {
 
 const nav = [
   { href: "/app", label: "Home", icon: Gauge },
+  { href: "/app/strategies", label: "Strategies", icon: Swords },
   { href: "/app/activity", label: "Activity", icon: Activity },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];

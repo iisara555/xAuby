@@ -134,6 +134,28 @@ supports (per-symbol `mode`, isolated `SymbolContext`, RegimeRouter gating):
 - Force close after 6 NO_TRADE candles (`force_close_candles`)
 - Strategy handoff keeps the old strategy owner until the open position is closed
 
+## Per-pair strategy arena (MVP)
+
+The SaaS control plane keeps a small Strategy Pool for each certified pair. One
+candidate is the Champion and the remaining candidates are tracked as Shadow
+SIM challengers. Scores are comparable only within the same pair and forward
+window. The first MVP stores the reviewed evaluator result; wiring multiple
+shadow runners into the live engine is a later, separate step.
+The default gate is 30 forward-SIM days, 20 trades, PF >= 1.10, drawdown <= 25%,
+and three consecutive winning evaluations. Promotion is manual and requires a
+Trade PIN; a Live handoff stops at a safe re-approval boundary rather than
+hot-switching an active engine.
+
+The Arena is available at `/app/strategies`. The backend endpoints are:
+
+- `GET /api/v1/strategy-pools`
+- `POST /api/v1/strategy-pools/{symbol}/candidates`
+- `PATCH /api/v1/strategy-pools/{symbol}/candidates/{id}/evaluation` (admin/evaluator)
+- `POST /api/v1/strategy-pools/{symbol}/promote`
+
+Heavy replay/backtest work stays on the runner. The control plane only stores
+the reviewed forward-SIM result and the promotion audit event.
+
 ## Backtest and live parity
 
 Backtest, live engine, replay validation, TUI indicators, and optimizer should resolve config through the same strategy/portfolio resolver. Avoid adding strategy-impacting values in engine-only config blocks.

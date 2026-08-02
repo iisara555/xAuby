@@ -173,6 +173,66 @@ export type TradingProfile = {
   compiled: Record<string, unknown>;
 };
 
+export type StrategyCandidate = {
+  preset_id: string;
+  label: string;
+  symbol: string;
+  target_id: string;
+  strategy: string;
+  role: "champion" | "challenger" | "retired";
+  mode: "live" | "shadow";
+  status: "active" | "warming" | "eligible" | "paused" | string;
+  certification_status: "certified" | "failed" | "not_assessed" | string;
+  live_certified: boolean;
+  eligible_for_promotion: boolean;
+  eligibility_reasons: string[];
+  winning_evaluations: number;
+  evaluation?: {
+    source?: "certificate" | "forward_sim" | string;
+    score?: number;
+    profit_factor?: number;
+    net_return_pct?: number;
+    max_drawdown_pct?: number;
+    trades?: number;
+    forward_days?: number;
+    evaluated_at?: number;
+    note?: string;
+  };
+  backtest?: Preset["backtest"];
+  strategy_traits?: string[];
+  certification_note?: string;
+};
+
+export type StrategyPool = {
+  version: number;
+  symbol: string;
+  target_id: string;
+  policy: {
+    min_forward_days: number;
+    min_forward_trades: number;
+    min_profit_factor: number;
+    max_drawdown_pct: number;
+    score_margin: number;
+    winning_evaluations: number;
+  };
+  champion_id: string | null;
+  candidates: StrategyCandidate[];
+  promotion?: {
+    from?: string | null;
+    to?: string;
+    status?: string;
+    at?: number;
+  } | null;
+  history: Array<Record<string, unknown>>;
+};
+
+export type StrategyPoolsResponse = {
+  pools: StrategyPool[];
+  promotion_mode: "manual" | string;
+  max_candidates: number;
+  tenant_live_status: string;
+};
+
 export type TradeLog = {
   items: Array<Record<string, unknown>>;
   summary: { total?: number; wins?: number; losses?: number; net_pnl?: number; fees?: number; win_rate?: number };
