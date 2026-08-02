@@ -92,7 +92,11 @@ MDD_REF = 10.0     # a 10% drawdown halves the score — a chosen exchange rate
 # disqualifier; 1.5x is omitted because at ~100-200 bars/s each extra full-span
 # scenario costs ~10 core-hours across the shortlist and 2.0x is the test that
 # actually decides anything.
-COST_SCENARIOS = {"1.0x": 1.0, "2.0x": 2.0}
+# 0.0x is a DIAGNOSTIC, not a scenario anyone can trade: it removes fees and
+# slippage entirely to separate "this strategy has no edge" from "this strategy
+# has an edge that the fee bill eats". At 15m that distinction is the whole
+# story, and reporting it stops the conclusion being a guess.
+COST_SCENARIOS = {"0.0x": 0.0, "1.0x": 1.0, "2.0x": 2.0}
 
 METRIC_KEYS = (
     "net_profit_pct", "win_rate", "profit_factor", "max_drawdown_pct",
@@ -1128,12 +1132,12 @@ def cmd_report(md_path: str | None, top: int) -> None:
     emit("Round trip at 1.0x is taker fee + slippage on both sides. A strategy "
          "that cannot clear PF > 1 at 2.0x is disqualified regardless of score.")
     emit()
-    emit("| Strategy | Trades | Net 1.0x | PF 1.0x | Net 2.0x | PF 2.0x |")
-    emit("|---|---|---|---|---|---|")
+    emit("| Strategy | Trades | Net 0.0x | PF 0.0x | Net 1.0x | PF 1.0x | Net 2.0x | PF 2.0x |")
+    emit("|---|---|---|---|---|---|---|---|")
     for row in ordered:
         c = row.get("costs") or {}
         cells = []
-        for label in ("1.0x", "2.0x"):
+        for label in ("0.0x", "1.0x", "2.0x"):
             s = c.get(label) or {}
             cells.append(_fmt(s.get("net_profit_pct")))
             cells.append(_fmt(s.get("profit_factor"), ".3f"))
