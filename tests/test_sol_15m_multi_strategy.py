@@ -208,3 +208,160 @@ class TestBootstrapAndStress(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBuyAndHold(unittest.TestCase):
+    """B&H is the decisive benchmark for a long-only book, so it is pinned."""
+
+    def _frame(self, closes):
+        n = len(closes)
+        return pd.DataFrame({
+            "open": closes, "high": closes, "low": closes, "close": closes,
+            "volume": [1.0] * n,
+            "timestamp": [1_600_000_000 + i * 900 for i in range(n)],
+        })
+
+    def setUp(self):
+        # buy_and_hold reads fees off _G; populate it the way a worker would.
+        sol15m._G.setdefault("merged", {})
+        for name in ("supertrend_ema200",):
+            sol15m._G["merged"].setdefault(name, {
+                "exchange": {"fee_pct": 0.0005},
+                "backtest": {"slippage_bps": 2.0},
+            })
+
+    def test_doubling_price_is_roughly_plus_100pct(self):
+        out = sol15m.buy_and_hold(self._frame([100.0] * 10 + [200.0]), 10 - 10)
+        self.assertAlmostEqual(out["net_profit_pct"], 100.0, delta=1.0)
+
+    def test_costs_make_a_flat_market_slightly_negative(self):
+        out = sol15m.buy_and_hold(self._frame([100.0] * 20), 0)
+        self.assertLess(out["net_profit_pct"], 0.0)
+        self.assertGreater(out["net_profit_pct"], -1.0)
+
+    def test_skip_bars_are_excluded_from_the_benchmark(self):
+        # Price triples in the warmup, then is flat. B&H must ignore the warmup.
+        closes = [100.0, 200.0, 300.0] + [300.0] * 10
+        out = sol15m.buy_and_hold(self._frame(closes), 3)
+        self.assertAlmostEqual(out["net_profit_pct"], 0.0, delta=1.0)
+
+    def test_drawdown_is_measured(self):
+        out = sol15m.buy_and_hold(self._frame([100.0, 150.0, 75.0, 120.0]), 0)
+        # Peak 150 -> trough 75 is a 50% drawdown.
+        self.assertAlmostEqual(out["max_drawdown_pct"], 50.0, delta=1.0)
+
+    def test_too_short_is_safe(self):
+        out = sol15m.buy_and_hold(self._frame([100.0]), 0)
+        self.assertEqual(out["net_profit_pct"], 0.0)
+
+
+class TestLongOnlySlate(unittest.TestCase):
+    def test_slate_registry_shape(self):
+        self.assertEqual(sorted(sol15m.SLATES), ["long-only", "long-short"])
+        for name, cfg in sol15m.SLATES.items():
+            self.assertNotEqual(cfg["grid_file"], "", name)
+            self.assertGreater(len(cfg["grids"]), 0, name)
+
+    def test_checkpoints_do_not_collide(self):
+        files = {c["grid_file"] for c in sol15m.SLATES.values()}
+        files |= {c["finalists_file"] for c in sol15m.SLATES.values()}
+        self.assertEqual(len(files), 4, "slates must not share checkpoint files")
+
+    def test_candidates_are_dual_thrust_and_simple_scalp_plus(self):
+        self.assertEqual(sorted(sol15m.LONG_ONLY_GRIDS),
+                         ["dual_thrust", "simple_scalp_plus"])
+
+    def test_no_long_only_combo_enables_shorts(self):
+        for name, combos in sol15m.LONG_ONLY_GRIDS.items():
+            for _cid, ov in combos:
+                self.assertFalse(ov.get("enable_short", False), name)
+
+    def test_simple_scalp_plus_pins_the_coupled_confidence_knob(self):
+        """conf = buy_count/7 + 0.22, so gridding both knobs is redundant."""
+        for _cid, ov in sol15m.LONG_ONLY_GRIDS["simple_scalp_plus"]:
+            self.assertLessEqual(ov["min_buy_confidence"], 0.6486,
+                                 "confidence must not shadow the count gate")
+
+    def test_inert_regime_knobs_are_absent_from_the_grid(self):
+        # mtf_filter / require_macro_bull are no-ops at regime_timeframe=None.
+        for _cid, ov in sol15m.LONG_ONLY_GRIDS["simple_scalp_plus"]:
+            self.assertNotIn("mtf_filter", ov)
+            self.assertNotIn("require_macro_bull", ov)
+            self.assertNotIn("risk_reward", ov)
+
+    def test_long_only_gates_are_lower_and_declared(self):
+        self.assertLess(sol15m.LONG_ONLY_MIN_IS_TRADES, sol15m.MIN_IS_TRADES)
+        self.assertLess(sol15m.LONG_ONLY_MIN_OOS_TRADES, sol15m.MIN_OOS_TRADES)
+
+    def test_grids_are_within_the_cap(self):
+        for name, combos in sol15m.LONG_ONLY_GRIDS.items():
+            self.assertLessEqual(len(combos), sol15m.MAX_GRID_PER_STRATEGY, name)
+
+
+class TestFinalistWindowFanout(unittest.TestCase):
+    """Per-window fan-out must reassemble into exactly the old row shape."""
+
+    def test_window_list_covers_the_validation_stack(self):
+        names = sol15m._finalist_windows("dual_thrust", full_only=False)
+        self.assertIn("full", names)
+        self.assertIn("subperiod", names)
+        self.assertIn("is", names)
+        self.assertIn("oos", names)
+        self.assertEqual(sum(1 for n in names if n.startswith("fold")), sol15m.N_FOLDS)
+        # 1.0x is reused from the full run and must not be a task.
+        self.assertNotIn("cost:1.0x", names)
+        self.assertIn("cost:2.0x", names)
+
+    def test_full_only_is_a_single_window(self):
+        self.assertEqual(
+            sol15m._finalist_windows("simple_scalp_plus", full_only=True), ["full"]
+        )
+
+    def _row(self, window, **kw):
+        return {"id": "s:c", "strategy": "s", "combo": "c", "override": {},
+                "passed_gate": False, "window": window, **kw}
+
+    def test_merge_reassembles_a_config(self):
+        rows = [
+            self._row("full", stats={"profit_factor": 1.2, "net_profit_pct": 5.0},
+                      bh={"net_profit_pct": 99.0}, trade_returns=[1.0, -0.5]),
+            self._row("subperiod", stats={"profit_factor": 1.1}, bh={"net_profit_pct": 20.0}),
+            self._row("is", stats={"profit_factor": 1.3}, bh={"net_profit_pct": 50.0}),
+            self._row("oos", stats={"profit_factor": 0.9}, bh={"net_profit_pct": 10.0}),
+            self._row("cost:2.0x", stats={"profit_factor": 0.8}, cost_label="2.0x"),
+        ]
+        # folds arrive out of order — the merge must sort them
+        for i in (2, 0, 1):
+            rows.append(self._row(f"fold{i}", stats={"profit_factor": float(i)},
+                                  fold_index=i))
+        merged = sol15m._merge_finalist_windows(rows)
+        self.assertEqual(len(merged), 1)
+        m = merged[0]
+        self.assertEqual(m["full"]["profit_factor"], 1.2)
+        self.assertEqual(m["bh_full"]["net_profit_pct"], 99.0)
+        self.assertEqual(m["is"]["profit_factor"], 1.3)
+        self.assertEqual(m["oos"]["profit_factor"], 0.9)
+        self.assertEqual(m["trade_returns"], [1.0, -0.5])
+        self.assertEqual([f["profit_factor"] for f in m["folds"]], [0.0, 1.0, 2.0])
+        self.assertEqual(m["costs"]["2.0x"]["profit_factor"], 0.8)
+        # 1.0x is the full-span run, reused not replayed
+        self.assertEqual(m["costs"]["1.0x"]["profit_factor"], 1.2)
+
+    def test_merge_keeps_configs_separate(self):
+        rows = [
+            {"id": "a:1", "strategy": "a", "combo": "1", "window": "full",
+             "stats": {"profit_factor": 1.0}, "bh": {}},
+            {"id": "b:2", "strategy": "b", "combo": "2", "window": "full",
+             "stats": {"profit_factor": 2.0}, "bh": {}},
+        ]
+        merged = sol15m._merge_finalist_windows(rows)
+        self.assertEqual(len(merged), 2)
+
+    def test_errored_window_is_recorded_not_merged_as_stats(self):
+        rows = [
+            self._row("full", stats={"profit_factor": 1.0}, bh={}),
+            self._row("fold3", error="Boom"),
+        ]
+        merged = sol15m._merge_finalist_windows(rows)
+        self.assertEqual(len(merged[0]["folds"]), 0)
+        self.assertIn("fold3: Boom", merged[0]["errors"])

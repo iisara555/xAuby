@@ -266,6 +266,93 @@ LONG_ONLY_EXTRA = ["sol_ema_pullback", "xauby_vwap_pullback"]
 
 
 # --------------------------------------------------------------------------- #
+# Long-only slate                                                             #
+# --------------------------------------------------------------------------- #
+# Follow-up study: the long+short slate failed on costs, so this asks whether a
+# long-only book does better on the same asset and timeframe. Two candidates —
+# dual_thrust (the least-bad of the long+short slate) and simple_scalp_plus.
+#
+# simple_scalp_plus is the 8-point confluence scalper ported from
+# Binance_Cryptonice (NOT freqtrade — see its module docstring). Three of its
+# knobs are deliberately absent from the grid:
+#   * min_buy_confidence is COUPLED to min_confirmations_buy, because
+#     conf = min(0.97, buy_count/7 + 0.22). At the 0.70 default the count is the
+#     only binding gate. It is pinned low here so the count is the sole gate and
+#     the search space is not mostly redundant.
+#   * mtf_filter / require_macro_bull are no-ops when df_regime is None, which
+#     is how this harness runs. Gridding them would duplicate every row.
+#   * risk_reward is passed as metadata and never read by the strategy.
+LONG_ONLY_GRIDS: dict = {
+    "dual_thrust": _grid(
+        {"enable_short": False, "max_calc_bars": 600,
+         "one_entry_per_session": True,
+         # Long-only: k_lower only positions the exit line, so it stops being a
+         # real entry axis and is pinned.
+         "k_lower": 0.5},
+        {
+            "lookback_days": [1, 2, 4],
+            "k_upper": [0.3, 0.5, 0.7],
+            "exit_at_session_end": [False, True],
+        },
+    ),
+    # Measured at 36 bars/s — 2.5x slower than anything else on the slate,
+    # because it computes eight indicator families per bar. The grid is held to
+    # the three highest-value axes so the search fits the compute budget;
+    # trailing_atr_mult stays at its default rather than becoming a fourth axis.
+    # max_calc_bars is deliberately NOT tuned down for speed: it shifts the
+    # rolling-VWAP warmup and would change the strategy being measured.
+    "simple_scalp_plus": _grid(
+        {"min_buy_confidence": 0.10, "max_calc_bars": 400,
+         "trailing_atr_mult": 1.5},
+        {
+            "min_confirmations_buy": [3, 4, 5],
+            "min_confirmations_sell": [2, 3, 4],
+            "atr_multiplier": [1.2, 2.5],
+        },
+    ),
+}
+
+# Long-only halves the opportunity set, and both candidates are structurally
+# lower-frequency than the long+short slate (dual_thrust is capped at one entry
+# per session). These floors are sample-adequacy thresholds, not performance
+# ones, and are set BEFORE the run — the doc states the change from 200/60.
+LONG_ONLY_MIN_IS_TRADES = 100
+LONG_ONLY_MIN_OOS_TRADES = 30
+
+SLATES = {
+    "long-short": {
+        "grids": PF_GRIDS,
+        "grid_file": "pf_grid.jsonl",
+        "finalists_file": "finalists.jsonl",
+        "min_is": MIN_IS_TRADES,
+        "min_oos": MIN_OOS_TRADES,
+    },
+    "long-only": {
+        "grids": LONG_ONLY_GRIDS,
+        "grid_file": "pf_grid_longonly.jsonl",
+        "finalists_file": "finalists_longonly.jsonl",
+        "min_is": LONG_ONLY_MIN_IS_TRADES,
+        "min_oos": LONG_ONLY_MIN_OOS_TRADES,
+    },
+}
+
+# Selected by --slate; module-level so pool workers inherit it via fork.
+ACTIVE_SLATE = "long-short"
+
+
+def slate() -> dict:
+    return SLATES[ACTIVE_SLATE]
+
+
+for _name, _combos in LONG_ONLY_GRIDS.items():
+    if len(_combos) > MAX_GRID_PER_STRATEGY:
+        raise SystemExit(
+            f"{_name} long-only grid has {len(_combos)} combos, "
+            f"cap is {MAX_GRID_PER_STRATEGY}"
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Replay plumbing                                                             #
 # --------------------------------------------------------------------------- #
 def _ts(day: str) -> int:
@@ -294,7 +381,10 @@ def _init_worker() -> None:
     df15, df1d = _load_frames()
     cfg = load_bot_config()
     base_cfgs, merged_cfgs = {}, {}
-    for name in set(STRATEGIES) | set(LONG_ONLY_EXTRA):
+    all_names = set(STRATEGIES) | set(LONG_ONLY_EXTRA)
+    for _slate in SLATES.values():
+        all_names |= set(_slate["grids"])
+    for name in sorted(all_names):
         strat_cfg, trading_cfg = split_legacy_runtime_config(
             cfg, name, symbol=SYMBOL, for_live=False
         )
@@ -358,6 +448,40 @@ def _run(strategy: str, frame, override: dict, skip_bars: int, cost_scale: float
     return out
 
 
+def buy_and_hold(frame, skip_bars: int, cost_scale: float = 1.0) -> dict:
+    """Buy the first traded bar, hold to the last. The only honest long-only baseline.
+
+    SOL rose enormously over this period, so a long-only strategy can post a
+    large positive net purely from beta. Without this column a losing strategy
+    reads as a winning one. Charged one entry and one exit at the same taker fee
+    and slippage the replay uses, so it is not flattered relative to the
+    strategies it is compared against.
+    """
+    import numpy as np
+    from xauby.runtime.exchange_config import resolve_fee_pct
+
+    cfg = _G["merged"][STRATEGIES[0] if STRATEGIES else "supertrend_ema200"]
+    fee = resolve_fee_pct(cfg) * cost_scale
+    slip = float((cfg.get("backtest") or {}).get("slippage_bps", 2.0)) * cost_scale / 10_000.0
+
+    closes = frame["close"].to_numpy("float64")[skip_bars:]
+    if len(closes) < 2:
+        return {"net_profit_pct": 0.0, "max_drawdown_pct": 0.0, "bars": len(closes)}
+
+    entry = closes[0] * (1.0 + fee + slip)
+    exit_ = closes[-1] * (1.0 - fee - slip)
+    net = (exit_ / entry - 1.0) * 100.0
+
+    equity = closes / entry
+    peak = np.maximum.accumulate(equity)
+    mdd = float(np.max((peak - equity) / peak) * 100.0) if len(equity) else 0.0
+    return {
+        "net_profit_pct": float(net),
+        "max_drawdown_pct": mdd,
+        "bars": int(len(closes)),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Scoring                                                                     #
 # --------------------------------------------------------------------------- #
@@ -397,9 +521,9 @@ def robust_score(is_s: dict, oos_s: dict, full_s: dict) -> float:
 def passes_gate(is_s: dict, oos_s: dict) -> bool:
     if clean_pf(is_s) is None or clean_pf(oos_s) is None:
         return False
-    if int(is_s.get("total_trades") or 0) < MIN_IS_TRADES:
+    if int(is_s.get("total_trades") or 0) < slate()["min_is"]:
         return False
-    if int(oos_s.get("total_trades") or 0) < MIN_OOS_TRADES:
+    if int(oos_s.get("total_trades") or 0) < slate()["min_oos"]:
         return False
     if float(is_s.get("net_profit_pct") or 0.0) <= 0:
         return False
@@ -444,14 +568,20 @@ def _checkpoint_path(name: str) -> str:
 
 
 def _load_done(path: str) -> set:
+    """Completed ids. Window-level rows also register `id|window` for resume."""
     done = set()
     if os.path.exists(path):
         with open(path) as fh:
             for line in fh:
                 try:
-                    done.add(json.loads(line)["id"])
+                    row = json.loads(line)
                 except Exception:
                     continue
+                if row.get("error"):
+                    continue
+                done.add(row["id"])
+                if row.get("window"):
+                    done.add(f"{row['id']}|{row['window']}")
     return done
 
 
@@ -469,11 +599,11 @@ def _read_jsonl(path: str) -> list:
 
 def cmd_grid(only: str | None, jobs: int) -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
-    path = _checkpoint_path("pf_grid.jsonl")
+    path = _checkpoint_path(slate()["grid_file"])
     done = _load_done(path)
     items = [
         (s, cid, ov)
-        for s, grid in PF_GRIDS.items()
+        for s, grid in slate()["grids"].items()
         if only is None or s == only
         for cid, ov in grid
         if f"{s}:{cid}" not in done
@@ -504,70 +634,137 @@ def _fold_bounds(df, n_folds: int) -> list:
     return [(lo + i * size, lo + (i + 1) * size) for i in range(n_folds)]
 
 
-def eval_finalist(item):
-    """Full-span replay plus, unless ``full_only``, sub-period/IS-OOS/folds/costs.
+def _finalist_windows(strategy: str, full_only: bool) -> list:
+    """Names of the replay windows a finalist needs.
 
-    ``full_only`` exists for the long-only appendix: it needs one comparable
-    number per strategy, not the whole validation stack, and at ~150 bars/s the
-    full stack costs roughly 1.8 core-hours per config.
+    Each becomes its own pool task. Fanning out per window rather than per
+    config is what keeps all workers busy: with only 2-5 finalist configs, a
+    per-config pool leaves most cores idle, and simple_scalp_plus runs at
+    36 bars/s where a serial full stack is ~7 core-hours.
     """
-    strategy, cid, ov = item[0], item[1], item[2]
-    full_only = bool(item[3]) if len(item) > 3 else False
-    passed_gate = bool(item[4]) if len(item) > 4 else False
+    if full_only:
+        return ["full"]
+    names = ["full", "subperiod", "is", "oos"]
+    names += [f"fold{i}" for i in range(N_FOLDS)]
+    names += [f"cost:{label}" for label, scale in COST_SCENARIOS.items() if scale != 1.0]
+    return names
+
+
+def eval_finalist_window(item):
+    """Replay ONE window of one finalist config. Merged later by config id."""
+    strategy, cid, ov, window, passed_gate = item
     gid = f"{strategy}:{cid}"
+    base = {"id": gid, "strategy": strategy, "combo": cid, "override": ov,
+            "window": window, "passed_gate": passed_gate}
     try:
         df = _G["df15"]
-        out: dict = {"id": gid, "strategy": strategy, "combo": cid,
-                     "override": ov, "passed_gate": passed_gate}
-
         full = _window(df, _ts(FULL_START), None, WARMUP_BARS)
         frame, skip = full
-        full_stats = _run(strategy, frame, ov, skip)
-        out["trade_returns"] = full_stats.pop("trade_returns", [])
-        out["full"] = full_stats
-        if full_only:
-            return out
 
-        sub = _window(df, _ts(SUBPERIOD_START), None, WARMUP_BARS)
-        if sub is not None:
+        if window == "full":
+            stats = _run(strategy, frame, ov, skip)
+            base["trade_returns"] = stats.pop("trade_returns", [])
+            base["stats"] = stats
+            base["bh"] = buy_and_hold(frame, skip)
+            return base
+
+        if window == "subperiod":
+            sub = _window(df, _ts(SUBPERIOD_START), None, WARMUP_BARS)
+            if sub is None:
+                return {**base, "skipped": True}
             s_frame, s_skip = sub
-            s = _run(strategy, s_frame, ov, s_skip)
-            s.pop("trade_returns", None)
-            out["subperiod"] = s
+            stats = _run(strategy, s_frame, ov, s_skip)
+            stats.pop("trade_returns", None)
+            base["stats"] = stats
+            base["bh"] = buy_and_hold(s_frame, s_skip)
+            return base
 
-        # IS/OOS on the full span
         split = skip + int((len(frame) - skip) * GRID_SPLIT_RATIO)
-        is_s = _run(strategy, frame.iloc[:split].reset_index(drop=True), ov, skip)
-        oos_lo = max(0, split - WARMUP_BARS)
-        oos_s = _run(strategy, frame.iloc[oos_lo:].reset_index(drop=True), ov, split - oos_lo)
-        for s in (is_s, oos_s):
-            s.pop("trade_returns", None)
-        out["is"], out["oos"] = is_s, oos_s
+        if window == "is":
+            sub_frame = frame.iloc[:split].reset_index(drop=True)
+            stats = _run(strategy, sub_frame, ov, skip)
+            stats.pop("trade_returns", None)
+            base["stats"] = stats
+            base["bh"] = buy_and_hold(sub_frame, skip)
+            return base
 
-        # Folds
-        folds = []
-        for a, b in _fold_bounds(df, N_FOLDS):
+        if window == "oos":
+            oos_lo = max(0, split - WARMUP_BARS)
+            sub_frame = frame.iloc[oos_lo:].reset_index(drop=True)
+            stats = _run(strategy, sub_frame, ov, split - oos_lo)
+            stats.pop("trade_returns", None)
+            base["stats"] = stats
+            base["bh"] = buy_and_hold(sub_frame, split - oos_lo)
+            return base
+
+        if window.startswith("fold"):
+            idx = int(window[4:])
+            a, b = _fold_bounds(df, N_FOLDS)[idx]
             f_lo = max(0, a - WARMUP_BARS)
             f_frame = df.iloc[f_lo:b].reset_index(drop=True)
-            fs = _run(strategy, f_frame, ov, a - f_lo)
-            fs.pop("trade_returns", None)
-            folds.append(fs)
-        out["folds"] = folds
+            stats = _run(strategy, f_frame, ov, a - f_lo)
+            stats.pop("trade_returns", None)
+            stats["bh_net_profit_pct"] = buy_and_hold(f_frame, a - f_lo)["net_profit_pct"]
+            base["stats"] = stats
+            base["fold_index"] = idx
+            return base
 
-        # Cost sensitivity. The 1.0x scenario IS the full-span run, so reuse it
-        # rather than paying for a second identical replay.
-        costs = {"1.0x": dict(full_stats)}
-        for label, scale in COST_SCENARIOS.items():
-            if scale == 1.0:
-                continue
-            cs = _run(strategy, frame, ov, skip, cost_scale=scale)
-            cs.pop("trade_returns", None)
-            costs[label] = cs
-        out["costs"] = costs
-        return out
+        if window.startswith("cost:"):
+            label = window.split(":", 1)[1]
+            stats = _run(strategy, frame, ov, skip, cost_scale=COST_SCENARIOS[label])
+            stats.pop("trade_returns", None)
+            base["stats"] = stats
+            base["cost_label"] = label
+            return base
+
+        return {**base, "error": f"unknown window {window}"}
     except Exception as exc:
-        return {"id": gid, "strategy": strategy, "combo": cid,
-                "override": ov, "error": f"{type(exc).__name__}: {exc}"}
+        return {**base, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _merge_finalist_windows(rows: list) -> list:
+    """Fold per-window task results back into one row per config."""
+    by_id: dict = {}
+    for row in rows:
+        gid = row.get("id")
+        if not gid:
+            continue
+        entry = by_id.setdefault(gid, {
+            "id": gid, "strategy": row.get("strategy"), "combo": row.get("combo"),
+            "override": row.get("override"), "passed_gate": row.get("passed_gate"),
+            "folds_by_index": {},
+        })
+        if row.get("error"):
+            entry.setdefault("errors", []).append(f"{row.get('window')}: {row['error']}")
+            continue
+        if row.get("skipped"):
+            continue
+        window = row.get("window")
+        stats = row.get("stats") or {}
+        if window == "full":
+            entry["full"] = stats
+            entry["bh_full"] = row.get("bh")
+            entry["trade_returns"] = row.get("trade_returns") or []
+        elif window == "subperiod":
+            entry["subperiod"] = stats
+            entry["bh_subperiod"] = row.get("bh")
+        elif window in ("is", "oos"):
+            entry[window] = stats
+            entry[f"bh_{window}"] = row.get("bh")
+        elif window and window.startswith("fold"):
+            entry["folds_by_index"][int(row.get("fold_index", 0))] = stats
+        elif window and window.startswith("cost:"):
+            entry.setdefault("costs", {})[row["cost_label"]] = stats
+
+    out = []
+    for entry in by_id.values():
+        folds = entry.pop("folds_by_index", {})
+        entry["folds"] = [folds[i] for i in sorted(folds)]
+        # 1.0x costs are the full-span run; never replay it twice.
+        if entry.get("full") is not None:
+            entry.setdefault("costs", {})["1.0x"] = dict(entry["full"])
+        out.append(entry)
+    return out
 
 
 def _rank_grid_rows(rows: list, *, gated_only: bool = True) -> dict:
@@ -603,7 +800,7 @@ def _rank_grid_rows(rows: list, *, gated_only: bool = True) -> dict:
 
 
 def cmd_finalists(jobs: int, top: int) -> None:
-    rows = _read_jsonl(_checkpoint_path("pf_grid.jsonl"))
+    rows = _read_jsonl(_checkpoint_path(slate()["grid_file"]))
     if not rows:
         raise SystemExit("no grid results — run `grid` first")
     ranked = _rank_grid_rows(rows)
@@ -613,29 +810,45 @@ def cmd_finalists(jobs: int, top: int) -> None:
               "worst-window PF per strategy anyway so the negative result is "
               "evidenced on the full span, folds and cost scenarios.", flush=True)
         ranked = _rank_grid_rows(rows, gated_only=False)
-    path = _checkpoint_path("finalists.jsonl")
+    path = _checkpoint_path(slate()["finalists_file"])
     done = _load_done(path)
 
-    items = []
-    for name in STRATEGIES:
+    # Fan out per WINDOW, not per config: with only a handful of finalists a
+    # per-config pool leaves most cores idle, and simple_scalp_plus runs at
+    # 36 bars/s where a serial full stack is ~7 core-hours.
+    tasks = []
+    for name in slate()["grids"]:
         for row in ranked.get(name, [])[:top]:
-            if f"{name}:{row['combo']}" not in done:
-                items.append((name, row["combo"], row["override"], False, gated))
-    for name in STRATEGIES:
+            gid = f"{name}:{row['combo']}"
+            for window in _finalist_windows(name, full_only=False):
+                if f"{gid}|{window}" not in done:
+                    tasks.append((name, row["combo"], row["override"], window, gated))
+    for name in slate()["grids"]:
         if not ranked.get(name):
             print(f"note: {name} produced no usable combo", flush=True)
 
-    print(f"finalists: {len(items)} configs, jobs={jobs}", flush=True)
-    if not items:
-        return
-    t0 = time.time()
-    with open(path, "a") as fh, Pool(jobs, initializer=_init_worker) as pool:
-        for n, row in enumerate(pool.imap_unordered(eval_finalist, items), 1):
+    print(f"finalists: {len(tasks)} window tasks, jobs={jobs}", flush=True)
+    if tasks:
+        t0 = time.time()
+        with open(path, "a") as fh, Pool(jobs, initializer=_init_worker) as pool:
+            for n, row in enumerate(pool.imap_unordered(eval_finalist_window, tasks), 1):
+                row["_task_id"] = f"{row['id']}|{row.get('window')}"
+                fh.write(json.dumps(row) + "\n")
+                fh.flush()
+                el = time.time() - t0
+                eta = el / n * (len(tasks) - n)
+                flag = "ERR" if row.get("error") else "ok"
+                print(f"[{n}/{len(tasks)}] {row['id']} {row.get('window')} {flag} "
+                      f"({el/60:.1f}m elapsed, ~{eta/60:.0f}m left)", flush=True)
+
+    # Merge the per-window rows into one row per config for the report.
+    merged = _merge_finalist_windows(_read_jsonl(path))
+    merged_path = _checkpoint_path(slate()["finalists_file"].replace(
+        ".jsonl", "_merged.jsonl"))
+    with open(merged_path, "w") as fh:
+        for row in merged:
             fh.write(json.dumps(row) + "\n")
-            fh.flush()
-            el = time.time() - t0
-            print(f"[{n}/{len(items)}] {row['id']} "
-                  f"({el/60:.1f}m elapsed)", flush=True)
+    print(f"merged {len(merged)} finalist configs -> {merged_path}", flush=True)
 
 
 def cmd_long_only(jobs: int) -> None:
@@ -650,15 +863,19 @@ def cmd_long_only(jobs: int) -> None:
         ov = dict(best[0]["override"]) if best else {}
         ov["enable_short"] = False
         if f"{name}:long_only" not in done:
-            items.append((name, "long_only", ov, True))
+            items.append((name, "long_only", ov, "full", False))
     for name in LONG_ONLY_EXTRA:
         if f"{name}:long_only" not in done:
-            items.append((name, "long_only", {}, True))
+            items.append((name, "long_only", {}, "full", False))
     print(f"long-only: {len(items)} configs", flush=True)
     if not items:
         return
     with open(path, "a") as fh, Pool(jobs, initializer=_init_worker) as pool:
-        for n, row in enumerate(pool.imap_unordered(eval_finalist, items), 1):
+        for n, row in enumerate(pool.imap_unordered(eval_finalist_window, items), 1):
+            # Normalise the window-task shape to the row shape the report reads.
+            if row.get("stats") is not None:
+                row["full"] = row.pop("stats")
+                row["bh_full"] = row.pop("bh", None)
             fh.write(json.dumps(row) + "\n")
             fh.flush()
             print(f"[{n}/{len(items)}] {row['id']}", flush=True)
@@ -679,8 +896,8 @@ def cmd_calibrate() -> None:
     total = len(df)
     print(f"{SYMBOL} {TF}: {total} bars loaded", flush=True)
     results = []
-    for strategy in STRATEGIES:
-        ov = PF_GRIDS[strategy][0][1]
+    for strategy in slate()["grids"]:
+        ov = slate()["grids"][strategy][0][1]
         for n in (5_000, 20_000):
             if n > total:
                 continue
@@ -766,15 +983,19 @@ def _fmt(value, spec: str = ".2f") -> str:
 
 
 def cmd_report(md_path: str | None, top: int) -> None:
-    grid_rows = _read_jsonl(_checkpoint_path("pf_grid.jsonl"))
-    fin_rows = [r for r in _read_jsonl(_checkpoint_path("finalists.jsonl"))
-                if not r.get("error")]
+    grid_rows = _read_jsonl(_checkpoint_path(slate()["grid_file"]))
+    merged_path = _checkpoint_path(
+        slate()["finalists_file"].replace(".jsonl", "_merged.jsonl"))
+    if not os.path.exists(merged_path):
+        merged_path = _checkpoint_path(slate()["finalists_file"])
+    fin_rows = [r for r in _read_jsonl(merged_path)
+                if not r.get("error") and r.get("full")]
     long_rows = [r for r in _read_jsonl(_checkpoint_path("long_only.jsonl"))
                  if not r.get("error")]
     if not fin_rows:
         raise SystemExit("no finalist results — run `finalists` first")
 
-    n_trials = sum(len(g) for g in PF_GRIDS.values())
+    n_trials = sum(len(g) for g in slate()["grids"].values())
     valid_grid = [r for r in grid_rows if not r.get("error")]
 
     # Best finalist per strategy by the full-span robust score.
@@ -823,26 +1044,38 @@ def cmd_report(md_path: str | None, top: int) -> None:
 
     emit("## Full period")
     emit()
-    emit("| Strategy | Combo | Net % | PF | WR % | MDD % | Trades | Sharpe | Calmar | Score |")
-    emit("|---|---|---|---|---|---|---|---|---|---|")
+    emit("| Strategy | Combo | Net % | **B&H Net %** | PF | WR % | MDD % | **B&H MDD %** "
+         "| Trades | Sharpe | Score |")
+    emit("|---|---|---|---|---|---|---|---|---|---|---|")
     for row in ordered:
         f = row.get("full", {})
+        bh = row.get("bh_full") or {}
         emit(f"| `{row['strategy']}` | {row['combo']} | {_fmt(f.get('net_profit_pct'))} "
+             f"| {_fmt(bh.get('net_profit_pct'))} "
              f"| {_fmt(f.get('profit_factor'), '.3f')} | {_fmt(f.get('win_rate'))} "
-             f"| {_fmt(f.get('max_drawdown_pct'))} | {f.get('total_trades')} "
-             f"| {_fmt(f.get('sharpe'))} | {_fmt(f.get('calmar'))} "
+             f"| {_fmt(f.get('max_drawdown_pct'))} | {_fmt(bh.get('max_drawdown_pct'))} "
+             f"| {f.get('total_trades')} "
+             f"| {_fmt(f.get('sharpe'))} "
              f"| {_fmt(row.get('_score'), '.3f')} |")
+    emit()
+    emit("**B&H** is buy-and-hold over the same window, charged one entry and one "
+         "exit at the same taker fee and slippage. On an asset that rose as far as "
+         "SOL did, a long-only strategy can post a large positive net purely from "
+         "beta — a config that trails B&H on both net and drawdown is an expensive "
+         "index, not a strategy.")
     emit()
 
     emit(f"## Post-melt-up sub-period ({SUBPERIOD_START} -> present)")
     emit()
-    emit("| Strategy | Net % | PF | MDD % | Trades |")
-    emit("|---|---|---|---|---|")
+    emit("| Strategy | Net % | **B&H Net %** | PF | MDD % | Trades |")
+    emit("|---|---|---|---|---|---|")
     for row in ordered:
-        s = row.get("subperiod") or {}
-        emit(f"| `{row['strategy']}` | {_fmt(s.get('net_profit_pct'))} "
-             f"| {_fmt(s.get('profit_factor'), '.3f')} "
-             f"| {_fmt(s.get('max_drawdown_pct'))} | {s.get('total_trades')} |")
+        sp = row.get("subperiod") or {}
+        bh = row.get("bh_subperiod") or {}
+        emit(f"| `{row['strategy']}` | {_fmt(sp.get('net_profit_pct'))} "
+             f"| {_fmt(bh.get('net_profit_pct'))} "
+             f"| {_fmt(sp.get('profit_factor'), '.3f')} "
+             f"| {_fmt(sp.get('max_drawdown_pct'))} | {sp.get('total_trades')} |")
     emit()
 
     emit("## IS / OOS (70/30 on the full span)")
@@ -989,6 +1222,32 @@ def cmd_report(md_path: str | None, top: int) -> None:
         else:
             emit("It clears the gates, the fold count, and the 2.0x cost test.")
         emit()
+
+        # Buy-and-hold is the decisive test for a long-only book.
+        bh = win.get("bh_full") or {}
+        bh_net = bh.get("net_profit_pct")
+        bh_mdd = bh.get("max_drawdown_pct")
+        net = f.get("net_profit_pct")
+        mdd = f.get("max_drawdown_pct")
+        if bh_net is not None and net is not None:
+            beats_net = float(net) > float(bh_net)
+            beats_mdd = (bh_mdd is not None
+                         and float(mdd or 0) < float(bh_mdd))
+            emit(f"Versus buy-and-hold: net {_fmt(net)}% vs {_fmt(bh_net)}% "
+                 f"({'beats' if beats_net else 'TRAILS'} B&H), "
+                 f"drawdown {_fmt(mdd)}% vs {_fmt(bh_mdd)}% "
+                 f"({'shallower' if beats_mdd else 'DEEPER'} than B&H).")
+            emit()
+            if not beats_net and not beats_mdd:
+                emit("**It loses to buy-and-hold on both return and drawdown, so "
+                     "it is not recommended.** Trading it would have produced a "
+                     "worse outcome than holding the asset and paying two "
+                     "commissions.")
+            elif not beats_net:
+                emit("It trails buy-and-hold on return but takes less drawdown. "
+                     "That is a risk-adjusted argument, not a return argument, and "
+                     "it should only be made explicitly.")
+            emit()
         emit("### Winning strategy_params")
         emit()
         emit("Research artifact. NOT applied to `coin_whitelist.json` or "
@@ -1069,7 +1328,12 @@ def main() -> None:
     p.add_argument("--md", default=None, help="report: write markdown here")
     p.add_argument("--okx-limit", type=int, default=100_000,
                    help="okx: bars to pull from the venue")
+    p.add_argument("--slate", choices=sorted(SLATES), default="long-short",
+                   help="which candidate slate to run (separate checkpoints)")
     args = p.parse_args()
+
+    global ACTIVE_SLATE
+    ACTIVE_SLATE = args.slate
 
     if args.command == "fetch":
         cmd_fetch()
