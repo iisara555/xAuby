@@ -69,6 +69,11 @@ WARMUP_BARS = 750
 TUNE_START = "2022-01-01"
 TUNE_END = "2023-10-01"
 FULL_START = "2021-01-01"
+# Common end for every timeframe. The monthly archives land at different times
+# per TF (15m ended 2026-06-30 while 1h/4h had July), which would otherwise make
+# a cross-TF comparison span different periods and silently favour whichever TF
+# happened to include the most recent leg.
+FULL_END = "2026-07-01"
 SUBPERIOD_START = "2023-01-01"   # reported separately: post-melt-up regime
 
 GRID_SPLIT_RATIO = 0.70
@@ -179,12 +184,17 @@ def cmd_fetch() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
     import pandas as pd
 
-    for tf in (TF, REGIME_TF):
+    wanted = {active_tf(), REGIME_TF}
+    for tf in sorted(wanted):
+        path = os.path.join(OUT_DIR, f"{SYMBOL.lower()}_{tf}.csv")
+        if os.path.exists(path):
+            print(f"{SYMBOL} {tf}: already cached, skipping", flush=True)
+            continue
         df = fetch_candles(tf)
         first = pd.to_datetime(df["open_time"].iloc[0], unit="ms")
         last = pd.to_datetime(df["open_time"].iloc[-1], unit="ms")
         print(f"{SYMBOL} {tf}: {len(df)} bars {first} -> {last}", flush=True)
-        df.to_csv(os.path.join(OUT_DIR, f"{SYMBOL.lower()}_{tf}.csv"), index=False)
+        df.to_csv(path, index=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -323,6 +333,80 @@ LONG_ONLY_GRIDS: dict = {
 LONG_ONLY_MIN_IS_TRADES = 100
 LONG_ONLY_MIN_OOS_TRADES = 30
 
+# --------------------------------------------------------------------------- #
+# Timeframe sweep                                                             #
+# --------------------------------------------------------------------------- #
+# The 15m studies died on cost drag, which scales with trade count. Slower
+# sampling trades 4x/16x/96x less, so this sweep asks whether the (thin) gross
+# edge survives once the fee bill shrinks. Candidates are long-only, matching
+# how freqtrade strategies are actually deployed.
+TF_CANDIDATES = ("elliotv5_ewo", "dual_thrust", "simple_scalp_plus")
+
+
+def _tf_grids() -> dict:
+    """Long-only grids reused across every swept timeframe."""
+    return {
+        "elliotv5_ewo": _grid(
+            {"max_calc_bars": 600},
+            {
+                "low_offset": [0.955, 0.975, 0.99],
+                "high_offset": [1.005, 1.010, 1.020],
+                "ewo_high": [1.0, 2.327, 4.0],
+                "disable_stop_loss": [False, True],
+            },
+        ),
+        "dual_thrust": _grid(
+            {"enable_short": False, "max_calc_bars": 600,
+             "one_entry_per_session": True, "k_lower": 0.5},
+            {
+                "lookback_days": [1, 2, 4],
+                "k_upper": [0.3, 0.5, 0.7],
+                "exit_at_session_end": [False, True],
+            },
+        ),
+        "simple_scalp_plus": _grid(
+            {"min_buy_confidence": 0.10, "max_calc_bars": 400,
+             "trailing_atr_mult": 1.5},
+            {
+                "min_confirmations_buy": [3, 4, 5],
+                "min_confirmations_sell": [2, 3, 4],
+                "atr_multiplier": [1.2, 2.5],
+            },
+        ),
+    }
+
+
+# Trade counts fall roughly with timeframe, so a fixed floor would reject slower
+# books purely for being slower. Declared before the run. 4h matches the BTC
+# harness precedent (30/10); 1d at 15 trades is statistically thin and the
+# report says so.
+TF_GATES = {
+    "15m": (100, 30),
+    "1h": (60, 20),
+    "4h": (30, 10),
+    "1d": (15, 5),
+}
+
+# dual_thrust sessions are a UTC day; bars_per_session must follow the TF.
+TF_BARS_PER_SESSION = {"15m": 96, "1h": 24, "4h": 6, "1d": 1}
+
+
+def _tf_slate(tf: str) -> dict:
+    grids = _tf_grids()
+    bps = TF_BARS_PER_SESSION.get(tf, 24)
+    for _cid, ov in grids["dual_thrust"]:
+        ov["bars_per_session"] = bps
+    min_is, min_oos = TF_GATES.get(tf, (30, 10))
+    return {
+        "grids": grids,
+        "grid_file": f"pf_grid_{tf}.jsonl",
+        "finalists_file": f"finalists_{tf}.jsonl",
+        "min_is": min_is,
+        "min_oos": min_oos,
+        "timeframe": tf,
+    }
+
+
 SLATES = {
     "long-short": {
         "grids": PF_GRIDS,
@@ -330,6 +414,7 @@ SLATES = {
         "finalists_file": "finalists.jsonl",
         "min_is": MIN_IS_TRADES,
         "min_oos": MIN_OOS_TRADES,
+        "timeframe": TF,
     },
     "long-only": {
         "grids": LONG_ONLY_GRIDS,
@@ -337,8 +422,12 @@ SLATES = {
         "finalists_file": "finalists_longonly.jsonl",
         "min_is": LONG_ONLY_MIN_IS_TRADES,
         "min_oos": LONG_ONLY_MIN_OOS_TRADES,
+        "timeframe": TF,
     },
 }
+
+for _tf in ("1h", "4h", "1d"):
+    SLATES[f"tf-{_tf}"] = _tf_slate(_tf)
 
 # Selected by --slate; module-level so pool workers inherit it via fork.
 ACTIVE_SLATE = "long-short"
@@ -346,6 +435,11 @@ ACTIVE_SLATE = "long-short"
 
 def slate() -> dict:
     return SLATES[ACTIVE_SLATE]
+
+
+def active_tf() -> str:
+    """Timeframe of the active slate. Everything TF-dependent reads this."""
+    return SLATES[ACTIVE_SLATE].get("timeframe", TF)
 
 
 for _name, _combos in LONG_ONLY_GRIDS.items():
@@ -368,7 +462,7 @@ def _load_frames():
     import pandas as pd
     from xauby.backtest.data import normalize_ohlcv_df
 
-    p15 = os.path.join(OUT_DIR, f"{SYMBOL.lower()}_{TF}.csv")
+    p15 = os.path.join(OUT_DIR, f"{SYMBOL.lower()}_{active_tf()}.csv")
     p1d = os.path.join(OUT_DIR, f"{SYMBOL.lower()}_{REGIME_TF}.csv")
     if not os.path.exists(p15):
         raise SystemExit(f"missing {p15} — run `fetch` first")
@@ -440,7 +534,7 @@ def _run(strategy: str, frame, override: dict, skip_bars: int, cost_scale: float
         engine_config=cfg,
         symbol=SYMBOL,
         strategy_name=strategy,
-        primary_timeframe=TF,
+        primary_timeframe=active_tf(),
         regime_timeframe=None,
         min_bars_override=skip_bars,
         ctx_window_bars=CTX_WINDOW,
@@ -632,7 +726,8 @@ def cmd_grid(only: str | None, jobs: int) -> None:
 # Stage B: finalists on the full span                                         #
 # --------------------------------------------------------------------------- #
 def _fold_bounds(df, n_folds: int) -> list:
-    idx = df.index[df["timestamp"] >= _ts(FULL_START)]
+    idx = df.index[(df["timestamp"] >= _ts(FULL_START))
+                   & (df["timestamp"] < _ts(FULL_END))]
     lo, hi = int(idx[0]), int(idx[-1])
     size = (hi - lo) // n_folds
     return [(lo + i * size, lo + (i + 1) * size) for i in range(n_folds)]
@@ -662,7 +757,7 @@ def eval_finalist_window(item):
             "window": window, "passed_gate": passed_gate}
     try:
         df = _G["df15"]
-        full = _window(df, _ts(FULL_START), None, WARMUP_BARS)
+        full = _window(df, _ts(FULL_START), _ts(FULL_END), WARMUP_BARS)
         frame, skip = full
 
         if window == "full":
@@ -673,7 +768,7 @@ def eval_finalist_window(item):
             return base
 
         if window == "subperiod":
-            sub = _window(df, _ts(SUBPERIOD_START), None, WARMUP_BARS)
+            sub = _window(df, _ts(SUBPERIOD_START), _ts(FULL_END), WARMUP_BARS)
             if sub is None:
                 return {**base, "skipped": True}
             s_frame, s_skip = sub
@@ -1056,7 +1151,7 @@ def cmd_report(md_path: str | None, top: int) -> None:
     emit("| Engine | `run_plugin_replay` (production StrategyRunner + PositionSimulator) |")
     emit(f"| Data | Binance public archive, {SYMBOL} {TF} |")
     emit(f"| Tuning window | {TUNE_START} -> {TUNE_END} (2021 melt-up held out) |")
-    emit(f"| Full span | {FULL_START} -> present |")
+    emit(f"| Full span | {FULL_START} -> {FULL_END} |")
     emit(f"| Context window | {CTX_WINDOW} bars |")
     emit(f"| IS/OOS split | {GRID_SPLIT_RATIO:.0%} / {1-GRID_SPLIT_RATIO:.0%} |")
     emit(f"| Folds | {N_FOLDS} non-overlapping |")

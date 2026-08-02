@@ -257,15 +257,47 @@ class TestBuyAndHold(unittest.TestCase):
 
 class TestLongOnlySlate(unittest.TestCase):
     def test_slate_registry_shape(self):
-        self.assertEqual(sorted(sol15m.SLATES), ["long-only", "long-short"])
+        for name in ("long-only", "long-short", "tf-1h", "tf-4h", "tf-1d"):
+            self.assertIn(name, sol15m.SLATES)
         for name, cfg in sol15m.SLATES.items():
             self.assertNotEqual(cfg["grid_file"], "", name)
             self.assertGreater(len(cfg["grids"]), 0, name)
+            self.assertIn("timeframe", cfg, name)
 
     def test_checkpoints_do_not_collide(self):
-        files = {c["grid_file"] for c in sol15m.SLATES.values()}
-        files |= {c["finalists_file"] for c in sol15m.SLATES.values()}
-        self.assertEqual(len(files), 4, "slates must not share checkpoint files")
+        """A shared checkpoint would silently mix two studies' results."""
+        files = [c["grid_file"] for c in sol15m.SLATES.values()]
+        files += [c["finalists_file"] for c in sol15m.SLATES.values()]
+        self.assertEqual(len(files), len(set(files)),
+                         "slates must not share checkpoint files")
+
+    def test_swept_timeframes_carry_their_own_gates(self):
+        """A fixed trade floor would reject slower books for being slower."""
+        gates = [(sol15m.SLATES[f"tf-{tf}"]["min_is"],
+                  sol15m.TF_GATES[tf][0]) for tf in ("1h", "4h", "1d")]
+        for actual, expected in gates:
+            self.assertEqual(actual, expected)
+        # Monotone: a slower timeframe must not demand more trades.
+        floors = [sol15m.SLATES[f"tf-{tf}"]["min_is"] for tf in ("1h", "4h", "1d")]
+        self.assertEqual(floors, sorted(floors, reverse=True))
+
+    def test_dual_thrust_session_length_follows_the_timeframe(self):
+        """A UTC day is 96 bars at 15m but 6 at 4h; a fixed 96 would be wrong."""
+        for tf, expected in (("1h", 24), ("4h", 6), ("1d", 1)):
+            for _cid, ov in sol15m.SLATES[f"tf-{tf}"]["grids"]["dual_thrust"]:
+                self.assertEqual(ov["bars_per_session"], expected, tf)
+
+    def test_swept_slates_are_long_only(self):
+        for tf in ("1h", "4h", "1d"):
+            for name, combos in sol15m.SLATES[f"tf-{tf}"]["grids"].items():
+                for _cid, ov in combos:
+                    self.assertFalse(ov.get("enable_short", False), f"{tf}/{name}")
+
+    def test_full_end_is_pinned_for_cross_tf_comparability(self):
+        """Different archive lag per TF would otherwise span different periods."""
+        self.assertTrue(sol15m.FULL_END)
+        self.assertGreater(sol15m._ts(sol15m.FULL_END),
+                           sol15m._ts(sol15m.FULL_START))
 
     def test_candidates_are_dual_thrust_and_simple_scalp_plus(self):
         self.assertEqual(sorted(sol15m.LONG_ONLY_GRIDS),

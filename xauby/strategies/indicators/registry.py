@@ -43,6 +43,7 @@ DEFAULT_STRATEGY_CHART_MAP: Dict[str, List[str]] = {
     "squeeze_momentum": ["squeeze_momentum"],
     "ut_bot_atr": ["ut_bot_atr"],
     "dual_thrust": ["dual_thrust"],
+    "elliotv5_ewo": ["elliotv5_ewo"],
 }
 
 
