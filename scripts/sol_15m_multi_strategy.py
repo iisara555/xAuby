@@ -1019,11 +1019,35 @@ def cmd_report(md_path: str | None, top: int) -> None:
         print(text)
 
     today = date.today().isoformat()
-    emit(f"# SOL ({TF}) — 5-strategy comparison, {today}")
+    n_cand = len(slate()["grids"])
+    sides = "long-only" if ACTIVE_SLATE == "long-only" else "long + short"
+    emit(f"# SOL ({TF}) — {n_cand}-strategy {sides} comparison, {today}")
     emit()
-    emit(f"Symbol `{SYMBOL}`, timeframe `{TF}`, long + short, "
-         f"{FULL_START} to present. Ranked on profit factor with low drawdown.")
+    emit(f"Symbol `{SYMBOL}`, timeframe `{TF}`, {sides}, "
+         f"{FULL_START} to present. Ranked on profit factor with low drawdown, "
+         "and judged against buy-and-hold.")
     emit()
+    if ACTIVE_SLATE == "long-only":
+        emit("> **Provenance note.** `simple_scalp_plus` is the 8-point "
+             "confluence scalper ported from **Binance_Cryptonice**, not from "
+             "freqtrade — see its module docstring. Same concept (HullMA, "
+             "EMA9/21, RSI, ADX, MACD, Stochastic, rolling VWAP, volume, all "
+             "genuinely computed), different lineage.")
+        emit()
+        emit(f"> **Gate change, declared before the run.** Trade floors are "
+             f"{LONG_ONLY_MIN_IS_TRADES}/{LONG_ONLY_MIN_OOS_TRADES} here versus "
+             f"{MIN_IS_TRADES}/{MIN_OOS_TRADES} in the long+short study. "
+             "Long-only halves the opportunity set and `dual_thrust` is capped "
+             "at one entry per session. This is a sample-adequacy threshold, "
+             "not a performance one.")
+        emit()
+        emit("> **Inert knobs excluded from the grid.** `min_buy_confidence` is "
+             "coupled to `min_confirmations_buy` via `conf = buy_count/7 + 0.22`, "
+             "so it is pinned low and the count is the sole entry gate. "
+             "`mtf_filter` and `require_macro_bull` are no-ops at "
+             "`regime_timeframe=None`, and `risk_reward` is never read by the "
+             "strategy. Gridding any of them would have duplicated rows.")
+        emit()
 
     emit("## Protocol")
     emit()
@@ -1036,8 +1060,9 @@ def cmd_report(md_path: str | None, top: int) -> None:
     emit(f"| Context window | {CTX_WINDOW} bars |")
     emit(f"| IS/OOS split | {GRID_SPLIT_RATIO:.0%} / {1-GRID_SPLIT_RATIO:.0%} |")
     emit(f"| Folds | {N_FOLDS} non-overlapping |")
-    emit(f"| Gates | IS trades >= {MIN_IS_TRADES}, OOS trades >= {MIN_OOS_TRADES}, "
-         f"both nets > 0, MDD <= {MAX_MDD_PCT}% |")
+    emit(f"| Gates | IS trades >= {slate()['min_is']}, "
+         f"OOS trades >= {slate()['min_oos']}, both nets > 0, "
+         f"MDD <= {MAX_MDD_PCT}% |")
     emit(f"| Configs searched | {n_trials} |")
     emit()
     emit(f"Ranking score: `min(PF_is, PF_oos, PF_full) / (1 + MDD/{MDD_REF:.0f})`, "
@@ -1145,6 +1170,50 @@ def cmd_report(md_path: str | None, top: int) -> None:
         emit(f"| `{row['strategy']}` | {trades} | " + " | ".join(cells) + " |")
     emit()
 
+    emit("## Cost decomposition — where the money goes")
+    emit()
+    emit("The 0.0x column removes fees and slippage entirely. It is not a "
+         "tradeable scenario; it exists to separate two very different "
+         "failures: *no edge at all* versus *a real edge too small to pay for "
+         "its own turnover*. Only the second one points anywhere.")
+    emit()
+    emit("| Strategy | Trades | Gross PF (0.0x) | Gross net | Net after costs "
+         "| Cost drag (pp) |")
+    emit("|---|---|---|---|---|---|")
+    for row in ordered:
+        c = row.get("costs") or {}
+        gross = c.get("0.0x") or {}
+        real = c.get("1.0x") or {}
+        g_net = gross.get("net_profit_pct")
+        r_net = real.get("net_profit_pct")
+        drag = (float(g_net) - float(r_net)) if (g_net is not None and r_net is not None) else None
+        trades = (row.get("full") or {}).get("total_trades")
+        emit(f"| `{row['strategy']}` | {trades} "
+             f"| {_fmt(gross.get('profit_factor'), '.3f')} | {_fmt(g_net)}% "
+             f"| {_fmt(r_net)}% | {_fmt(drag)} |")
+    emit()
+    for row in ordered:
+        c = row.get("costs") or {}
+        gross = c.get("0.0x") or {}
+        gpf = clean_pf(gross)
+        trades = int((row.get("full") or {}).get("total_trades") or 0)
+        if gpf is None:
+            continue
+        if gpf > 1.0:
+            emit(f"* `{row['strategy']}` **does have a gross edge** "
+                 f"(PF {gpf:.3f} before costs) but spreads it across {trades} "
+                 "trades. The edge per trade is far smaller than the ~14bp it "
+                 "costs to take, so the strategy is not broken — it is "
+                 "mis-sized for this timeframe. Any rescue would have to cut "
+                 "turnover hard, use maker fills, or trade a venue where the "
+                 "round trip is a fraction of this one.")
+        else:
+            emit(f"* `{row['strategy']}` **has no gross edge** "
+                 f"(PF {gpf:.3f} even at zero cost). No fee or venue change "
+                 "would rescue it; the signal itself does not predict on this "
+                 "symbol and timeframe.")
+    emit()
+
     if long_rows:
         emit("## Long-only appendix")
         emit()
@@ -1188,11 +1257,11 @@ def cmd_report(md_path: str | None, top: int) -> None:
              "promoted so the negative result carries full-span evidence rather "
              "than an empty table. They are **not** candidates.")
         emit()
-        emit("Read this as a statement about SOL at 15m with these five "
-             "strategies and these cost assumptions — not as a claim that no "
-             "15m strategy can work. The dominant term is the fee bill: a "
-             "round trip costs ~14bp, and configs here turn over hundreds to "
-             "thousands of times per window.")
+        names = ", ".join(f"`{n}`" for n in slate()["grids"])
+        emit(f"Read this as a statement about SOL at 15m with {names} and these "
+             "cost assumptions — not as a claim that no 15m strategy can work. "
+             "The dominant term is the fee bill: a round trip costs ~14bp, and "
+             "configs here turn over hundreds to thousands of times per window.")
         emit()
     if not ordered:
         emit("No finalist results to tabulate.")
@@ -1252,8 +1321,14 @@ def cmd_report(md_path: str | None, top: int) -> None:
                      "That is a risk-adjusted argument, not a return argument, and "
                      "it should only be made explicitly.")
             emit()
-        emit("### Winning strategy_params")
+        emit("### Best-scoring strategy_params"
+             if not gate_passers else "### Winning strategy_params")
         emit()
+        if not gate_passers:
+            emit("**This config did not pass the gates and is not a "
+                 "recommendation.** It is recorded so the run is reproducible "
+                 "and so a future study can start from what was already tried.")
+            emit()
         emit("Research artifact. NOT applied to `coin_whitelist.json` or "
              "`bot_config.yaml`, and NOT certified for live.")
         emit()
@@ -1264,7 +1339,9 @@ def cmd_report(md_path: str | None, top: int) -> None:
                 "strategy": win["strategy"],
                 "primary_timeframe": TF,
                 "mode": "sim",
-                "allowed_sides": ["long", "short"],
+                "allowed_sides": (
+                    ["long"] if ACTIVE_SLATE == "long-only" else ["long", "short"]
+                ),
                 "strategy_params": win["override"],
             }
         }, indent=2, sort_keys=True))
