@@ -283,9 +283,15 @@ class TestLongOnlySlate(unittest.TestCase):
 
     def test_dual_thrust_session_length_follows_the_timeframe(self):
         """A UTC day is 96 bars at 15m but 6 at 4h; a fixed 96 would be wrong."""
-        for tf, expected in (("1h", 24), ("4h", 6), ("1d", 1)):
+        for tf, expected in (("1h", 24), ("4h", 6)):
             for _cid, ov in sol15m.SLATES[f"tf-{tf}"]["grids"]["dual_thrust"]:
                 self.assertEqual(ov["bars_per_session"], expected, tf)
+
+    def test_dual_thrust_is_excluded_from_1d(self):
+        """At 1d one bar IS one session, so the strategy is undefined there and
+        its own validate_config rejects bars_per_session=1."""
+        self.assertNotIn("dual_thrust", sol15m.SLATES["tf-1d"]["grids"])
+        self.assertIn("elliotv5_ewo", sol15m.SLATES["tf-1d"]["grids"])
 
     def test_swept_slates_are_long_only(self):
         for tf in ("1h", "4h", "1d"):
