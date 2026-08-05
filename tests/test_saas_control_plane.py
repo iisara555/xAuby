@@ -899,7 +899,9 @@ class SaaSControlPlaneTests(unittest.TestCase):
 
     def test_admin_remove_pilot_revokes_access_and_frees_email_without_reusing_workspace(self):
         email = "remove-me@example.com"
-        pilot = self._create_password_user(email, "Sup3rSecurePw!")
+        self._create_password_user(email, "Sup3rSecurePw!")
+        pilot = self.store.user_by_email(email)
+        self.assertIsNotNone(pilot)
         tenant, _ = self.store.ensure_tenant(pilot["id"], "remove-me")
         self.supervisor.provision(tenant["slug"])
         self.store.set_exchange_connection(
@@ -978,7 +980,10 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertEqual(replacement_tenant["slug"], f"{tenant['slug']}-2")
 
     def test_admin_remove_pilot_requires_suspend_and_exact_email_and_forbids_owner(self):
-        pilot = self._create_password_user("guarded@example.com", "Sup3rSecurePw!")
+        email = "guarded@example.com"
+        self._create_password_user(email, "Sup3rSecurePw!")
+        pilot = self.store.user_by_email(email)
+        self.assertIsNotNone(pilot)
         without_csrf = self.client.request(
             "DELETE",
             f"/api/v1/admin/users/{pilot['id']}",
@@ -1016,7 +1021,10 @@ class SaaSControlPlaneTests(unittest.TestCase):
         self.assertIsNotNone(self.store.user_by_id(pilot["id"]))
 
     def test_admin_remove_pilot_fails_closed_when_engine_cannot_be_stopped(self):
-        pilot = self._create_password_user("stop-first@example.com", "Sup3rSecurePw!")
+        email = "stop-first@example.com"
+        self._create_password_user(email, "Sup3rSecurePw!")
+        pilot = self.store.user_by_email(email)
+        self.assertIsNotNone(pilot)
         tenant, _ = self.store.ensure_tenant(pilot["id"], "stop-first")
         owner = self.store.user_by_email("owner@example.com")
         self.store.set_account_status(pilot["id"], "suspended", owner["id"])
