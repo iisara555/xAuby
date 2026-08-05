@@ -80,6 +80,9 @@ class ControlPlaneStore:
                     pin_locked_until REAL NOT NULL DEFAULT 0,
                     login_failures INTEGER NOT NULL DEFAULT 0,
                     login_locked_until REAL NOT NULL DEFAULT 0,
+                    original_email TEXT,
+                    deleted_at REAL,
+                    deleted_by_user_id TEXT,
                     created_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS tenants (
@@ -88,7 +91,8 @@ class ControlPlaneStore:
                     status TEXT NOT NULL DEFAULT 'queued',
                     live_status TEXT NOT NULL DEFAULT 'not_requested',
                     exchange_id TEXT NOT NULL DEFAULT 'okx',
-                    market_type TEXT NOT NULL DEFAULT 'swap', created_at REAL NOT NULL
+                    market_type TEXT NOT NULL DEFAULT 'swap',
+                    deleted_at REAL, created_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
@@ -182,6 +186,9 @@ class ControlPlaneStore:
                 "pending_totp_secret": "TEXT",
                 "login_failures": "INTEGER NOT NULL DEFAULT 0",
                 "login_locked_until": "REAL NOT NULL DEFAULT 0",
+                "original_email": "TEXT",
+                "deleted_at": "REAL",
+                "deleted_by_user_id": "TEXT",
             }
             for name, declaration in additions.items():
                 if name not in columns:
@@ -203,6 +210,9 @@ class ControlPlaneStore:
                     conn.execute(
                         f"ALTER TABLE exchange_connections ADD COLUMN {name} {declaration}"
                     )
+            tenant_columns = {row[1] for row in conn.execute("PRAGMA table_info(tenants)")}
+            if "deleted_at" not in tenant_columns:
+                conn.execute("ALTER TABLE tenants ADD COLUMN deleted_at REAL")
             pool_columns = {row[1] for row in conn.execute("PRAGMA table_info(strategy_pools)")}
             if "revision" not in pool_columns:
                 conn.execute(
@@ -304,16 +314,21 @@ class ControlPlaneStore:
     def user_by_email(self, email: str) -> dict[str, Any] | None:
         with self.connection() as conn:
             return self._row(conn.execute(
-                "SELECT * FROM users WHERE email=?", (str(email).strip().lower(),)
+                "SELECT * FROM users WHERE email=? AND deleted_at IS NULL",
+                (str(email).strip().lower(),),
             ).fetchone())
 
     def user_by_id(self, user_id: str) -> dict[str, Any] | None:
         with self.connection() as conn:
-            return self._row(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+            return self._row(conn.execute(
+                "SELECT * FROM users WHERE id=? AND deleted_at IS NULL", (user_id,)
+            ).fetchone())
 
     def user_count(self) -> int:
         with self.connection() as conn:
-            return int(conn.execute("SELECT count(*) FROM users").fetchone()[0])
+            return int(conn.execute(
+                "SELECT count(*) FROM users WHERE deleted_at IS NULL"
+            ).fetchone()[0])
 
     def update_user_appearance(
         self,
@@ -552,6 +567,80 @@ class ControlPlaneStore:
                    payload={"target_user_id": user_id, "status": status})
         return self.user_by_id(user_id) or {}
 
+    def remove_pilot(self, user_id: str, admin_user_id: str) -> dict[str, Any]:
+        """Revoke and tombstone a suspended pilot without breaking audit history.
+
+        Foreign-keyed history stays intact, while the login identity, credentials,
+        sessions, pending commands, and capacity slot are removed. Keeping the
+        tenant slug reserved prevents a future invitation from inheriting the old
+        tenant's on-disk workspace; ``ensure_tenant`` will allocate a suffixed slug.
+        """
+        now = time.time()
+        tombstone_email = f"removed+{user_id}@deleted.invalid"
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            user = conn.execute(
+                "SELECT * FROM users WHERE id=? AND deleted_at IS NULL", (user_id,)
+            ).fetchone()
+            if user is None:
+                raise KeyError("user not found")
+            if user["role"] == "platform_admin":
+                raise ValueError("owner account cannot be removed")
+            if user["account_status"] != "suspended":
+                raise ValueError("pilot must be suspended before removal")
+            tenant = conn.execute(
+                "SELECT * FROM tenants WHERE owner_user_id=? AND deleted_at IS NULL",
+                (user_id,),
+            ).fetchone()
+
+            conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM auth_tokens WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM recovery_codes WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM order_challenges WHERE user_id=?", (user_id,))
+            conn.execute(
+                "UPDATE invitations SET status='revoked' WHERE email=? AND status='pending'",
+                (user["email"],),
+            )
+            if tenant is not None:
+                conn.execute(
+                    "DELETE FROM exchange_connections WHERE tenant_id=?", (tenant["id"],)
+                )
+                conn.execute(
+                    "DELETE FROM telegram_connections WHERE tenant_id=?", (tenant["id"],)
+                )
+                conn.execute(
+                    "DELETE FROM order_challenges WHERE tenant_id=?", (tenant["id"],)
+                )
+                conn.execute(
+                    "UPDATE tenants SET status='removed',live_status='not_requested',deleted_at=? "
+                    "WHERE id=?",
+                    (now, tenant["id"]),
+                )
+
+            conn.execute(
+                "UPDATE users SET original_email=email,email=?,google_sub=NULL,"
+                "display_name=NULL,avatar_ext=NULL,password_hash=NULL,email_verified=0,"
+                "account_status='removed',totp_secret=NULL,totp_enabled=0,"
+                "pending_totp_secret=NULL,pending_email=NULL,trade_pin_hash=NULL,"
+                "pin_failures=0,pin_locked_until=0,login_failures=0,login_locked_until=0,"
+                "deleted_at=?,deleted_by_user_id=? WHERE id=?",
+                (tombstone_email, now, admin_user_id, user_id),
+            )
+            result = {
+                "user_id": user_id,
+                "email": str(user["email"]),
+                "tenant_id": str(tenant["id"]) if tenant is not None else None,
+                "tenant_slug": str(tenant["slug"]) if tenant is not None else None,
+                "deleted_at": now,
+            }
+        self.audit(
+            "pilot_removed",
+            tenant_id=str(tenant["id"]) if tenant is not None else None,
+            user_id=admin_user_id,
+            payload={"target_user_id": user_id},
+        )
+        return result
+
     def begin_email_change(self, user_id: str, new_email: str) -> str:
         normalized = str(new_email or "").strip().lower()
         if "@" not in normalized or self.user_by_email(normalized):
@@ -776,7 +865,7 @@ class ControlPlaneStore:
                 """
                 SELECT u.*, s.csrf_token, s.mfa_verified, s.expires_at
                 FROM sessions s JOIN users u ON u.id=s.user_id
-                WHERE s.token_hash=? AND s.expires_at>=?
+                WHERE s.token_hash=? AND s.expires_at>=? AND u.deleted_at IS NULL
                 """,
                 (token_hash(token), time.time()),
             ).fetchone()
@@ -792,20 +881,27 @@ class ControlPlaneStore:
 
     def tenant_for_user(self, user_id: str) -> dict[str, Any] | None:
         with self.connection() as conn:
-            return self._row(conn.execute("SELECT * FROM tenants WHERE owner_user_id=?", (user_id,)).fetchone())
+            return self._row(conn.execute(
+                "SELECT * FROM tenants WHERE owner_user_id=? AND deleted_at IS NULL", (user_id,)
+            ).fetchone())
 
     def tenant_by_id(self, tenant_id: str) -> dict[str, Any] | None:
         with self.connection() as conn:
-            return self._row(conn.execute("SELECT * FROM tenants WHERE id=?", (tenant_id,)).fetchone())
+            return self._row(conn.execute(
+                "SELECT * FROM tenants WHERE id=? AND deleted_at IS NULL", (tenant_id,)
+            ).fetchone())
 
     def tenant_by_slug(self, slug: str) -> dict[str, Any] | None:
         with self.connection() as conn:
-            return self._row(conn.execute("SELECT * FROM tenants WHERE slug=?", (slug,)).fetchone())
+            return self._row(conn.execute(
+                "SELECT * FROM tenants WHERE slug=? AND deleted_at IS NULL", (slug,)
+            ).fetchone())
 
     def list_tenants(self) -> list[dict[str, Any]]:
         with self.connection() as conn:
             rows = conn.execute(
-                "SELECT t.*,u.email AS owner_email FROM tenants t JOIN users u ON u.id=t.owner_user_id ORDER BY t.created_at"
+                "SELECT t.*,u.email AS owner_email FROM tenants t JOIN users u ON u.id=t.owner_user_id "
+                "WHERE t.deleted_at IS NULL AND u.deleted_at IS NULL ORDER BY t.created_at"
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -813,7 +909,7 @@ class ControlPlaneStore:
         with self.connection() as conn:
             rows = conn.execute(
                 "SELECT id,email,role,email_verified,account_status,totp_enabled,created_at "
-                "FROM users ORDER BY created_at"
+                "FROM users WHERE deleted_at IS NULL ORDER BY created_at"
             ).fetchall()
         return [dict(row) for row in rows]
 

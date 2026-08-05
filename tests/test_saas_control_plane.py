@@ -897,6 +897,151 @@ class SaaSControlPlaneTests(unittest.TestCase):
         finally:
             pilot.close()
 
+    def test_admin_remove_pilot_revokes_access_and_frees_email_without_reusing_workspace(self):
+        email = "remove-me@example.com"
+        self._create_password_user(email, "Sup3rSecurePw!")
+        pilot = self.store.user_by_email(email)
+        self.assertIsNotNone(pilot)
+        tenant, _ = self.store.ensure_tenant(pilot["id"], "remove-me")
+        self.supervisor.provision(tenant["slug"])
+        self.store.set_exchange_connection(
+            tenant["id"], "okx", "1234", credential_blob="encrypted-exchange-secret"
+        )
+        self.store.set_telegram_connection(
+            tenant["id"], "123456", "5678", credential_blob="encrypted-bot-secret"
+        )
+        self.store.set_account_status(pilot["id"], "suspended", self.store.user_by_email("owner@example.com")["id"])
+        session_token, _ = self.store.create_session(pilot["id"])
+        self.store.create_auth_token(pilot["id"], "password_reset", ttl_seconds=3600)
+        self.store.create_challenge(
+            tenant["id"], pilot["id"], {"symbol": "BTCUSDT", "intent": "OPEN_LONG"}
+        )
+        credential_path = self.supervisor.credential_path(tenant["slug"])
+        credential_path.parent.mkdir(parents=True, exist_ok=True)
+        credential_path.write_text("MATERIALIZED=placeholder\n", encoding="utf-8")
+        avatar_path = self.settings.data_root / "avatars" / f"{pilot['id']}.png"
+        avatar_path.write_bytes(b"avatar")
+
+        removed = self.client.request(
+            "DELETE",
+            f"/api/v1/admin/users/{pilot['id']}",
+            headers=self.headers,
+            json={"confirm_email": email},
+        )
+        self.assertEqual(removed.status_code, 200, removed.text)
+        self.assertTrue(removed.json()["email_available"])
+        self.assertEqual(removed.json()["workspace"], "archived")
+        self.assertIsNone(self.store.user_by_id(pilot["id"]))
+        self.assertIsNone(self.store.user_by_email(email))
+        self.assertIsNone(self.store.session(session_token))
+        self.assertIsNone(self.store.tenant_for_user(pilot["id"]))
+        self.assertEqual(self.store.user_count(), 1)
+        self.assertFalse(credential_path.exists())
+        self.assertFalse(avatar_path.exists())
+        self.assertTrue(self.supervisor.config_dir(tenant["slug"]).exists())
+        self.assertNotIn(pilot["id"], {item["id"] for item in self.store.list_users()})
+        self.assertNotIn(tenant["id"], {item["id"] for item in self.store.list_tenants()})
+        self.assertIsNone(self.store.exchange_connection(tenant["id"]))
+        self.assertIsNone(self.store.telegram_connection(tenant["id"]))
+
+        with self.store.connection() as conn:
+            raw_user = conn.execute(
+                "SELECT * FROM users WHERE id=?", (pilot["id"],)
+            ).fetchone()
+            raw_tenant = conn.execute(
+                "SELECT * FROM tenants WHERE id=?", (tenant["id"],)
+            ).fetchone()
+            pending_security_rows = conn.execute(
+                "SELECT "
+                "(SELECT count(*) FROM auth_tokens WHERE user_id=?) + "
+                "(SELECT count(*) FROM order_challenges WHERE user_id=?)",
+                (pilot["id"], pilot["id"]),
+            ).fetchone()[0]
+            audit = conn.execute(
+                "SELECT payload_json FROM audit_events WHERE event_type='pilot_removed' "
+                "ORDER BY seq DESC LIMIT 1"
+            ).fetchone()
+        self.assertEqual(raw_user["original_email"], email)
+        self.assertNotEqual(raw_user["email"], email)
+        self.assertEqual(raw_user["account_status"], "removed")
+        self.assertIsNotNone(raw_user["deleted_at"])
+        self.assertIsNone(raw_user["password_hash"])
+        self.assertEqual(raw_tenant["slug"], tenant["slug"])
+        self.assertEqual(raw_tenant["status"], "removed")
+        self.assertIsNotNone(raw_tenant["deleted_at"])
+        self.assertEqual(pending_security_rows, 0)
+        self.assertEqual(json.loads(audit["payload_json"])["target_user_id"], pilot["id"])
+
+        owner = self.store.user_by_email("owner@example.com")
+        invite, token = self.store.create_invite(email, owner["id"])
+        self.assertEqual(invite["email"], email)
+        replacement = self.store.accept_invite(token, google_sub="replacement-google-sub")
+        replacement_tenant, _ = self.store.ensure_tenant(replacement["id"], tenant["slug"])
+        self.assertEqual(replacement_tenant["slug"], f"{tenant['slug']}-2")
+
+    def test_admin_remove_pilot_requires_suspend_and_exact_email_and_forbids_owner(self):
+        email = "guarded@example.com"
+        self._create_password_user(email, "Sup3rSecurePw!")
+        pilot = self.store.user_by_email(email)
+        self.assertIsNotNone(pilot)
+        without_csrf = self.client.request(
+            "DELETE",
+            f"/api/v1/admin/users/{pilot['id']}",
+            json={"confirm_email": pilot["email"]},
+        )
+        self.assertEqual(without_csrf.status_code, 403)
+
+        active = self.client.request(
+            "DELETE",
+            f"/api/v1/admin/users/{pilot['id']}",
+            headers=self.headers,
+            json={"confirm_email": pilot["email"]},
+        )
+        self.assertEqual(active.status_code, 409)
+        self.assertIn("suspend", active.json()["detail"])
+
+        owner = self.store.user_by_email("owner@example.com")
+        protected = self.client.request(
+            "DELETE",
+            f"/api/v1/admin/users/{owner['id']}",
+            headers=self.headers,
+            json={"confirm_email": owner["email"]},
+        )
+        self.assertEqual(protected.status_code, 409)
+        self.assertIn("owner", protected.json()["detail"])
+
+        self.store.set_account_status(pilot["id"], "suspended", owner["id"])
+        mismatch = self.client.request(
+            "DELETE",
+            f"/api/v1/admin/users/{pilot['id']}",
+            headers=self.headers,
+            json={"confirm_email": "different@example.com"},
+        )
+        self.assertEqual(mismatch.status_code, 422)
+        self.assertIsNotNone(self.store.user_by_id(pilot["id"]))
+
+    def test_admin_remove_pilot_fails_closed_when_engine_cannot_be_stopped(self):
+        email = "stop-first@example.com"
+        self._create_password_user(email, "Sup3rSecurePw!")
+        pilot = self.store.user_by_email(email)
+        self.assertIsNotNone(pilot)
+        tenant, _ = self.store.ensure_tenant(pilot["id"], "stop-first")
+        owner = self.store.user_by_email("owner@example.com")
+        self.store.set_account_status(pilot["id"], "suspended", owner["id"])
+
+        with patch.object(self.supervisor, "stop", side_effect=RuntimeError("systemctl failed")):
+            response = self.client.request(
+                "DELETE",
+                f"/api/v1/admin/users/{pilot['id']}",
+                headers=self.headers,
+                json={"confirm_email": pilot["email"]},
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("engine is stopped", response.json()["detail"])
+        self.assertIsNotNone(self.store.user_by_id(pilot["id"]))
+        self.assertIsNotNone(self.store.tenant_by_id(tenant["id"]))
+
     def test_recovery_code_replaces_totp_and_is_single_use(self):
         user = self._create_password_user("mfa-user@example.com", "Sup3rSecurePw!")
         self.store.set_totp_secret(user["id"], "JBSWY3DPEHPK3PXP")
