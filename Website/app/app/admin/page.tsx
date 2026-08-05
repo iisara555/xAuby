@@ -1,7 +1,8 @@
 "use client";
 
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { FormEvent, useEffect, useState } from "react";
-import { Check, Copy, KeyRound, MailPlus, Rocket, UsersRound } from "lucide-react";
+import { Check, Copy, KeyRound, MailPlus, Rocket, Trash2, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
@@ -31,6 +32,12 @@ type AdminTenant = {
   created_at: number;
 };
 type Tenants = { items: AdminTenant[]; capacity: number; active: number };
+type RemovePilotResult = {
+  ok: boolean;
+  email: string;
+  email_available: boolean;
+  workspace: "archived";
+};
 
 function tenantStatusTone(status: string): "good" | "warn" | "bad" | "neutral" {
   if (status === "running") return "good";
@@ -66,6 +73,8 @@ export default function AdminPage() {
   const [copied, setCopied] = useState(false);
   const [opsStatus, setOpsStatus] = useState("");
   const [opsBusyId, setOpsBusyId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<Pilot | null>(null);
+  const [removeConfirmation, setRemoveConfirmation] = useState("");
 
   async function approveLive(tenantId: string) {
     setOpsBusyId(tenantId);
@@ -99,6 +108,28 @@ export default function AdminPage() {
       await Promise.all([mutate(), mutateTenants()]);
     } catch (reason) {
       setOpsStatus(reason instanceof Error ? reason.message : "Status change failed");
+    } finally {
+      setOpsBusyId(null);
+    }
+  }
+
+  async function removePilot(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!removeTarget) return;
+    setOpsBusyId(removeTarget.id);
+    setOpsStatus("");
+    try {
+      const result = await api<RemovePilotResult>(`/api/v1/admin/users/${removeTarget.id}`, {
+        method: "DELETE",
+        headers: csrfHeaders(user),
+        body: JSON.stringify({ confirm_email: removeConfirmation }),
+      });
+      setOpsStatus(`${result.email} removed. The email can now be invited again.`);
+      setRemoveTarget(null);
+      setRemoveConfirmation("");
+      await Promise.all([mutate(), mutateTenants()]);
+    } catch (reason) {
+      setOpsStatus(reason instanceof Error ? reason.message : "Pilot removal failed");
     } finally {
       setOpsBusyId(null);
     }
@@ -237,9 +268,16 @@ export default function AdminPage() {
                     {opsBusyId === pilot.id ? "…" : "Suspend"}
                   </button>
                 ) : (
-                  <button type="button" className="button-secondary row-action" disabled={opsBusyId === pilot.id} onClick={() => setPilotStatus(pilot.id, "active")}>
-                    {opsBusyId === pilot.id ? "…" : "Reactivate"}
-                  </button>
+                  <>
+                    <button type="button" className="button-secondary row-action" disabled={opsBusyId === pilot.id} onClick={() => setPilotStatus(pilot.id, "active")}>
+                      {opsBusyId === pilot.id ? "…" : "Reactivate"}
+                    </button>
+                    {pilot.account_status === "suspended" && (
+                      <button type="button" className="button-danger row-action" disabled={opsBusyId === pilot.id} onClick={() => { setRemoveTarget(pilot); setRemoveConfirmation(""); setOpsStatus(""); }}>
+                        <Trash2 size={13} />Remove
+                      </button>
+                    )}
+                  </>
                 )
               )}
             </span>
@@ -270,6 +308,55 @@ export default function AdminPage() {
           </div>
         </article>
       </section>
+
+      <AlertDialog.Root
+        open={Boolean(removeTarget)}
+        onOpenChange={(open) => {
+          if (!open && !opsBusyId) {
+            setRemoveTarget(null);
+            setRemoveConfirmation("");
+          }
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="dialog-overlay" />
+          <AlertDialog.Content className="dialog-content">
+            <AlertDialog.Title>Remove this pilot?</AlertDialog.Title>
+            <AlertDialog.Description>
+              Access, sessions, exchange keys and Telegram credentials will be revoked. The old workspace is archived for audit safety, and this email can be invited again.
+            </AlertDialog.Description>
+            <form className="remove-pilot-form" onSubmit={removePilot}>
+              <label htmlFor="remove-pilot-confirmation">
+                Type <strong>{removeTarget?.email}</strong> to confirm
+              </label>
+              <input
+                id="remove-pilot-confirmation"
+                type="email"
+                autoComplete="off"
+                spellCheck={false}
+                value={removeConfirmation}
+                onChange={(event) => setRemoveConfirmation(event.target.value)}
+                placeholder={removeTarget?.email}
+                autoFocus
+              />
+              <div className="dialog-actions">
+                <AlertDialog.Cancel className="button-secondary" type="button" disabled={Boolean(opsBusyId)}>Cancel</AlertDialog.Cancel>
+                <button
+                  className="button-danger"
+                  type="submit"
+                  disabled={
+                    !removeTarget
+                    || Boolean(opsBusyId)
+                    || removeConfirmation.trim().toLowerCase() !== removeTarget.email.trim().toLowerCase()
+                  }
+                >
+                  {opsBusyId === removeTarget?.id ? "Removing…" : "Remove pilot"}
+                </button>
+              </div>
+            </form>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </div>
   );
 }

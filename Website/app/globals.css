@@ -208,9 +208,13 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 /* Admin */
 .admin-grid { display: grid; gap: 18px; }.invite-card, .users-card { padding: 26px; }.invite-card > svg { color: var(--accent); }.invite-card > div { margin: 20px 0; }.invite-card h2 { margin: 7px 0; font-size: 25px; }.invite-card p { margin: 0; color: var(--label); font-size: var(--fs-body); }.invite-form { display: grid; grid-template-columns: 1fr auto; gap: 9px; }.user-list { margin-top: 20px; display: grid; }.user-list > div { min-height: 67px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; border-top: 1px solid var(--line); }.avatar { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; }.user-list > div > span:nth-child(2) { display: grid; gap: 3px; }.user-list strong { font-size: var(--fs-value); }.user-list small { color: var(--label); font-size: var(--fs-label); }
 .admin-gate-card { max-width: 680px; padding: 28px; display: grid; gap: 20px; }.admin-gate-card > svg { color: var(--accent); }.admin-gate-card > div span, .invite-result > div:first-child > span { color: var(--accent); font-size: var(--fs-label); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }.admin-gate-card h2 { margin: 7px 0; font-size: 25px; }.admin-gate-card p { margin: 0; color: var(--label); font-size: var(--fs-body); }.admin-gate-card > .button-primary { width: fit-content; }.admin-mfa-form { max-width: 410px; display: grid; grid-template-columns: 1fr auto; gap: 9px; }.admin-mfa-form input { font-variant-numeric: tabular-nums; letter-spacing: .18em; }
-.user-row-actions { display: flex; align-items: center; gap: 8px; }
+.user-row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .row-action { min-height: 30px; padding: 0 12px; font-size: var(--fs-label); font-weight: 600; border-radius: 8px; }
 .row-action-spacer { display: inline-block; width: 1px; }
+.remove-pilot-form { display: grid; gap: 12px; }
+.remove-pilot-form label { color: var(--label); font-size: var(--fs-label); line-height: 1.5; }
+.remove-pilot-form label strong { color: var(--paper); overflow-wrap: anywhere; }
+.remove-pilot-form .dialog-actions { margin-top: 8px; }
 .tenants-card { padding: 26px; }
 .tenant-list { margin-top: 16px; display: grid; }
 .tenant-list > div { min-height: 60px; display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 11px; border-top: 1px solid var(--line); }

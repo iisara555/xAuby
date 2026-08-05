@@ -231,6 +231,10 @@ class AccountStatusBody(BaseModel):
     status: str = Field(pattern="^(active|rejected|suspended)$")
 
 
+class RemovePilotBody(BaseModel):
+    confirm_email: str = Field(min_length=5, max_length=254)
+
+
 LIVE_ADDITIVE_RISK_KEYS = (
     "risk_pct",
     "max_position_per_trade_pct",
@@ -2307,6 +2311,56 @@ def create_app(
                 store.update_tenant(tenant["id"], status="stopped", live_status="not_requested")
                 supervisor.set_sim_mode(tenant["slug"])
         return {"ok": True, "user": updated, "tenant": store.tenant_for_user(user_id)}
+
+    @app.delete("/api/v1/admin/users/{user_id}")
+    def admin_remove_pilot(user_id: str, body: RemovePilotBody,
+                           user: dict[str, Any] = Depends(admin_user)):
+        target = store.user_by_id(user_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="user not found")
+        if target.get("role") == "platform_admin":
+            raise HTTPException(status_code=409, detail="owner account cannot be removed")
+        if target.get("account_status") != "suspended":
+            raise HTTPException(
+                status_code=409, detail="suspend the pilot before removing the account"
+            )
+        if str(body.confirm_email).strip().lower() != str(target["email"]).strip().lower():
+            raise HTTPException(status_code=422, detail="confirmation email does not match")
+
+        tenant = store.tenant_for_user(user_id)
+        if tenant is not None:
+            try:
+                supervisor.stop(tenant["slug"])
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="could not verify that the tenant engine is stopped",
+                ) from exc
+            store.update_tenant(
+                tenant["id"], status="stopped", live_status="not_requested"
+            )
+
+        try:
+            removed = store.remove_pilot(user_id, str(user["id"]))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="user not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        # Avatar bytes are not part of the relational tombstone and have no
+        # audit value. Remove every supported extension so stale files cannot
+        # survive a prior interrupted appearance update.
+        for ext in ("png", "jpg", "webp"):
+            try:
+                (avatar_root / f"{user_id}.{ext}").unlink(missing_ok=True)
+            except OSError:
+                logger.exception("could not remove avatar for deleted pilot %s", user_id)
+        return {
+            "ok": True,
+            "email": removed["email"],
+            "email_available": True,
+            "workspace": "archived",
+        }
 
     @app.get("/api/v1/admin/tenants")
     def admin_tenants(user: dict[str, Any] = Depends(admin_read_user)):
