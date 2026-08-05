@@ -635,13 +635,9 @@ class ControlPlaneStore:
             }
         self.audit(
             "pilot_removed",
-            tenant_id=result["tenant_id"],
+            tenant_id=str(tenant["id"]) if tenant is not None else None,
             user_id=admin_user_id,
-            payload={
-                "target_user_id": user_id,
-                "email": result["email"],
-                "tenant_slug": result["tenant_slug"],
-            },
+            payload={"target_user_id": user_id},
         )
         return result
 
