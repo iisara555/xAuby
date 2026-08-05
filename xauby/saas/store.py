@@ -223,35 +223,10 @@ class ControlPlaneStore:
     def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
         return dict(row) if row is not None else None
 
-    @staticmethod
-    def _append_audit(
-        conn: sqlite3.Connection,
-        event_type: str,
-        *,
-        tenant_id: str | None = None,
-        user_id: str | None = None,
-        payload: dict[str, Any] | None = None,
-    ) -> None:
-        created = time.time()
-        payload_json = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
-        previous = conn.execute(
-            "SELECT event_hash FROM audit_events ORDER BY seq DESC LIMIT 1"
-        ).fetchone()
-        previous_hash = str(previous[0]) if previous else "GENESIS"
-        digest = order_digest(
-            {
-                "previous": previous_hash, "tenant": tenant_id, "user": user_id,
-                "event": event_type, "payload": payload_json, "created": created,
-            }
-        )
-        conn.execute(
-            "INSERT INTO audit_events (tenant_id,user_id,event_type,payload_json,previous_hash,event_hash,created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (tenant_id, user_id, event_type, payload_json, previous_hash, digest, created),
-        )
-
     def audit(self, event_type: str, *, tenant_id: str | None = None,
               user_id: str | None = None, payload: dict[str, Any] | None = None) -> None:
+        created = time.time()
+        payload_json = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"))
         with self.connection() as conn:
             # The chain read below decides what this row commits, so the write
             # lock has to be held from the start. Under a DEFERRED transaction
@@ -260,12 +235,20 @@ class ControlPlaneStore:
             # two audits reading the same previous_hash would fork the
             # tamper-evident chain silently.
             conn.execute("BEGIN IMMEDIATE")
-            self._append_audit(
-                conn,
-                event_type,
-                tenant_id=tenant_id,
-                user_id=user_id,
-                payload=payload,
+            previous = conn.execute(
+                "SELECT event_hash FROM audit_events ORDER BY seq DESC LIMIT 1"
+            ).fetchone()
+            previous_hash = str(previous[0]) if previous else "GENESIS"
+            digest = order_digest(
+                {
+                    "previous": previous_hash, "tenant": tenant_id, "user": user_id,
+                    "event": event_type, "payload": payload_json, "created": created,
+                }
+            )
+            conn.execute(
+                "INSERT INTO audit_events (tenant_id,user_id,event_type,payload_json,previous_hash,event_hash,created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (tenant_id, user_id, event_type, payload_json, previous_hash, digest, created),
             )
 
     def bootstrap_owner(self, email: str, slug: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -650,17 +633,16 @@ class ControlPlaneStore:
                 "tenant_slug": str(tenant["slug"]) if tenant is not None else None,
                 "deleted_at": now,
             }
-            self._append_audit(
-                conn,
-                "pilot_removed",
-                tenant_id=result["tenant_id"],
-                user_id=admin_user_id,
-                payload={
-                    "target_user_id": user_id,
-                    "email": result["email"],
-                    "tenant_slug": result["tenant_slug"],
-                },
-            )
+        self.audit(
+            "pilot_removed",
+            tenant_id=result["tenant_id"],
+            user_id=admin_user_id,
+            payload={
+                "target_user_id": user_id,
+                "email": result["email"],
+                "tenant_slug": result["tenant_slug"],
+            },
+        )
         return result
 
     def begin_email_change(self, user_id: str, new_email: str) -> str:
