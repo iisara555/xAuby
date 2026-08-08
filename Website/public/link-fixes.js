@@ -1,761 +1,455 @@
 (() => {
-  const sourceUrl = "https://github.com/iisara555/xAuby";
-  // A Stripe-hosted payment link, so this is a plain outbound navigation and
-  // nothing has to be loaded from Stripe. Embedding Checkout or a pricing
-  // table would need js.stripe.com, which the page's CSP (script-src 'self',
-  // set in Website/next.config.ts) blocks — and relaxing that for a donate
-  // widget would weaken the whole page.
-  const donateUrl = "https://donate.stripe.com/4gM9AU5lOc2s9o88d74Ni00";
+  const SOURCE_URL = "https://github.com/iisara555/xAuby";
+  const SUPPORT_URL = "https://donate.stripe.com/4gM9AU5lOc2s9o88d74Ni00";
 
-  // The product UI (Website/app/globals.css) is built on cut corners, not
-  // rounded rectangles — the landing page's own design agrees, using radius
-  // only for 50% dots. We tag surfaces here and let CSS own the geometry, so
-  // the treatment survives after the MutationObserver disconnects.
-  const CONTROL_TAGS = new Set(["BUTTON", "INPUT", "SELECT", "TEXTAREA"]);
-  // Below this, an element is typography or a chip, not a surface. The old
-  // blanket selector matched inline-gradient text spans, which is exactly how
-  // a corner treatment ends up on a headline.
-  const MIN_SURFACE = 96;
+  const NAV_ITEMS = [
+    ["#system", "Trading"],
+    ["#architecture", "Platform"],
+    ["#risk", "Risk"],
+    ["#evidence", "Evidence"],
+    ["#roadmap", "Roadmap"],
+    ["#workspace", "Workspace"],
+    ["#support", "Support"],
+  ];
 
-  const tagCutCorners = (element) => {
-    if (element.dataset.xnCut) return;
-    const inlineStyle = element.getAttribute("style") || "";
-    if (inlineStyle.includes("border-radius: 50%") || element.style.borderRadius === "50%") return;
-    // Never clip the pinned hero or any scroll-pinned ancestor: clip-path
-    // establishes a containing block and would break sticky positioning.
-    if (element.closest("[data-hero-scrub], .xn-hero-sticky")) return;
+  const PITCH_MARKUP = `
+    <section class="xn-hero-scrub" data-hero-scrub aria-labelledby="hero-heading">
+      <div class="xn-hero-sticky">
+        <div class="xn-hero-inner">
+          <div class="xn-hero-content">
+            <p class="xn-hero-kicker">Owner-operated live system · OKX · gold + bitcoin</p>
+            <h1 id="hero-heading" class="xn-hero-title">Real capital.<br>Reproducible evidence<span style="color:#ff431a;">.</span></h1>
+            <p class="xn-hero-text">xAuby is an open-source trading platform already executing its founder's capital through two certified 4-hour systems. Its edge is governance: a live preset is tied to a reproducible certificate, every decision is persisted, and execution can be replayed from signal to fill. The mission is not to sell a backtest. It is to build the evidence layer automated trading is missing.</p>
+            <div class="xn-hero-actions">
+              <a href="#system">See how it trades</a>
+              <a href="#roadmap">Why back the roadmap</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    if (CONTROL_TAGS.has(element.tagName)) {
-      element.dataset.xnCut = "control";
-      return;
-    }
-    const rect = element.getBoundingClientRect();
-    if (rect.width < MIN_SURFACE || rect.height < MIN_SURFACE) return;
-    if (window.getComputedStyle(element).position === "sticky") return;
-    element.dataset.xnCut = "card";
-  };
+    <section id="pitch-proof" class="xp-proof" aria-label="Current production footprint">
+      <p class="xp-proof-label">Production footprint · verified from the owner tenant configuration</p>
+      <div class="xp-metric-grid">
+        <div><strong>2</strong><span>Live pairs · XAU + BTC</span></div>
+        <div><strong>2</strong><span>Fingerprint-matched presets</span></div>
+        <div><strong>1×</strong><span>Maximum leverage</span></div>
+        <div><strong>Invite only</strong><span>Pilot · public signup off</span></div>
+      </div>
+      <p class="xp-footnote">Owner capital only. xAuby does not accept deposits, manage public money, sell signals, or promise returns.</p>
+    </section>
 
-  const applyCutCornerSystem = () => {
-    document
-      .querySelectorAll("button, input, select, textarea, [style*='background'], [style*='border:']")
-      .forEach((element) => tagCutCorners(element));
-  };
+    <section id="system" class="xp-section" aria-labelledby="system-heading">
+      <div class="xp-heading-row">
+        <div><p class="xp-eyebrow">The live trading method</p><h2 id="system-heading">Two markets. Two jobs. One governed engine<span>.</span></h2></div>
+        <p class="xp-kicker">Both pairs run direct strategies · regime router off</p>
+      </div>
+      <p class="xp-lead">xAuby does not rotate among experimental strategies in production. A strict tenant whitelist pins one certified profile to each pair; research plugins remain blocked from live execution.</p>
 
-  // Everything visual lives in CSS rather than inline styles: the observer
-  // below disconnects ~15s after load, and CSS keeps working after that.
-  const installPolishStyles = () => {
-    if (document.getElementById("xauby-polish")) return;
+      <div class="xp-strategy-grid">
+        <article class="xp-card xp-strategy-card">
+          <div class="xp-card-top"><span class="xp-pill xp-pill-live">LIVE · LONG ONLY</span><span class="xp-code">XAUUSDT · 4H + 1D</span></div>
+          <h3>XAU · xAuby ActionZone</h3>
+          <p>Looks for a fresh 4H GREEN transition from the smoothed EMA12/EMA26 ActionZone, within a three-bar window. The entry candle must close with at least 0.5 thrust, and the last closed daily bar must remain in an allowed bullish or neutral zone.</p>
+          <ul class="xp-detail-list">
+            <li><strong>Entry</strong><span>Fresh GREEN zone · D1 gate · long only</span></li>
+            <li><strong>Exit</strong><span>8% ROI initially, 5% after day 1, 3% after day 3, or a RED zone</span></li>
+            <li><strong>Capital</strong><span>65% portfolio budget; profile may use 95% of that allocation</span></li>
+            <li><strong>Protection</strong><span>No exchange-side stop; this is disclosed, measured, and deliberately not hidden</span></li>
+          </ul>
+        </article>
+
+        <article class="xp-card xp-strategy-card">
+          <div class="xp-card-top"><span class="xp-pill xp-pill-live">LIVE · LONG + SHORT</span><span class="xp-code">BTCUSDT · 4H</span></div>
+          <h3>BTC · SuperTrend + EMA200</h3>
+          <p>Waits for a fresh SuperTrend flip using a 4.0 multiplier and ATR(10), then requires price to agree with EMA200. A bullish flip above EMA200 opens long; a bearish flip below it opens short.</p>
+          <ul class="xp-detail-list">
+            <li><strong>Entry</strong><span>Fresh SuperTrend flip · EMA200 alignment</span></li>
+            <li><strong>Exit</strong><span>Opposite SuperTrend flip, EMA200 loss/reclaim, or confirmed stop</span></li>
+            <li><strong>Protection</strong><span>3× ATR initial stop · 2× ATR trailing · breakeven activates at 1.2× ATR</span></li>
+            <li><strong>Capital</strong><span>30% portfolio budget · isolated swap · 1×</span></li>
+          </ul>
+        </article>
+      </div>
+
+      <ol class="xp-flow" aria-label="Production execution flow">
+        <li><span>01</span><div><h3>Observe</h3><p>REST candles and WebSocket ticks feed a 60-second control loop. Closed 4H bars drive signals; stale data and reconnect windows block new entries.</p></div></li>
+        <li><span>02</span><div><h3>Resolve</h3><p>The tenant whitelist selects symbol, strategy, timeframe, allowed side, live mode, leverage, allocation and the certificate-bound execution profile.</p></div></li>
+        <li><span>03</span><div><h3>Decide</h3><p>The pair's own strategy returns open, close or hold. Most ticks do nothing. Production does not route these pairs into another strategy.</p></div></li>
+        <li><span>04</span><div><h3>Gate</h3><p>Capital budgets, daily realised loss, trade count, cooldowns, feed health, drawdown and maximum open positions are checked before dispatch.</p></div></li>
+        <li><span>05</span><div><h3>Execute</h3><p>Orders go to OKX USDT swaps in isolated, one-way mode at 1×. Reduce-only exits, account locks and order reconciliation protect against duplicate or wrong-side execution.</p></div></li>
+        <li><span>06</span><div><h3>Persist</h3><p>Trades, ticks, signals and lifecycle events are written to SQLite and durable event logs so the live decision can be replayed and audited.</p></div></li>
+        <li><span>07</span><div><h3>Operate</h3><p>The owner uses the Pilot Workspace, terminal and Telegram. External dead-man and health timers keep checking even when the engine itself cannot report.</p></div></li>
+      </ol>
+    </section>
+
+    <section id="architecture" class="xp-section" aria-labelledby="architecture-heading">
+      <div class="xp-heading-row">
+        <div><p class="xp-eyebrow">The platform thesis</p><h2 id="architecture-heading">The moat is not another indicator<span>.</span></h2></div>
+        <p class="xp-kicker">Evidence compounds · hype does not</p>
+      </div>
+      <p class="xp-lead">The durable product is the chain from research to certificate to runtime to realised result. Each additional certified preset expands the product inventory; the control plane and operating safeguards are reused across markets and tenants.</p>
+      <div class="xp-three-grid">
+        <article class="xp-card"><span class="xp-card-num">01</span><h3>Certificate-bound runtime</h3><p>Live presets carry a config fingerprint, protocol, venue source and measured evidence. If the profile drifts, the catalog falls back to not assessed instead of borrowing an old verdict.</p><span class="xp-pill">LIVE · 2 PRESETS</span></article>
+        <article class="xp-card"><span class="xp-card-num">02</span><h3>Replayable operations</h3><p>Strategy exit math is shared with replay, durable events preserve lifecycle evidence, and scheduled parity reports compare realised fee, slippage and PnL with simulator assumptions.</p><span class="xp-pill">LIVE · AUDITABLE</span></article>
+        <article class="xp-card"><span class="xp-card-num">03</span><h3>Invite-only control plane</h3><p>FastAPI, Next.js and systemd isolate tenant config and runtime state. Credentials use envelope encryption; TOTP, Trade PIN, audit trails and certified-preset gates protect high-risk actions.</p><span class="xp-pill">PILOT · 3 USERS / 2 ENGINES</span></article>
+      </div>
+      <div class="xp-truth-grid">
+        <div><strong>Already real</strong><p>Owner engine, two live markets, web control plane, health/dead-man timers, certificate pipeline, durable replay and guarded manual orders.</p></div>
+        <div><strong>Not claimed yet</strong><p>No public signup, billing, managed accounts, proven six-month live edge, external plugin isolation or production-ready mass tenancy.</p></div>
+      </div>
+      <a class="xp-text-link" href="${SOURCE_URL}">Inspect the code that runs live <span aria-hidden="true">→</span></a>
+    </section>
+
+    <section id="risk" class="xp-section" aria-labelledby="risk-heading">
+      <div class="xp-panel">
+        <div class="xp-heading-row">
+          <div><p class="xp-eyebrow">Capital controls</p><h2 id="risk-heading">Risk is explicit—even where protection is imperfect<span>.</span></h2></div>
+          <span class="xp-pill">OWNER TENANT · CURRENT CONFIG</span>
+        </div>
+        <p class="xp-lead">The engine enforces portfolio and execution gates, but xAuby does not turn configuration percentages into false certainty. XAU and BTC protect capital differently, and the page says so plainly.</p>
+        <div class="xp-metric-grid xp-risk-grid">
+          <div><strong>65 / 30</strong><span>XAU / BTC budget %</span></div>
+          <div><strong>3%</strong><span>Daily realised loss cap</span></div>
+          <div><strong>2</strong><span>Open positions max</span></div>
+          <div><strong>3</strong><span>Daily trades max</span></div>
+          <div><strong>25%</strong><span>Drawdown entry guard</span></div>
+          <div><strong>1×</strong><span>Maximum leverage</span></div>
+        </div>
+
+        <div class="xp-calculator">
+          <div class="xp-calculator-head"><h3>Budget arithmetic at your equity</h3><label for="xp-equity">Equity <strong id="xp-equity-label">10,000 USDT</strong></label></div>
+          <input id="xp-equity" type="range" min="1000" max="100000" step="1000" value="10000" aria-label="Account equity in USDT">
+          <div class="xp-three-grid xp-budget-grid">
+            <div><strong data-budget="0.65">6,500 USDT</strong><span>XAU allocation ceiling · 65%</span></div>
+            <div><strong data-budget="0.30">3,000 USDT</strong><span>BTC allocation ceiling · 30%</span></div>
+            <div><strong data-budget="0.03">300 USDT</strong><span>Daily realised loss cap · 3%</span></div>
+          </div>
+        </div>
+
+        <div class="xp-warning"><strong>The honest boundary</strong><p>XAU's 1% risk setting is a sizing input, not a maximum-loss promise: the live XAU profile has no exchange stop and exits through its ROI ladder or a RED zone. The 25% drawdown guard blocks new entries but is configured not to force-close positions. BTC does use an exchange-side ATR stop and trailing protection. Daily loss is measured from closed trades, not unrealised loss.</p></div>
+      </div>
+    </section>
+
+    <section id="evidence" class="xp-section" aria-labelledby="evidence-heading">
+      <div class="xp-heading-row">
+        <div><p class="xp-eyebrow">Current certificates</p><h2 id="evidence-heading">Evidence before expansion<span>.</span></h2></div>
+        <p class="xp-kicker">Backtest evidence · not live returns · not a forecast</p>
+      </div>
+      <p class="xp-lead">These are the exact point-in-time records behind the owner tenant's two live presets. Costs are included. Limitations travel with the headline instead of being buried below it.</p>
+
+      <div class="xp-evidence-grid">
+        <article class="xp-card xp-evidence-card">
+          <div class="xp-card-top"><span class="xp-pill xp-pill-live">CERTIFIED · 2026-07-29</span><span class="xp-code">OKX XAUT-USDT · 4H</span></div>
+          <h3>XAU ActionZone · long only + D1</h3>
+          <div class="xp-metric-grid xp-certificate-metrics">
+            <div><strong>+80.72%</strong><span>Net · 4.0 years</span></div>
+            <div><strong>2.18</strong><span>Profit factor</span></div>
+            <div><strong>45.1%</strong><span>Win rate</span></div>
+            <div><strong>8.5%</strong><span>Max drawdown</span></div>
+            <div><strong>102</strong><span>Trades</span></div>
+          </div>
+          <p class="xp-caveat"><strong>Read before quoting:</strong> the same four-year XAUT period helped select the winner from a 432-cell grid. It is a same-venue proxy for the shorter XAU swap series, not a pristine holdout; the native swap cross-check contains only 25 trades over 1.3 years, and no six-month shadow record exists.</p>
+          <a class="xp-text-link" href="${SOURCE_URL}/blob/main/docs/research/xau_long_only_d1_certificate_2026-07-29.md">Read the XAU certificate →</a>
+        </article>
+
+        <article class="xp-card xp-evidence-card">
+          <div class="xp-card-top"><span class="xp-pill xp-pill-live">CERTIFIED · 2026-07-27</span><span class="xp-code">OKX BTC-USDT-SWAP · 4H</span></div>
+          <h3>BTC SuperTrend + EMA200 · long + short</h3>
+          <div class="xp-metric-grid xp-certificate-metrics">
+            <div><strong>+19.35%</strong><span>Net · 6.6 years</span></div>
+            <div><strong>1.52</strong><span>Profit factor</span></div>
+            <div><strong>38.1%</strong><span>Win rate</span></div>
+            <div><strong>9.8%</strong><span>Max drawdown</span></div>
+            <div><strong>134</strong><span>Trades</span></div>
+          </div>
+          <p class="xp-caveat"><strong>Read before quoting:</strong> this is native venue evidence and the same strategy also passed a 66-month fixed-config walk-forward study. The edge is still thin: the certificate bootstrap's 5th percentile is −2.17%, so profitability is uncertain even though the pre-registered gate passed.</p>
+          <a class="xp-text-link" href="${SOURCE_URL}/blob/main/docs/research/btc_supertrend_ema200_certificate_2026-07.md">Read the BTC certificate →</a>
+        </article>
+      </div>
+
+      <div class="xp-definition"><strong>What “certified” means here</strong><p>The exact execution profile cleared a repository protocol and its fingerprint matches the live preset. It does not mean all-weather, guaranteed, statistically final or suitable for another person's capital. A config change invalidates the borrowed verdict.</p></div>
+    </section>
+
+    <section id="roadmap" class="xp-section" aria-labelledby="roadmap-heading">
+      <div class="xp-heading-row">
+        <div><p class="xp-eyebrow">Roadmap · evidence-gated growth</p><h2 id="roadmap-heading">Earn the right to scale<span>.</span></h2></div>
+        <p class="xp-kicker">Research → pilot → proof → commercial</p>
+      </div>
+      <p class="xp-lead">xAuby already has the hard middle—live execution, multi-tenant controls and reproducible certification. The roadmap deliberately refuses to put billing ahead of operational evidence.</p>
+
+      <ol class="xp-roadmap">
+        <li class="is-current"><span class="xp-roadmap-marker">NOW</span><div><h3>Prove the owner-operated core</h3><p>Two certificate-bound live pairs, venue-aligned data, durable events, replay/result parity, account locks, API circuit breaker, dead-man timer, security audit and guarded Pilot Workspace.</p><strong>STATUS · OPERATING</strong></div></li>
+        <li><span class="xp-roadmap-marker">NEXT</span><div><h3>Run the design-partner pilot</h3><p>Invite two partners in SIM-only mode, prove self-service onboarding for two weeks, keep Telegram working through reboot, and make off-site encrypted backup plus restore drills operational.</p><strong>GATE · 2 PARTNERS / 2 WEEKS</strong></div></li>
+        <li><span class="xp-roadmap-marker">PROOF</span><div><h3>Build a live evidence record worth selling</h3><p>Maintain at least six months of live history on the exact certified profiles, grow the catalog to four certified presets, let two partners operate without hand-holding, and record 60 days without a P1 incident.</p><strong>GATE · NO SHORTCUT</strong></div></li>
+        <li><span class="xp-roadmap-marker">Q4+</span><div><h3>Commercialise only after the gates</h3><p>Complete legal terms, privacy, risk disclosure, data export and deletion first; then add billing and capacity. Managed secrets, tenant resource quotas and real plugin isolation precede any external strategy marketplace.</p><strong>STATUS · CONDITIONAL</strong></div></li>
+      </ol>
+
+      <div class="xp-use-of-support">
+        <h3>What development support unlocks</h3>
+        <div class="xp-four-grid">
+          <div><span>01</span><strong>Better evidence</strong><p>Native venue history, untouched holdouts, longer shadow records and more reproducible certificates.</p></div>
+          <div><span>02</span><strong>Safer runtime</strong><p>Plugin isolation, managed secrets, restore drills, resource quotas and deeper incident automation.</p></div>
+          <div><span>03</span><strong>Useful pilots</strong><p>Self-service onboarding, clearer evidence UX and real design-partner feedback before scale.</p></div>
+          <div><span>04</span><strong>Responsible scale</strong><p>Legal and commercial foundations only after the live and pilot evidence gates are met.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workspace" class="xp-section" aria-labelledby="workspace-heading">
+      <div class="xp-heading-row">
+        <div><p class="xp-eyebrow">Pilot Workspace</p><h2 id="workspace-heading">An operator console, not a performance theatre<span>.</span></h2></div>
+        <span class="xp-pill">LIVE · INVITE ONLY</span>
+      </div>
+      <p class="xp-lead">The console exposes what an operator needs to make a safe decision—and records the dangerous actions. It is no longer read-only: manual orders are available in production, but they cannot bypass capital gates or execution locks.</p>
+      <div class="xp-five-grid">
+        <div><strong>Home</strong><p>Equity, allocation, position, engine, WebSocket, REST and tick latency.</p></div>
+        <div><strong>Signal</strong><p>Current action, reason, confidence and the strategy-owned checklist.</p></div>
+        <div><strong>Activity</strong><p>Trade log and durable engine events in order.</p></div>
+        <div><strong>Settings</strong><p>Certified preset, bounded risk, exchange and Telegram controls.</p></div>
+        <div><strong>Manual trade</strong><p>Preview, expiring challenge, 8–12 digit Trade PIN and full audit trail.</p></div>
+      </div>
+      <div class="xp-truth-grid">
+        <div><strong>High-risk actions step up</strong><p>Live activation requires a recent exchange test, verified TOTP, Trade PIN and a live-certified preset. Admin actions also require verified TOTP.</p></div>
+        <div><strong>Pilot limits are intentional</strong><p>Production is capped at three users and two active engines. Public signup returns 404; external onboarding remains invite-only.</p></div>
+      </div>
+      <a class="xp-button" href="/login">Sign in to the Pilot Workspace <span aria-hidden="true">→</span></a>
+    </section>
+
+    <section id="support" class="xp-section" aria-labelledby="support-heading">
+      <div class="xp-support-panel">
+        <p class="xp-eyebrow">The pitch</p>
+        <h2 id="support-heading">Built with skin in the game. Scaled with gates<span>.</span></h2>
+        <p>xAuby began as one engineer building the system he was willing to trust with his own money. That founder–operator alignment is still the product filter: research must reproduce, risk must be visible, and growth must wait for evidence.</p>
+        <p>The ask is focused: help fund better native data, stronger certification, hardened multi-tenant operations and an honest design-partner pilot. Support accelerates the work; it does not buy signals, managed returns, equity, or access to the owner's trading account.</p>
+        <div class="xp-support-actions">
+          <a class="xp-button" href="${SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Support development <span aria-hidden="true">→</span></a>
+          <a class="xp-button xp-button-secondary" href="${SOURCE_URL}">Collaborate on GitHub</a>
+        </div>
+        <div class="xp-operator"><div class="xp-avatar" aria-hidden="true">IK</div><div><strong>Itsara Kaewruang</strong><span>Founder · builder · live operator</span></div></div>
+      </div>
+    </section>
+  `;
+
+  const installStyles = () => {
+    if (document.getElementById("xauby-pitch-styles")) return;
     const style = document.createElement("style");
-    style.id = "xauby-polish";
+    style.id = "xauby-pitch-styles";
     style.textContent = `
-      :root {
-        --xn-card-cut: 14px;
-        --xn-control-cut: 7px;
-        --xn-accent: #ff431a;
-        --xn-ease: cubic-bezier(.22,.61,.36,1);
+      :root { --xp-ink:#ece9e2; --xp-muted:rgba(236,233,226,.62); --xp-faint:rgba(236,233,226,.5); --xp-line:rgba(236,233,226,.2); --xp-panel:#1e1e1b; --xp-accent:#ff431a; --xp-soft:#ff7a4d; }
+      html { scroll-behavior:smooth; }
+      body { background:#060006; }
+      main#top { overflow:visible !important; }
+      .xn-hero-scrub { min-height:0 !important; isolation:isolate; margin-left:calc(50% - 50vw); width:100vw; }
+      .xn-hero-sticky { position:relative !important; min-height:clamp(620px,88svh,900px) !important; height:auto !important; overflow:hidden; background:#060006; }
+      .xn-hero-inner { position:relative; z-index:2; padding-top:clamp(120px,18vh,190px) !important; padding-bottom:clamp(86px,12vh,140px) !important; }
+      .xn-hero-content { opacity:1 !important; filter:none !important; transform:none !important; max-width:820px; }
+      .xn-hero-title { font-size:clamp(48px,9vw,112px) !important; }
+      .xn-hero-actions a { transition:background .18s ease,color .18s ease,border-color .18s ease,transform .18s ease; }
+      .xn-hero-actions a:hover { transform:translateY(-1px); }
+      .xn-hero-actions a:first-child:hover { background:var(--xp-accent) !important; }
+      .xn-hero-actions a:last-child:hover { border-color:var(--xp-soft) !important; color:var(--xp-soft) !important; }
+      .xn-particle-wave { opacity:.82; }
+      .xp-proof { border-top:1px solid var(--xp-line); border-bottom:1px solid var(--xp-line); padding:20px 0 16px; }
+      .xp-proof-label,.xp-kicker,.xp-eyebrow { margin:0; font-size:10.5px; font-weight:650; letter-spacing:.13em; text-transform:uppercase; color:var(--xp-faint); }
+      .xp-eyebrow { color:var(--xp-soft); margin-bottom:13px; }
+      .xp-footnote { margin:12px 0 0; font-size:11.5px; line-height:1.55; color:var(--xp-faint); }
+      .xp-section { padding:clamp(70px,10vw,126px) 0 0; scroll-margin-top:76px; }
+      .xp-heading-row { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:14px 28px; }
+      .xp-heading-row h2,.xp-support-panel h2 { margin:0; max-width:820px; font-size:clamp(30px,4.3vw,54px); font-weight:600; line-height:1.02; letter-spacing:-.035em; text-wrap:balance; }
+      .xp-heading-row h2 span,.xp-support-panel h2 span { color:var(--xp-accent); }
+      .xp-kicker { max-width:320px; text-align:right; }
+      .xp-lead { margin:18px 0 0; max-width:72ch; font-size:15px; line-height:1.65; color:rgba(236,233,226,.7); }
+      .xp-strategy-grid,.xp-evidence-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:34px; }
+      .xp-three-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:30px; }
+      .xp-four-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--xp-line); border:1px solid var(--xp-line); }
+      .xp-five-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:1px; margin-top:30px; background:var(--xp-line); border:1px solid var(--xp-line); }
+      .xp-card,.xp-panel,.xp-support-panel { border:1px solid rgba(236,233,226,.24); background:var(--xp-panel); }
+      .xp-card { padding:clamp(22px,3vw,34px); }
+      .xp-card h3 { margin:18px 0 0; font-size:clamp(19px,2vw,25px); font-weight:600; letter-spacing:-.02em; }
+      .xp-card p { margin:12px 0 0; font-size:13.5px; line-height:1.62; color:var(--xp-muted); }
+      .xp-card-top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+      .xp-card-num { color:var(--xp-soft); font-size:13px; font-variant-numeric:tabular-nums; }
+      .xp-code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; color:var(--xp-faint); }
+      .xp-pill { display:inline-flex; align-items:center; min-height:28px; padding:0 10px; border:1px solid rgba(236,233,226,.28); font-size:9.5px; font-weight:700; letter-spacing:.09em; color:rgba(236,233,226,.75); }
+      .xp-pill-live { color:#161614; background:var(--xp-ink); border-color:var(--xp-ink); }
+      .xp-detail-list { list-style:none; margin:20px 0 0; padding:0; }
+      .xp-detail-list li { display:grid; grid-template-columns:90px minmax(0,1fr); gap:12px; padding:10px 0; border-top:1px solid rgba(236,233,226,.14); font-size:12px; line-height:1.5; }
+      .xp-detail-list strong { color:var(--xp-soft); }
+      .xp-detail-list span { color:var(--xp-muted); }
+      .xp-flow { list-style:none; margin:36px 0 0; padding:0; }
+      .xp-flow li { display:grid; grid-template-columns:64px minmax(0,1fr); gap:16px; padding:20px 0; border-top:1px solid var(--xp-line); }
+      .xp-flow>li>span { color:var(--xp-soft); font-size:18px; font-variant-numeric:tabular-nums; }
+      .xp-flow h3 { margin:0; font-size:17px; }
+      .xp-flow p { margin:5px 0 0; max-width:78ch; color:var(--xp-muted); font-size:13.5px; line-height:1.6; }
+      .xp-truth-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; margin-top:14px; background:var(--xp-line); border:1px solid var(--xp-line); }
+      .xp-truth-grid>div,.xp-four-grid>div,.xp-five-grid>div { background:#151514; padding:20px; }
+      .xp-truth-grid strong,.xp-four-grid strong,.xp-five-grid strong { display:block; font-size:13px; color:var(--xp-ink); }
+      .xp-truth-grid p,.xp-four-grid p,.xp-five-grid p { margin:7px 0 0; font-size:12px; line-height:1.55; color:var(--xp-muted); }
+      .xp-four-grid span { display:block; margin-bottom:12px; color:var(--xp-soft); font-size:11px; }
+      .xp-text-link { display:inline-flex; margin-top:24px; color:var(--xp-soft); font-size:13px; font-weight:650; }
+      .xp-panel { padding:clamp(26px,4vw,48px); }
+      .xp-metric-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:12px; }
+      .xp-metric-grid>div { min-width:0; padding:16px 14px 10px; border-left:1px solid rgba(236,233,226,.14); }
+      .xp-metric-grid strong { display:block; font-size:clamp(25px,3vw,38px); font-weight:600; line-height:1; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+      .xp-metric-grid span { display:block; margin-top:8px; font-size:9.5px; font-weight:600; line-height:1.35; letter-spacing:.09em; text-transform:uppercase; color:var(--xp-faint); }
+      .xp-risk-grid { grid-template-columns:repeat(6,minmax(0,1fr)); margin-top:30px; border-top:1px solid var(--xp-line); }
+      .xp-risk-grid strong { font-size:clamp(22px,2.6vw,32px); }
+      .xp-calculator { margin-top:30px; padding-top:24px; border-top:1px solid var(--xp-line); }
+      .xp-calculator-head { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:10px; }
+      .xp-calculator h3 { margin:0; font-size:17px; }
+      .xp-calculator label { font-size:12px; color:var(--xp-faint); }
+      .xp-calculator label strong { color:var(--xp-ink); }
+      #xp-equity { width:100%; height:44px; margin-top:8px; accent-color:var(--xp-accent); }
+      .xp-budget-grid { margin-top:0; }
+      .xp-budget-grid>div { padding:18px; border-top:1px solid var(--xp-line); }
+      .xp-budget-grid strong { display:block; color:var(--xp-soft); font-size:clamp(20px,2.4vw,28px); font-variant-numeric:tabular-nums; }
+      .xp-budget-grid span { display:block; margin-top:7px; font-size:10px; letter-spacing:.07em; text-transform:uppercase; color:var(--xp-faint); }
+      .xp-warning,.xp-definition { margin-top:20px; padding:18px 20px; border:1px solid rgba(255,122,77,.62); background:rgba(255,122,77,.08); }
+      .xp-warning strong,.xp-definition strong { font-size:13px; }
+      .xp-warning p,.xp-definition p { margin:7px 0 0; max-width:88ch; font-size:12px; line-height:1.62; color:rgba(236,233,226,.74); }
+      .xp-certificate-metrics { grid-template-columns:repeat(5,minmax(0,1fr)); margin-top:24px; border-top:1px solid var(--xp-line); }
+      .xp-certificate-metrics>div { padding-left:10px; }
+      .xp-certificate-metrics strong { font-size:clamp(19px,2.1vw,27px); }
+      .xp-caveat { padding-top:14px; border-top:1px solid rgba(236,233,226,.14); }
+      .xp-caveat strong { color:var(--xp-ink); }
+      .xp-roadmap { list-style:none; margin:34px 0 0; padding:0; border-top:1px solid var(--xp-line); }
+      .xp-roadmap li { display:grid; grid-template-columns:100px minmax(0,1fr); gap:20px; padding:26px 0; border-bottom:1px solid var(--xp-line); }
+      .xp-roadmap-marker { width:max-content; padding:7px 10px; border:1px solid rgba(236,233,226,.28); color:var(--xp-muted); font-size:10px; font-weight:700; letter-spacing:.1em; }
+      .xp-roadmap .is-current .xp-roadmap-marker { background:var(--xp-accent); color:#fff; border-color:var(--xp-accent); }
+      .xp-roadmap h3 { margin:0; font-size:20px; }
+      .xp-roadmap p { margin:8px 0 0; max-width:76ch; color:var(--xp-muted); font-size:13.5px; line-height:1.6; }
+      .xp-roadmap div>strong { display:block; margin-top:11px; color:var(--xp-soft); font-size:10px; letter-spacing:.1em; }
+      .xp-use-of-support { margin-top:34px; }
+      .xp-use-of-support>h3 { margin:0 0 14px; font-size:20px; }
+      .xp-button { display:inline-flex; align-items:center; justify-content:center; min-height:48px; margin-top:28px; padding:0 26px; background:var(--xp-ink); color:#161614; font-size:13.5px; font-weight:650; border:1px solid var(--xp-ink); transition:background .18s ease,border-color .18s ease,transform .18s ease; }
+      .xp-button:hover { background:var(--xp-accent); border-color:var(--xp-accent); color:#161614; transform:translateY(-1px); }
+      .xp-button-secondary { background:transparent; color:var(--xp-ink); border-color:rgba(236,233,226,.35); }
+      .xp-support-panel { padding:clamp(30px,5vw,58px); }
+      .xp-support-panel>p:not(.xp-eyebrow) { max-width:72ch; margin:18px 0 0; color:rgba(236,233,226,.7); font-size:15px; line-height:1.65; }
+      .xp-support-actions { display:flex; flex-wrap:wrap; gap:12px; }
+      .xp-operator { display:flex; align-items:center; gap:13px; margin-top:36px; padding-top:24px; border-top:1px solid var(--xp-line); }
+      .xp-avatar { display:grid; place-items:center; width:48px; height:48px; border:1px solid rgba(236,233,226,.3); color:var(--xp-soft); font-size:13px; font-weight:700; }
+      .xp-operator strong,.xp-operator span { display:block; }
+      .xp-operator span { margin-top:3px; font-size:11px; color:var(--xp-faint); }
+      .xauby-login-link { display:inline-flex !important; align-items:center; justify-content:center; min-height:40px; padding:0 16px !important; background:var(--xp-accent) !important; border:1px solid var(--xp-accent) !important; color:#fff !important; font-size:12px !important; font-weight:650 !important; white-space:nowrap; }
+      .xauby-donate-link { color:var(--xp-soft) !important; }
+      @media (max-width:1023px) {
+        header nav>.xn-desktop-only { display:none !important; }
+        .xp-five-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .xp-four-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .xp-risk-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
       }
-
-      /* --- Cut corners, mirroring globals.css. clip-path also clips the box
-         shadow, so drop it the way the product cards do. --- */
-      @supports (clip-path: polygon(0 0)) {
-        [data-xn-cut="card"] {
-          border-radius: 0 !important;
-          box-shadow: none !important;
-          clip-path: polygon(
-            var(--xn-card-cut) 0, 100% 0,
-            100% calc(100% - var(--xn-card-cut)),
-            calc(100% - var(--xn-card-cut)) 100%,
-            0 100%, 0 var(--xn-card-cut)
-          );
-        }
-        [data-xn-cut="control"] {
-          border-radius: 0 !important;
-          clip-path: polygon(
-            var(--xn-control-cut) 0, 100% 0,
-            100% calc(100% - var(--xn-control-cut)),
-            calc(100% - var(--xn-control-cut)) 100%,
-            0 100%, 0 var(--xn-control-cut)
-          );
-        }
+      @media (max-width:760px) {
+        .xn-hero-sticky { min-height:700px !important; }
+        .xn-hero-inner { align-self:auto !important; padding-top:130px !important; }
+        .xn-gold-coin { transform:translate(90px,-145px) scale(.68); transform-origin:center center; }
+        .xp-strategy-grid,.xp-evidence-grid,.xp-three-grid,.xp-truth-grid { grid-template-columns:1fr; }
+        .xp-metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .xp-risk-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .xp-certificate-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .xp-four-grid,.xp-five-grid { grid-template-columns:1fr; }
+        .xp-kicker { text-align:left; }
+        .xp-roadmap li { grid-template-columns:1fr; gap:12px; }
+        .xp-flow li { grid-template-columns:44px minmax(0,1fr); }
       }
-
-      @media (prefers-reduced-motion: no-preference) {
-        /* --- Reveal: crisper easing, and a cascade so a list arrives as a
-           sequence instead of one block. --- */
-        [style*="translateY(14px)"],
-        [style*="translateY(12px)"] {
-          transition-duration: 420ms !important;
-          transition-timing-function: var(--xn-ease) !important;
-        }
-        /* The revealed items carry an inline \`transition\` shorthand, which
-           resets transition-delay to 0s and outranks this sheet — so the
-           cascade has to be !important to land. Scoped to the reveal
-           signature so ordinary lists are untouched. */
-        li[style*="transition"]:nth-child(1) { transition-delay: 0ms !important; }
-        li[style*="transition"]:nth-child(2) { transition-delay: 45ms !important; }
-        li[style*="transition"]:nth-child(3) { transition-delay: 90ms !important; }
-        li[style*="transition"]:nth-child(4) { transition-delay: 135ms !important; }
-        li[style*="transition"]:nth-child(5) { transition-delay: 180ms !important; }
-        li[style*="transition"]:nth-child(6) { transition-delay: 225ms !important; }
-        li[style*="transition"]:nth-child(7) { transition-delay: 270ms !important; }
-        li[style*="transition"]:nth-child(n+8) { transition-delay: 315ms !important; }
-
-        /* --- Hover: quick in, slower out, with a lift and an accent edge. --- */
-        [data-xn-cut="card"], [data-xn-cut="control"] {
-          transition: border-color 200ms var(--xn-ease), background 200ms var(--xn-ease),
-                      transform 200ms var(--xn-ease);
-        }
-        [data-xn-cut="card"]:hover, [data-xn-cut="control"]:hover {
-          transition-duration: 120ms;
-          transform: translateY(-1px);
-        }
-        [data-xn-cut="control"]:hover { border-color: var(--xn-accent) !important; }
-
-        /* --- Signature moment: the regime router re-deciding. The decision
-           panel is the aria-live region; when its text changes the LED pulses,
-           the verdict rises into place and an accent rule sweeps the rule
-           above it. --- */
-        [aria-live="polite"] > span[aria-hidden="true"] {
-          transition: background 260ms var(--xn-ease), box-shadow 260ms var(--xn-ease);
-        }
-        .xn-router-changed > span[aria-hidden="true"] {
-          animation: xn-led-pulse 620ms var(--xn-ease);
-        }
-        .xn-router-changed > div > div > strong {
-          animation: xn-verdict-rise 380ms var(--xn-ease);
-        }
-        .xn-router-changed::before {
-          content: "";
-          position: absolute; left: 0; top: -1px; height: 1px;
-          background: var(--xn-accent);
-          animation: xn-rule-sweep 560ms var(--xn-ease);
-        }
-        @keyframes xn-led-pulse {
-          0%   { transform: scale(1);   box-shadow: 0 0 0 1px rgba(236,233,226,.25); }
-          38%  { transform: scale(1.5); box-shadow: 0 0 0 6px rgba(255,67,26,.16); }
-          100% { transform: scale(1);   box-shadow: 0 0 0 1px rgba(236,233,226,.25); }
-        }
-        @keyframes xn-verdict-rise {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: none; }
-        }
-        @keyframes xn-rule-sweep {
-          from { width: 0; opacity: 1; }
-          to   { width: 100%; opacity: 0; }
-        }
-      }
-
-      /* Pressed regime reads as selected, not merely hovered. */
-      [aria-pressed="true"] {
-        border-color: var(--xn-accent) !important;
-        box-shadow: inset 0 0 0 1px rgba(255,67,26,.35);
-      }
-    `;
-    document.head.appendChild(style);
-  };
-
-  // Flag the decision panel for one animation cycle whenever the router's
-  // verdict actually changes. Text-driven, so it works for any control that
-  // updates the live region.
-  //
-  // This gets its own observer rather than riding the main one: that one is
-  // disconnected ~15s after load, which is precisely when a visitor starts
-  // clicking the regime buttons.
-  let routerVerdict = null;
-  let routerWatched = null;
-
-  const flashRouter = (panel) => {
-    const verdict = panel.textContent?.trim() ?? "";
-    if (!verdict) return;
-    if (routerVerdict === null) { routerVerdict = verdict; return; }
-    if (verdict === routerVerdict) return;
-    routerVerdict = verdict;
-    if (getComputedStyle(panel).position === "static") panel.style.position = "relative";
-    panel.classList.remove("xn-router-changed");
-    void panel.offsetWidth; // restart the animation
-    panel.classList.add("xn-router-changed");
-  };
-
-  const installRouterWatch = () => {
-    const panel = document.querySelector('[aria-live="polite"]');
-    if (!panel || routerWatched === panel) return;
-    routerWatched = panel;
-    routerVerdict = panel.textContent?.trim() || null;
-    new MutationObserver(() => flashRouter(panel)).observe(panel, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-  };
-
-  const replaceExactText = (selector, from, to) => {
-    document.querySelectorAll(selector).forEach((element) => {
-      if (element.textContent?.trim() === from) element.textContent = to;
-    });
-  };
-
-  // Stat grids render as a value element followed by its label. Scoped to
-  // `root` so a label like "Win rate" or "Max drawdown" — reused across the
-  // hero strip, the backtest section, and the research report cards with
-  // different values in each — only updates the one instance it's meant to.
-  //
-  // The label is NOT always a leaf: most of these render as
-  // `<div><span>Win rate</span></div>`, so the old `children.length === 0`
-  // test skipped the wrapper (which has the value as its sibling) and matched
-  // only the inner span (which has no sibling at all). Every figure on the page
-  // silently kept its stale value. Match on text, then climb to the first
-  // ancestor that actually has a preceding sibling.
-  const setStatByLabel = (root, labelText, newValue) => {
-    if (!root) return;
-    root.querySelectorAll("div, span, p").forEach((el) => {
-      if (el.textContent?.trim() !== labelText) return;
-
-      let node = el;
-      while (node && node !== root && !node.previousElementSibling) {
-        node = node.parentElement;
-      }
-      const valueEl = node && node !== root ? node.previousElementSibling : null;
-      if (valueEl && valueEl.textContent?.trim() !== newValue) {
-        valueEl.textContent = newValue;
-      }
-    });
-  };
-
-  // Remove a risk/backtest stat block entirely (value + label pair) by its
-  // label text, scoped to `root`.
-  const removeStatByLabel = (root, labelText) => {
-    if (!root) return;
-    root.querySelectorAll("div, span").forEach((el) => {
-      if (el.children.length === 0 && el.textContent?.trim() === labelText && el.parentElement) {
-        el.parentElement.remove();
-      }
-    });
-  };
-
-  // #bt-big carries its own count-up animation baked into the compiled
-  // bundle, targeting a stale hardcoded number — it can re-fire on scroll
-  // independently of this file's observer, so a one-time text overwrite
-  // isn't reliable. Watch the element directly and snap it back every time
-  // the animation (or anything else) changes it.
-  const CERTIFIED_XAU_NET = "+80.72%";
-  const fixBigBacktestNumber = () => {
-    const big = document.getElementById("bt-big");
-    if (!big) return;
-    if (big.textContent.trim() !== CERTIFIED_XAU_NET) big.textContent = CERTIFIED_XAU_NET;
-    if (!big.dataset.xnBtWatched) {
-      big.dataset.xnBtWatched = "true";
-      new MutationObserver(() => {
-        if (big.textContent.trim() !== CERTIFIED_XAU_NET) big.textContent = CERTIFIED_XAU_NET;
-      }).observe(big, { childList: true, characterData: true, subtree: true });
-    }
-  };
-
-  const supportsOverflowClip = () =>
-    typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("overflow-x", "clip");
-
-  const setStyle = (element, prop, value) => {
-    if (element.style[prop] !== value) element.style[prop] = value;
-  };
-
-  const installHeroScrollFixStyles = () => {
-    if (document.getElementById("xauby-hero-scroll-fix")) return;
-    const style = document.createElement("style");
-    style.id = "xauby-hero-scroll-fix";
-    style.textContent = `
-      .xn-hero-scrub {
-        isolation: isolate;
-        min-height: 0 !important;
-        --hero-blur: 0px !important;
-        --hero-copy-blur: 0px !important;
-        --hero-copy-opacity: 1 !important;
-        --hero-copy-y: 0px !important;
-      }
-      /* No video, no scroll-jack: the hero is a normal top-of-page block now,
-         sized to its own content instead of pinned at a forced 100svh — that
-         forced height was the source of the large empty band beneath the
-         copy. Flat background instead of a gradient overlay: .xn-hero-sticky
-         already carries #060006 from the compiled template. */
-      .xn-hero-sticky {
-        position: static !important;
-        height: auto !important;
-        min-height: 0 !important;
-      }
-      .xn-hero-content {
-        opacity: 1 !important;
-        filter: none !important;
-        transform: none !important;
-      }
-      @media (max-width: 760px) {
-        .xn-hero-inner {
-          padding-top: clamp(96px, 15vh, 140px) !important;
-        }
-      }
-      .xauby-login-link {
-        display: inline-flex !important;
-        align-items: center;
-        justify-content: center;
-        min-height: 42px;
-        padding: 0 18px !important;
-        border: 1px solid #ff431a !important;
-        border-radius: 999px !important;
-        background: #ff431a !important;
-        color: #fff !important;
-        font-size: 12.5px !important;
-        font-weight: 650 !important;
-        letter-spacing: .02em !important;
-        line-height: 1 !important;
-        text-decoration: none !important;
-        white-space: nowrap;
-        box-shadow: 0 8px 28px rgba(255,67,26,.2);
-        transition: transform .18s ease, background .18s ease, border-color .18s ease;
-      }
-      .xauby-login-link:hover {
-        transform: translateY(-1px);
-        border-color: #ff6a3c !important;
-        background: #ff6a3c !important;
-      }
-      .xauby-login-link:focus-visible {
-        outline: 2px solid #ece9e2;
-        outline-offset: 3px;
-      }
-      footer .xauby-login-link {
-        min-height: 38px;
-        padding-inline: 15px !important;
-      }
-      /* Outline rather than solid: Sign in is the page's primary action and
-         should stay the only filled control in the footer. */
-      .xauby-donate-link {
-        display: inline-flex !important;
-        align-items: center;
-        justify-content: center;
-        min-height: 38px;
-        margin-top: 8px;
-        padding: 0 15px !important;
-        border: 1px solid rgba(255,122,77,.62) !important;
-        border-radius: 999px !important;
-        background: transparent !important;
-        color: #ff7a4d !important;
-        font-size: 12.5px !important;
-        font-weight: 600 !important;
-        letter-spacing: .02em !important;
-        line-height: 1 !important;
-        text-decoration: none !important;
-        white-space: nowrap;
-        transition: border-color .18s ease, color .18s ease, background .18s ease;
-      }
-      .xauby-donate-link:hover {
-        border-color: #ff6a3c !important;
-        background: rgba(255,122,77,.1) !important;
-        color: #ff9468 !important;
-      }
-      .xauby-donate-link:focus-visible {
-        outline: 2px solid #ece9e2;
-        outline-offset: 3px;
-      }
-      header nav {
-        flex-wrap: nowrap;
-        min-width: 0;
-      }
-      /* The section nav needs ~1000px before every link fits next to the
-         wordmark; below that only the Sign in action stays, so it can never
-         be pushed past the right edge on phones or tablets. */
-      @media (max-width: 1023px) {
-        header nav {
-          flex: 0 0 auto;
-          gap: 0 !important;
-        }
-        header nav > :not(.xauby-login-link) {
-          display: none !important;
-        }
-        header .xauby-login-link {
-          min-height: 40px;
-          padding-inline: 15px !important;
-        }
-      }
+      @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } * { animation:none !important; transition:none !important; } }
     `;
     (document.head || document.documentElement).append(style);
   };
 
-  const stripHeroVideo = (heroSection) => {
-    heroSection.querySelectorAll("video").forEach((video) => video.remove());
-    // A gradient overlay used to sit here in place of the video. Removed:
-    // .xn-hero-sticky already carries the flat #060006 page background from
-    // the compiled template, so no replacement element is needed.
-    heroSection.querySelectorAll(".xauby-hero-gradient").forEach((el) => el.remove());
+  const renderPitch = () => {
+    const main = document.getElementById("top");
+    if (!main || main.querySelector("sc-for, sc-if") || document.getElementById("pitch-proof")) return false;
+    main.innerHTML = PITCH_MARKUP;
+    return true;
   };
 
-  const applyHeroScrollFix = () => {
-    const heroSection = document.querySelector("[data-hero-scrub]");
-    if (!heroSection) return;
-
-    installHeroScrollFixStyles();
-    heroSection.style.setProperty("--hero-blur", "0px", "important");
-    heroSection.style.setProperty("--hero-copy-blur", "0px", "important");
-    heroSection.style.setProperty("--hero-copy-opacity", "1", "important");
-    heroSection.style.setProperty("--hero-copy-y", "0px", "important");
-    heroSection.style.setProperty("min-height", "0", "important");
-    stripHeroVideo(heroSection);
-
-    const overflowX = supportsOverflowClip() ? "clip" : "visible";
-    setStyle(document.documentElement, "overflowX", overflowX);
-    if (document.body) setStyle(document.body, "overflowX", overflowX);
-
-    let node = heroSection.parentElement;
-    while (node && node !== document.documentElement) {
-      const inlineStyle = node.getAttribute("style") || "";
-      const computed = window.getComputedStyle(node);
-      if (inlineStyle.includes("overflow-x: hidden") || computed.overflowX === "hidden") {
-        setStyle(node, "overflowX", overflowX);
-        if (!["auto", "scroll", "hidden"].includes(computed.overflowY)) {
-          setStyle(node, "overflowY", "visible");
-        }
-      }
-      node = node.parentElement;
-    }
+  const installBudgetCalculator = () => {
+    const input = document.getElementById("xp-equity");
+    if (!input || input.dataset.ready) return;
+    input.dataset.ready = "true";
+    const format = (value) => Math.round(value).toLocaleString("en-US") + " USDT";
+    const update = () => {
+      const equity = Number(input.value);
+      const label = document.getElementById("xp-equity-label");
+      if (label) label.textContent = format(equity);
+      document.querySelectorAll("[data-budget]").forEach((node) => {
+        node.textContent = format(equity * Number(node.dataset.budget));
+      });
+    };
+    input.addEventListener("input", update);
+    update();
   };
 
-  const SECTION_LINK_STYLE =
-    "display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:12.5px;font-weight:600;letter-spacing:.02em;color:#ff7a4d;";
-
-  const addSectionLink = (nav, href, label) => {
-    if (!nav || nav.querySelector(`a[href='${href}']`)) return;
+  const makeNavLink = (href, label, footer = false) => {
     const link = document.createElement("a");
     link.href = href;
     link.textContent = label;
-    link.style.cssText = SECTION_LINK_STYLE;
-    nav.prepend(link);
+    if (!footer) link.className = "xn-desktop-only";
+    link.style.cssText = footer
+      ? "display:inline-flex;align-items:center;min-height:40px;font-size:13px;font-weight:500;color:rgba(236,233,226,.72);"
+      : "display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:12.5px;font-weight:500;letter-spacing:.02em;color:rgba(236,233,226,.72);";
+    return link;
   };
 
-  const addResearchLink = (nav) => addSectionLink(nav, "#research-report", "Research report");
-  const addBtcLink = (nav) => addSectionLink(nav, "#btc-pair", "BTC");
+  const syncHeader = () => {
+    const nav = document.querySelector("header nav");
+    if (!nav || !document.getElementById("pitch-proof") || nav.dataset.xaubyPitchNav) return;
+    nav.dataset.xaubyPitchNav = "true";
+    nav.querySelectorAll(":scope > a").forEach((link) => link.remove());
+    const badge = [...nav.children].find((node) => node.tagName === "SPAN");
+    NAV_ITEMS.forEach(([href, label]) => nav.insertBefore(makeNavLink(href, label), badge || null));
+    if (badge) {
+      const dot = document.createElement("span");
+      dot.style.cssText = "width:7px;height:7px;border-radius:50%;background:#ff431a;";
+      badge.textContent = "OWNER LIVE";
+      badge.prepend(dot);
+      badge.setAttribute("aria-label", "Owner trading engine is live");
+    }
+    const login = document.createElement("a");
+    login.href = "/login";
+    login.textContent = "Sign in";
+    login.className = "xauby-login-link";
+    nav.append(login);
+  };
 
-  /**
-   * A nav is a table of contents, so its order has to match the order of the
-   * sections on the page. Both links above are added before the bundle has
-   * rendered the rest of the menu, which left the page's two LAST sections
-   * sitting first in the bar. Sorting by the target's real offset fixes that
-   * regardless of when each link arrives.
-   *
-   * Only in-page links move; the LIVE badge and Sign in are not sections and
-   * keep their place at the end.
-   */
-  const sortNavBySectionOrder = (nav) => {
+  const syncFooter = () => {
+    const footer = document.querySelector("footer");
+    if (!footer || !document.getElementById("pitch-proof") || footer.dataset.xaubyPitchFooter) return;
+    footer.dataset.xaubyPitchFooter = "true";
+    const paragraphs = footer.querySelectorAll("p");
+    if (paragraphs[1]) paragraphs[1].textContent = "Evidence-governed gold + bitcoin trading platform";
+    if (paragraphs[2]) paragraphs[2].textContent = "For research and education. xAuby trades the founder's capital; it does not accept deposits, sell signals or guarantee results. Backtests are point-in-time evidence, not forecasts. Trading can lose substantial capital.";
+    const nav = footer.querySelector("nav");
     if (!nav) return;
-    const links = [...nav.querySelectorAll(":scope > a[href^='#']")];
-    if (links.length < 2) return;
-
-    const positioned = links.map((link) => {
-      const target = document.getElementById(link.getAttribute("href").slice(1));
-      // A link whose section has not been injected yet sorts last, which is
-      // where both of ours belong anyway.
-      return { link, top: target ? target.getBoundingClientRect().top + window.scrollY : Infinity };
-    });
-
-    const sorted = [...positioned].sort((a, b) => a.top - b.top);
-    // Already correct: bail rather than churn the DOM on every mutation.
-    if (sorted.every((entry, i) => entry.link === positioned[i].link)) return;
-
-    const marker = links[links.length - 1].nextSibling;
-    sorted.forEach(({ link }) => nav.insertBefore(link, marker));
+    nav.innerHTML = "";
+    NAV_ITEMS.forEach(([href, label]) => nav.append(makeNavLink(href, label, true)));
+    const github = makeNavLink(SOURCE_URL, "GitHub — iisara555/xAuby", true);
+    github.style.color = "#ff7a4d";
+    nav.append(github);
+    const support = makeNavLink(SUPPORT_URL, "Support development", true);
+    support.className = "xauby-donate-link";
+    support.target = "_blank";
+    support.rel = "noopener noreferrer";
+    nav.append(support);
   };
 
-  const addLoginLink = (nav) => {
-    if (!nav || nav.querySelector("[data-xauby-login]")) return;
-    const link = document.createElement("a");
-    link.href = "/login";
-    link.textContent = "Sign in";
-    link.className = "xauby-login-link";
-    link.dataset.xaubyLogin = "true";
-    link.setAttribute("aria-label", "Sign in to xAuby");
-    nav.append(link);
-  };
-
-  /**
-   * Footer only, deliberately. The mobile rule above hides everything in the
-   * header nav except the Sign in action, so a donate link placed there would
-   * simply vanish below 1024px. The footer nav has no such rule and is where
-   * a support link conventionally belongs anyway.
-   *
-   * "Support development" rather than anything implying signals or returns:
-   * this is a donation toward the project, not the purchase of a service.
-   */
-  const addDonateLink = (nav) => {
-    if (!nav || nav.querySelector("[data-xauby-donate]")) return;
-    const link = document.createElement("a");
-    link.href = donateUrl;
-    link.textContent = "Support development";
-    link.className = "xauby-donate-link";
-    link.dataset.xaubyDonate = "true";
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.setAttribute("aria-label", "Support xAuby development via Stripe");
-    nav.append(link);
-  };
-
-  const updateCurrentConfiguration = () => {
-    replaceExactText("span", "LIVE: cdc_action_zone", "LIVE: xauby_actionzone");
-    replaceExactText("span", "LIVE: xauby_actionzone", "LIVE: 2 strategies");
-    replaceExactText("span", "RUNNING: 1 pair", "LIVE: 2 pairs · XAU + BTC");
-    replaceExactText("span", "RUNNING: OKX only", "OKX swap · isolated · 1×");
-    replaceExactText("h3", "Strategy plugins", "Live strategies");
-    replaceExactText("h2", "One market today. Built for many.", "Two markets today. Built for many.");
-
-    document.querySelectorAll("p").forEach((paragraph) => {
-      const text = paragraph.textContent?.trim();
-      if (text === "xAuby researches, tests, and trades one market: gold. Every rule in the live system earns its place through documented research — 200+ configurations tested against six years of history, walk-forward validated, published as reports — before it touches real capital.") {
-        paragraph.textContent =
-          "xAuby researches, tests, and trades two markets: gold and bitcoin. Every rule in the live system earns its place through documented research — hundreds of configurations tested against years of history, walk-forward validated, published as reports — before it touches real capital.";
-      }
-      if (text === "Orders go to the exchange with a stop-loss attached before entry — protection lives on the exchange, not in the bot's memory.") {
-        paragraph.textContent =
-          "Orders are evaluated under the configured risk gates. XAU trades long-only with a daily-timeframe regime filter and no exchange stop (exits are rule-driven); BTC trades long and short with a real ATR stop and trailing on the exchange. Neither pair's regime router is enabled — routing between strategies is disabled in production.";
-      }
-      if (text === "The owner monitors from a terminal, a phone dashboard, and Telegram alerts. He watches; the system trades.") {
-        paragraph.textContent =
-          "The operator monitors from the web dashboard, a terminal, and Telegram alerts — every control passes through the engine's own safeguards.";
-      }
-    });
-  };
-
-  // Hero strip + Backtest section + Risk section: replace the pre-rename
-  // figures (PAXGUSDT proxy, 6y, PF 1.78/WR 36.4%/DD 18.52%, 1 open position,
-  // 50% partial TP) with the certified 2026-07-29 okx-xau-actionzone-v1
-  // numbers (OKX XAUT-USDT 4h, 4.0y, PF 2.18/WR 45.1%/DD 8.5%/net +80.72%/102
-  // trades) and the current risk config (2 open positions, no partial TP).
-  const updateBacktestAndRiskFigures = () => {
-    const heroStrip = document.querySelector('section[aria-label="Backtest score"]');
-    const backtestSection = document.getElementById("backtest");
-    const riskSection = document.getElementById("risk");
-
-    replaceExactText("p", "As-deployed backtest — PAXGUSDT proxy, 6 years, 176 trades", "As-deployed backtest — certified on OKX XAUT-USDT, 4.0 years, 102 trades");
-    // Set under both labels: apply() runs on every mutation, so by the second
-    // pass the label has already been rewritten and the original no longer
-    // matches. Whichever one is present, the value lands.
-    setStatByLabel(heroStrip, "Net profit, 6 years", CERTIFIED_XAU_NET);
-    replaceExactText("div", "Net profit, 6 years", "Net profit, 4.0 years");
-    setStatByLabel(heroStrip, "Net profit, 4.0 years", CERTIFIED_XAU_NET);
-    setStatByLabel(heroStrip, "Win rate", "45.1%");
-    setStatByLabel(heroStrip, "Profit factor", "2.18");
-    setStatByLabel(heroStrip, "Max drawdown", "8.5%");
-
-    replaceExactText("p", "Backtest — 6 years · PAXGUSDT proxy · 12,810 4h bars · 150+ runs", "Backtest — certified 2026-07-29 · OKX XAUT-USDT 4h · 432-cell grid search");
-    replaceExactText("h2", "From −16.9% to +92.8% on the same six years.", "Certified net positive on real exchange data.");
-    replaceExactText("p", "The unfiltered base strategy lost 16.9% over six years of gold history. Two disciplined changes — a trend filter and a partial take-profit — turned the same rules into +92.8%, across 150+ documented runs. The exact configuration that won the backtest is the one running live today.", "This long-only, D1-filtered configuration was selected from a 432-cell parameter grid and re-measured directly on OKX XAUT-USDT 4h — not the PAXGUSDT proxy used during the search. It cleared the pre-registered acceptance gate net positive against its long-only baseline, and it's the exact configuration running live today.");
-    replaceExactText("span", "Net profit, 6 years · 10,000 → 19,281 USDT", "Net profit, 4.0 years · 10,000 → 18,072 USDT");
-    fixBigBacktestNumber();
-    setStatByLabel(backtestSection, "Win rate", "45.1%");
-    setStatByLabel(backtestSection, "Profit factor", "2.18");
-    setStatByLabel(backtestSection, "Max drawdown", "8.5%");
-    // No sourced payoff-ratio figure for the certified config — swap the slot
-    // for a number that is sourced, rather than guess.
-    setStatByLabel(backtestSection, "Payoff ratio", "102");
-    replaceExactText("div", "Payoff ratio", "Trades");
-    setStatByLabel(backtestSection, "Trades", "102");
-    replaceExactText("p", "Backtest only, not a guarantee of future returns. Figures describe PAXGUSDT 4h history (Aug 2020 – Jul 2026) used as a proxy for XAU, which lacks deep history on its own; capital compounds across trades, so total return carries higher variance than win rate, profit factor, or drawdown.", "Certified on OKX XAUT-USDT 4h (Jul 2022 – Jul 2026), net of fee/slippage/funding. Selected from the same 432-cell grid it's measured against, with no pristine holdout — treat as evidence, not a guarantee. Capital compounds across trades, so total return carries higher variance than win rate, profit factor, or drawdown.");
-
-    // The per-year bars are from the old 6-year PAXGUSDT run: they start in
-    // 2020, while the certified series is OKX XAUT-USDT Jul 2022 – Jul 2026.
-    // No per-year breakdown exists for the certified run in any research
-    // document, so the honest fix is to label the source rather than invent
-    // numbers or silently drop the two years that fall outside it.
-    replaceExactText("div", "Annual return", "Annual return · PAXGUSDT proxy run");
-    replaceExactText("span", "Annual return", "Annual return · PAXGUSDT proxy run");
-    replaceExactText("p", "Annual return", "Annual return · PAXGUSDT proxy run");
-
-    // The research library documents studies R1–R4, all run on the 6-year
-    // PAXGUSDT series. Their figures are correct as history and are left alone.
-    // What is not correct is presenting the config they measured as the current
-    // one: R2 is titled "the as-deployed config" but describes the 176-trade
-    // profile that the 2026-07-29 certificate replaced, and R1 cites a 1.78
-    // headline that is now 2.18.
-    ["h3", "h4", "strong", "div", "span"].forEach((selector) => {
-      replaceExactText(selector, "Deep dive — the as-deployed config", "Deep dive — the config deployed in July 2026");
-    });
-
-    replaceExactText(
-      "p",
-      "~200 configurations tested with an institutional protocol: 70/30 in-sample/out-of-sample split plus 5-fold walk-forward. The most robust config changes just three values from live — long-only, D1 regime filter, wider fresh-zone window — and is the only leader profitable in both the 2021–23 sideways years and the 2024–26 bull run. (Under this stricter protocol the live config scores PF 1.64 — its headline 1.78 comes from the full-period deep dive.)",
-      "~200 configurations tested with an institutional protocol: 70/30 in-sample/out-of-sample split plus 5-fold walk-forward. Its recommendation — long-only, D1 regime filter, wider fresh-zone window — is what the live system became: the certificate above measures exactly that profile on OKX XAUT-USDT. The PF figures in this card come from this study's own stricter protocol on the PAXGUSDT series, not from the certified run."
-    );
-
-    replaceExactText(
-      "p",
-      "Trade-by-trade anatomy of all 176 trades: the system loses small and often (median loss under 1%) and pays for it with a right tail of +4% to +12% winners, held 3.9× longer than losers. The slope filter cut max drawdown from 35% to 18.5% while removing only 4 trades.",
-      "Trade-by-trade anatomy of all 176 trades of the configuration live at the time, since replaced by the 2026-07-29 certified profile: the system loses small and often (median loss under 1%) and pays for it with a right tail of +4% to +12% winners, held 3.9× longer than losers. The slope filter cut max drawdown from 35% to 18.5% while removing only 4 trades."
-    );
-
-    setStatByLabel(riskSection, "Open position, max", "2");
-    removeStatByLabel(riskSection, "Partial TP at +12%");
-
-    // R3's recommendation predates the current config: BTC has since gone
-    // live as its own certified pair, not a gold-portfolio sleeve.
-    replaceExactText(
-      "p",
-      "The two systems' equity curves are uncorrelated (0.015), so blending is real diversification: a 20% BTC sleeve cuts max drawdown 23% while giving up under 1pp of annual return. Recommendation: keep 100% gold live, prove BTC in forward simulation first.",
-      "The two systems' equity curves are uncorrelated (0.015), so blending is real diversification: a 20% BTC sleeve cuts max drawdown 23% while giving up under 1pp of annual return. This recommendation predates the current config — BTC (SuperTrend EMA200) has since gone live as its own certified pair rather than a gold-portfolio sleeve; see the BTC section below."
-    );
-  };
-
-  const addResearchReport = () => {
-    if (document.getElementById("research-report")) return;
-    // Insert inside <main>, not before <footer> directly: <main> carries the
-    // page's max-width/centering (1160px + side padding); footer is its
-    // sibling, so a section placed outside it stretches full width instead
-    // of matching every other section.
-    const main = document.getElementById("top");
-    if (!main) return;
-
-    const section = document.createElement("section");
-    section.id = "research-report";
-    section.setAttribute("aria-labelledby", "research-report-heading");
-    section.style.cssText =
-      "margin:0 auto;padding:0 0 clamp(64px,9vw,112px);scroll-margin-top:76px;";
-    section.innerHTML = `
-      <div style="border-top:1px solid rgba(236,233,226,.25);padding-top:clamp(40px,7vw,80px);">
-        <p style="margin:0 0 14px;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#ff7a4d;">Research report · July 2026</p>
-        <div style="max-width:760px;margin-bottom:28px;">
-          <h2 id="research-report-heading" style="margin:0;font-size:clamp(30px,4.5vw,56px);font-weight:600;line-height:1;letter-spacing:-.03em;">Both sides of gold<span style="color:#ff431a;">.</span></h2>
-          <p style="margin:18px 0 0;max-width:66ch;font-size:15px;line-height:1.65;color:rgba(236,233,226,.7);">CDC ActionZone was re-validated across a full market cycle — the 2024–2025 gold rally (+114%) and the 2026 correction (−7.8%) — to answer two questions: does the daily-timeframe filter earn its keep, and should the live system trade shorts. The result changed the live configuration at the time — a broader 432-cell search on 2026-07-29 landed on a different, now-certified profile (long-only, D1 on both sides), shown below.</p>
-        </div>
-
-        <div style="padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;margin-bottom:16px;">
-          <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">Method</p>
-          <p style="margin:0;max-width:80ch;font-size:13px;line-height:1.65;color:rgba(236,233,226,.72);">PAXGUSDT research proxy (deep history for XAU), 4h primary / 1d confirmation, engine-parity replay with the production strategy plugin. Every figure is net of costs: 0.05% taker fee per side, 2 bps slippage, and perpetual funding of 0.004% per 8h charged to longs and credited to shorts. Sizing mirrors live CDC-pure: 95% of equity, no exchange stop, exits on zone flips, 50% partial take-profit at +12%.</p>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:16px;">
-          <div style="padding:clamp(18px,2.5vw,26px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;">
-            <span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">RALLY 2024–2025 (+114%)</span>
-            <div style="margin-top:12px;display:grid;gap:8px;font-size:12px;line-height:1.5;color:rgba(236,233,226,.72);">
-              <div><strong style="color:#ece9e2;">Long only · D1 on</strong> — 57 trades · WR 56% · PF 2.82 · <strong style="color:#ece9e2;">+64.9%</strong> · DD 5.6%</div>
-              <div><strong style="color:#ece9e2;">Long+short · D1 off</strong> — 126 trades · WR 44% · PF 1.70 · +59.5% · DD 8.4%</div>
-              <div style="color:rgba(236,233,226,.5);">In a one-way rally, shorts only pay whipsaw. Long-only wins this regime outright.</div>
-            </div>
-          </div>
-          <div style="padding:clamp(18px,2.5vw,26px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;">
-            <span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">CORRECTION 2026 (−7.8%)</span>
-            <div style="margin-top:12px;display:grid;gap:8px;font-size:12px;line-height:1.5;color:rgba(236,233,226,.72);">
-              <div><strong style="color:#ece9e2;">Long only · D1 on</strong> — 11 trades · WR 55% · PF 1.84 · +8.2% · DD 5.3%</div>
-              <div><strong style="color:#ece9e2;">Long+short · D1 off</strong> — 40 trades (22 short) · WR 48% · PF 1.90 · <strong style="color:#ece9e2;">+28.4%</strong> · DD 7.6%</div>
-              <div style="color:rgba(236,233,226,.5);">Shorts earn 3.5× the long-only result in the down leg. The D1 filter drags here and does not reduce drawdown.</div>
-            </div>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;">
-          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">FULL CYCLE · LONG+SHORT</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">+105%</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">vs +78% long-only · max DD 8.4% at 1×</span></div>
-          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">WALK-FORWARD</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">18 / 25</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Profitable out-of-sample months · 6m optimize → 1m test, slid monthly</span></div>
-          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">PARAMETER STABILITY</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">24 / 25</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Windows choosing fresh-zone 3 · slope filter kept in 22/25</span></div>
-        </div>
-
-        <div style="padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;margin-bottom:16px;">
-          <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">This study's configuration · 2026-07-18 · superseded 2026-07-29</p>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Long + short</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Stop-and-reverse · D1 filter off</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">4h · fresh zone 3</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Slope filter on (3 bars)</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">PTP 50% @ +12%</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Remainder exits on zone flip</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">OKX swap · 1×</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Isolated margin · one position</span></div>
-          </div>
-          <p style="margin:14px 0 0;font-size:11px;line-height:1.55;color:rgba(236,233,226,.48);">This is what shipped from this study on 2026-07-18, not the current config. A broader 432-cell search on 2026-07-29 replaced it: XAU is now long-only, D1 filter on for both sides, and the partial take-profit was removed entirely (exits run on a minimal-ROI ladder instead). Current certified figures are in the Backtest section above; config source: bot_config.yaml and coin_whitelist.json.</p>
-        </div>
-
-        <div style="padding:18px 20px;border:1px solid rgba(255,122,77,.62);background:rgba(255,122,77,.08);"><strong style="font-size:13px;">Honest caveats</strong><p style="margin:7px 0 0;max-width:80ch;font-size:12px;line-height:1.6;color:rgba(236,233,226,.74);">PAXGUSDT is a proxy, not the traded XAUUSDT perpetual. Funding uses a flat 0.004%/8h approximation, not exchange funding history. Drawdown is measured on closed-trade equity; intra-trade excursions run deeper. Past performance is research evidence, not a promise of returns.</p></div>
-      </div>`;
-    main.appendChild(section);
-    applyCutCornerSystem();
-  };
-
-  // BTC (supertrend_ema200) went live as its own certified pair alongside
-  // XAU — the compiled bundle predates this and only mentions BTC as a
-  // hypothetical portfolio-diversification sleeve (the frontier dial above).
-  // Mirrors addResearchReport()'s section-injection pattern.
-  const addBtcSection = () => {
-    if (document.getElementById("btc-pair")) return;
-    const main = document.getElementById("top");
-    if (!main) return;
-
-    const section = document.createElement("section");
-    section.id = "btc-pair";
-    section.setAttribute("aria-labelledby", "btc-pair-heading");
-    section.style.cssText =
-      "margin:0 auto;padding:0 0 clamp(64px,9vw,112px);scroll-margin-top:76px;";
-    section.innerHTML = `
-      <div style="border-top:1px solid rgba(236,233,226,.25);padding-top:clamp(40px,7vw,80px);">
-        <p style="margin:0 0 14px;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#ff7a4d;">Second live pair · certified 2026-07-27</p>
-        <div style="max-width:760px;margin-bottom:28px;">
-          <h2 id="btc-pair-heading" style="margin:0;font-size:clamp(30px,4.5vw,56px);font-weight:600;line-height:1;letter-spacing:-.03em;">Gold isn't the only market anymore<span style="color:#ff431a;">.</span></h2>
-          <p style="margin:18px 0 0;max-width:66ch;font-size:15px;line-height:1.65;color:rgba(236,233,226,.7);">A second strategy, SuperTrend EMA200, trades BTC-USDT-SWAP on OKX as its own pair — long and short, its own risk budget, its own certificate. It doesn't touch XAU's capital or rules; each pair runs in full isolation, per the architecture above.</p>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:16px;">
-          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">NET · 6.6 YEARS</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">+19.35%</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">vs +4.17% long-only baseline · edge +15.18pp</span></div>
-          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">PROFIT FACTOR</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">1.52</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">Win rate 38.1% · 134 trades</span></div>
-          <div style="padding:18px;border:1px solid rgba(236,233,226,.24);background:#1e1e1b;"><span style="display:block;font-size:10px;font-weight:600;letter-spacing:.12em;color:#ff7a4d;">MAX DRAWDOWN</span><strong style="display:block;margin-top:8px;font-size:28px;letter-spacing:-.04em;">9.8%</strong><span style="display:block;margin-top:4px;font-size:11px;color:rgba(236,233,226,.58);">OKX BTC-USDT-SWAP 4h · Dec 2019 – Jul 2026</span></div>
-        </div>
-
-        <div style="padding:clamp(20px,3vw,30px);border:1px solid rgba(236,233,226,.24);background:#1e1e1b;margin-bottom:16px;">
-          <p style="margin:0 0 15px;font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,233,226,.55);">Live configuration</p>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Long + short</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">SuperTrend flip entries</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">4h · EMA200 filter</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">No confirmation timeframe</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">Real ATR stop</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">3.0× ATR · trailing 2.0× · breakeven on</span></div>
-            <div style="padding:14px;border:1px solid rgba(236,233,226,.16);background:#161614;"><strong style="display:block;font-size:15px;">OKX swap · 1×</strong><span style="display:block;margin-top:6px;font-size:11px;color:rgba(236,233,226,.58);">Isolated margin</span></div>
-          </div>
-          <p style="margin:14px 0 0;font-size:11px;line-height:1.55;color:rgba(236,233,226,.48);">Config source: bot_config.yaml and coin_whitelist.json. Unlike XAU, BTC keeps a real exchange-side stop and takes no partial take-profit — protection lives on the exchange, not in a rule.</p>
-        </div>
-
-        <div style="padding:18px 20px;border:1px solid rgba(255,122,77,.62);background:rgba(255,122,77,.08);"><strong style="font-size:13px;">Honest caveats</strong><p style="margin:7px 0 0;max-width:80ch;font-size:12px;line-height:1.6;color:rgba(236,233,226,.74);">This edge is thinner than XAU's: the certificate's own bootstrap puts the 90% confidence lower bound close to zero, and the realised equity path did worse than most random reshuffles of its own trades. It cleared its pre-registered acceptance gate, but treat it as a live-deployed strategy with a genuinely uncertain edge — not a strong one. Past performance is research evidence, not a promise of returns.</p></div>
-      </div>`;
-    main.appendChild(section);
-    applyCutCornerSystem();
-  };
-
-  const updateLinks = () => {
-    document.querySelectorAll(`a[href^="${sourceUrl}"]`).forEach((link) => {
-      const label = link.textContent?.trim() ?? "";
-      if (label.includes("Inspect")) {
-        link.href = "#research";
-        link.textContent = "Read the research";
-      } else if (label.includes("View source")) {
-        link.href = "#system";
-        link.textContent = "Explore the system →";
-      } else if (label.includes("dashboard")) {
-        link.href = "#dashboard";
-        link.textContent = "Explore the dashboard";
-      } else {
-        link.href = "#start";
-        link.textContent = "Get started";
-      }
-    });
-  };
-
-  let disconnectTimer = 0;
-
+  let settleTimer;
   const apply = () => {
-    // The login/nav rules must exist even before the hero section streams in,
-    // otherwise a slow unpack leaves the header without the mobile fallback.
-    installHeroScrollFixStyles();
-    installPolishStyles();
-    applyCutCornerSystem();
-    installRouterWatch();
-    applyHeroScrollFix();
-    updateCurrentConfiguration();
-    updateBacktestAndRiskFigures();
-    addResearchReport();
-    addBtcSection();
-    updateLinks();
-    document.querySelectorAll("header nav, footer nav").forEach((nav) => {
-      addResearchLink(nav);
-      addBtcLink(nav);
-      addLoginLink(nav);
-      sortNavBySectionOrder(nav);
-    });
-    document.querySelectorAll("footer nav").forEach(addDonateLink);
-    // Only start the shutdown countdown once the header actually carries the
-    // Sign in link — the bundled page can take longer than any fixed delay to
-    // unpack on a slow mobile connection.
-    if (!disconnectTimer && document.querySelector("header nav [data-xauby-login]")) {
-      disconnectTimer = window.setTimeout(() => observer.disconnect(), 15000);
+    installStyles();
+    renderPitch();
+    installBudgetCalculator();
+    syncHeader();
+    syncFooter();
+    if (
+      !settleTimer &&
+      document.getElementById("pitch-proof") &&
+      document.querySelector("header nav")?.dataset.xaubyPitchNav &&
+      document.querySelector("footer")?.dataset.xaubyPitchFooter
+    ) {
+      settleTimer = window.setTimeout(() => observer.disconnect(), 15000);
     }
   };
 

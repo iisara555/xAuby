@@ -10,20 +10,29 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://xauby.vercel.app"),
-  title: "xAuby | Gold Trading Research Platform",
+  title: "xAuby | Live Gold & Bitcoin Trading Research Platform",
   description:
-    "A research-first automated gold trading platform with documented validation before capital deployment.",
+    "An owner-operated gold and bitcoin trading platform built around reproducible certificates, live execution controls, and evidence-gated growth.",
   openGraph: {
-    title: "xAuby | Research first. Capital second.",
-    description: "Gold Trading Research Platform",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "xAuby Gold Trading Research Platform" }]
+    title: "xAuby | Real capital. Reproducible evidence.",
+    description:
+      "Live gold and bitcoin trading, certificate-bound research, and an evidence-gated roadmap.",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "xAuby gold and bitcoin trading research platform",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "xAuby | Research first. Capital second.",
-    description: "Gold Trading Research Platform",
-    images: ["/og.png"]
-  }
+    title: "xAuby | Real capital. Reproducible evidence.",
+    description:
+      "Live gold and bitcoin trading, certificate-bound research, and an evidence-gated roadmap.",
+    images: ["/og.png"],
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
