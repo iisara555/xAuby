@@ -45,20 +45,17 @@ sys.path.insert(0, str(ROOT))
 
 import pandas as pd
 
-from scripts.validate_on_venue_data import _bundle_for
+from scripts.rival_sweep import SHORT_ONLY, rival_items, run_rival
 from scripts.xau_harness import PROXY, SYMBOL, prepare
 from scripts.xau_okx_pf_grid import (
     _G,
     _init_worker,
-    _metrics,
     _run_frame,
     _slug,
     _valid,
     _write_frames,
 )
-from xauby.backtest.service import run_replay_from_bundle
 from xauby.observability.replay_validation import load_bot_config
-from xauby.strategies.registry import available_strategies, strategy_manifest
 
 
 # --- stage 1: config variants -------------------------------------------------
@@ -188,31 +185,15 @@ def _eval_config_full(item: Mapping[str, Any]) -> Dict[str, Any]:
 
 # --- stage 2: rival strategies ------------------------------------------------
 
-# Every registered plugin except ActionZone itself (the incumbent, run separately
-# as the benchmark) and the short-only research plugins, which cannot hold a
-# long-biased slot on their own.
-SKIP_STRATEGIES = {"xauby_actionzone", "donchian_short", "rsi2_short",
-                   "supertrend_short"}
+# ActionZone is the incumbent and is measured as the benchmark by stage 1, so it
+# is not one of its own challengers. `rival_sweep` drops the short-only research
+# plugins, which cannot hold a long-biased slot alone.
+INCUMBENT = "xauby_actionzone"
+SKIP_STRATEGIES = {INCUMBENT, *SHORT_ONLY}
 
 
 def strategy_items() -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
-    for name in available_strategies():
-        if name in SKIP_STRATEGIES:
-            continue
-        manifest = strategy_manifest(name)
-        for shorts in (False, True):
-            items.append(
-                {
-                    "id": f"{name}__{'ls' if shorts else 'long'}",
-                    "strategy": name,
-                    "enable_short": shorts,
-                    "maturity": manifest.get("maturity"),
-                    "native_tf": manifest.get("required_timeframes"),
-                    "override": {"enable_short": shorts},
-                }
-            )
-    return items
+    return rival_items(INCUMBENT)
 
 
 def _run_strategy_frame(
@@ -228,18 +209,8 @@ def _run_strategy_frame(
     variant. A rival gets its own `strat_cfg` from `_bundle_for`, so its stop,
     trailing and sizing are the plugin's, not gold's incumbent.
     """
-    bundle = _bundle_for(
-        SYMBOL, frame,
-        engine_config=_G["cfg"],
-        strategy_name=item["strategy"],
-        label=label,
-    )
-    strat = {**dict(bundle.strat_cfg), **dict(item["override"])}
-    result = run_replay_from_bundle(bundle, strat_cfg_override=strat,
-                                    min_bars_override=skip_bars)
-    if not result.meta.run_ok:
-        raise RuntimeError(result.meta.error or "replay failed")
-    return _metrics(result.stats or {})
+    return run_rival(frame, item, symbol=SYMBOL, engine_config=_G["cfg"],
+                     skip_bars=skip_bars, label=label)
 
 
 def _eval_strategy(item: Mapping[str, Any]) -> Dict[str, Any]:
