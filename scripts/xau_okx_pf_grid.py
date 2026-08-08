@@ -26,7 +26,7 @@ import re
 import sys
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -100,16 +100,26 @@ def live_entry_shape(base_strategy_config: Mapping[str, Any]) -> Dict[str, Any]:
     return shape
 
 
-def grid_items(base_strategy_config: Mapping[str, Any]) -> List[Dict[str, Any]]:
+def grid_items(
+    base_strategy_config: Optional[Mapping[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     """Return the pre-declared 432-cell grid, including both required anchors.
 
     The cells are fixed. Only which of them carry the anchor flags depends on
     ``base_strategy_config`` — the deployed config is a coordinate in this grid,
     not a separate declaration that can rot out of sync with it.
+
+    ``None`` returns the search space with no anchors, for studies that reuse
+    these cells on a pair the deployed XAU config says nothing about (see
+    ``scripts/binance_th_spot_grid.py``). :func:`main` passes the real config
+    and refuses to run if it is not a cell, so an OKX XAU run cannot lose its
+    baseline this way.
     """
     slope_shapes = ((False, 3), (True, 3), (True, 5))
-    live_shape = live_entry_shape(base_strategy_config)
-    live_variant = deployed_variant_name(base_strategy_config)
+    live_shape = (live_entry_shape(base_strategy_config)
+                  if base_strategy_config is not None else None)
+    live_variant = (deployed_variant_name(base_strategy_config)
+                    if base_strategy_config is not None else None)
     items: List[Dict[str, Any]] = []
     for variant, shape in VARIANTS.items():
         for ap, fresh, slope, thrust, bear_cross in itertools.product(
@@ -143,7 +153,7 @@ def grid_items(base_strategy_config: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "entry_thrust_min": thrust,
                 "exit_on_bear_cross": bear_cross,
             }
-            is_live_entry = entry_shape == live_shape
+            is_live_entry = live_shape is not None and entry_shape == live_shape
             items.append(
                 {
                     "id": combo_id,

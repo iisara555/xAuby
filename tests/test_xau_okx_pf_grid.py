@@ -78,6 +78,15 @@ def test_anchor_tracks_a_changed_deployed_config():
     assert live[0]["anchor_long_only_d1"] is True
 
 
+def test_no_config_yields_the_search_space_without_anchors():
+    """`binance_th_spot_grid` reuses these cells for a pair the deployed OKX XAU
+    config says nothing about, so it must be able to ask for cells alone."""
+    rows = grid_items()
+    assert len(rows) == 432
+    assert not any(row["anchor_live"] for row in rows)
+    assert not any(row["anchor_long_only_d1"] for row in rows)
+
+
 def test_live_entry_shape_normalises_dead_slope_bars():
     """slope_bars is dead config when the slope filter is off.
 
