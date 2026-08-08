@@ -4,11 +4,13 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 
+from xauby.runtime.manual_orders import write_manual_order_request
 from xauby.saas.catalog import (
     exchange_profile,
     preset_by_id,
@@ -18,11 +20,10 @@ from xauby.saas.catalog import (
 )
 from xauby.saas.security import validate_tenant_slug
 from xauby.saas.settings import SaaSSettings
-from xauby.utils.atomic_io import atomic_json_write
-from xauby.runtime.manual_orders import write_manual_order_request
+from xauby.utils.atomic_io import atomic_bytes_write, atomic_json_write
 
 
-def attach_tenant_loaders(supervisor: "TenantSupervisor", store: Any, cipher: Any) -> None:
+def attach_tenant_loaders(supervisor: TenantSupervisor, store: Any, cipher: Any) -> None:
     """Wire both credential loaders onto ``supervisor``.
 
     Both the control plane and the systemd ExecStartPre helper need these, and
@@ -96,6 +97,26 @@ class TenantSupervisor:
 
     def runtime_dir(self, slug: str) -> Path:
         return self.settings.tenant_runtime_root / validate_tenant_slug(slug)
+
+    def workspace_ready(self, slug: str) -> bool:
+        """Return whether the minimum isolated tenant workspace exists.
+
+        Database tenant creation and OS/filesystem provisioning cannot share a
+        transaction.  Authentication uses this inexpensive check to detect an
+        accepted invite whose provisioning step was interrupted, then retries
+        the idempotent provisioner before issuing a session.
+        """
+        config_dir = self.config_dir(slug)
+        runtime_dir = self.runtime_dir(slug)
+        try:
+            if not config_dir.is_dir() or not runtime_dir.is_dir():
+                return False
+            return all(
+                (config_dir / name).is_file() and (config_dir / name).stat().st_size > 0
+                for name in ("bot_config.yaml", "coin_whitelist.json")
+            )
+        except OSError:
+            return False
 
     def manual_order_path(self, slug: str) -> Path:
         return self.runtime_dir(slug) / "manual_order_request.json"
@@ -180,7 +201,9 @@ class TenantSupervisor:
             cfg.setdefault("data", {}).setdefault(
                 "dashboard_timeframes", ["1h", "4h", "1d"]
             )
-            target_yaml.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+            atomic_bytes_write(
+                str(target_yaml), yaml.safe_dump(cfg, sort_keys=False).encode("utf-8")
+            )
         if not target_whitelist.exists():
             whitelist = json.loads(source_whitelist.read_text(encoding="utf-8"))
             for asset in whitelist.get("assets") or []:

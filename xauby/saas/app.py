@@ -43,8 +43,8 @@ from xauby.saas.strategy_pool import (
     MAX_CANDIDATES,
     append_candidate,
     append_evaluation,
-    candidate_evaluation_provenance_reasons,
     candidate,
+    candidate_evaluation_provenance_reasons,
     evaluations_comparable,
     new_pool,
     normalize_pool,
@@ -578,6 +578,64 @@ def create_app(
     def admin_user(user: dict[str, Any] = Depends(csrf_user)) -> dict[str, Any]:
         return require_admin(user)
 
+    def ensure_user_workspace(user: dict[str, Any]) -> dict[str, Any]:
+        """Provision or repair an active user's workspace before login.
+
+        Invite acceptance is committed in SQLite before the privileged helper
+        can create the OS user and tenant files.  A helper failure must remain
+        recoverable: keep the accepted account, refuse to issue a session, and
+        let the next authenticated login retry this idempotent boundary.
+        """
+        tenant, created = store.ensure_tenant(
+            str(user["id"]), _safe_slug_from_email(str(user["email"]), str(user["id"]))
+        )
+        was_failed = tenant.get("status") == "provision_failed"
+        if supervisor.workspace_ready(tenant["slug"]):
+            if was_failed:
+                tenant = store.update_tenant(tenant["id"], status="queued")
+                store.audit(
+                    "tenant_provision_repaired", tenant_id=tenant["id"],
+                    user_id=str(user["id"]), payload={"source": "login_preflight"},
+                )
+            return tenant
+
+        try:
+            supervisor.provision(tenant["slug"])
+            if not supervisor.workspace_ready(tenant["slug"]):
+                raise RuntimeError("tenant provisioner returned without required workspace files")
+        except Exception as exc:
+            failed_status = (
+                "degraded"
+                if tenant.get("status") in {"starting", "running", "degraded"}
+                else "provision_failed"
+            )
+            try:
+                store.update_tenant(tenant["id"], status=failed_status)
+                store.audit(
+                    "tenant_provision_failed", tenant_id=tenant["id"],
+                    user_id=str(user["id"]),
+                    payload={"error_type": type(exc).__name__, "source": "login_preflight"},
+                )
+            except Exception:
+                logger.exception(
+                    "failed to persist tenant provisioning failure for tenant=%s",
+                    tenant["slug"],
+                )
+            logger.exception("tenant workspace provisioning failed for tenant=%s", tenant["slug"])
+            raise HTTPException(
+                status_code=503,
+                detail="workspace provisioning failed; sign in again to retry or contact support",
+            ) from exc
+
+        if was_failed:
+            tenant = store.update_tenant(tenant["id"], status="queued")
+        store.audit(
+            "tenant_provisioned" if created else "tenant_provision_repaired",
+            tenant_id=tenant["id"], user_id=str(user["id"]),
+            payload={"source": "login_preflight"},
+        )
+        return tenant
+
     def own_tenant(user: dict[str, Any]) -> dict[str, Any]:
         if user.get("account_status") != "active":
             raise HTTPException(status_code=403, detail=f"account is {user.get('account_status')}")
@@ -756,11 +814,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="pilot capacity is full")
         try:
             user = store.accept_invite(body.token, password=body.password)
-            tenant, created = store.ensure_tenant(
-                user["id"], _safe_slug_from_email(user["email"], user["id"])
-            )
-            if created:
-                supervisor.provision(tenant["slug"])
+            ensure_user_workspace(user)
             token, csrf = store.create_session(user["id"])
             set_session_cookie(response, token)
         except ValueError as exc:
@@ -820,6 +874,8 @@ def create_app(
             if not mfa_ok:
                 login_throttle.record_failure(key)
                 raise HTTPException(status_code=403, detail="valid TOTP or recovery code is required")
+        if user.get("account_status") == "active":
+            ensure_user_workspace(user)
         login_throttle.clear(key)
         token, csrf = store.create_session(user["id"], mfa_verified=mfa_ok)
         set_session_cookie(response, token)
@@ -994,18 +1050,17 @@ def create_app(
             user = store.accept_invite(
                 invite_token, google_sub=str(claims.get("sub") or "")
             )
-            tenant, created = store.ensure_tenant(
-                user["id"], _safe_slug_from_email(user["email"], user["id"])
-            )
-            if created:
-                supervisor.provision(tenant["slug"])
         else:
             user, _ = store.upsert_google_user(email, str(claims.get("sub") or ""))
         if user.get("account_status") in {"rejected", "suspended"}:
             # Password login enforces this; the OAuth path must not become a
             # side door for disabled accounts.
             raise HTTPException(status_code=403, detail=f"account is {user['account_status']}")
-        tenant = store.tenant_for_user(str(user["id"]))
+        tenant = (
+            ensure_user_workspace(user)
+            if user.get("account_status") == "active"
+            else store.tenant_for_user(str(user["id"]))
+        )
         token, _ = store.create_session(str(user["id"]), mfa_verified=not bool(user.get("totp_enabled")))
         store.audit("login", tenant_id=tenant["id"] if tenant else None, user_id=user["id"])
         response = RedirectResponse(f"{settings.public_base_url}/app")
@@ -1018,12 +1073,8 @@ def create_app(
         if not settings.dev_login_enabled:
             raise HTTPException(status_code=404)
         user, _ = store.upsert_google_user(email, f"dev:{email.lower()}")
-        tenant, created = store.ensure_tenant(
-            user["id"], _safe_slug_from_email(user["email"], user["id"])
-        )
-        if created:
-            supervisor.provision(tenant["slug"])
-        store.set_account_status(user["id"], "active", user["id"])
+        user = store.set_account_status(user["id"], "active", user["id"])
+        ensure_user_workspace(user)
         token, csrf = store.create_session(user["id"], mfa_verified=True)
         # Through the shared helper like every other login path. Setting the
         # cookie inline here meant it carried neither `secure` nor `path`, so if
@@ -2299,11 +2350,8 @@ def create_app(
             raise HTTPException(status_code=409, detail="owner account cannot be disabled here")
         updated = store.set_account_status(user_id, body.status, user["id"])
         tenant = store.tenant_for_user(user_id)
-        if body.status == "active" and tenant is None:
-            tenant, _ = store.ensure_tenant(
-                user_id, _safe_slug_from_email(updated["email"], user_id)
-            )
-            supervisor.provision(tenant["slug"])
+        if body.status == "active":
+            tenant = ensure_user_workspace(updated)
         elif body.status != "active" and tenant is not None:
             try:
                 supervisor.stop(tenant["slug"])
