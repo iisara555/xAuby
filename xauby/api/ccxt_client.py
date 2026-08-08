@@ -44,6 +44,7 @@ class CCXTExchangeClient(IExchangeGateway):
         self.last_latency = 0.0
         self.last_request: Dict[str, Any] = {}
         self._markets_loaded = False
+        self._okx_algo_order_ids: set[str] = set()
         self.derivatives = derivatives_settings(self.config)
 
         if exchange_instance is not None:
@@ -298,6 +299,126 @@ class CCXTExchangeClient(IExchangeGateway):
         }
         return normalized
 
+    @staticmethod
+    def _is_missing_order_error(exc: ExchangeAPIError) -> bool:
+        code = str(getattr(exc, "code", "") or "").strip().lower()
+        message = str(exc).lower()
+        return code in {"-2013", "-2026", "ordernotfound", "51603", "51400"} or any(
+            marker in message
+            for marker in (
+                '"code":"51603"',
+                '"scode":"51400"',
+                "order does not exist",
+                "filled, canceled or does not exist",
+            )
+        )
+
+    def _okx_algo_request_params(self, symbol: str, order_id: Optional[str] = None) -> Dict[str, Any]:
+        ccxt_symbol = self._to_ccxt_symbol(symbol)
+        market = self._load_markets().get(ccxt_symbol, {}) or {}
+        params: Dict[str, Any] = {
+            "instId": str(market.get("id") or ccxt_symbol),
+        }
+        if order_id is not None:
+            params["algoId"] = str(order_id)
+        return params
+
+    def _normalize_okx_algo_order(
+        self,
+        row: Dict[str, Any],
+        fallback_symbol: str,
+    ) -> Dict[str, Any]:
+        markets = self._load_markets()
+        ccxt_symbol = self._to_ccxt_symbol(fallback_symbol) if fallback_symbol else ""
+        market = markets.get(ccxt_symbol, {}) or {}
+        if not market:
+            inst_id = str(row.get("instId") or "")
+            for candidate_symbol, candidate_market in markets.items():
+                if str((candidate_market or {}).get("id") or "") == inst_id:
+                    ccxt_symbol = candidate_symbol
+                    market = candidate_market or {}
+                    break
+        contract_size = float(market.get("contractSize") or 1.0)
+        amount = float(row.get("sz") or 0.0) * contract_size
+        filled = float(row.get("actualSz") or 0.0) * contract_size
+        average = float(row.get("actualPx") or 0.0)
+        raw_state = str(row.get("state") or "").lower()
+        status = {
+            "live": "NEW",
+            "pause": "NEW",
+            "partially_effective": "PARTIALLY_FILLED",
+            "canceled": "CANCELED",
+            "order_failed": "REJECTED",
+        }.get(raw_state, "NEW")
+        order_id = str(row.get("algoId") or "")
+        trigger_price = float(
+            row.get("triggerPx") or row.get("slTriggerPx") or row.get("tpTriggerPx") or 0.0
+        )
+        order_price = float(
+            row.get("orderPx") or row.get("slOrdPx") or row.get("tpOrdPx") or average or 0.0
+        )
+        return {
+            "orderId": order_id,
+            "id": order_id,
+            "clientOrderId": str(row.get("algoClOrdId") or ""),
+            "symbol": self._from_ccxt_symbol(ccxt_symbol, fallback_symbol),
+            "side": str(row.get("side") or "").upper(),
+            "type": "STOP_LOSS_LIMIT",
+            "price": order_price,
+            "stopPrice": trigger_price,
+            "origQty": amount,
+            "amount": amount,
+            "executedQty": filled,
+            "filled": filled,
+            "cummulativeQuoteQty": filled * average,
+            "status": status,
+            "raw": row,
+        }
+
+    def _get_okx_algo_order(self, symbol: str, order_id: str) -> Dict[str, Any]:
+        payload = self._call(
+            "privateGetTradeOrderAlgo",
+            self._okx_algo_request_params(symbol, order_id),
+        ) or {}
+        rows = payload.get("data") or []
+        if len(rows) != 1:
+            raise CCXTAPIError(
+                "OrderNotFound",
+                f"OKX algo order {order_id} does not exist",
+                raw=payload,
+            )
+        row = rows[0]
+        self._okx_algo_order_ids.add(str(order_id))
+
+        # Once an algo has triggered, OKX may expose the resulting regular
+        # order id. Prefer that order's exact fill state over guessing from the
+        # algo lifecycle state.
+        regular_order_id = str(row.get("ordId") or "")
+        if regular_order_id and str(row.get("state") or "").lower() in {
+            "effective",
+            "partially_effective",
+        }:
+            try:
+                ccxt_symbol = self._to_ccxt_symbol(symbol)
+                regular = self._call("fetch_order", regular_order_id, ccxt_symbol)
+                return self._normalize_order(regular, fallback_symbol=symbol)
+            except ExchangeAPIError:
+                pass
+        return self._normalize_okx_algo_order(row, fallback_symbol=symbol)
+
+    def _cancel_okx_algo_order(self, symbol: str, order_id: str) -> None:
+        params = self._okx_algo_request_params(symbol, order_id)
+        payload = self._call("privatePostTradeCancelAlgos", [params]) or {}
+        rows = payload.get("data") or []
+        if str(payload.get("code") or "") != "0" or len(rows) != 1 or str(rows[0].get("sCode") or "") != "0":
+            row = rows[0] if rows else {}
+            raise CCXTAPIError(
+                row.get("sCode") or payload.get("code") or "cancel_algo_failed",
+                row.get("sMsg") or payload.get("msg") or f"Failed to cancel OKX algo order {order_id}",
+                raw=payload,
+            )
+        self._okx_algo_order_ids.discard(str(order_id))
+
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         ccxt_symbol = self._to_ccxt_symbol(symbol)
         data = self._call("fetch_ticker", ccxt_symbol)
@@ -510,19 +631,28 @@ class CCXTExchangeClient(IExchangeGateway):
             cost_limits = limits.get("cost") or {}
             amount_precision = precision.get("amount")
             price_precision = precision.get("price")
+            contract_size = (
+                Decimal(str(market.get("contractSize") or 1.0))
+                if self.derivatives["market_type"] == "swap"
+                else Decimal("1")
+            )
+            amount_min = Decimal(str(amount_limits.get("min") or "0")) * contract_size
+            amount_step = Decimal(
+                self._precision_step(amount_precision, "0.00000001")
+            ) * contract_size
             symbols.append(
                 {
                     "symbol": normalized,
                     "status": "TRADING" if market.get("active", True) else "BREAK",
                     "baseAsset": str(market.get("base") or "").upper(),
                     "quoteAsset": str(market.get("quote") or "").upper(),
-                    "baseAssetPrecision": self._precision_digits(amount_precision, 8),
+                    "baseAssetPrecision": self._precision_digits(amount_step, 8),
                     "quoteAssetPrecision": self._precision_digits(price_precision, 8),
                     "filters": [
                         {
                             "filterType": "LOT_SIZE",
-                            "minQty": str(amount_limits.get("min") or "0"),
-                            "stepSize": self._precision_step(amount_precision, "0.00000001"),
+                            "minQty": format(amount_min, "f"),
+                            "stepSize": format(amount_step, "f"),
                         },
                         {
                             "filterType": "PRICE_FILTER",
@@ -572,16 +702,62 @@ class CCXTExchangeClient(IExchangeGateway):
             orders = self._call("fetch_open_orders", ccxt_symbol)
         else:
             orders = self._call("fetch_open_orders")
-        return [self._normalize_order(o, fallback_symbol=symbol or "") for o in orders or []]
+        normalized = [self._normalize_order(o, fallback_symbol=symbol or "") for o in orders or []]
+        if self.exchange_id == "okx" and self.derivatives["market_type"] == "swap":
+            params: Dict[str, Any] = {"instType": "SWAP", "ordType": "trigger"}
+            if symbol:
+                params.update(self._okx_algo_request_params(symbol))
+            payload = self._call("privateGetTradeOrdersAlgoPending", params) or {}
+            for row in payload.get("data") or []:
+                algo = self._normalize_okx_algo_order(row, fallback_symbol=symbol or "")
+                self._okx_algo_order_ids.add(str(algo.get("orderId") or ""))
+                normalized.append(algo)
+        deduped: Dict[str, Dict[str, Any]] = {}
+        for order in normalized:
+            key = str(order.get("orderId") or order.get("clientOrderId") or "")
+            deduped[key or f"anonymous-{len(deduped)}"] = order
+        return list(deduped.values())
 
     def get_order(self, symbol: str, order_id: str) -> Dict[str, Any]:
+        if (
+            self.exchange_id == "okx"
+            and self.derivatives["market_type"] == "swap"
+            and str(order_id) in self._okx_algo_order_ids
+        ):
+            return self._get_okx_algo_order(symbol, str(order_id))
         ccxt_symbol = self._to_ccxt_symbol(symbol)
-        order = self._call("fetch_order", str(order_id), ccxt_symbol)
-        return self._normalize_order(order, fallback_symbol=symbol)
+        try:
+            order = self._call("fetch_order", str(order_id), ccxt_symbol)
+            return self._normalize_order(order, fallback_symbol=symbol)
+        except ExchangeAPIError as exc:
+            if (
+                self.exchange_id == "okx"
+                and self.derivatives["market_type"] == "swap"
+                and self._is_missing_order_error(exc)
+            ):
+                return self._get_okx_algo_order(symbol, str(order_id))
+            raise
 
     def cancel_order(self, symbol: str, order_id: str) -> None:
+        if (
+            self.exchange_id == "okx"
+            and self.derivatives["market_type"] == "swap"
+            and str(order_id) in self._okx_algo_order_ids
+        ):
+            self._cancel_okx_algo_order(symbol, str(order_id))
+            return
         ccxt_symbol = self._to_ccxt_symbol(symbol)
-        self._call("cancel_order", str(order_id), ccxt_symbol)
+        try:
+            self._call("cancel_order", str(order_id), ccxt_symbol)
+        except ExchangeAPIError as exc:
+            if (
+                self.exchange_id == "okx"
+                and self.derivatives["market_type"] == "swap"
+                and self._is_missing_order_error(exc)
+            ):
+                self._cancel_okx_algo_order(symbol, str(order_id))
+                return
+            raise
 
     def _base_amount_for_order(
         self,
@@ -652,6 +828,13 @@ class CCXTExchangeClient(IExchangeGateway):
         order_price = float(price) if price is not None and type_lc != "market" else None
         data = self._call("create_order", ccxt_symbol, type_lc, side_lc, base_amount, order_price, params)
         normalized = self._normalize_order(data, fallback_symbol=symbol)
+        if (
+            order_type_uc == "STOP_LOSS_LIMIT"
+            and self.exchange_id == "okx"
+            and self.derivatives["market_type"] == "swap"
+            and normalized["orderId"]
+        ):
+            self._okx_algo_order_ids.add(str(normalized["orderId"]))
         return Order(
             order_id=normalized["orderId"],
             client_id=normalized["clientOrderId"] or client_id or "",

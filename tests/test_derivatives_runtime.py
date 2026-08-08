@@ -53,6 +53,8 @@ class FakeSwap:
     def fetch_ohlcv(self, symbol, timeframe="1m", limit=2): return [[1, 1, 1, 1, 1, 1]]
     def fetch_balance(self): return {"free": {"USDT": 1000}, "used": {}, "total": {"USDT": 1000}}
     def fetch_open_orders(self, symbol=None): return []
+    def privateGetTradeOrdersAlgoPending(self, params):
+        return {"code": "0", "data": [], "msg": ""}
     def fetch_positions(self, symbols=None): return []
     def fetch_positions_history(self, symbols, since, limit, params):
         self.history_args = (symbols, since, limit, params)

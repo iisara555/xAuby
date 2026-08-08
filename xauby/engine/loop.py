@@ -2506,7 +2506,7 @@ class LoopMixin:
                         new_sl_order_id = placed_new_sl_res[0]
                     else:
                         logger.error("Trailing Stop: Failed to place new SL; keeping previous SL")
-                        restored_sl_id = sl_order_id
+                        restored_sl_id = None
                         if old_sl_cancelled and current_sl > 0:
                             restored = self._place_sl_with_retry(
                                 state["quantity"], float(current_sl), symbol=sym
@@ -2516,6 +2516,20 @@ class LoopMixin:
                                 self.send_telegram_alert(
                                     "🚨 *CRITICAL*: Trailing Stop update failed and previous exchange SL could not be restored.",
                                     level=AlertLevel.CRITICAL,
+                                )
+                        elif sl_order_id:
+                            try:
+                                existing = self.client.get_order(sym, sl_order_id)
+                                if str(existing.get("status") or "").upper() in {
+                                    "NEW",
+                                    "PARTIALLY_FILLED",
+                                }:
+                                    restored_sl_id = sl_order_id
+                            except Exception as verify_exc:
+                                logger.error(
+                                    "Trailing Stop: could not verify previous SL %s after cancel failure: %s",
+                                    sl_order_id,
+                                    verify_exc,
                                 )
                         new_sl = current_sl
                         new_sl_order_id = restored_sl_id
