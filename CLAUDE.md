@@ -124,15 +124,17 @@ perpetual); backtests proxy XAU to `PAXGUSDT` (deep history on Global Binance)
 via `strategy_params.backtest_data_proxy`.
 
 **Two pairs run live** (`max_open_positions: 2`, `data.pairs: [XAUUSDT,
-BTCUSDT]`), both **long + short** (`allowed_sides: [long, short]`,
-`short_live_enabled: true`, `enable_short: true`) at 1x with the regime router
-off (`regime_router_enabled: false`) on both. Live shorts execute because the
-swap adapter advertises `swap` / `positions` / `reduce_only` capabilities
-(`xauby/api/ccxt_client.py`).
+BTCUSDT]`) at 1x with the regime router off (`regime_router_enabled: false`) on
+both — but they no longer share a side policy. **XAU is long-only** since the
+2026-07-29 rollout (`allowed_sides: [long]`, `short_live_enabled: false`,
+`enable_short: false`); **BTC is long + short** (`allowed_sides: [long, short]`,
+`short_live_enabled: true`, `enable_short: true`). BTC's live shorts execute
+because the swap adapter advertises `swap` / `positions` / `reduce_only`
+capabilities (`xauby/api/ccxt_client.py`).
 
 | Symbol | Mode | Strategy | Primary TF | Confirm TF | Sides | Stop |
 |--------|------|----------|-----------|-----------|-------|------|
-| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` | `4h` | `1d` (gates **shorts only**) | `long` + `short` (backtest proxy `PAXGUSDT`) | none — CDC-pure |
+| `XAU` (XAUUSDT) | `live` | `xauby_actionzone` | `4h` | `1d` (gates entries) | `long` only (backtest proxy `PAXGUSDT`) | none — CDC-pure |
 | `BTC` (BTCUSDT) | `live` | `supertrend_ema200` | `4h` | — | `long` + `short` | ATR (`sl_atr_mult: 3.0`) |
 
 The two pairs are deliberately **not** configured alike, and the difference
@@ -142,27 +144,33 @@ matters when you touch sizing or exits:
   stop, and sizing uses fixed-fraction `position_pct: 0.95` of equity rather than
   an SL-distance. Exits are the zone flip plus the **`minimal_roi` ladder**
   (`{"0": 8.0, "1440": 5.0, "4320": 3.0}` — take +8% from entry, settle for +5%
-  after a day, +3% after three). The ladder is part of what the July 2026
-  certificate measured (`docs/research/xau_4strategy_comparison_2026-07-13.md`),
-  so **changing it re-opens certification**. XAU has **no partial TP**: the keys
-  were removed once it was proven they could never fire beneath an 8% ladder —
-  `validate_exit_config` (`xauby/runtime/exits.py`) now refuses that combination
-  at startup.
-- **XAU's D1 gate is asymmetric** (2026-07-26): `use_d1_regime_filter: true` with
-  `use_d1_regime_filter_long: false`, so the daily zone gates **SHORT entries
-  only** while longs enter on the 4H flip alone. `xauby_actionzone` supports
-  per-side gating via `use_d1_regime_filter_long` / `_short` (both default to
-  `None` = follow the shared flag). Measured PF 1.38 / net 56.54% / MDD 14.42%
-  over 4.02y of OKX XAUT-USDT, and the strongest cell in the 2026-03..06 gold
-  drawdown (+22.61% vs buy-and-hold's -23.21%) —
-  `docs/research/xau_per_side_d1_test_2026-07-26.md`.
-  **This config is NOT certified:** it fails `backtest.acceptance` by -7.87pp,
-  and `long-only + D1 on` beats it on PF (1.96) and MDD (9.22%). It ships on an
-  explicit operator decision. Do not describe it as certified, and do not "fix"
-  the acceptance failure by loosening `min_profit_edge_pp` — that threshold is
-  the pre-registered bar the whole XAU investigation rests on.
+  after a day, +3% after three). The ladder is part of what every XAU
+  certificate has measured, so **changing it re-opens certification**. XAU has
+  **no partial TP**: the keys were removed once it was proven they could never
+  fire beneath an 8% ladder — `validate_exit_config` (`xauby/runtime/exits.py`)
+  now refuses that combination at startup.
+- **XAU's D1 gate is on for both sides** (2026-07-29): `use_d1_regime_filter`,
+  `_long` and `_short` are all `true`, so the daily zone gates every entry.
+  Because the pair is also long-only, `_short` is inert — it is set anyway so
+  the shape is unambiguous. `xauby_actionzone` supports per-side gating via
+  `use_d1_regime_filter_long` / `_short` (both default to `None` = follow the
+  shared flag); the asymmetric `L:D1off S:D1on` shape that shipped on
+  2026-07-26 was replaced by this one and is no longer deployed.
   Note the D1 gate also controls whether the engine loads 1d candles at all
   (`SymbolContext.timeframe_regime`), so turning it off stops that fetch.
+- **XAU is certified, under a narrow gate.** Certificate fingerprint
+  `6b01b6f2598f3881` (`xauby/saas/certificates/okx-xau-actionzone-v1.json`,
+  `docs/research/xau_long_only_d1_certificate_2026-07-29.md`) records PF 2.18 /
+  net +80.72% / MDD 8.48% over 102 trades on 4.0y of OKX XAUT-USDT. Read the
+  scope before citing it: `backtest.acceptance`'s edge test is marked
+  `applies: false` here because that test measures the short side and this
+  preset does not trade one, so the config cleared only "net positive". The
+  profile was picked from a 432-cell search on the same four years, with no
+  pristine holdout and no forward record, and the native XAU swap check covers
+  1.3 years. It is evidence with real selection uncertainty, not an all-weather
+  guarantee. Do not "fix" a future acceptance failure by loosening
+  `min_profit_edge_pp` — that threshold is the pre-registered bar the whole XAU
+  investigation rests on.
 - **BTC keeps a real stop** (`sl_atr_mult: 3.0`, `trailing_atr_mult: 2.0`,
   `breakeven_sl_enabled: true`), so it takes the normal risk-based sizing path
   (`qty = equity × risk_pct / sl_distance`) and exits on SuperTrend flip or EMA200
@@ -242,11 +250,11 @@ Production note: the `*_short` strategies (`donchian_short`, `supertrend_short`,
 only (tagged `research`). The engine hard-blocks any `research`-tagged strategy
 from a `live` pair (`_load_strategy_for_symbol`), so they are sim/backtest only —
 never map them in `regime_router.mapping` for production. On the current OKX swap
-baseline **both live pairs run long + short** — XAU on `xauby_actionzone`
-(stop-and-reverse) and BTC on `supertrend_ema200` — so the short path is
-**active** in live on two pairs; the `research`-tagged `*_short` plugins still
-stay sim/backtest only. (`cdc_action_zone` is a legacy alias for
-`xauby_actionzone`, resolved in `STRATEGY_ID_ALIASES`.)
+baseline the short path is **active on BTC only** (`supertrend_ema200`); XAU went
+long-only on 2026-07-29, so `xauby_actionzone` no longer stops and reverses in
+production. The `research`-tagged `*_short` plugins remain sim/backtest only.
+(`cdc_action_zone` is a legacy alias for `xauby_actionzone`, resolved in
+`STRATEGY_ID_ALIASES`.)
 
 Shorts in general: a strategy emits `open_short`/`close_short`
 (`xauby/strategies/signal.py`); the engine routes them to
