@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
@@ -90,6 +91,56 @@ class SaaSAuthAndBackupTests(unittest.TestCase):
         self.assertTrue(params["disable_stop_loss"])
         self.assertAlmostEqual(params["position_pct"], 0.95)
         self.assertTrue(whitelist["assets"][0]["cdc_pure_certified"])
+
+    def test_failed_invite_provisioning_is_repaired_by_password_login(self):
+        owner_login = self.client.post(
+            "/auth/dev-login", params={"email": "iisara555@gmail.com"}
+        )
+        invited = self.client.post(
+            "/api/v1/admin/invites",
+            headers={"X-CSRF-Token": owner_login.json()["csrf_token"]},
+            json={"email": "retry@example.com"},
+        )
+        self.assertEqual(invited.status_code, 201, invited.text)
+        token = urlparse(self.mailer.outbox[-1]["text"].splitlines()[-1]).path.rsplit("/", 1)[-1]
+        browser = TestClient(self.app)
+        try:
+            with patch.object(
+                self.supervisor, "provision",
+                side_effect=RuntimeError("simulated privileged helper outage"),
+            ):
+                accepted = browser.post(
+                    "/auth/invite/accept",
+                    json={"token": token, "password": "StrongPassword123"},
+                )
+
+            self.assertEqual(accepted.status_code, 503, accepted.text)
+            self.assertNotIn("privileged helper outage", accepted.text)
+            self.assertEqual(browser.get("/api/v1/me").status_code, 401)
+            user = self.store.user_by_email("retry@example.com")
+            self.assertEqual(user["account_status"], "active")
+            tenant = self.store.tenant_for_user(user["id"])
+            self.assertEqual(tenant["status"], "provision_failed")
+            self.assertFalse(self.supervisor.workspace_ready(tenant["slug"]))
+
+            login = browser.post(
+                "/auth/login",
+                json={"email": "retry@example.com", "password": "StrongPassword123"},
+            )
+            self.assertEqual(login.status_code, 200, login.text)
+            self.assertEqual(browser.get("/api/v1/me").status_code, 200)
+            self.assertTrue(self.supervisor.workspace_ready(tenant["slug"]))
+            self.assertEqual(self.store.tenant_for_user(user["id"])["status"], "queued")
+            with self.store.connection() as conn:
+                events = {
+                    row[0] for row in conn.execute(
+                        "SELECT event_type FROM audit_events WHERE tenant_id=?", (tenant["id"],)
+                    )
+                }
+            self.assertIn("tenant_provision_failed", events)
+            self.assertIn("tenant_provision_repaired", events)
+        finally:
+            browser.close()
 
     def test_public_signup_is_disabled(self):
         response = self.client.post(
