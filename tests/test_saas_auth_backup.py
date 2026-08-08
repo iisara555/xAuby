@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
+import yaml
 from fastapi.testclient import TestClient
 
 from scripts.saas_backup import create_backup, verify_backup
@@ -131,6 +132,12 @@ class SaaSAuthAndBackupTests(unittest.TestCase):
             self.assertEqual(browser.get("/api/v1/me").status_code, 200)
             self.assertTrue(self.supervisor.workspace_ready(tenant["slug"]))
             self.assertEqual(self.store.tenant_for_user(user["id"])["status"], "queued")
+            config = yaml.safe_load(
+                (self.supervisor.config_dir(tenant["slug"]) / "bot_config.yaml").read_text()
+            )
+            self.assertEqual(config["trading"]["max_open_positions"], 1)
+            self.assertEqual(config["risk"]["max_open_positions"], 1)
+            self.assertEqual(config["portfolio"]["max_open_positions"], 1)
             with self.store.connection() as conn:
                 events = {
                     row[0] for row in conn.execute(
