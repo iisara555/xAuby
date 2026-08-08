@@ -74,9 +74,42 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
-def grid_items() -> List[Dict[str, Any]]:
-    """Return the pre-declared 432-cell grid, including both required anchors."""
+ENTRY_KEYS = (
+    "ap_smoothing",
+    "fresh_zone_window",
+    "require_slow_slope",
+    "slow_slope_bars",
+    "entry_thrust_min",
+    "exit_on_bear_cross",
+)
+
+
+def live_entry_shape(base_strategy_config: Mapping[str, Any]) -> Dict[str, Any]:
+    """The deployed structural entry shape, read rather than asserted.
+
+    These six values used to be written out as literals next to the anchor test.
+    Production moved on 2026-07-29 and the literals did not, so the script could
+    only reproduce the run that had already happened. Resolving them means the
+    anchors follow whatever is actually deployed.
+    """
+    shape = {key: base_strategy_config.get(key) for key in ENTRY_KEYS}
+    if not shape["require_slow_slope"]:
+        # slope_bars is dead config when the slope filter is off, and the grid
+        # emits only one cell for it; comparing it would never match.
+        shape["slow_slope_bars"] = 3
+    return shape
+
+
+def grid_items(base_strategy_config: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """Return the pre-declared 432-cell grid, including both required anchors.
+
+    The cells are fixed. Only which of them carry the anchor flags depends on
+    ``base_strategy_config`` — the deployed config is a coordinate in this grid,
+    not a separate declaration that can rot out of sync with it.
+    """
     slope_shapes = ((False, 3), (True, 3), (True, 5))
+    live_shape = live_entry_shape(base_strategy_config)
+    live_variant = deployed_variant_name(base_strategy_config)
     items: List[Dict[str, Any]] = []
     for variant, shape in VARIANTS.items():
         for ap, fresh, slope, thrust, bear_cross in itertools.product(
@@ -102,21 +135,22 @@ def grid_items() -> List[Dict[str, Any]]:
                 f"sl{(slope_bars if require_slope else 0)}_"
                 f"th{thrust:g}_bx{int(bear_cross)}"
             )
-            live_entry_shape = (
-                ap == 2
-                and fresh == 3
-                and require_slope
-                and slope_bars == 3
-                and thrust == 0.0
-                and not bear_cross
-            )
+            entry_shape = {
+                "ap_smoothing": ap,
+                "fresh_zone_window": fresh,
+                "require_slow_slope": require_slope,
+                "slow_slope_bars": slope_bars if require_slope else 3,
+                "entry_thrust_min": thrust,
+                "exit_on_bear_cross": bear_cross,
+            }
+            is_live_entry = entry_shape == live_shape
             items.append(
                 {
                     "id": combo_id,
                     "variant": variant,
                     "override": override,
-                    "anchor_live": variant == "L:D1off S:D1on" and live_entry_shape,
-                    "anchor_long_only_d1": variant == "long-only D1 on" and live_entry_shape,
+                    "anchor_live": variant == live_variant and is_live_entry,
+                    "anchor_long_only_d1": variant == "long-only D1 on" and is_live_entry,
                 }
             )
     return items
@@ -365,14 +399,23 @@ def main() -> int:
     cfg = load_bot_config(args.config)
     prep = prepare(cfg)
     live_variant = deployed_variant_name(prep.base_strategy_config)
-    if live_variant != "L:D1off S:D1on":
+    if live_variant is None:
         raise SystemExit(
-            "Live XAU shape changed; expected 'L:D1off S:D1on', "
-            f"resolved {live_variant!r}. Update the declared anchors before running."
+            "Live XAU config matches no variant in the catalog, so the run has "
+            "no baseline to compare against. Add it to xau_harness.VARIANTS first."
         )
+    print(f"live XAU variant: {live_variant!r}", flush=True)
+    print(f"live entry shape: {live_entry_shape(prep.base_strategy_config)}", flush=True)
 
     data = _write_frames(out_dir)
-    items = grid_items()
+    items = grid_items(prep.base_strategy_config)
+    if not any(item["anchor_live"] for item in items):
+        raise SystemExit(
+            f"The deployed config ({live_variant!r}, "
+            f"{live_entry_shape(prep.base_strategy_config)}) is not a cell in this "
+            "grid, so the run cannot report how the search compares to production. "
+            "Widen the grid axes before running."
+        )
     workers = max(1, int(args.workers))
     with Pool(
         processes=workers,
