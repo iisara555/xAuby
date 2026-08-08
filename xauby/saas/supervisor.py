@@ -195,8 +195,10 @@ class TenantSupervisor:
             })
             cfg.setdefault("risk", {}).update({
                 "risk_pct": 0.01, "max_position_per_trade_pct": 10.0,
-                "max_daily_loss_pct": 6.0, "stop_loss_pct": 2.0,
+                "max_daily_loss_pct": 6.0, "max_open_positions": 1,
+                "stop_loss_pct": 2.0,
             })
+            cfg.setdefault("portfolio", {})["max_open_positions"] = 1
             cfg.setdefault("derivatives", {}).update({"default_leverage": 1, "max_leverage": 2})
             cfg.setdefault("data", {}).setdefault(
                 "dashboard_timeframes", ["1h", "4h", "1d"]
