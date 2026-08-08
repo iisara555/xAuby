@@ -92,6 +92,76 @@ class FakeCCXTExchange:
         return order
 
 
+class OrderNotFound(Exception):
+    pass
+
+
+class FakeOKXAlgoSwap(FakeCCXTExchange):
+    def __init__(self):
+        super().__init__()
+        self.markets = {
+            "BTC/USDT:USDT": {
+                "id": "BTC-USDT-SWAP",
+                "symbol": "BTC/USDT:USDT",
+                "base": "BTC",
+                "quote": "USDT",
+                "settle": "USDT",
+                "active": True,
+                "swap": True,
+                "contract": True,
+                "contractSize": 0.01,
+                "precision": {"amount": 0.01, "price": 0.1},
+                "limits": {"amount": {"min": 0.01}, "cost": {"min": 10}},
+            }
+        }
+        self.markets_by_id = {"BTC-USDT-SWAP": [self.markets["BTC/USDT:USDT"]]}
+        self.cancel_algo_payload = None
+        self.algo_state = "live"
+
+    def fetch_open_orders(self, symbol=None):
+        return []
+
+    def fetch_order(self, order_id, symbol):
+        raise OrderNotFound("order does not exist")
+
+    def cancel_order(self, order_id, symbol):
+        raise OrderNotFound("order does not exist")
+
+    def _algo(self):
+        return {
+            "algoId": "3815029827304853504",
+            "algoClOrdId": "xaubyslrepair17861991485428dcb50",
+            "instId": "BTC-USDT-SWAP",
+            "ordType": "trigger",
+            "side": "sell",
+            "posSide": "net",
+            "sz": "0.07",
+            "actualSz": "0",
+            "actualPx": "",
+            "tdMode": "isolated",
+            "triggerPx": "63100.8",
+            "state": self.algo_state,
+        }
+
+    def privateGetTradeOrderAlgo(self, params):
+        if params["algoId"] != "3815029827304853504":
+            return {"code": "0", "data": [], "msg": ""}
+        return {"code": "0", "data": [self._algo()], "msg": ""}
+
+    def privateGetTradeOrdersAlgoPending(self, params):
+        rows = [self._algo()] if self.algo_state == "live" else []
+        return {"code": "0", "data": rows, "msg": ""}
+
+    def privatePostTradeCancelAlgos(self, payload):
+        self.cancel_algo_payload = payload
+        self.algo_state = "canceled"
+        return {
+            "code": "0",
+            "data": [{"algoId": payload[0]["algoId"], "sCode": "0", "sMsg": ""}],
+            "msg": "",
+        }
+
+
 class TestCCXTClient(unittest.TestCase):
     def setUp(self):
         self.exchange = FakeCCXTExchange()
@@ -162,6 +232,55 @@ class TestCCXTClient(unittest.TestCase):
         self.assertLessEqual(len(client_id), 32)
         self.assertTrue(client_id.isalnum())
         self.assertEqual(order.client_id, client_id)
+
+    def test_okx_swap_filters_are_normalized_from_contracts_to_base_units(self):
+        client = CCXTExchangeClient(
+            config={
+                "exchange": {
+                    "provider": "ccxt",
+                    "ccxt_id": "okx",
+                    "market_type": "swap",
+                    "margin_mode": "isolated",
+                }
+            },
+            exchange_instance=FakeOKXAlgoSwap(),
+        )
+
+        filters = client.get_symbol_filters("BTCUSDT")
+
+        self.assertAlmostEqual(filters["minQty"], 0.0001)
+        self.assertAlmostEqual(filters["stepSize"], 0.0001)
+        self.assertEqual(filters["minNotional"], 10.0)
+
+    def test_okx_trigger_algo_orders_are_visible_fetchable_and_cancellable(self):
+        exchange = FakeOKXAlgoSwap()
+        client = CCXTExchangeClient(
+            config={
+                "exchange": {
+                    "provider": "ccxt",
+                    "ccxt_id": "okx",
+                    "market_type": "swap",
+                    "margin_mode": "isolated",
+                }
+            },
+            exchange_instance=exchange,
+        )
+
+        fetched = client.get_order("BTCUSDT", "3815029827304853504")
+        orders = client.get_open_orders("BTCUSDT")
+        client.cancel_order("BTCUSDT", "3815029827304853504")
+
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0]["orderId"], "3815029827304853504")
+        self.assertEqual(orders[0]["symbol"], "BTCUSDT")
+        self.assertEqual(orders[0]["status"], "NEW")
+        self.assertAlmostEqual(orders[0]["origQty"], 0.0007)
+        self.assertAlmostEqual(orders[0]["stopPrice"], 63100.8)
+        self.assertEqual(fetched["status"], "NEW")
+        self.assertEqual(
+            exchange.cancel_algo_payload,
+            [{"instId": "BTC-USDT-SWAP", "algoId": "3815029827304853504"}],
+        )
 
     def test_stop_loss_limit_is_explicitly_unsupported_by_default(self):
         with self.assertRaises(CCXTAPIError):
