@@ -205,6 +205,7 @@ Entry points:
 | `python launcher.py` | Interactive Textual launcher (engine, dashboard, config, backtest, tools) |
 | `xauby` / `xauby --sim` / `xauby --live` | Installed console script (also `python -m xauby`) |
 | `xauby restart [--live]` | Controlled restart; live path runs preflight checks |
+| `xauby tui --tenant <slug> --read-only` | Attach an observation-only TUI to one hosted tenant; never starts/restarts an engine or queues orders |
 | `xauby update` | Deploy `origin/main` (`scripts/deploy_from_github.sh`) then restart |
 | `python -m xauby.saas` | Web SaaS control plane (port 8790) |
 | `python -m xauby.ui.textual_tui.app` | Textual TUI standalone |

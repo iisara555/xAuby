@@ -11,13 +11,9 @@ from xauby.ui.textual_tui.screens import (
     BacktestScreen,
 )
 from xauby.ui.textual_tui.menu_screen import MenuScreen
-from xauby.ui.textual_tui.quick_config import (
-    DBToolsScreen,
-    QuickConfigHubScreen,
-    SystemCheckScreen,
-)
 
 from xauby.meta import PRODUCT_NAME
+from xauby.ui.textual_tui.capabilities import attached_tenant, is_read_only_mode
 
 
 class XAubyTextualApp(App):
@@ -42,18 +38,32 @@ class XAubyTextualApp(App):
         self.install_screen(DashboardScreen(self.db), "dashboard")
         self.install_screen(TradeLogScreen(self.db), "tradelog")
         self.install_screen(IncidentExplorerScreen(self.db), "incidents")
-        self.install_screen(BacktestScreen(self.db), "backtest")
         self.install_screen(MenuScreen(self.db), "menu")
-        self.install_screen(QuickConfigHubScreen(self.db), "quick_config")
-        self.install_screen(SystemCheckScreen(self.db), "system_check")
-        self.install_screen(DBToolsScreen(self.db), "db_tools")
+        if not is_read_only_mode():
+            # Quick Config imports the legacy launcher helpers. Keep that whole
+            # control surface out of hosted observer processes.
+            from xauby.ui.textual_tui.quick_config import (
+                DBToolsScreen,
+                QuickConfigHubScreen,
+                SystemCheckScreen,
+            )
+
+            self.install_screen(BacktestScreen(self.db), "backtest")
+            self.install_screen(QuickConfigHubScreen(self.db), "quick_config")
+            self.install_screen(SystemCheckScreen(self.db), "system_check")
+            self.install_screen(DBToolsScreen(self.db), "db_tools")
 
         start = os.environ.pop("XAUBY_START_SCREEN", None)
         if start is None:
             start = "menu" if os.environ.get("FROM_LAUNCHER") == "true" else "dashboard"
-        if start not in ("dashboard", "menu", "tradelog", "incidents", "backtest",
-                         "quick_config", "system_check", "db_tools"):
+        allowed = {"dashboard", "menu", "tradelog", "incidents"}
+        if not is_read_only_mode():
+            allowed.update({"backtest", "quick_config", "system_check", "db_tools"})
+        if start not in allowed:
             start = "dashboard"
+        tenant = attached_tenant()
+        if tenant:
+            self.title = f"{PRODUCT_NAME} · {tenant} · READ-ONLY"
         self.push_screen(start)
 
 
@@ -75,6 +85,11 @@ def main():
     app = XAubyTextualApp()
     app.run(mouse=True)
     restore_terminal()
+
+    # Hosted attach is a terminal observer, never a launcher.  Do not dispatch
+    # inherited/menu actions and never exec launcher.py after it exits.
+    if is_read_only_mode():
+        return
 
     from xauby.ui.textual_tui.menu_actions import run_menu_action
 

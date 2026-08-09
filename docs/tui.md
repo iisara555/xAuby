@@ -2,6 +2,25 @@
 
 xAuby ships a **Textual** terminal UI that reads live engine state. It does not run the trading loop itself and it opens the database in read-only mode.
 
+## Hosted tenant read-only attach
+
+On the SaaS/systemd host, use the tenant-scoped observer instead of the legacy
+launcher flow:
+
+```bash
+xauby tui --tenant <slug> --read-only
+```
+
+The command resolves `/etc/xauby/tenants/<slug>` and
+`/var/lib/xauby/runtime/<slug>`, strips inherited secrets, and launches a fresh
+Textual process with only Dashboard, Trade Log, and Incidents available. Engine
+start/restart, manual orders, configuration, replay validation, backtest/
+optimizer, and database tools are disabled. Pair switching is local to the TUI
+process and does not write `dashboard_focus.json`.
+
+Do not use bare `xauby`, `xauby --live`, or launcher menu engine actions as a
+tenant attach mechanism on a hosted machine.
+
 ## Screens
 
 | Screen | Keys | Purpose |

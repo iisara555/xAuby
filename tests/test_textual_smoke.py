@@ -127,6 +127,78 @@ async def test_incident_native_mounts():
 
 
 @pytest.mark.asyncio
+async def test_read_only_tenant_attach_exposes_views_but_no_mutations(monkeypatch):
+    """Observer mode keeps monitoring screens while all local controls fail closed."""
+    import xauby.ui.textual_tui.screens as screens_mod
+    from textual.widgets import OptionList
+
+    monkeypatch.setenv("XAUBY_TUI_READ_ONLY", "1")
+    monkeypatch.setenv("XAUBY_TUI_TENANT", "pilot-1")
+    monkeypatch.setenv("XAUBY_START_SCREEN", "dashboard")
+    order_calls = []
+    focus_calls = []
+    monkeypatch.setattr(
+        screens_mod,
+        "write_manual_order_request",
+        lambda *a, **kw: order_calls.append((a, kw)),
+    )
+    monkeypatch.setattr(
+        screens_mod,
+        "write_focus_request",
+        lambda *a, **kw: focus_calls.append((a, kw)),
+    )
+
+    app = XAubyTextualApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.screen.__class__.__name__ == "DashboardScreen"
+        assert not app.is_screen_installed("backtest")
+        assert not app.is_screen_installed("quick_config")
+        assert not app.is_screen_installed("db_tools")
+
+        await pilot.press("f7")
+        await pilot.pause()
+        await pilot.press("f8")
+        await pilot.pause()
+        assert order_calls == []
+
+        dashboard = app.screen
+        dashboard._last_pairs = ["BTCUSDT", "XAUTUSDT"]
+        dashboard._last_focus = "BTCUSDT"
+        monkeypatch.setattr(dashboard, "_load_state", lambda: None)
+        monkeypatch.setattr(dashboard, "_push_state", lambda: None)
+        dashboard._cycle_pair_focus(1)
+        assert app._xauby_local_focus == "XAUTUSDT"
+        assert focus_calls == []
+
+        await pilot.press("4")
+        await pilot.pause()
+        assert app.screen.__class__.__name__ == "DashboardScreen"
+
+        await pilot.press("ctrl+m")
+        await pilot.pause()
+        menu = app.screen.query_one("#launcher-menu", OptionList)
+        option_ids = {
+            menu.get_option_at_index(index).id
+            for index in range(menu.option_count)
+            if menu.get_option_at_index(index).id
+        }
+        assert option_ids == {"dashboard", "tradelog", "incidents", "exit"}
+        assert not (
+            {"run_sim", "run_live", "config", "db_tools", "backtest", "restart_service"}
+            & option_ids
+        )
+        assert focus_calls == []
+
+
+def test_read_only_menu_action_never_dispatches_launcher(monkeypatch):
+    monkeypatch.setenv("XAUBY_TUI_READ_ONLY", "1")
+    from xauby.ui.textual_tui.menu_actions import run_menu_action
+
+    assert run_menu_action("run_live") is False
+
+
+@pytest.mark.asyncio
 async def test_tradelog_phone_shows_all_panels():
     """In phone mode (<75 cols) regime, peak, and perf panels should all be displayed."""
     app = XAubyTextualApp()

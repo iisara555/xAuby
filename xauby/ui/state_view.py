@@ -22,6 +22,10 @@ LEGACY_DEFAULT_SYMBOL = os.environ.get("XAUBY_DEFAULT_SYMBOL", "XAUTUSDT")
 
 def default_symbol_from_whitelist(project_root: str = ".") -> str:
     """Return the first whitelist symbol (enabled preferred), else a neutral default."""
+    if project_root == "." and os.environ.get("XAUBY_CONFIG_DIR"):
+        from xauby.runtime.paths import config_root
+
+        project_root = config_root()
     path = os.path.join(project_root, "coin_whitelist.json")
     try:
         with open(path, "r", encoding="utf-8") as f:

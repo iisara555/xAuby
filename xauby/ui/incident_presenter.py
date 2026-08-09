@@ -245,11 +245,14 @@ def render_incident_summary_lines(
     return lines
 
 
-def get_event_store() -> EventStore:
+def get_event_store(db: Optional[IDatabaseRepository] = None) -> EventStore:
     global _store
     with _store_lock:
-        if _store is None:
-            _store = EventStore()
+        from xauby.ui.textual_tui.capabilities import is_read_only_mode
+
+        readonly = is_read_only_mode()
+        if _store is None or (readonly and not getattr(_store, "_readonly", False)):
+            _store = EventStore(db=db, readonly=readonly)
         return _store
 
 
@@ -430,6 +433,9 @@ def build_incident_view_model(
     focus_symbol: Optional[str] = None,
     is_multi: bool = False,
 ) -> IncidentViewModel:
+    # Seed the singleton with the app's read-only DB before refresh_runs() asks
+    # for it. Hosted observer mode must not initialise schema or a JSONL dir.
+    get_event_store(db)
     symbol = None if is_multi else (focus_symbol or bot_state.get("symbol"))
     current_run_id = str(bot_state.get("run_id") or "")
     pair_label = (focus_symbol or bot_state.get("symbol") or "").upper().replace("_", "")

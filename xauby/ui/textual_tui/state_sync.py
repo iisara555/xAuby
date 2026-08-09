@@ -36,8 +36,9 @@ def tui_refresh_interval() -> float:
     """Dashboard poll interval from bot_config.yaml cli_ui.refresh_interval_seconds."""
     try:
         import yaml
+        from xauby.runtime.paths import config_file
 
-        with open("bot_config.yaml", "r", encoding="utf-8") as f:
+        with open(config_file("bot_config.yaml"), "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
         return max(0.5, float((cfg.get("cli_ui") or {}).get("refresh_interval_seconds", 1.0)))
     except Exception:
@@ -48,8 +49,9 @@ def tui_state_stale_seconds() -> float:
     """Maximum age of engine state before the TUI switches to offline/waiting."""
     try:
         import yaml
+        from xauby.runtime.paths import config_file
 
-        with open("bot_config.yaml", "r", encoding="utf-8") as f:
+        with open(config_file("bot_config.yaml"), "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
         interval = float((cfg.get("trading") or {}).get("interval_seconds", 60.0))
         configured = (cfg.get("cli_ui") or {}).get("state_stale_seconds")
