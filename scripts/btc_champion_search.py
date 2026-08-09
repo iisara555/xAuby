@@ -88,8 +88,11 @@ def _init_worker(config_path: str, paths: Mapping[str, str]) -> None:
 
 
 def _run(frame: pd.DataFrame, item: Mapping[str, Any], skip_bars: int) -> Dict[str, Any]:
+    # The daily frame is offered to every plugin; `run_rival` attaches it only to
+    # those whose own config gates on it.
     return run_rival(frame, item, symbol=SYMBOL, engine_config=_G["cfg"],
-                     skip_bars=skip_bars, label=VENUE)
+                     skip_bars=skip_bars, label=VENUE,
+                     df_regime=_G["native1"], regime_tf="1d")
 
 
 def _eval(item: Mapping[str, Any]) -> Dict[str, Any]:

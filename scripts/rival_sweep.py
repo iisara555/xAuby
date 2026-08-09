@@ -87,6 +87,18 @@ def metrics(stats: Mapping[str, Any]) -> Dict[str, Any]:
     return {key: stats.get(key) for key in METRIC_KEYS}
 
 
+def gates_on_d1(cfg: Mapping[str, Any]) -> bool:
+    """Whether a resolved strategy config consults the daily regime frame.
+
+    Per-side keys default to ``None``, meaning "follow the shared flag", so the
+    shared flag has to be the fallback rather than an independent fourth vote.
+    """
+    shared = bool(cfg.get("use_d1_regime_filter"))
+    sides = (cfg.get("use_d1_regime_filter_long"),
+             cfg.get("use_d1_regime_filter_short"))
+    return any(shared if side is None else bool(side) for side in sides) or shared
+
+
 def run_rival(
     frame: pd.DataFrame,
     item: Mapping[str, Any],
@@ -98,18 +110,31 @@ def run_rival(
     df_regime: Optional[pd.DataFrame] = None,
     regime_tf: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Replay one rival on ``frame``, using that plugin's own resolved config."""
+    """Replay one rival on ``frame``, using that plugin's own resolved config.
+
+    ``df_regime`` is attached only when the plugin's own config actually gates on
+    the daily frame. Passing it unconditionally would be harmless, but *omitting*
+    it is not: a D1-gated plugin with no daily frame sees `UNKNOWN` and blocks
+    every entry, which reports as a flat zero-trade row that looks like a verdict
+    on the strategy rather than a missing input. `xauby_actionzone` did exactly
+    that on the first BTC sweep.
+    """
     bundle = _bundle_for(
         symbol, frame,
         engine_config=dict(engine_config),
         strategy_name=item["strategy"],
         label=label,
     )
-    if df_regime is not None:
-        bundle.df_regime = df_regime.reset_index(drop=True)
-        bundle.regime_tf = regime_tf
-        bundle.use_d1 = True
     strat = {**dict(bundle.strat_cfg), **dict(item["override"])}
+    if gates_on_d1(strat):
+        if df_regime is None:
+            raise RuntimeError(
+                f"{item['strategy']} gates on the D1 regime frame but none was "
+                "supplied; it would block every entry and report zero trades"
+            )
+        bundle.df_regime = df_regime.reset_index(drop=True)
+        bundle.regime_tf = regime_tf or "1d"
+        bundle.use_d1 = True
     result = run_replay_from_bundle(bundle, strat_cfg_override=strat,
                                     min_bars_override=skip_bars)
     if not result.meta.run_ok:

@@ -202,28 +202,35 @@ def _run_strategy_frame(
     *,
     skip_bars: int,
     label: str,
+    regime: str,
 ) -> Dict[str, Any]:
     """Replay one rival on its OWN default config, XAU costs and sizing.
 
     Deliberately not routed through `_run_frame`: that resolves the ActionZone
     variant. A rival gets its own `strat_cfg` from `_bundle_for`, so its stop,
     trailing and sizing are the plugin's, not gold's incumbent.
+
+    ``regime`` names the daily frame matching ``frame``'s series; `run_rival`
+    attaches it only to plugins whose own config gates on it.
     """
     return run_rival(frame, item, symbol=SYMBOL, engine_config=_G["cfg"],
-                     skip_bars=skip_bars, label=label)
+                     skip_bars=skip_bars, label=label,
+                     df_regime=_G[regime], regime_tf="1d")
 
 
 def _eval_strategy(item: Mapping[str, Any]) -> Dict[str, Any]:
     try:
         return {
             **dict(item),
-            "is": _run_strategy_frame(_G["is_df"], item, skip_bars=0, label=PROXY),
-            "oos": _run_strategy_frame(_G["oos_df"], item,
-                                       skip_bars=_G["oos_skip"], label=PROXY),
+            "is": _run_strategy_frame(_G["is_df"], item, skip_bars=0, label=PROXY,
+                                      regime="proxy1"),
+            "oos": _run_strategy_frame(_G["oos_df"], item, skip_bars=_G["oos_skip"],
+                                       label=PROXY, regime="proxy1"),
             "proxy_full": _run_strategy_frame(_G["proxy4"], item, skip_bars=0,
-                                              label=PROXY),
+                                              label=PROXY, regime="proxy1"),
             "native_full": _run_strategy_frame(_G["native4"], item, skip_bars=0,
-                                               label="XAU-USDT-SWAP"),
+                                               label="XAU-USDT-SWAP",
+                                               regime="native1"),
         }
     except Exception as exc:
         return {**dict(item), "error": f"{type(exc).__name__}: {exc}"}
