@@ -33,6 +33,7 @@ setfacl -m g:xauby-engines:--x /etc/xauby/tenants /var/lib/xauby/runtime
 install -m 0755 "$repo/deploy/xauby-provision-tenant" /usr/local/libexec/xauby-provision-tenant
 install -m 0755 "$repo/deploy/xauby-service-control" /usr/local/libexec/xauby-service-control
 install -m 0755 "$repo/deploy/xauby-materialize-credentials" /usr/local/libexec/xauby-materialize-credentials
+install -m 0755 "$repo/deploy/xauby" /usr/local/bin/xauby
 install -m 0440 "$repo/deploy/xauby-control.sudoers" /etc/sudoers.d/xauby-control
 visudo -cf /etc/sudoers.d/xauby-control >/dev/null
 

@@ -9,6 +9,10 @@ import time
 def run_menu_action(action: str) -> bool:
     """Run a launcher menu action. Returns True if the Textual TUI should restart."""
     action = (action or "").strip().lower()
+    from xauby.ui.textual_tui.capabilities import is_read_only_mode
+
+    if is_read_only_mode():
+        return False
     if not action or action in ("dashboard", "menu"):
         return True
 

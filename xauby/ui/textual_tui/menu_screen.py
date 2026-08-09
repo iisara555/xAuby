@@ -24,6 +24,7 @@ from textual.screen import Screen
 
 from xauby.ui.menu import check_engine_status
 from xauby.ui.textual_tui.banner import render_launcher_banner_lines
+from xauby.ui.textual_tui.capabilities import attached_tenant, is_read_only_mode
 from xauby.ui.textual_tui.widgets import AppHeader, AppFooter
 from xauby.utils.colors import (
     C_BOLD,
@@ -62,6 +63,23 @@ _MENU_GROUPS: List[Tuple[str, List[str]]] = [
 # digit -> action, and digit -> label (lookups for accelerators / prompts).
 _ACTION_BY_DIGIT: Dict[str, str] = {num: action for num, _, action in MENU_OPTIONS}
 _LABEL_BY_DIGIT: Dict[str, str] = {num: label for num, label, _ in MENU_OPTIONS}
+
+_READ_ONLY_MENU_OPTIONS: List[Tuple[str, str, str]] = [
+    ("1", "Open Dashboard", "dashboard"),
+    ("2", "Open Trade Log", "tradelog"),
+    ("3", "Open Incidents", "incidents"),
+    ("9", "Exit TUI", "exit"),
+]
+_READ_ONLY_MENU_GROUPS: List[Tuple[str, List[str]]] = [
+    ("READ-ONLY VIEWS", ["1", "2", "3"]),
+    ("EXIT", ["9"]),
+]
+
+
+def _active_menu() -> tuple[List[Tuple[str, str, str]], List[Tuple[str, List[str]]]]:
+    if is_read_only_mode():
+        return _READ_ONLY_MENU_OPTIONS, _READ_ONLY_MENU_GROUPS
+    return MENU_OPTIONS, _MENU_GROUPS
 
 
 def _option_prompt(num: str, label: str, action: str) -> Text:
@@ -126,7 +144,11 @@ class LauncherStatus(Static):
         line = sep.join([
             f"Engine {engine}",
             db,
-            f"{C_PRIMARY}XAUT · BTC{C_RESET}",
+            (
+                f"{C_PRIMARY}RO · {attached_tenant()}{C_RESET}"
+                if is_read_only_mode()
+                else f"{C_PRIMARY}XAUT · BTC{C_RESET}"
+            ),
             f"{C_MUTED}{clock} ICT{C_RESET}",
         ])
         self.update(Text.from_ansi(line))
@@ -137,13 +159,16 @@ class LauncherMenu(OptionList):
 
     def on_mount(self) -> None:
         self.clear_options()
-        groups = list(_MENU_GROUPS)
+        options, active_groups = _active_menu()
+        action_by_digit = {num: action for num, _, action in options}
+        label_by_digit = {num: label for num, label, _ in options}
+        groups = list(active_groups)
         first_action = None
         for gi, (group_name, nums) in enumerate(groups):
             self.add_option(Option(Text.from_ansi(f"{C_MUTED}{C_BOLD}{group_name}{C_RESET}"), disabled=True))
             for num in nums:
-                action = _ACTION_BY_DIGIT.get(num, "")
-                label = _LABEL_BY_DIGIT.get(num, "")
+                action = action_by_digit.get(num, "")
+                label = label_by_digit.get(num, "")
                 if action:
                     self.add_option(Option(_option_prompt(num, label, action), id=action))
                     if first_action is None:
@@ -212,6 +237,15 @@ class MenuScreen(Screen):
 
     # --- action dispatch (contract preserved) ---
     def _run_action(self, action: str) -> None:
+        if is_read_only_mode():
+            if action in ("dashboard", "tradelog", "incidents"):
+                self.app.switch_screen(action)
+            elif action == "exit":
+                os.environ["XAUBY_MENU_ACTION"] = "exit"
+                self.app.exit()
+            else:
+                self.notify("Action disabled in read-only tenant attach", severity="warning")
+            return
         if action in ("dashboard", "backtest"):
             self.app.switch_screen(action)
             return
@@ -227,7 +261,8 @@ class MenuScreen(Screen):
             self._run_action(event.option.id)
 
     def action_pick(self, digit: str) -> None:
-        action = _ACTION_BY_DIGIT.get(digit)
+        options, _ = _active_menu()
+        action = {num: item_action for num, _, item_action in options}.get(digit)
         if action:
             self._run_action(action)
 

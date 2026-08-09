@@ -31,6 +31,7 @@ from xauby.ui.widgets import (
     get_panel_column_widths,
 )
 from xauby.ui.textual_tui.layout import is_phone_layout, is_stacked_layout
+from xauby.ui.textual_tui.capabilities import attached_tenant, is_read_only_mode
 
 from xauby.utils.common import TH_TZ
 
@@ -93,7 +94,7 @@ class AppHeader(Static):
         strat = str(self._state.get("strategy_name") or "xauby_actionzone")
 
         sim_only = bool(self._state.get("simulate_only", True))
-        read_only = bool(self._state.get("read_only", False))
+        read_only = bool(self._state.get("read_only", False)) or is_read_only_mode()
         exchange_state = self._state.get("exchange") or {}
         if isinstance(exchange_state, dict):
             exchange_name = str(
@@ -284,9 +285,13 @@ class AppFooter(Widget):
         m_style = "\033[1;97m" if self.active_view == "menu" else "\033[1;36m"
 
         segments = []
-        if self.active_view == "dashboard":
+        observer = is_read_only_mode()
+        if self.active_view == "dashboard" and not observer:
             segments.append((" \033[1;32m[F7]Buy\033[0m", "screen.manual_buy"))
             segments.append((" \033[1;31m[F8]Sell\033[0m", "screen.manual_sell"))
+        if observer:
+            tenant = attached_tenant() or "tenant"
+            segments.append((f" \033[43;30m READ-ONLY · {tenant} \033[0m", ""))
         if W < 75:
             if self.active_view == "backtest":
                 segments.append((" \033[1;32m[R]Run\033[0m", "screen.backtest_run"))
@@ -297,7 +302,8 @@ class AppFooter(Widget):
                 segments.append((f" {d_style}[1]D\033[0m", "screen.show_dashboard"))
                 segments.append((f" {t_style}[2]L\033[0m", "screen.show_tradelog"))
                 segments.append((f" {i_style}[3]I\033[0m", "screen.show_incidents"))
-                segments.append((f" {b_style}[4]B\033[0m", "screen.show_backtest"))
+                if not observer:
+                    segments.append((f" {b_style}[4]B\033[0m", "screen.show_backtest"))
             if self.active_view == "menu":
                 segments.append((f" {m_style}[Ent]Dash\033[0m", "screen.show_dashboard"))
             else:
@@ -312,7 +318,8 @@ class AppFooter(Widget):
                 segments.append((f" {d_style}[1]Dash\033[0m", "screen.show_dashboard"))
                 segments.append((f" {t_style}[2]Log\033[0m", "screen.show_tradelog"))
                 segments.append((f" {i_style}[3]Inc\033[0m", "screen.show_incidents"))
-                segments.append((f" {b_style}[4]BT\033[0m", "screen.show_backtest"))
+                if not observer:
+                    segments.append((f" {b_style}[4]BT\033[0m", "screen.show_backtest"))
             if self.active_view == "menu":
                 segments.append((f" {m_style}[Ent]Dash\033[0m", "screen.show_dashboard"))
             else:
@@ -322,7 +329,8 @@ class AppFooter(Widget):
             segments.append((f" {d_style}[1/D]Dash\033[0m", "screen.show_dashboard"))
             segments.append((f" {t_style}[2/T]Log\033[0m", "screen.show_tradelog"))
             segments.append((f" {i_style}[3/I]Inc\033[0m", "screen.show_incidents"))
-            segments.append((f" {b_style}[4/B]Bt\033[0m", "screen.show_backtest"))
+            if not observer:
+                segments.append((f" {b_style}[4/B]Bt\033[0m", "screen.show_backtest"))
             if self.active_view == "backtest":
                 segments.append((" \033[1;32m[R]Run\033[0m", "screen.backtest_run"))
                 segments.append((" \033[1;36m[G]Opt\033[0m", "screen.backtest_optimize"))
@@ -334,7 +342,8 @@ class AppFooter(Widget):
             segments.append((f" {d_style}[1/D]Dash\033[0m", "screen.show_dashboard"))
             segments.append((f" {t_style}[2/T]Log\033[0m", "screen.show_tradelog"))
             segments.append((f" {i_style}[3/I]Inc\033[0m", "screen.show_incidents"))
-            segments.append((f" {b_style}[4/B]Bt\033[0m", "screen.show_backtest"))
+            if not observer:
+                segments.append((f" {b_style}[4/B]Bt\033[0m", "screen.show_backtest"))
             if self.active_view == "backtest":
                 segments.append((" \033[1;32m[R] Run\033[0m", "screen.backtest_run"))
                 segments.append((" \033[1;36m[G] Optimize\033[0m", "screen.backtest_optimize"))
@@ -342,7 +351,8 @@ class AppFooter(Widget):
             if self.active_view == "tradelog":
                 segments.append((" \033[1;90m[A]Scope [F]Filter [Alt+1-6]Sort\033[0m", ""))
             if self.active_view == "incidents":
-                segments.append((" \033[1;90m[j/k]Runs [V]Val [R]Refr [A]Filt\033[0m", ""))
+                validation = "" if observer else " [V]Val"
+                segments.append((f" \033[1;90m[j/k]Runs{validation} [R]Refr [A]Filt\033[0m", ""))
             segments.append((f" {m_style}[Ctrl+M]Menu\033[0m", "screen.show_menu"))
             segments.append((" \033[1;90m[↑↓]Pair [←→]Page\033[0m", ""))
             segments.append((f" \033[1;31m[Q]Quit\033[0m", "screen.quit_app"))
@@ -350,7 +360,8 @@ class AppFooter(Widget):
             segments.append((f" {d_style}[1/D] Dashboard\033[0m  ", "screen.show_dashboard"))
             segments.append((f" {t_style}[2/T] Log & Intel\033[0m  ", "screen.show_tradelog"))
             segments.append((f" {i_style}[3/I] Incidents\033[0m  ", "screen.show_incidents"))
-            segments.append((f" {b_style}[4/B] Backtest\033[0m  ", "screen.show_backtest"))
+            if not observer:
+                segments.append((f" {b_style}[4/B] Backtest\033[0m  ", "screen.show_backtest"))
             if self.active_view == "backtest":
                 segments.append(("\033[1;32m[R] Run\033[0m  ", "screen.backtest_run"))
                 segments.append(("\033[1;36m[G] Optimize\033[0m  ", "screen.backtest_optimize"))
@@ -358,7 +369,8 @@ class AppFooter(Widget):
             if self.active_view == "tradelog":
                 segments.append((" \033[1;90m[A] Scope  [F] Filter  [Alt+1-6] Sort\033[0m  ", ""))
             if self.active_view == "incidents":
-                segments.append((" \033[1;90m[j/k] Runs  [↑↓] Timeline  [V] Validate  [R] Refresh  [A] Filter\033[0m  ", ""))
+                validation = "" if observer else "  [V] Validate"
+                segments.append((f" \033[1;90m[j/k] Runs  [↑↓] Timeline{validation}  [R] Refresh  [A] Filter\033[0m  ", ""))
             segments.append((f" {m_style}[Ctrl+M] Menu\033[0m  ", "screen.show_menu"))
             segments.append((" \033[1;90m[↑/↓] Cycle Pair  [←/→] Page\033[0m  ", ""))
             segments.append((f" \033[1;31m[Q] Quit\033[0m", "screen.quit_app"))

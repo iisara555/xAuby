@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Stable host entrypoint: the active release symlink is switched atomically by
+# the deploy process, so this must never point at an agent working clone.
+install_root="${XAUBY_INSTALL_ROOT:-/opt/xauby/current}"
+cd "$install_root"
+exec "$install_root/venv/bin/python" -m xauby "$@"

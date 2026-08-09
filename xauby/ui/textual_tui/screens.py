@@ -28,6 +28,7 @@ from xauby.ui.textual_tui.tradelog_native import TradeLogNativeBody
 from xauby.ui.textual_tui.incident_native import IncidentNativeBody
 from xauby.ui.textual_tui.backtest_native import BacktestNativeBody
 from xauby.ui.textual_tui.quick_config.modals import ChoiceModal, ConfirmModal
+from xauby.ui.textual_tui.capabilities import is_read_only_mode
 from xauby.runtime.manual_orders import write_manual_order_request
 from xauby.ui.textual_tui.widgets import (
     AppHeader, AppFooter,
@@ -140,6 +141,13 @@ class BaseTUIScreen(Screen):
     def _load_state(self) -> None:
         """Read the bot state JSON file and resolve focus."""
         state, envelope, focus, pairs = load_bot_state_from_disk()
+        app = getattr(self, "app", None)
+        local_focus = str(getattr(app, "_xauby_local_focus", "") or "")
+        by_symbol = envelope.get("by_symbol") or {}
+        if is_read_only_mode() and local_focus in by_symbol:
+            focus = local_focus
+            state = dict(by_symbol[focus])
+            state.setdefault("symbol", focus)
         if state:
             self._last_state = state
             self._last_envelope = envelope
@@ -229,7 +237,12 @@ class BaseTUIScreen(Screen):
         if len(self._last_pairs) < 2:
             return
         new_focus = cycle_focus(self._last_pairs, self._last_focus, direction)
-        write_focus_request(new_focus)
+        if is_read_only_mode():
+            app = getattr(self, "app", None)
+            if app is not None:
+                app._xauby_local_focus = new_focus
+        else:
+            write_focus_request(new_focus)
         self._load_state()
         self._state_fp = ()
         self._push_state()
@@ -247,6 +260,9 @@ class BaseTUIScreen(Screen):
         self.app.switch_screen("incidents")
 
     def action_show_backtest(self) -> None:
+        if is_read_only_mode():
+            self.notify("Backtest is disabled in read-only tenant attach", severity="warning")
+            return
         self._load_state()
         self.app.switch_screen("backtest")
 
@@ -482,6 +498,9 @@ class DashboardScreen(BaseTUIScreen):
         super().on_key(event)
 
     def _manual_order_flow(self, action: str) -> None:
+        if is_read_only_mode():
+            self.notify("Manual orders are disabled in read-only tenant attach", severity="warning")
+            return
         self._load_state()
         state = self._last_state or {}
         symbol = str(self._last_focus or state.get("symbol") or "").upper()
@@ -703,6 +722,9 @@ class IncidentExplorerScreen(BaseTUIScreen):
         self._incident_action("r")
 
     def action_incident_validate(self) -> None:
+        if is_read_only_mode():
+            self.notify("Replay validation is disabled in read-only tenant attach", severity="warning")
+            return
         self._incident_action("v")
 
     def action_incident_scroll_up(self) -> None:

@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
+from pathlib import Path
 
 from xauby.meta import PRODUCT_NAME
 
@@ -154,6 +156,68 @@ def _do_update() -> int:
     return result.returncode
 
 
+def _do_tui_attach(tenant: str, *, read_only: bool) -> int:
+    """Attach a fresh Textual process to one hosted tenant without control rights."""
+    from xauby.saas.security import validate_tenant_slug
+
+    if not read_only:
+        print("[ERR] Hosted tenant TUI attach requires --read-only.")
+        return 2
+    try:
+        slug = validate_tenant_slug(tenant)
+    except ValueError as exc:
+        print(f"[ERR] {exc}.")
+        return 2
+
+    config_root = Path(
+        os.environ.get("XAUBY_TENANT_CONFIG_ROOT", "/etc/xauby/tenants")
+    ).resolve()
+    runtime_root = Path(
+        os.environ.get("XAUBY_TENANT_RUNTIME_ROOT", "/var/lib/xauby/runtime")
+    ).resolve()
+    config_dir = (config_root / slug).resolve()
+    runtime_dir = (runtime_root / slug).resolve()
+    if config_dir.parent != config_root or runtime_dir.parent != runtime_root:
+        print("[ERR] Tenant path escaped its configured root.")
+        return 2
+    if not config_dir.is_dir():
+        print(f"[ERR] Tenant config directory not found: {config_dir}")
+        return 2
+    if not runtime_dir.is_dir():
+        print(f"[ERR] Tenant runtime directory not found: {runtime_dir}")
+        return 2
+
+    env = os.environ.copy()
+    # The observer process never needs exchange, Telegram, OAuth, or database
+    # control-plane secrets.  Strip inherited credentials before spawning it.
+    sensitive = ("KEY", "SECRET", "TOKEN", "PASSPHRASE", "PASSWORD")
+    for name in list(env):
+        if any(part in name.upper() for part in sensitive):
+            env.pop(name, None)
+    env.update(
+        {
+            "XAUBY_CONFIG_DIR": str(config_dir),
+            "XAUBY_HOME": str(runtime_root),
+            "XAUBY_INSTANCE_ID": slug,
+            "SQLITE_DB_PATH": str(runtime_dir / "xauby.db"),
+            "XAUBY_TUI_READ_ONLY": "1",
+            "XAUBY_TUI_TENANT": slug,
+            "BOT_READ_ONLY": "true",
+            "FROM_LAUNCHER": "true",
+            "XAUBY_START_SCREEN": "dashboard",
+        }
+    )
+    env.pop("XAUBY_MENU_ACTION", None)
+
+    print(f"\n[*] Attaching read-only TUI to tenant: {slug}")
+    print("    Monitoring only — engine, orders, config, backtest, and DB actions are disabled.")
+    result = subprocess.run(
+        [sys.executable, "-m", "xauby.ui.textual_tui.app"],
+        env=env,
+    )
+    return int(result.returncode)
+
+
 def main(argv: list[str] | None = None) -> int:
     _ensure_project_root()
 
@@ -164,8 +228,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["restart", "update"],
-        help="Command: restart or update",
+        choices=["restart", "update", "tui"],
+        help="Command: restart, update, or tenant TUI attach",
     )
     parser.add_argument(
         "--live",
@@ -183,7 +247,29 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Open quick configuration editor instead of TUI",
     )
+    parser.add_argument(
+        "--tenant",
+        default="",
+        help="Hosted tenant slug for the read-only TUI attach command",
+    )
+    parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help="Disable all TUI actions that can change engine, order, config, or DB state",
+    )
     args = parser.parse_args(argv)
+
+    if args.command == "tui":
+        if args.live or args.sim or args.config:
+            print("[ERR] tui attach cannot be combined with --live, --sim, or --config.")
+            return 2
+        if not args.tenant:
+            print("[ERR] tui attach requires --tenant <slug>.")
+            return 2
+        return _do_tui_attach(args.tenant, read_only=bool(args.read_only))
+    if args.tenant or args.read_only:
+        print("[ERR] --tenant and --read-only are only valid with the tui command.")
+        return 2
 
     # Config editor shortcut — open the native Textual config hub. Set
     # XAUBY_CONFIG_TERMINAL=1 for the legacy terminal editor (e.g. no TTY).

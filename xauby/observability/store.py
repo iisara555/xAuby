@@ -22,15 +22,18 @@ class EventStore:
         db=None,
         jsonl_dir: Optional[str] = None,
         db_path: Optional[str] = None,
+        readonly: bool = False,
     ):
         from xauby.database.db import resolve_db_path
         self._db = db
         self._db_path = db_path or resolve_db_path()
         self._jsonl_dir = jsonl_dir or _events_dir()
+        self._readonly = bool(readonly)
         self._lock = threading.Lock()
         self._seq = 0
         self._run_id = ""
-        os.makedirs(self._jsonl_dir, exist_ok=True)
+        if not self._readonly:
+            os.makedirs(self._jsonl_dir, exist_ok=True)
 
     def set_run_id(self, run_id: str) -> None:
         with self._lock:
@@ -40,7 +43,7 @@ class EventStore:
     def _ensure_db(self):
         if self._db is None:
             from xauby.database.db import LiteDB
-            self._db = LiteDB(self._db_path)
+            self._db = LiteDB(self._db_path, readonly=self._readonly)
         return self._db
 
     def _jsonl_path(self, ts: Optional[str] = None) -> str:
@@ -56,6 +59,8 @@ class EventStore:
         payload: Optional[Dict[str, Any]] = None,
         tick_id: Optional[str] = None,
     ) -> Event:
+        if self._readonly:
+            raise RuntimeError("read-only EventStore cannot append events")
         with self._lock:
             if run_id != self._run_id:
                 self._run_id = run_id
@@ -173,6 +178,8 @@ class EventStore:
 
     def prune(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
         """Prune old JSONL files and SQLite event rows."""
+        if self._readonly:
+            raise RuntimeError("read-only EventStore cannot prune events")
         from xauby.utils.retention import prune_jsonl_events, prune_sqlite_events
 
         jsonl_stats = prune_jsonl_events(cfg, jsonl_dir=self._jsonl_dir)
