@@ -218,6 +218,8 @@ def test_shadow_systemd_unit_has_no_live_capabilities_and_is_opt_in() -> None:
     assert "EnvironmentFile" not in service
     assert 'shadow_user="xsh-${tenant}"' in provisioner
     assert 'u:"$shadow_user":r-x' in provisioner
+    assert 'u:"$shadow_user":r-- "$candle_file"' in provisioner
+    assert '"/var/lib/xauby/runtime/${tenant}/xauby.db"' in provisioner
     assert 'u:"$shadow_user":rwx,u:xauby-control:rwx' in provisioner
     assert "xauby-shadow@.service" in installer
     assert "xauby-shadow@.timer" in installer
