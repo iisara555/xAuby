@@ -1,9 +1,14 @@
 """Donchian channel trend-following strategy plugin (turtle-style).
 
-Long-only spot: enter on a breakout of the N-bar Donchian high while above
-EMA200 (classic time-series momentum), optional ADX strength filter; exit on
-loss of the exit-channel midline or EMA200. Targets BULL_* regimes via the
-RegimeRouter.
+Enter on a breakout of the N-bar Donchian high while above EMA200 (classic
+time-series momentum), optional ADX strength filter; exit on loss of the
+exit-channel midline or EMA200. Targets BULL_* regimes via the RegimeRouter.
+
+``enable_short`` (default **off**) adds the mirror image: break the N-bar
+Donchian low while below EMA200, cover on reclaiming the exit midline or
+EMA200. It defaults off because every published Donchian figure in
+``docs/research/`` was measured long-only, and a default flip would silently
+re-point those numbers at a different strategy. Turn it on per config.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ import numpy as np
 from xauby.strategies.base import Strategy
 from xauby.strategies.context import MarketContext
 from xauby.strategies.registry import register
-from xauby.strategies.signal import Signal, buy, hold, sell
+from xauby.strategies.signal import Signal, buy, close_short, hold, open_short, sell
 
 # Small tuning grid evaluated on the train split only (regime_strategy_eval.py).
 PARAM_GRID: List[Dict[str, Any]] = [
@@ -40,6 +45,7 @@ class DonchianTrendStrategy(Strategy):
     @classmethod
     def default_config(cls) -> Dict[str, Any]:
         return {
+            "enable_short": False,
             "entry_len": 48,
             "exit_len": 24,
             "ema_period": 200,
@@ -156,6 +162,7 @@ class DonchianTrendStrategy(Strategy):
         sl_mult = self._cfg_float("sl_atr_mult", 2.0, cfg)
         trail_mult = self._cfg_float("trailing_atr_mult", 2.5, cfg)
         exit_on_ema_loss = self._cfg_bool("exit_on_ema_loss", True, cfg)
+        enable_short = self._cfg_bool("enable_short", False, cfg)
         min_required = max(self.min_bars, ema_n + atr_n + 5, entry_len + 5, adx_n * 2 + 5)
         max_calc_bars = max(min_required, self._cfg_int("max_calc_bars", 420, cfg))
 
@@ -187,12 +194,15 @@ class DonchianTrendStrategy(Strategy):
 
         # Channels exclude the current bar (prior N bars) — classic Donchian.
         entry_high = float(high_arr[i - entry_len : i].max())
+        entry_low = float(low_arr[i - entry_len : i].min())
         exit_low = float(low_arr[i - exit_len : i].min())
         exit_high = float(high_arr[i - exit_len : i].max())
         exit_mid = (exit_high + exit_low) / 2.0
 
         breakout = current_close > entry_high
+        breakdown = current_close < entry_low
         ema_ok = current_close > ema_now
+        ema_ok_short = current_close < ema_now
         adx_ok = adx_min <= 0.0 or adx_now >= adx_min
         vol_avg = float(vol_ma[i]) if np.isfinite(vol_ma[i]) else 0.0
         vol_ratio = float(volume_arr[i]) / vol_avg if vol_avg > 0 else 0.0
@@ -203,6 +213,7 @@ class DonchianTrendStrategy(Strategy):
             "ema": ema_now,
             "adx": adx_now,
             "donchian_entry_high": entry_high,
+            "donchian_entry_low": entry_low,
             "donchian_exit_mid": exit_mid,
             "vol_ratio": vol_ratio,
         }
@@ -212,6 +223,21 @@ class DonchianTrendStrategy(Strategy):
             {"label": "ADX", "value": f"{adx_now:.1f}", "ok": adx_ok, "hint": f">={adx_min:.0f}"},
             {"label": "Volume", "value": f"{vol_ratio:.2f}x", "ok": vol_ok, "hint": f">={vol_min_ratio:.2f}x"},
         ]
+        if enable_short:
+            checklist.insert(1, {
+                "label": "Breakdown",
+                "value": f"{current_close:.2f}<{entry_low:.2f}",
+                "ok": breakdown,
+            })
+
+        if ctx.has_position and str(ctx.position_side or "").upper() == "SHORT":
+            if ctx.sl_confirmed:
+                return close_short("Donchian short SL confirmed", confidence=0.9, volatility=current_atr, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
+            if current_close > exit_mid:
+                return close_short("Close reclaimed Donchian exit midline", confidence=0.72, volatility=current_atr, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
+            if exit_on_ema_loss and current_close > ema_now:
+                return close_short("Close reclaimed EMA200", confidence=0.68, volatility=current_atr, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
+            return hold("Donchian short position riding", confidence=0.5, volatility=current_atr, trail_distance=current_atr * trail_mult if current_atr > 0 else None, indicators=indicators, checklist=checklist, strategy_name=self.name, timeframe=ctx.timeframe_primary)
 
         if ctx.has_position:
             if ctx.sl_confirmed:
@@ -232,6 +258,20 @@ class DonchianTrendStrategy(Strategy):
                 indicators=indicators,
                 checklist=checklist,
                 status_summary=f"Donchian BUY ATR {current_atr:.2f}",
+                strategy_name=self.name,
+                timeframe=ctx.timeframe_primary,
+            )
+
+        if enable_short and breakdown and ema_ok_short and adx_ok and vol_ok and current_atr > 0:
+            return open_short(
+                "Donchian breakdown below EMA200",
+                confidence=0.66,
+                stop_loss_distance=current_atr * sl_mult,
+                trail_distance=current_atr * trail_mult,
+                volatility=current_atr,
+                indicators=indicators,
+                checklist=checklist,
+                status_summary=f"Donchian SHORT ATR {current_atr:.2f}",
                 strategy_name=self.name,
                 timeframe=ctx.timeframe_primary,
             )

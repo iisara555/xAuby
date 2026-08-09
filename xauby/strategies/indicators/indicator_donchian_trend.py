@@ -1,7 +1,8 @@
 """Donchian Trend chart indicator plugin.
 
 Computes for the candlestick chart:
-  donchian_entry_high  — N-bar channel high (entry breakout level)
+  donchian_entry_high  — N-bar channel high (long entry breakout level)
+  donchian_entry_low   — N-bar channel low (short entry breakdown level)
   donchian_exit_mid    — midline of the exit channel (exit trigger)
   ema200               — 200-period EMA (trend filter)
   adx                  — ADX strength (entry filter)
@@ -88,6 +89,7 @@ class DonchianTrendIndicator(Indicator):
         "lines": [
             {"key": "ema200",               "label": "EMA200",      "color": (251, 191, 36),  "glyph": "◆"},
             {"key": "donchian_entry_high",  "label": "+Break",       "color": (34, 211, 238),  "glyph": "▲"},
+            {"key": "donchian_entry_low",   "label": "-Break",       "color": (244, 114, 182), "glyph": "▼"},
             {"key": "donchian_exit_mid",    "label": "Exit Mid",     "color": (249, 115, 22),  "glyph": "▼"},
         ],
         "cross_glyph": "▲",
@@ -95,6 +97,7 @@ class DonchianTrendIndicator(Indicator):
             {"key": "ema200",              "label": "EMA200"},
             {"key": "adx",                 "label": "ADX",          "min": 0.0, "max": 100.0},
             {"key": "donchian_entry_high", "label": "+Break Level"},
+            {"key": "donchian_entry_low",  "label": "-Break Level"},
             {"key": "donchian_exit_mid",   "label": "Exit Mid"},
         ],
     }
@@ -129,11 +132,17 @@ class DonchianTrendIndicator(Indicator):
         h_series = pd.Series(high_arr)
         l_series = pd.Series(low_arr)
         entry_high = h_series.shift(1).rolling(entry_len).max().to_numpy()
+        entry_low  = l_series.shift(1).rolling(entry_len).min().to_numpy()
         exit_h     = h_series.shift(1).rolling(exit_len).max().to_numpy()
         exit_l     = l_series.shift(1).rolling(exit_len).min().to_numpy()
         exit_mid   = (exit_h + exit_l) / 2.0
 
         out["donchian_entry_high"] = entry_high
+        # The short entry level. Always computed, so the chart shows the same
+        # channel the strategy sees whether or not `enable_short` is on — a
+        # legend that appears and disappears with a config flag is how the
+        # dashboard drifts from real behaviour.
+        out["donchian_entry_low"]  = entry_low
         out["donchian_exit_mid"]   = exit_mid
 
         # Zone colouring — NaN EMA or no Donchian data yet → WAIT
