@@ -7,14 +7,14 @@ engine loop.
 
 This is a research lane, not an order lane:
 
-- candles are read from the tenant engine SQLite database with SQLite
-  `mode=ro` and `PRAGMA query_only=ON`;
+- a credential-free snapshot service reads the tenant SQLite database with
+  `mode=ro` and `PRAGMA query_only=ON`, then atomically publishes only the
+  bounded OHLCV rows needed by the prepared pair;
 - the worker has no broker object, exchange credentials, order sink, or live
   loop import;
-- the systemd unit uses `PrivateNetwork=true` and exposes only the tenant's
-  runtime through a read-only bind mount, with only that tenant's `shadow/`
-  directory writable; credential, config, control DB, backup, and other-tenant
-  runtime paths are inaccessible inside the worker mount namespace;
+- the worker's systemd unit uses `PrivateNetwork=true` and exposes only that
+  tenant's `shadow/` directory; the live runtime DB, credential, config, control
+  DB, backup, and other-tenant paths are inaccessible inside its mount namespace;
 - every tenant worker runs as its own `xsh-<tenant>` OS identity, separate from
   both `xauby-control` and the money-trading engine user;
 - every candidate has an isolated strategy context and virtual ledger;

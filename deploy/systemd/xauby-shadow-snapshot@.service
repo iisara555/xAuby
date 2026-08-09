@@ -1,0 +1,33 @@
+[Unit]
+Description=xAuby bounded candle snapshot for shadow evaluation (%i)
+After=xauby-control.service
+ConditionPathExists=/var/lib/xauby/runtime/%i/shadow
+
+[Service]
+Type=oneshot
+User=xauby-control
+Group=xauby-control
+WorkingDirectory=/opt/xauby/current
+ExecStart=/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin PYTHONPATH=/opt/xauby/current /opt/xauby/current/venv/bin/python -m xauby.shadow_snapshot --tenant %i
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+InaccessiblePaths=/etc/xauby /var/lib/xauby/control /var/lib/xauby/backups -/var/lib/xauby/backup-gpg /var/lib/xauby/account_locks /run/xauby/credentials
+InaccessiblePaths=-/opt/xauby/current/.env -/opt/xauby/current/core
+ReadWritePaths=/var/lib/xauby/runtime/%i
+MemoryHigh=180M
+MemoryMax=240M
+CPUQuota=10%
+TasksMax=32
+UMask=0007
+TimeoutStartSec=45

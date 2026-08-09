@@ -1,6 +1,7 @@
 [Unit]
 Description=xAuby research-only shadow evaluator (%i)
-After=xauby-control.service
+Requires=xauby-shadow-snapshot@%i.service
+After=xauby-control.service xauby-shadow-snapshot@%i.service
 ConditionPathExists=/var/lib/xauby/runtime/%i/shadow
 
 [Service]
@@ -10,7 +11,7 @@ Group=xsh-%i
 WorkingDirectory=/opt/xauby/current
 RuntimeDirectory=xauby-shadow/%i
 RuntimeDirectoryMode=0700
-ExecStart=/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin PYTHONPATH=/opt/xauby/current /opt/xauby/current/venv/bin/python -m xauby.shadow_evaluator --tenant %i --runtime-root /run/xauby-shadow
+ExecStart=/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin PYTHONPATH=/opt/xauby/current /opt/xauby/current/venv/bin/python -m xauby.shadow_evaluator --tenant %i --runtime-root /run/xauby-shadow --db /run/xauby-shadow/%i/shadow/candles.db
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -26,7 +27,6 @@ RestrictSUIDSGID=true
 LockPersonality=true
 InaccessiblePaths=/var/lib/xauby/runtime /etc/xauby /var/lib/xauby/control /var/lib/xauby/backups -/var/lib/xauby/backup-gpg /var/lib/xauby/account_locks /run/xauby/credentials
 InaccessiblePaths=-/opt/xauby/current/.env -/opt/xauby/current/core
-BindReadOnlyPaths=/var/lib/xauby/runtime/%i:/run/xauby-shadow/%i
 BindPaths=/var/lib/xauby/runtime/%i/shadow:/run/xauby-shadow/%i/shadow
 MemoryHigh=260M
 MemoryMax=340M
