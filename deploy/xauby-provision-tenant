@@ -32,11 +32,10 @@ setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${te
 setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
 setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"
 
-# Arm the dead-man's switch for this tenant. Deliberately enabled here, at
-# provisioning, rather than exposed through xauby-service-control: that wrapper
-# is what the control plane may call via sudo, and a monitor the monitored
-# system can switch off is not a monitor. Turning this off is a root action.
+# Create the watchdog state directory, but do not arm a dead-man timer merely
+# because a tenant was provisioned.  Provisioning also happens for queued,
+# simulation-only and configuration-only tenants that have never requested an
+# engine.  xauby-service-control couples the timer to intentional lifecycle
+# actions: start/restart arms it after the engine starts, while an explicit stop
+# disarms it.  A crashed engine never invokes stop, so its watchdog stays armed.
 install -d -o xauby-control -g xauby-control -m 0700 /var/lib/xauby/deadman
-if [[ -f /etc/systemd/system/xauby-deadman@.timer ]]; then
-  systemctl enable --now "xauby-deadman@${tenant}.timer"
-fi

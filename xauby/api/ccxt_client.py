@@ -272,16 +272,30 @@ class CCXTExchangeClient(IExchangeGateway):
     def _normalize_order(self, order: Dict[str, Any], fallback_symbol: str = "") -> Dict[str, Any]:
         symbol = self._from_ccxt_symbol(order.get("symbol"), fallback_symbol)
         order_id = str(order.get("id") or order.get("orderId") or "")
+        raw_info = order.get("info") or {}
         client_id = str(
             order.get("clientOrderId")
             or order.get("clOrdId")
-            or (order.get("info") or {}).get("clientOrderId")
-            or (order.get("info") or {}).get("clientOrderID")
-            or (order.get("info") or {}).get("clOrdId")
+            or raw_info.get("clientOrderId")
+            or raw_info.get("clientOrderID")
+            or raw_info.get("clOrdId")
             or ""
         )
         filled = float(order.get("filled") or order.get("executedQty") or 0.0)
         amount = float(order.get("amount") or order.get("origQty") or filled or 0.0)
+        average = float(
+            order.get("average")
+            or order.get("avgPrice")
+            or raw_info.get("avgPx")
+            or raw_info.get("fillPx")
+            or 0.0
+        )
+        cumulative_quote = float(
+            order.get("cost")
+            or order.get("cummulativeQuoteQty")
+            or order.get("cumulativeQuoteQty")
+            or 0.0
+        )
         normalized = {
             "orderId": order_id,
             "id": order_id,
@@ -290,13 +304,45 @@ class CCXTExchangeClient(IExchangeGateway):
             "side": str(order.get("side") or "").upper(),
             "type": str(order.get("type") or "").upper(),
             "price": float(order.get("price") or 0.0),
+            "average": average,
+            "avgPrice": average,
             "origQty": amount,
             "amount": amount,
             "executedQty": filled,
             "filled": filled,
+            "cummulativeQuoteQty": cumulative_quote,
             "status": self._normalize_status(order.get("status")),
             "raw": order,
         }
+        return normalized
+
+    def _normalize_okx_triggered_swap_order(
+        self,
+        order: Dict[str, Any],
+        fallback_symbol: str,
+    ) -> Dict[str, Any]:
+        """Normalize a regular order created by an OKX trigger algo.
+
+        CCXT reports linear-swap ``amount``/``filled`` in contracts while the
+        rest of the engine tracks base-asset quantity.  Live trigger algos are
+        already converted in :meth:`_normalize_okx_algo_order`; the resulting
+        regular fill must use the same unit or a 0.07-contract BTC stop is
+        misreported and persisted as 0.07 BTC instead of 0.0007 BTC.
+        """
+        normalized = self._normalize_order(order, fallback_symbol=fallback_symbol)
+        ccxt_symbol = self._to_ccxt_symbol(fallback_symbol)
+        market = self._load_markets().get(ccxt_symbol, {}) or {}
+        contract_size = float(market.get("contractSize") or 1.0)
+        for key in ("origQty", "amount", "executedQty", "filled"):
+            normalized[key] = float(normalized.get(key) or 0.0) * contract_size
+        if (
+            float(normalized.get("cummulativeQuoteQty") or 0.0) <= 0
+            and float(normalized.get("average") or 0.0) > 0
+        ):
+            normalized["cummulativeQuoteQty"] = (
+                float(normalized.get("executedQty") or 0.0)
+                * float(normalized["average"])
+            )
         return normalized
 
     @staticmethod
@@ -347,6 +393,7 @@ class CCXTExchangeClient(IExchangeGateway):
             "live": "NEW",
             "pause": "NEW",
             "partially_effective": "PARTIALLY_FILLED",
+            "effective": "FILLED",
             "canceled": "CANCELED",
             "order_failed": "REJECTED",
         }.get(raw_state, "NEW")
@@ -401,7 +448,10 @@ class CCXTExchangeClient(IExchangeGateway):
             try:
                 ccxt_symbol = self._to_ccxt_symbol(symbol)
                 regular = self._call("fetch_order", regular_order_id, ccxt_symbol)
-                return self._normalize_order(regular, fallback_symbol=symbol)
+                return self._normalize_okx_triggered_swap_order(
+                    regular,
+                    fallback_symbol=symbol,
+                )
             except ExchangeAPIError:
                 pass
         return self._normalize_okx_algo_order(row, fallback_symbol=symbol)

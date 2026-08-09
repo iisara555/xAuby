@@ -241,6 +241,103 @@ class TestExchangeStopLossPartialFill(unittest.TestCase):
         self.assertEqual(closed_events[-1]["pnl"], -53.95)
         self.assertIn("PnL: -53.95 USDT", self.engine.last_log_message)
 
+    def test_full_exchange_sl_caps_contract_unit_mismatch_and_uses_average_fill(self):
+        self.engine.client.get_order = MagicMock(
+            return_value={
+                "status": "FILLED",
+                "executedQty": "100.0",
+                "average": "1945.0",
+                "cummulativeQuoteQty": "194500",
+            }
+        )
+
+        state = self.engine._handle_exchange_sl_order(
+            self.engine.db.get_trade_state("XAUTUSDT"),
+            1940.0,
+            symbol="XAUTUSDT",
+        )
+
+        self.assertEqual(state.state, "idle")
+        trade = self.engine.db.get_closed_trades("XAUTUSDT", limit=1)[0]
+        self.assertAlmostEqual(trade["amount"], 1.0)
+        self.assertAlmostEqual(trade["exit_price"], 1945.0)
+        self.assertAlmostEqual(trade["net_pnl"], -58.945, places=6)
+
+    def test_okx_swap_stop_uses_exchange_confirmed_realized_pnl(self):
+        self.engine.client.capabilities["position_history"] = True
+        self.engine.client.get_order = MagicMock(
+            return_value={
+                "status": "FILLED",
+                "executedQty": "1.0",
+                "average": "1950.0",
+                "cummulativeQuoteQty": "1950.0",
+            }
+        )
+        self.engine.client.get_position_history = MagicMock(
+            return_value=[{
+                "exchange_close_id": "okx:pos-1:1781136060000",
+                "exchange_position_id": "pos-1",
+                "exchange": "okx",
+                "symbol": "XAUTUSDT",
+                "position_side": "LONG",
+                "quantity": 1.0,
+                "entry_price": 2000.0,
+                "exit_price": 1950.0,
+                "realized_pnl": -53.97,
+                "gross_pnl": -50.0,
+                "fee_cost": 3.95,
+                "funding_fee": -0.02,
+                "close_type": "2",
+                "opened_timestamp": 1781136000000,
+                "closed_timestamp": 1781136060000,
+                "opened_at": "2026-06-11T00:00:00.000Z",
+                "closed_at": "2026-06-11T00:01:00.000Z",
+            }]
+        )
+
+        state = self.engine._handle_exchange_sl_order(
+            self.engine.db.get_trade_state("XAUTUSDT"),
+            1940.0,
+            symbol="XAUTUSDT",
+        )
+
+        self.assertEqual(state.state, "idle")
+        trade = self.engine.db.get_closed_trades("XAUTUSDT", limit=1)[0]
+        self.assertAlmostEqual(trade["amount"], 1.0)
+        self.assertAlmostEqual(trade["exit_price"], 1950.0)
+        self.assertAlmostEqual(trade["net_pnl"], -53.97)
+        self.assertAlmostEqual(trade["funding_fee"], -0.02)
+        self.assertEqual(trade["trigger"], "Exchange-Side Stop Loss")
+        self.assertEqual(trade["pnl_source"], "okx_positions_history")
+        self.assertEqual(trade["pnl_confirmed"], 1)
+        self.assertEqual(self.engine.db.get_pending_exchange_closures("XAUTUSDT"), [])
+        self.assertIn("Realized PnL -53.9700 USDT", self.engine.last_log_message)
+
+    def test_okx_swap_stop_blocks_new_entries_while_history_is_pending(self):
+        self.engine.client.capabilities["position_history"] = True
+        self.engine.client.get_order = MagicMock(
+            return_value={
+                "status": "FILLED",
+                "executedQty": "1.0",
+                "average": "1950.0",
+                "cummulativeQuoteQty": "1950.0",
+            }
+        )
+        self.engine.client.get_position_history = MagicMock(return_value=[])
+
+        state = self.engine._handle_exchange_sl_order(
+            self.engine.db.get_trade_state("XAUTUSDT"),
+            1940.0,
+            symbol="XAUTUSDT",
+        )
+
+        self.assertEqual(state.state, "idle")
+        self.assertEqual(self.engine.db.get_closed_trades("XAUTUSDT", limit=10), [])
+        pending = self.engine.db.get_pending_exchange_closures("XAUTUSDT")
+        self.assertEqual(len(pending), 1)
+        self.assertIn("verification pending", self.engine.last_log_message)
+        self.assertTrue(self.engine._sc("XAUTUSDT").exchange_reconcile_pending)
+
 
 class TestSemiAutoConfirmTargetsPendingSymbol(unittest.TestCase):
     """Telegram confirm/skip arrive without a symbol; they must land on the
