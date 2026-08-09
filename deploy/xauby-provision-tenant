@@ -8,6 +8,7 @@ if [[ ! "$tenant" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
 fi
 
 engine_user="xauby-${tenant}"
+shadow_user="xsh-${tenant}"
 if (( ${#engine_user} > 31 )); then
   echo "tenant slug is too long for the isolated OS user" >&2
   exit 2
@@ -20,6 +21,10 @@ if ! id "$engine_user" >/dev/null 2>&1; then
     --home-dir "/var/lib/xauby/runtime/${tenant}" --shell /usr/sbin/nologin \
     "$engine_user"
 fi
+if ! id "$shadow_user" >/dev/null 2>&1; then
+  useradd --system --user-group --home-dir /nonexistent --shell /usr/sbin/nologin \
+    "$shadow_user"
+fi
 
 setfacl -m g:xauby-engines:--x /etc/xauby/tenants /var/lib/xauby/runtime
 install -d -o "$engine_user" -g "$engine_user" -m 0700 "/etc/xauby/tenants/${tenant}"
@@ -28,9 +33,19 @@ install -d -o "$engine_user" -g "$engine_user" -m 0700 "/var/lib/xauby/runtime/$
 # The control plane can provision and read this tenant, while each engine runs
 # under a stable tenant-specific OS user. Other tenant users receive no ACL.
 setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
-setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"
+setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx,u:"$shadow_user":r-x "/var/lib/xauby/runtime/${tenant}"
 setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
-setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/var/lib/xauby/runtime/${tenant}"
+setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx,u:"$shadow_user":r-x "/var/lib/xauby/runtime/${tenant}"
+
+# The credential-free evaluator gets one tenant-scoped identity. It can read
+# the tenant candle DB but writes only beneath shadow/. The control plane keeps
+# access so it can materialize specs and project status to the SaaS UI.
+install -d -o "$shadow_user" -g "$shadow_user" -m 0700 \
+  "/var/lib/xauby/runtime/${tenant}/shadow"
+setfacl -m u:"$shadow_user":rwx,u:xauby-control:rwx \
+  "/var/lib/xauby/runtime/${tenant}/shadow"
+setfacl -d -m u:"$shadow_user":rwx,u:xauby-control:rwx \
+  "/var/lib/xauby/runtime/${tenant}/shadow"
 
 # Create the watchdog state directory, but do not arm a dead-man timer merely
 # because a tenant was provisioned.  Provisioning also happens for queued,

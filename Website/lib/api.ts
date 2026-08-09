@@ -182,7 +182,26 @@ export type StrategyCandidate = {
   role: "champion" | "challenger" | "retired";
   mode: "live" | "shadow";
   status: "active" | "warming" | "eligible" | "paused" | string;
-  shadow_runtime_status?: "not_connected" | "healthy" | "stale" | string;
+  shadow_runtime_status?: "not_connected" | "prepared" | "healthy" | "stale" | "degraded" | string;
+  shadow_run_id?: string;
+  shadow_metrics?: {
+    forward_days?: number;
+    trades?: number;
+    profit_factor?: number;
+    net_return_pct?: number;
+    max_drawdown_pct?: number;
+    equity?: number;
+    fees?: number;
+  };
+  shadow_last_signal?: {
+    action?: string;
+    intent?: string;
+    position_side?: string | null;
+    confidence?: number;
+    reason?: string;
+    duration_ms?: number;
+    healthy?: boolean;
+  };
   certification_status: "certified" | "failed" | "not_assessed" | string;
   live_certified: boolean;
   certificate_config_fingerprint?: string;
@@ -246,7 +265,7 @@ export type StrategyPoolsResponse = {
   pools: StrategyPool[];
   promotion_mode: "manual" | string;
   max_candidates: number;
-  shadow_runtime?: "not_connected" | "healthy" | "degraded" | string;
+  shadow_runtime?: "not_connected" | "prepared" | "healthy" | "degraded" | string;
   tenant_live_status: string;
 };
 

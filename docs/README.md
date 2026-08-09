@@ -22,6 +22,7 @@ their RegimeRouter gates remain off.
 | [configuration.md](configuration.md) | `bot_config.yaml`, whitelist, source of truth, RegimeRouter mapping |
 | [multi-exchange-ccxt.md](multi-exchange-ccxt.md) | CCXT REST adapter setup and current multi-exchange limitations |
 | [tui.md](tui.md) | Textual dashboard, responsive layouts, strategy-aware legends |
+| [shadow-evaluator.md](shadow-evaluator.md) | Credential-free Champion/Challenger forward evaluator, artifacts, safety gates, activation |
 | [telegram.md](telegram.md) | Alerts, commands, multi-pair and per-mode messages |
 | [roadmap_2026H2.md](roadmap_2026H2.md) | CTO roadmap for H2 2026: phased plan, findings, exit criteria (Thai) |
 | [offsite_backup_runbook.md](offsite_backup_runbook.md) | P2.2 encrypted off-site backup, recovery-key custody, restore drill and key rotation |

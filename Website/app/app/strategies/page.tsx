@@ -132,16 +132,31 @@ function CandidateCard({ candidate, champion = false, liveEnabled = false }: { c
   const score = Number(evaluation.score);
   const scoreLabel = Number.isFinite(score) && score > -999 ? formatNumber(score, 1) : "—";
   const tone = candidate.certification_status === "certified" ? "good" : "warn";
+  const shadowStatus = candidate.shadow_runtime_status ?? "not_connected";
+  const statusTone = shadowStatus === "degraded" || shadowStatus === "stale"
+    ? "bad"
+    : shadowStatus === "prepared"
+      ? "neutral"
+      : tone;
   const liveLabel = champion && candidate.mode === "live"
     ? (liveEnabled ? "LIVE" : "LIVE READY")
-    : candidate.mode === "shadow" && candidate.shadow_runtime_status === "not_connected"
-      ? "NOT RUNNING"
-      : candidate.status;
+    : shadowStatus === "healthy"
+      ? "SHADOW RUNNING"
+      : shadowStatus === "prepared"
+        ? "SHADOW PREPARED"
+        : shadowStatus === "stale"
+          ? "SHADOW STALE"
+          : shadowStatus === "degraded"
+            ? "SHADOW DEGRADED"
+            : candidate.mode === "shadow" ? "NOT RUNNING" : candidate.status;
   return <article className={champion ? "strategy-candidate champion" : "strategy-candidate"}>
-    <div className="strategy-candidate-top"><div><span className="strategy-candidate-role">{champion ? <Trophy size={14} /> : <FlaskConical size={14} />} {champion ? "Champion" : "Challenger"}</span><h3>{candidate.label}</h3><p>{candidate.strategy.replaceAll("_", " ")} · {candidate.mode === "live" ? "Live lane" : "Shadow SIM"}</p></div><StatusPill label={liveLabel} tone={champion && candidate.mode === "live" ? "warn" : tone} /></div>
+    <div className="strategy-candidate-top"><div><span className="strategy-candidate-role">{champion ? <Trophy size={14} /> : <FlaskConical size={14} />} {champion ? "Champion" : "Challenger"}</span><h3>{candidate.label}</h3><p>{candidate.strategy.replaceAll("_", " ")} · {candidate.mode === "live" ? "Live lane" : "Shadow SIM"}</p></div><StatusPill label={liveLabel} tone={champion && candidate.mode === "live" ? "warn" : statusTone} /></div>
     <div className="strategy-candidate-metrics"><span><small>Score</small><strong>{scoreLabel}</strong></span><span><small>PF</small><strong>{formatNumber(evaluation.profit_factor, 2)}</strong></span><span><small>Max DD</small><strong>{formatNumber(evaluation.max_drawdown_pct, 1)}%</strong></span><span><small>Trades</small><strong>{formatNumber(evaluation.trades, 0)}</strong></span></div>
     <div className="strategy-candidate-footer"><span className={candidate.certification_status === "certified" ? "positive" : "negative"}>{candidate.certification_status === "certified" ? "Certificate passed" : "Certificate gate required"}</span><span>{evaluation.source === "forward_sim" ? `${formatNumber(evaluation.forward_days, 0)}d forward SIM` : "Certificate baseline"}</span></div>
-    {candidate.mode === "shadow" && candidate.shadow_runtime_status === "not_connected" && <p className="field-help strategy-candidate-reason">Shadow runner is not connected; this card is registry state only.</p>}
+    {candidate.shadow_metrics && <p className="field-help strategy-candidate-reason">Shadow research · PF {formatNumber(candidate.shadow_metrics.profit_factor, 2)} · DD {formatNumber(candidate.shadow_metrics.max_drawdown_pct, 1)}% · {formatNumber(candidate.shadow_metrics.trades, 0)} trades · {formatNumber(candidate.shadow_metrics.forward_days, 1)}d</p>}
+    {candidate.mode === "shadow" && shadowStatus === "not_connected" && <p className="field-help strategy-candidate-reason">Shadow runner is not connected; this card is registry state only.</p>}
+    {shadowStatus === "prepared" && <p className="field-help strategy-candidate-reason">Worker spec is prepared. Research metrics begin after its first closed-candle run.</p>}
+    {shadowStatus === "degraded" && <p className="field-help strategy-candidate-reason">Shadow worker failed closed. No live order path is available to this worker.</p>}
     {!champion && candidate.eligibility_reasons.length > 0 && <p className="strategy-candidate-reason"><LockKeyhole size={13} /> {candidate.eligibility_reasons[0]}</p>}
   </article>;
 }

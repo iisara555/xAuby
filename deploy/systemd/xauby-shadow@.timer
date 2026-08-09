@@ -1,0 +1,13 @@
+[Unit]
+Description=Run xAuby shadow evaluator on closed-candle state (%i)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+AccuracySec=30s
+Persistent=true
+Unit=xauby-shadow@%i.service
+
+[Install]
+WantedBy=timers.target
