@@ -84,14 +84,13 @@ Only then should periodic evaluation be explicitly enabled:
 systemctl enable --now xauby-shadow@<tenant>.timer
 ```
 
-The OKX BTC catalog now carries a frozen LONG-D1 research Challenger, but it is
-published as `not_assessed` and `live_certified=false`. The no-input GitHub
-workflow `BTC LONG-D1 Challenger certification` runs its locked native-OKX
-full-history and five-fold protocol. Until that artifact passes and a reviewed
-matching certificate is committed, the Challenger cannot enter a Strategy
-Arena and the timer remains intentionally unarmed. Adding a research preset
-does not relax catalog certification, promotion evidence, manual Trade PIN
-confirmation, live re-approval, or the controlled-restart gates.
+The OKX BTC catalog carries a frozen LONG-D1 research Challenger. GitHub Actions
+run `31319988968` passed its locked native-OKX full-history and five-fold
+protocol, so it is catalog-certified to enter forward shadow. It remains
+`live_certified=false`: certification does not make it selectable for live
+trading or promotable before the forward gates. Adding the research preset does
+not relax promotion evidence, manual Trade PIN confirmation, live re-approval,
+or the controlled-restart gates.
 
 ## Direction after MVP
 

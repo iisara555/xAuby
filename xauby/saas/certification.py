@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from copy import deepcopy
 from typing import Any, Mapping
 
@@ -136,8 +137,20 @@ def load_record(preset_id: str) -> dict[str, Any] | None:
         missing = [key for key in ("venue", "symbol", "timeframe", "native") if key not in source]
         if missing:
             raise CertificationError(f"{path}: protocol v3 data_source missing {missing}")
-        if not str(protocol.get("manifest_sha256") or ""):
+        if not re.fullmatch(r"[0-9a-f]{64}", str(protocol.get("manifest_sha256") or "")):
             raise CertificationError(f"{path}: protocol v3 requires a locked manifest hash")
+        provenance = record.get("provenance")
+        if not isinstance(provenance, Mapping):
+            raise CertificationError(f"{path}: protocol v3 requires workflow provenance")
+        if not re.fullmatch(r"[0-9a-f]{40}", str(provenance.get("git_commit") or "")):
+            raise CertificationError(f"{path}: protocol v3 requires the measured commit")
+        for digest in ("results_sha256", "proposed_certificate_sha256", "report_sha256"):
+            if not re.fullmatch(r"[0-9a-f]{64}", str(provenance.get(digest) or "")):
+                raise CertificationError(f"{path}: protocol v3 requires {digest}")
+        if not str(provenance.get("workflow_run_url") or "").startswith(
+            "https://github.com/iisara555/xAuby/actions/runs/"
+        ):
+            raise CertificationError(f"{path}: protocol v3 requires the GitHub workflow run")
         gate = record.get("gate") or {}
         checks = gate.get("checks") or {}
         if record.get("verdict") == "certified" and not bool(source.get("native")):
