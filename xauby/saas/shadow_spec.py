@@ -67,8 +67,15 @@ def build_shadow_spec(
         raise ValueError("shadow pool symbol does not match its candidates")
     if str(pool.get("target_id") or "") != next(iter(targets)):
         raise ValueError("shadow pool target does not match its candidates")
-    if len(primary) != 1 or len(regime) != 1 or not next(iter(primary)):
+    nonempty_regime = {timeframe for timeframe in regime if timeframe}
+    if len(primary) != 1 or len(nonempty_regime) > 1 or not next(iter(primary)):
         raise ValueError("shadow candidates must use comparable timeframes")
+    # A D1-gated Challenger can share its closed-daily feed with a Champion
+    # whose gate is off.  Strategy config remains candidate-scoped, so feeding
+    # the common frame cannot enable the Champion's filter.  Requiring both
+    # catalog entries to declare 1d would mutate the certified Champion's
+    # fingerprint for no trading reason.
+    regime_timeframe = next(iter(nonempty_regime), "")
 
     candidates = []
     for _item, preset in resolved:
@@ -89,7 +96,7 @@ def build_shadow_spec(
         "target_id": next(iter(targets)),
         "venue": next(iter(venues)),
         "timeframe": next(iter(primary)),
-        "regime_timeframe": next(iter(regime)),
+        "regime_timeframe": regime_timeframe,
         "fill_model": SHADOW_FILL_MODEL,
         "fees_pct": 0.05,
         "slippage_pct": 0.02,

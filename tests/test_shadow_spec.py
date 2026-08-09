@@ -79,3 +79,41 @@ def test_shadow_spec_waits_for_a_challenger() -> None:
         )
         is None
     )
+
+
+def test_shadow_spec_shares_challenger_regime_feed_without_mutating_champion(
+    monkeypatch,
+) -> None:
+    champion = _preset("champion-a", "supertrend_ema200", 4.0)
+    challenger = _preset("challenger-b", "supertrend_ema200", 4.0)
+    challenger["confirm_timeframe"] = "1d"
+    challenger["execution_profile"] = {
+        "use_d1_regime_filter": True,
+        "use_d1_regime_filter_long": True,
+        "use_d1_regime_filter_short": False,
+    }
+    presets = {"champion-a": champion, "challenger-b": challenger}
+    monkeypatch.setattr(
+        "xauby.saas.shadow_spec.preset_for_candidate",
+        lambda preset_id: presets[preset_id],
+    )
+    pool = {
+        "symbol": "BTCUSDT",
+        "target_id": "okx-swap",
+        "champion_id": "champion-a",
+        "candidates": [
+            {
+                "preset_id": preset_id,
+                "certificate_config_fingerprint": config_fingerprint(preset),
+            }
+            for preset_id, preset in presets.items()
+        ],
+    }
+
+    spec = build_shadow_spec(pool, "pilot-1")
+
+    assert spec is not None
+    assert spec["timeframe"] == "4h"
+    assert spec["regime_timeframe"] == "1d"
+    assert spec["candidates"][0]["strategy_config"] == {"mult": 4.0}
+    assert spec["candidates"][1]["strategy_config"]["use_d1_regime_filter"] is True
