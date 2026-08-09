@@ -250,9 +250,36 @@ class TestRecordIntegrity(_WithCertificateDir):
                 "native": True,
             },
             gate={"passed": True, "checks": {"fold_profit_factor_wins": False}},
+            provenance={
+                "workflow_run_url": "https://github.com/iisara555/xAuby/actions/runs/1",
+                "git_commit": "b" * 40,
+                "results_sha256": "c" * 64,
+                "proposed_certificate_sha256": "d" * 64,
+                "report_sha256": "e" * 64,
+            },
         )
         self.write(record)
         with self.assertRaisesRegex(CertificationError, "every locked gate"):
+            apply_certification(_spec("okx-btc-supertrend-long-d1-v1"))
+
+    def test_protocol_v3_requires_workflow_provenance(self):
+        record = _record(
+            "okx-btc-supertrend-long-d1-v1",
+            protocol={
+                "name": "btc-long-d1-challenger-finalist",
+                "version": "3",
+                "manifest_sha256": "a" * 64,
+            },
+            data_source={
+                "venue": "okx",
+                "symbol": "BTC-USDT-SWAP",
+                "timeframe": "4h",
+                "native": True,
+            },
+            gate={"passed": True, "checks": {"all": True}},
+        )
+        self.write(record)
+        with self.assertRaisesRegex(CertificationError, "workflow provenance"):
             apply_certification(_spec("okx-btc-supertrend-long-d1-v1"))
 
 

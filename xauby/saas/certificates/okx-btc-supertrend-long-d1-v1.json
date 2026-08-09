@@ -1,0 +1,112 @@
+{
+  "record_version": 1,
+  "preset_id": "okx-btc-supertrend-long-d1-v1",
+  "config_fingerprint": "796d0bc9dff712bd",
+  "measured_at": "2026-08-09T15:05:33+00:00",
+  "protocol": {
+    "name": "btc-long-d1-challenger-finalist",
+    "version": "3",
+    "script": "scripts/certify_btc_d1_challenger.py",
+    "manifest": "docs/research/protocols/btc_long_d1_challenger_v1.json",
+    "manifest_sha256": "8f929ece13ab61e2d0d720bb461614e32833f4f29fe7e88a59382f7a7a18a64c"
+  },
+  "data_source": {
+    "venue": "okx",
+    "symbol": "BTC-USDT-SWAP",
+    "timeframe": "4h",
+    "regime_timeframe": "1d",
+    "native": true
+  },
+  "gate": {
+    "passed": true,
+    "checks": {
+      "native_history_sufficient": true,
+      "candidate_full_profit_factor": true,
+      "candidate_full_net_positive": true,
+      "candidate_full_drawdown": true,
+      "candidate_full_trades": true,
+      "profitable_folds": true,
+      "folds_with_pf_at_least_one": true,
+      "full_profit_factor_noninferiority": true,
+      "full_drawdown_noninferiority": true,
+      "full_net_retention": true,
+      "full_trade_retention": true,
+      "fold_profit_factor_wins": true
+    },
+    "observed": {
+      "history_days": 2428,
+      "profitable_folds": 4,
+      "folds_with_profit_factor_at_least_one": 4,
+      "candidate_vs_champion_fold_profit_factor_wins": 3,
+      "candidate_vs_champion_full_profit_factor_ratio": 1.046699,
+      "candidate_vs_champion_full_max_drawdown_ratio": 0.89637,
+      "candidate_vs_champion_full_net_profit_retention": 0.905806,
+      "candidate_vs_champion_full_trade_retention": 0.757353
+    },
+    "thresholds": {
+      "candidate_full_profit_factor_min": 1.4,
+      "candidate_full_net_profit_pct_min_exclusive": 0.0,
+      "candidate_full_max_drawdown_pct_max": 12.0,
+      "candidate_full_trades_min": 90,
+      "profitable_folds_min": 4,
+      "folds_with_profit_factor_at_least_one_min": 4,
+      "candidate_vs_champion_full_profit_factor_ratio_min": 1.0,
+      "candidate_vs_champion_full_max_drawdown_ratio_max": 1.0,
+      "candidate_vs_champion_full_net_profit_retention_min": 0.8,
+      "candidate_vs_champion_full_trade_retention_min": 0.7,
+      "candidate_vs_champion_fold_profit_factor_wins_min": 3
+    }
+  },
+  "verdict": "certified",
+  "note": "Clears the locked finalist protocol; eligible for forward shadow only. Live approval remains false.",
+  "document": "docs/research/btc_long_d1_challenger_certificate_2026-08-09.md",
+  "evidence": {
+    "status": "validated",
+    "score_label": "PF 1.58",
+    "period": "Dec 2019 – Aug 2026",
+    "duration": "6.6 years",
+    "win_rate_pct": 37.9,
+    "max_drawdown_pct": 8.8,
+    "trades": 103,
+    "source": "OKX BTC-USDT-SWAP · locked full-history + 5-fold finalist run · measured 2026-08-09T15:05:33+00:00"
+  },
+  "comparison": {
+    "champion_preset_id": "okx-btc-supertrend-v1",
+    "champion_config_fingerprint": "2f8d06566fcc267f",
+    "champion_full": {
+      "profit_factor": 1.5100171118070267,
+      "net_profit_pct": 19.155216827146454,
+      "max_drawdown_pct": 9.811444152096481,
+      "total_trades": 136
+    },
+    "challenger_full": {
+      "profit_factor": 1.580533335228902,
+      "net_profit_pct": 17.350911146825524,
+      "max_drawdown_pct": 8.794683380952534,
+      "total_trades": 103
+    },
+    "champion_folds": [
+      {"fold": 1, "profit_factor": 1.2744288498374299, "net_profit_pct": 2.576278195599252, "max_drawdown_pct": 8.432851049530168, "total_trades": 26},
+      {"fold": 2, "profit_factor": 1.8146671729315489, "net_profit_pct": 6.7507223081663374, "max_drawdown_pct": 3.290553090533574, "total_trades": 28},
+      {"fold": 3, "profit_factor": 1.498832794890395, "net_profit_pct": 2.131631099024628, "max_drawdown_pct": 3.307587966737155, "total_trades": 21},
+      {"fold": 4, "profit_factor": 2.567500788132367, "net_profit_pct": 9.509517692566078, "max_drawdown_pct": 2.887933208787835, "total_trades": 32},
+      {"fold": 5, "profit_factor": 0.5960579160678561, "net_profit_pct": -2.706687472803867, "max_drawdown_pct": 4.1055254990030265, "total_trades": 29}
+    ],
+    "challenger_folds": [
+      {"fold": 1, "profit_factor": 1.2892256757939569, "net_profit_pct": 2.109127938927929, "max_drawdown_pct": 7.400548402004194, "total_trades": 17},
+      {"fold": 2, "profit_factor": 1.7689349827705927, "net_profit_pct": 6.124777605480813, "max_drawdown_pct": 3.290553090533574, "total_trades": 24},
+      {"fold": 3, "profit_factor": 1.9755281427615603, "net_profit_pct": 2.907193409543038, "max_drawdown_pct": 1.9584717061824832, "total_trades": 16},
+      {"fold": 4, "profit_factor": 2.8048624891834457, "net_profit_pct": 8.412580807292489, "max_drawdown_pct": 2.946948816084178, "total_trades": 26},
+      {"fold": 5, "profit_factor": 0.41282864833619404, "net_profit_pct": -2.9312334264673954, "max_drawdown_pct": 3.759812536360719, "total_trades": 20}
+    ]
+  },
+  "provenance": {
+    "workflow_run_id": 31319988968,
+    "workflow_run_url": "https://github.com/iisara555/xAuby/actions/runs/31319988968",
+    "git_commit": "0f7e0cfbae11cf38233d3a6973098e820385a92c",
+    "runner_name": "GitHub Actions 1000000734",
+    "results_sha256": "77ece7b7ad31c37ffb7248c9970530c233d810f5d2032ab5a1df55299762a6f3",
+    "proposed_certificate_sha256": "b728a77986638e6a60dee3057e16b562f6300b63662e1df5fb08d084f4ce30da",
+    "report_sha256": "17f9129d4b0b9892b730e91a22180517004cafda9d272145d07c95926486a0ee"
+  }
+}
