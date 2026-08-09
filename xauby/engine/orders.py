@@ -11,6 +11,7 @@ from xauby.notifications.interface import AlertLevel
 from xauby.runtime.trading_config import bounded_position_fraction, resolve_trading_config
 from xauby.runtime.exits import fixed_take_profit_price
 from xauby.analytics.calculator import position_excursions_pct
+from xauby.engine.exchange_close import reconciliation_key
 
 logger = logging.getLogger("lite_bot")
 
@@ -1345,6 +1346,54 @@ class OrderMixin:
             stop_loss_order_id=new_sl_id
         )
 
+    def _queue_exchange_confirmed_stop_close(
+        self,
+        state: Dict[str, Any],
+        symbol: str,
+    ) -> Optional[bool]:
+        """Persist and reconcile an OKX swap stop close from venue history.
+
+        ``True`` means the close was confirmed immediately, ``False`` means a
+        durable reconciliation is pending, and ``None`` selects the legacy
+        engine-calculated path for venues without authoritative position
+        history.
+        """
+        exchange_cfg = (getattr(self, "config", {}) or {}).get("exchange") or {}
+        market_type = str(exchange_cfg.get("market_type") or "spot").lower()
+        exchange_id = str(
+            exchange_cfg.get("ccxt_id")
+            or exchange_cfg.get("name")
+            or exchange_cfg.get("provider")
+            or ""
+        ).lower()
+        if market_type != "swap" or exchange_id != "okx":
+            return None
+        capabilities = getattr(self.client, "capabilities", {}) or {}
+        if not bool(capabilities.get("position_history")):
+            return None
+        if not all(
+            hasattr(self, name)
+            for name in ("_complete_pending_exchange_close", "_sc")
+        ) or not hasattr(self.db, "queue_exchange_close_reconciliation"):
+            return None
+
+        snapshot = self._state_dict(state) if hasattr(self, "_state_dict") else dict(state)
+        snapshot["exchange_close_trigger"] = "Exchange-Side Stop Loss"
+        key = reconciliation_key(exchange_id, symbol, snapshot)
+        pending = self.db.queue_exchange_close_reconciliation(
+            reconciliation_key=key,
+            symbol=symbol,
+            exchange_id=exchange_id,
+            state_snapshot=snapshot,
+            exchange_position_id=snapshot.get("exchange_position_id"),
+            reset_position=True,
+        )
+        reason = "Exchange stop filled; realized PnL verification is pending"
+        self._sc(symbol).set_exchange_reconcile_pending(True, reason)
+        if hasattr(self, "_set_exchange_wait_meta"):
+            self._set_exchange_wait_meta(symbol, reason)
+        return bool(self._complete_pending_exchange_close(symbol, pending))
+
     def _handle_exchange_sl_order(self, state: Dict[str, Any], ticker_price: float, symbol: Optional[str] = None) -> Dict[str, Any]:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         if self._execution_mode(sym) != "live" or state.get("state") != "bought":
@@ -1357,15 +1406,71 @@ class OrderMixin:
         try:
             order_details = self.client.get_order(sym, sl_order_id)
             status = order_details.get("status", "").upper()
-            filled_qty = float(order_details.get("executedQty", 0.0) or 0.0)
+            reported_filled_qty = float(order_details.get("executedQty", 0.0) or 0.0)
             cummulative_quote_qty = float(order_details.get("cummulativeQuoteQty", 0.0) or 0.0)
-            filled_price = (
-                cummulative_quote_qty / filled_qty if filled_qty > 0 and cummulative_quote_qty > 0
+            average_fill_price = float(
+                order_details.get("average", 0.0)
+                or order_details.get("avgPrice", 0.0)
+                or 0.0
+            )
+            filled_price = average_fill_price or (
+                cummulative_quote_qty / reported_filled_qty
+                if reported_filled_qty > 0 and cummulative_quote_qty > 0
                 else ticker_price
             )
+            tracked_qty = float(state.get("quantity", 0.0) or 0.0)
+            filled_qty = reported_filled_qty
+            if tracked_qty > 0 and reported_filled_qty > tracked_qty * (1.0 + 1e-6):
+                logger.error(
+                    "[%s] Exchange SL reported fill %.12f above tracked quantity %.12f; "
+                    "capping accounting quantity to tracked position",
+                    sym,
+                    reported_filled_qty,
+                    tracked_qty,
+                )
+                filled_qty = tracked_qty
 
             if status == "FILLED" and filled_qty > 0:
                 logger.info(f"⚡ [EXCHANGE STOP LOSS FILLED] Stop-loss order {sl_order_id} hit on exchange.")
+                slip_bps = self._report_slippage(
+                    side="SELL",
+                    ref_price=ticker_price,
+                    fill_price=filled_price,
+                    symbol=sym,
+                    kind="exchange stop exit",
+                )
+                try:
+                    confirmed = self._queue_exchange_confirmed_stop_close(state, sym)
+                except Exception as exc:
+                    logger.error(
+                        "[%s] Could not queue exchange-confirmed stop close; "
+                        "falling back to engine accounting: %s",
+                        sym,
+                        exc,
+                        exc_info=True,
+                    )
+                    confirmed = None
+                if confirmed is not None:
+                    self._emit_event(
+                        EventType.ORDER_FILLED,
+                        side="SELL",
+                        order_id=sl_order_id,
+                        qty=round(filled_qty, 8),
+                        price=round(filled_price, 8),
+                        status="FILLED",
+                        symbol=sym,
+                    )
+                    if not confirmed:
+                        base_coin = self._get_base_asset(sym)
+                        msg = (
+                            f"🔴 [EXCHANGE STOP LOSS HIT] Exit {filled_qty:.6f} {base_coin} "
+                            f"@ {filled_price:.2f} USDT | Realized PnL verification pending"
+                        )
+                        logger.warning(msg)
+                        self.last_log_message = msg
+                        self.send_telegram_alert(msg)
+                    return self.db.get_trade_state(sym)
+
                 entry_cost = filled_qty * state["entry_price"]
                 gross_exit = filled_qty * filled_price
                 fee_pct = self._symbol_fee_pct(sym)
@@ -1376,13 +1481,6 @@ class OrderMixin:
                     gross_exit=gross_exit,
                     entry_fee=entry_fee,
                     exit_fee=exit_fee,
-                )
-                slip_bps = self._report_slippage(
-                    side="SELL",
-                    ref_price=ticker_price,
-                    fill_price=filled_price,
-                    symbol=sym,
-                    kind="exchange stop exit",
                 )
                 if not self._record_closed_trade_atomic(
                     state,

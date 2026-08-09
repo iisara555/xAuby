@@ -122,6 +122,24 @@ class FakeOKXAlgoSwap(FakeCCXTExchange):
         return []
 
     def fetch_order(self, order_id, symbol):
+        if self.algo_state == "effective" and order_id == "3816358391141998594":
+            return {
+                "id": "3816358391141998594",
+                "symbol": symbol,
+                "side": "sell",
+                "type": "limit",
+                "status": "closed",
+                "amount": 0.07,
+                "filled": 0.07,
+                "average": 64860.7,
+                "cost": 45.40249,
+                "price": 64556.1,
+                "info": {
+                    "ordId": "3816358391141998594",
+                    "accFillSz": "0.07",
+                    "avgPx": "64860.7",
+                },
+            }
         raise OrderNotFound("order does not exist")
 
     def cancel_order(self, order_id, symbol):
@@ -136,8 +154,9 @@ class FakeOKXAlgoSwap(FakeCCXTExchange):
             "side": "sell",
             "posSide": "net",
             "sz": "0.07",
-            "actualSz": "0",
-            "actualPx": "",
+            "actualSz": "0.07" if self.algo_state == "effective" else "0",
+            "actualPx": "64860.7" if self.algo_state == "effective" else "",
+            "ordId": "3816358391141998594" if self.algo_state == "effective" else "",
             "tdMode": "isolated",
             "triggerPx": "63100.8",
             "state": self.algo_state,
@@ -281,6 +300,29 @@ class TestCCXTClient(unittest.TestCase):
             exchange.cancel_algo_payload,
             [{"instId": "BTC-USDT-SWAP", "algoId": "3815029827304853504"}],
         )
+
+    def test_okx_triggered_swap_fill_uses_base_quantity_and_average_price(self):
+        exchange = FakeOKXAlgoSwap()
+        exchange.algo_state = "effective"
+        client = CCXTExchangeClient(
+            config={
+                "exchange": {
+                    "provider": "ccxt",
+                    "ccxt_id": "okx",
+                    "market_type": "swap",
+                    "margin_mode": "isolated",
+                }
+            },
+            exchange_instance=exchange,
+        )
+
+        fetched = client.get_order("BTCUSDT", "3815029827304853504")
+
+        self.assertEqual(fetched["status"], "FILLED")
+        self.assertAlmostEqual(fetched["origQty"], 0.0007)
+        self.assertAlmostEqual(fetched["executedQty"], 0.0007)
+        self.assertAlmostEqual(fetched["average"], 64860.7)
+        self.assertAlmostEqual(fetched["cummulativeQuoteQty"], 45.40249)
 
     def test_stop_loss_limit_is_explicitly_unsupported_by_default(self):
         with self.assertRaises(CCXTAPIError):

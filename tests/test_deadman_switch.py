@@ -330,6 +330,9 @@ class TestInstallerWiring(unittest.TestCase):
         self.provisioner = open(
             os.path.join(REPO_ROOT, "deploy", "xauby-provision-tenant"), encoding="utf-8"
         ).read()
+        self.service_control = open(
+            os.path.join(REPO_ROOT, "deploy", "xauby-service-control"), encoding="utf-8"
+        ).read()
 
     def test_installer_copies_monitoring_units(self):
         for unit in ("xauby-healthcheck.service", "xauby-healthcheck.timer",
@@ -339,15 +342,16 @@ class TestInstallerWiring(unittest.TestCase):
     def test_installer_enables_healthcheck_timer(self):
         self.assertIn("xauby-healthcheck.timer", self.installer.split("systemctl enable")[1])
 
-    def test_provisioner_arms_the_switch_per_tenant(self):
-        self.assertIn("xauby-deadman@${tenant}.timer", self.provisioner)
+    def test_provisioner_does_not_arm_switch_for_queued_tenant(self):
+        self.assertNotIn("systemctl enable --now", self.provisioner)
 
-    def test_switch_is_not_controllable_by_the_control_plane(self):
-        # A monitor the monitored system can switch off is not a monitor.
-        wrapper = open(
-            os.path.join(REPO_ROOT, "deploy", "xauby-service-control"), encoding="utf-8"
-        ).read()
-        self.assertNotIn("deadman", wrapper)
+    def test_engine_start_arms_and_intentional_stop_disarms_switch(self):
+        self.assertIn('systemctl enable --now "$deadman_unit"', self.service_control)
+        self.assertIn('systemctl disable --now "$deadman_unit"', self.service_control)
+        self.assertLess(
+            self.service_control.index('systemctl start "$engine_unit"'),
+            self.service_control.index('systemctl enable --now "$deadman_unit"'),
+        )
 
 
 if __name__ == "__main__":

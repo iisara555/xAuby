@@ -43,6 +43,9 @@ class ReconcileMixin:
 
     @staticmethod
     def _exchange_close_trigger(state, history) -> str:
+        explicit = str(state.get("exchange_close_trigger") or "").strip()
+        if explicit:
+            return explicit
         take_profit = float(state.get("take_profit") or 0.0)
         exit_price = float(history.get("exit_price") or 0.0)
         side = str(state.get("position_side") or history.get("position_side") or "LONG").upper()
@@ -130,17 +133,22 @@ class ReconcileMixin:
                 symbol=sym,
                 position_side=history.get("position_side"),
                 exit=round(float(trade.get("exit_price") or 0.0), 8),
+                exit_price=float(trade.get("exit_price") or 0.0),
+                quantity=float(trade.get("amount") or 0.0),
                 pnl=round(float(trade.get("net_pnl") or 0.0), 8),
                 pnl_pct=round(float(trade.get("net_pnl_pct") or 0.0), 4),
                 trigger=trade.get("trigger"),
                 pnl_source=trade.get("pnl_source"),
                 exchange_close_id=trade.get("exchange_close_id"),
             )
-        self.send_telegram_alert(
-            f"OKX POSITION CLOSED {sym} | Exit {float(trade['exit_price']):.4f} | "
+        message = (
+            f"OKX POSITION CLOSED {sym} | "
+            f"Exit {float(trade['amount']):.8f} @ {float(trade['exit_price']):.4f} | "
             f"Realized PnL {float(trade['net_pnl']):+.4f} USDT "
-            f"({float(trade['net_pnl_pct']):+.2f}%)"
+            f"({float(trade['net_pnl_pct']):+.2f}%) | {trade.get('trigger')}"
         )
+        self.last_log_message = message
+        self.send_telegram_alert(message)
         logger.info("[%s] Exchange close reconciled: %s", sym, trade)
         return True
 
