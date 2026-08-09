@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any
 
+from xauby.runtime.paths import usd_thb_rate_path
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.supervisor import TenantSupervisor
-from xauby.runtime.paths import usd_thb_rate_path
 
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,24}$")
 _TIMEFRAMES = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"}
@@ -99,6 +100,137 @@ class RuntimeGateway:
                 "price": None,
                 "bid": None,
                 "ask": None,
+            }
+
+    def shadow_status(self, slug: str, *, symbol: str) -> dict[str, Any]:
+        """Read the credential-free shadow worker status for one tenant pair."""
+        clean_symbol = self._symbol(symbol)
+        path = self.supervisor.runtime_dir(slug) / "shadow" / clean_symbol / "status.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(payload, dict)
+                or payload.get("tenant") != slug
+                or payload.get("symbol") != clean_symbol
+            ):
+                raise ValueError("invalid shadow status identity")
+            if payload.get("research_only") is not True or payload.get("broker_access") is not False:
+                raise ValueError("unsafe shadow capability status")
+            checked_at = float(payload.get("checked_at") or 0.0)
+            if not math.isfinite(checked_at) or checked_at <= 0:
+                raise ValueError("shadow status has no heartbeat")
+            current_time = time.time()
+            if checked_at > current_time + 300:
+                raise ValueError("shadow status heartbeat is in the future")
+            age = max(0.0, current_time - checked_at)
+            raw_status = str(payload.get("status") or "not_connected")
+            if raw_status not in {"prepared", "healthy", "stale", "degraded"}:
+                raise ValueError("invalid shadow worker status")
+            status = "stale" if raw_status == "healthy" and age > 900 else raw_status
+            raw_candidate_ids = payload.get("candidate_ids")
+            raw_candidates = payload.get("candidates")
+            if not isinstance(raw_candidate_ids, list) or len(raw_candidate_ids) != 2:
+                raise ValueError("invalid shadow candidate ids")
+            if not isinstance(raw_candidates, dict):
+                raise ValueError("invalid shadow candidate status")
+            candidate_ids = [
+                value
+                for value in raw_candidate_ids
+                if isinstance(value, str) and 0 < len(value) <= 128
+            ]
+            if len(candidate_ids) != len(raw_candidate_ids) or len(set(candidate_ids)) != len(
+                candidate_ids
+            ):
+                raise ValueError("invalid shadow candidate ids")
+            if raw_status != "prepared" and set(raw_candidates) != set(candidate_ids):
+                raise ValueError("shadow candidate status is incomplete")
+            snapshot_count = int(payload.get("snapshot_count") or 0)
+            last_timestamp = int(payload.get("last_timestamp") or 0)
+            if snapshot_count < 0 or last_timestamp < 0:
+                raise ValueError("invalid shadow progress counters")
+
+            def safe_number(value: Any) -> float | None:
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    return None
+                return number if math.isfinite(number) else None
+
+            candidates: dict[str, Any] = {}
+            for candidate_id, item in raw_candidates.items():
+                if candidate_id not in candidate_ids or not isinstance(item, dict):
+                    continue
+                signal = item.get("last_signal") if isinstance(item.get("last_signal"), dict) else {}
+                metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+                candidates[candidate_id] = {
+                    "role": str(item.get("role") or "")[:16],
+                    "strategy_name": str(item.get("strategy_name") or "")[:128],
+                    "config_fingerprint": str(item.get("config_fingerprint") or "")[:64],
+                    "healthy": bool(item.get("healthy")),
+                    "last_signal": {
+                        "action": str(signal.get("action") or "")[:16],
+                        "intent": str(signal.get("intent") or "")[:16],
+                        "position_side": (
+                            str(signal.get("position_side"))[:16]
+                            if signal.get("position_side") is not None
+                            else None
+                        ),
+                        "confidence": safe_number(signal.get("confidence")),
+                        "reason": str(signal.get("reason") or "")[:240],
+                        "duration_ms": safe_number(signal.get("duration_ms")),
+                        "healthy": bool(signal.get("healthy", True)),
+                    },
+                    "metrics": {
+                        key: safe_number(metrics.get(key))
+                        for key in (
+                            "forward_days",
+                            "trades",
+                            "profit_factor",
+                            "net_return_pct",
+                            "max_drawdown_pct",
+                            "equity",
+                            "fees",
+                        )
+                    },
+                }
+            return {
+                "ok": status in {"healthy", "prepared"},
+                "source": "shadow_worker",
+                "read_only": True,
+                "research_only": True,
+                "broker_access": False,
+                "status": status,
+                "as_of": checked_at,
+                "age_sec": round(age, 1),
+                "stale": status == "stale",
+                "run_id": str(payload.get("run_id") or "")[:160],
+                "spec_hash": str(payload.get("spec_hash") or "")[:64],
+                "snapshot_count": snapshot_count,
+                "last_timestamp": last_timestamp,
+                "fill_model": str(payload.get("fill_model") or "")[:80],
+                "candidate_ids": candidate_ids,
+                "candidates": candidates,
+                "detail": str(payload.get("detail") or "")[:240],
+            }
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return {
+                "ok": False,
+                "source": "shadow_worker",
+                "read_only": True,
+                "research_only": True,
+                "broker_access": False,
+                "status": "not_connected",
+                "as_of": None,
+                "age_sec": None,
+                "stale": True,
+                "run_id": "",
+                "spec_hash": "",
+                "snapshot_count": 0,
+                "last_timestamp": 0,
+                "fill_model": "",
+                "candidate_ids": [],
+                "candidates": {},
+                "detail": "shadow worker status is unavailable",
             }
 
     @classmethod

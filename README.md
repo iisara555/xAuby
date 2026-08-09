@@ -208,6 +208,7 @@ Entry points:
 | `xauby tui --tenant <slug> --read-only` | Attach an observation-only TUI to one hosted tenant; never starts/restarts an engine or queues orders |
 | `xauby update` | Deploy `origin/main` (`scripts/deploy_from_github.sh`) then restart |
 | `python -m xauby.saas` | Web SaaS control plane (port 8790) |
+| `python -m xauby.shadow_evaluator --tenant <slug>` | Run one credential-free, closed-candle Champion/Challenger research pass |
 | `python -m xauby.ui.textual_tui.app` | Textual TUI standalone |
 | `python health_check.py` | Standalone health check |
 

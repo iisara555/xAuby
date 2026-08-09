@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import tempfile
+import time
 import unittest
 from contextlib import closing
 from pathlib import Path
@@ -54,6 +55,59 @@ class RuntimeGatewayTests(unittest.TestCase):
         payload = gateway.snapshot("customer-one")
         self.assertEqual(payload["source"], "tenant_engine")
         self.assertFalse(payload["read_only"])
+
+    def test_shadow_status_is_tenant_scoped_and_research_only(self):
+        shadow_dir = self.supervisor.runtime_dir("customer-one") / "shadow" / "BTCUSDT"
+        shadow_dir.mkdir(parents=True)
+        (shadow_dir / "status.json").write_text(json.dumps({
+            "status": "healthy",
+            "research_only": True,
+            "broker_access": False,
+            "tenant": "customer-one",
+            "symbol": "BTCUSDT",
+            "run_id": "shadow-btcusdt-test",
+            "spec_hash": "a" * 64,
+            "checked_at": time.time(),
+            "snapshot_count": 4,
+            "last_timestamp": 1_700_000_000,
+            "fill_model": "signal_close_only_v1_research",
+            "candidate_ids": ["champion-a", "challenger-b"],
+            "candidates": {
+                "champion-a": {
+                    "role": "champion",
+                    "strategy_name": "test",
+                    "config_fingerprint": "a" * 64,
+                    "healthy": True,
+                    "last_signal": {"action": "HOLD", "healthy": True},
+                    "metrics": {"trades": 1, "profit_factor": 1.1},
+                },
+                "challenger-b": {
+                    "role": "challenger",
+                    "strategy_name": "test",
+                    "config_fingerprint": "b" * 64,
+                    "healthy": True,
+                    "last_signal": {"action": "HOLD", "healthy": True},
+                    "metrics": {"trades": 2, "profit_factor": 1.2},
+                }
+            },
+        }), encoding="utf-8")
+
+        payload = RuntimeGateway(self.settings, self.supervisor).shadow_status(
+            "customer-one", symbol="BTCUSDT"
+        )
+        self.assertEqual(payload["status"], "healthy")
+        self.assertTrue(payload["read_only"])
+        self.assertTrue(payload["research_only"])
+        self.assertFalse(payload["broker_access"])
+        self.assertEqual(payload["candidates"]["challenger-b"]["metrics"]["trades"], 2)
+
+        unsafe = json.loads((shadow_dir / "status.json").read_text(encoding="utf-8"))
+        unsafe["broker_access"] = True
+        (shadow_dir / "status.json").write_text(json.dumps(unsafe), encoding="utf-8")
+        refused = RuntimeGateway(self.settings, self.supervisor).shadow_status(
+            "customer-one", symbol="BTCUSDT"
+        )
+        self.assertEqual(refused["status"], "not_connected")
 
     def test_native_snapshot_exposes_portfolio_currency(self):
         tenant_runtime = self.supervisor.runtime_dir("customer-one")

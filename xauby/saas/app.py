@@ -38,6 +38,7 @@ from xauby.saas.security import (
     verify_totp,
 )
 from xauby.saas.settings import SaaSSettings
+from xauby.saas.shadow_spec import materialize_shadow_spec
 from xauby.saas.store import ControlPlaneStore
 from xauby.saas.strategy_pool import (
     MAX_CANDIDATES,
@@ -657,9 +658,12 @@ def create_app(
                 pool_locks[key] = lock
             return lock
 
-    def _pool_response(pool: dict[str, Any]) -> dict[str, Any]:
+    def _pool_response(pool: dict[str, Any], tenant_slug: str) -> dict[str, Any]:
         """Add current catalog evidence without storing mutable catalog data."""
         result = json.loads(json.dumps(pool))
+        shadow = runtime.shadow_status(tenant_slug, symbol=str(result.get("symbol") or ""))
+        connected_ids = set(shadow.get("candidate_ids") or [])
+        runtime_candidates = shadow.get("candidates") or {}
         for item in result.get("candidates", []):
             try:
                 preset = preset_by_id(str(item.get("preset_id") or ""))
@@ -671,11 +675,40 @@ def create_app(
             item["certification_note"] = preset.get("certification_note")
             item["certification_status"] = preset.get("certification_status")
             item["live_certified"] = bool(preset.get("live_certified"))
-            if item.get("mode") == "shadow":
-                # A pool candidate is not a running shadow process yet.  Keep
-                # this explicit so the UI never presents metadata as telemetry.
-                item.setdefault("shadow_runtime_status", "not_connected")
+            preset_id = str(item.get("preset_id") or "")
+            runtime_item = runtime_candidates.get(preset_id) or {}
+            if preset_id in connected_ids:
+                item["shadow_runtime_status"] = str(shadow.get("status") or "not_connected")
+                if runtime_item.get("metrics"):
+                    item["shadow_metrics"] = runtime_item["metrics"]
+                if runtime_item.get("last_signal"):
+                    item["shadow_last_signal"] = runtime_item["last_signal"]
+                item["shadow_run_id"] = str(shadow.get("run_id") or "")
+            elif item.get("mode") == "shadow":
+                # Registry metadata is not telemetry until a prepared worker
+                # publishes a matching candidate id.
+                item["shadow_runtime_status"] = "not_connected"
+        result["shadow_runtime_status"] = str(shadow.get("status") or "not_connected")
         return result
+
+    def _shadow_runtime_summary(pools: list[dict[str, Any]]) -> str:
+        states = {str(pool.get("shadow_runtime_status") or "not_connected") for pool in pools}
+        if states & {"degraded", "stale"}:
+            return "degraded"
+        if "healthy" in states:
+            return "healthy"
+        if "prepared" in states:
+            return "prepared"
+        return "not_connected"
+
+    def _prepare_shadow_runtime(tenant_slug: str, pool: dict[str, Any]) -> None:
+        try:
+            materialize_shadow_spec(pool, tenant_slug, supervisor.runtime_dir(tenant_slug))
+        except Exception:
+            # The strategy-pool write is already authoritative. A shadow worker
+            # is research-only and must never turn an Arena mutation into a
+            # live-control failure or a misleading retry.
+            logger.exception("failed to prepare shadow evaluator for %s", pool.get("symbol"))
 
     def _current_candidate_preset(item: dict[str, Any]) -> dict[str, Any]:
         """Require a pool entry to still match the certified catalogue."""
@@ -1297,12 +1330,15 @@ def create_app(
                     # Another browser or worker created the same lazy pool.
                     # The subsequent read is authoritative.
                     pass
-        pools = [_pool_response(pool) for pool in store.strategy_pools(tenant["id"])]
+        pools = [
+            _pool_response(pool, tenant["slug"])
+            for pool in store.strategy_pools(tenant["id"])
+        ]
         return {
             "pools": pools,
             "promotion_mode": "manual",
             "max_candidates": MAX_CANDIDATES,
-            "shadow_runtime": "not_connected",
+            "shadow_runtime": _shadow_runtime_summary(pools),
             "tenant_live_status": tenant.get("live_status", "not_requested"),
         }
 
@@ -1313,9 +1349,12 @@ def create_app(
         if pool is None:
             raise HTTPException(status_code=404, detail="strategy pool not found")
         return {
-            "pool": _pool_response(pool),
+            "pool": _pool_response(pool, tenant["slug"]),
             "promotion_mode": "manual",
-            "shadow_runtime": "not_connected",
+            "shadow_runtime": str(
+                runtime.shadow_status(tenant["slug"], symbol=symbol).get("status")
+                or "not_connected"
+            ),
             "tenant_live_status": tenant.get("live_status", "not_requested"),
         }
 
@@ -1354,7 +1393,8 @@ def create_app(
             raise HTTPException(status_code=409, detail="strategy pool changed; refresh and retry") from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return {"ok": True, "pool": _pool_response(saved)}
+        _prepare_shadow_runtime(tenant["slug"], saved)
+        return {"ok": True, "pool": _pool_response(saved, tenant["slug"])}
 
     @app.patch("/api/v1/strategy-pools/{symbol}/candidates/{candidate_id}/evaluation")
     def strategy_candidate_evaluate(
@@ -1388,7 +1428,7 @@ def create_app(
                         "idempotent": True,
                         "eligible": bool(record.get("eligible_for_promotion")),
                         "reasons": list(record.get("eligibility_reasons") or []),
-                        "pool": _pool_response(pool),
+                        "pool": _pool_response(pool, tenant["slug"]),
                     }
                 saved = store.save_strategy_pool(tenant["id"], user["id"], pool)
         except ControlPlaneStore.StrategyPoolConflict as exc:
@@ -1401,7 +1441,7 @@ def create_app(
             "eligible": bool(record.get("eligible_for_promotion")),
             "reasons": list(record.get("eligibility_reasons") or []),
             "evaluation": record,
-            "pool": _pool_response(saved),
+            "pool": _pool_response(saved, tenant["slug"]),
         }
 
     @app.post("/api/v1/strategy-pools/{symbol}/promote")
@@ -1424,7 +1464,11 @@ def create_app(
                 raise HTTPException(status_code=404, detail="strategy candidate not found")
             challenger_preset = _current_candidate_preset(challenger)
             if challenger.get("role") == "champion":
-                return {"ok": True, "pool": _pool_response(pool), "changed": False}
+                return {
+                    "ok": True,
+                    "pool": _pool_response(pool, tenant["slug"]),
+                    "changed": False,
+                }
             champion = candidate(pool, str(pool.get("champion_id") or ""))
             champion_score = None if champion is None else float(
                 (champion.get("evaluation") or {}).get("score", -9999.0)
@@ -1606,11 +1650,12 @@ def create_app(
                 # The pool write is already committed; do not report a failed
                 # handoff that could cause a caller to retry and promote twice.
                 logger.exception("promotion committed but audit append failed for %s", compact)
+            _prepare_shadow_runtime(tenant["slug"], saved)
             return {
                 "ok": True,
                 "changed": True,
                 "requires_live_reapproval": live_was_enabled,
-                "pool": _pool_response(saved),
+                "pool": _pool_response(saved, tenant["slug"]),
             }
 
     @app.get("/api/v1/bot")

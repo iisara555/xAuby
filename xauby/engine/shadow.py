@@ -11,8 +11,9 @@ from __future__ import annotations
 import copy
 import math
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from xauby.strategies import load_strategy
 from xauby.strategies.sandbox import StrategyRunner
@@ -189,6 +190,81 @@ class ShadowVirtualLedger:
             "last_timestamp": self.last_timestamp,
         }
 
+    def export_state(self) -> dict[str, Any]:
+        """Return the complete durable state needed to resume this ledger."""
+        return {
+            "candidate_id": self.candidate_id,
+            "initial_cash": self.initial_cash,
+            "realized_pnl": self.realized_pnl,
+            "fees": self.fees,
+            "position": (
+                {
+                    "side": self.position.side,
+                    "quantity": self.position.quantity,
+                    "entry_price": self.position.entry_price,
+                    "entry_fee": self.position.entry_fee,
+                    "opened_at": self.position.opened_at,
+                }
+                if self.position
+                else None
+            ),
+            "last_price": self.last_price,
+            "last_timestamp": self.last_timestamp,
+            "last_event": self.last_event,
+        }
+
+    @classmethod
+    def from_state(cls, state: Mapping[str, Any]) -> ShadowVirtualLedger:
+        """Restore a ledger from :meth:`export_state`, failing on ambiguity."""
+        ledger = cls(
+            str(state.get("candidate_id") or ""),
+            initial_cash=float(state.get("initial_cash") or 0.0),
+        )
+        ledger.realized_pnl = float(state.get("realized_pnl") or 0.0)
+        ledger.fees = float(state.get("fees") or 0.0)
+        if ledger.fees < 0:
+            raise ValueError("shadow ledger fees cannot be negative")
+        position = state.get("position")
+        if position is not None:
+            if not isinstance(position, Mapping):
+                raise ValueError("shadow position state must be an object")
+            side = str(position.get("side") or "").upper()
+            if side not in {"LONG", "SHORT"}:
+                raise ValueError("shadow position side must be LONG or SHORT")
+            ledger.position = ShadowPosition(
+                side=side,
+                quantity=float(position.get("quantity") or 0.0),
+                entry_price=ledger._price(float(position.get("entry_price") or 0.0)),
+                entry_fee=float(position.get("entry_fee") or 0.0),
+                opened_at=float(position.get("opened_at") or 0.0),
+            )
+            if ledger.position.quantity <= 0 or ledger.position.entry_fee < 0:
+                raise ValueError("shadow position quantity and fee are invalid")
+            for value in (
+                ledger.position.quantity,
+                ledger.position.entry_fee,
+                ledger.position.opened_at,
+            ):
+                if not math.isfinite(value):
+                    raise ValueError("shadow position state contains a non-finite value")
+            if ledger.position.opened_at < 0:
+                raise ValueError("shadow position timestamp cannot be negative")
+        last_price = state.get("last_price")
+        ledger.last_price = ledger._price(float(last_price)) if last_price is not None else None
+        last_timestamp = state.get("last_timestamp")
+        ledger.last_timestamp = float(last_timestamp) if last_timestamp is not None else None
+        if ledger.last_timestamp is not None and ledger.last_timestamp < 0:
+            raise ValueError("shadow ledger timestamp cannot be negative")
+        ledger.last_event = str(state.get("last_event") or "")
+        for value in (
+            ledger.realized_pnl,
+            ledger.fees,
+            ledger.last_timestamp,
+        ):
+            if value is not None and not math.isfinite(float(value)):
+                raise ValueError("shadow ledger state contains a non-finite value")
+        return ledger
+
 
 class ShadowRunnerPool:
     """Run up to four candidate plugins as signal-only shadow workers.
@@ -243,8 +319,17 @@ class ShadowRunnerPool:
         observed by the next candidate.  A copy failure is safe to continue
         with the original read-only contract used by the strategy plugins.
         """
+        return self.run_with_contexts({spec.candidate_id: context for spec, _ in self._runners})
+
+    def run_with_contexts(
+        self, contexts: Mapping[str, Any]
+    ) -> list[ShadowSignalRecord]:
+        """Evaluate candidates with isolated position-aware market contexts."""
         records: list[ShadowSignalRecord] = []
         for spec, runner in self._runners:
+            if spec.candidate_id not in contexts:
+                raise ValueError(f"missing shadow context for {spec.candidate_id}")
+            context = contexts[spec.candidate_id]
             try:
                 candidate_context = copy.deepcopy(context)
             except Exception:
@@ -252,6 +337,10 @@ class ShadowRunnerPool:
             started = time.monotonic()
             signal = runner.run(candidate_context)
             duration_ms = (time.monotonic() - started) * 1000.0
+            reason = str(signal.reason or "")
+            sandbox_failed = reason.startswith(
+                ("strategy timeout", "strategy error", "strategy returned")
+            )
             records.append(
                 ShadowSignalRecord(
                     candidate_id=spec.candidate_id,
@@ -259,10 +348,11 @@ class ShadowRunnerPool:
                     intent=str(signal.intent),
                     position_side=signal.position_side,
                     confidence=float(signal.confidence),
-                    reason=str(signal.reason or ""),
+                    reason=reason,
                     produced_at=float(signal.timestamp),
                     duration_ms=round(duration_ms, 3),
-                    healthy=duration_ms <= spec.timeout_seconds * 1000.0
+                    healthy=not sandbox_failed
+                    and duration_ms <= spec.timeout_seconds * 1000.0
                     and str(signal.action) in {"BUY", "SELL", "HOLD"},
                 )
             )
