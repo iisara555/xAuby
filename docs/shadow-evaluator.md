@@ -84,18 +84,22 @@ Only then should periodic evaluation be explicitly enabled:
 systemctl enable --now xauby-shadow@<tenant>.timer
 ```
 
-The current OKX catalog has one certified candidate for each supported pair,
-so production remains intentionally unarmed until a comparable Challenger is
-certified. Adding infrastructure does not relax catalog certification,
-promotion evidence, manual Trade PIN confirmation, live re-approval, or the
-controlled-restart gates.
+The OKX BTC catalog now carries a frozen LONG-D1 research Challenger, but it is
+published as `not_assessed` and `live_certified=false`. The no-input GitHub
+workflow `BTC LONG-D1 Challenger certification` runs its locked native-OKX
+full-history and five-fold protocol. Until that artifact passes and a reviewed
+matching certificate is committed, the Challenger cannot enter a Strategy
+Arena and the timer remains intentionally unarmed. Adding a research preset
+does not relax catalog certification, promotion evidence, manual Trade PIN
+confirmation, live re-approval, or the controlled-restart gates.
 
 ## Direction after MVP
 
 The next useful sequence is:
 
-1. certify one genuinely different Challenger for a single pair using fixed,
-   out-of-sample evidence;
+1. certify the conservative BTC LONG-D1 configuration Challenger with the
+   frozen finalist protocol, while continuing separate research for a genuinely
+   orthogonal strategy;
 2. run Champion and Challenger forward for at least 30 days and 20 closed
    trades, retaining the durable artifact;
 3. add intrabar/replay evaluation as a separate, explicitly named fill model;

@@ -1,0 +1,46 @@
+name: BTC LONG-D1 Challenger certification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xauby-github-hosted-backtest
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Run locked native-OKX finalist protocol
+        run: >-
+          python scripts/certify_btc_d1_challenger.py
+          --out-dir core/btc_long_d1_challenger
+          --fail-on-reject
+      - name: Record reproducibility metadata
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p core/btc_long_d1_challenger
+          git rev-parse HEAD > core/btc_long_d1_challenger/git_commit.txt
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > core/btc_long_d1_challenger/completed_at_utc.txt
+          printf '%s\n' "$RUNNER_NAME" > core/btc_long_d1_challenger/runner_name.txt
+      - name: Upload locked-run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-long-d1-challenger-${{ github.run_id }}
+          path: core/btc_long_d1_challenger/
+          if-no-files-found: error
+          retention-days: 90

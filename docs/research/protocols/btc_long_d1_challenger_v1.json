@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "protocol_id": "btc-long-d1-challenger-v1",
+  "candidate_preset_id": "okx-btc-supertrend-long-d1-v1",
+  "candidate_config_fingerprint": "796d0bc9dff712bd",
+  "champion_preset_id": "okx-btc-supertrend-v1",
+  "champion_config_fingerprint": "2f8d06566fcc267f",
+  "data_source": {
+    "venue": "okx",
+    "symbol": "BTC-USDT-SWAP",
+    "primary_timeframe": "4h",
+    "regime_timeframe": "1d",
+    "native": true,
+    "minimum_history_days": 2000
+  },
+  "execution_model": {
+    "fee_pct": 0.0005,
+    "slippage_bps": 2.0,
+    "funding_rate_8h": 0.00004,
+    "initial_balance": 1000.0,
+    "risk_pct": 0.02,
+    "max_position_per_trade_pct": 25.0,
+    "sl_confirm_ticks": 3
+  },
+  "sampling": {
+    "full_native_history": true,
+    "chronological_folds": 5,
+    "past_only_warmup_bars": 300,
+    "warmup_may_trade": false
+  },
+  "gates": {
+    "candidate_full_profit_factor_min": 1.4,
+    "candidate_full_net_profit_pct_min_exclusive": 0.0,
+    "candidate_full_max_drawdown_pct_max": 12.0,
+    "candidate_full_trades_min": 90,
+    "profitable_folds_min": 4,
+    "folds_with_profit_factor_at_least_one_min": 4,
+    "candidate_vs_champion_full_profit_factor_ratio_min": 1.0,
+    "candidate_vs_champion_full_max_drawdown_ratio_max": 1.0,
+    "candidate_vs_champion_full_net_profit_retention_min": 0.8,
+    "candidate_vs_champion_full_trade_retention_min": 0.7,
+    "candidate_vs_champion_fold_profit_factor_wins_min": 3
+  },
+  "selection_disclosure": "The candidate was selected from a 576-cell 70/30 IS/OOS grid, so this run is a locked robustness check, not a pristine unseen holdout. Passing permits forward shadow only; it does not approve live trading or promotion."
+}

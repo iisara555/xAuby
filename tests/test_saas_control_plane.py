@@ -160,6 +160,12 @@ class SaaSControlPlaneTests(unittest.TestCase):
             1.52, delta=0.15)
         self.assertIn("BTC-USDT-SWAP", okx_btc["backtest"]["source"])
         self.assertEqual(okx_btc["allocation_pct"], 30.0)
+        challenger = presets["okx-btc-supertrend-long-d1-v1"]
+        self.assertEqual(challenger["certification_status"], "not_assessed")
+        self.assertFalse(challenger["live_certified"])
+        self.assertEqual(challenger["confirm_timeframe"], "1d")
+        self.assertTrue(challenger["execution_profile"]["use_d1_regime_filter_long"])
+        self.assertFalse(challenger["execution_profile"]["use_d1_regime_filter_short"])
         self.assertEqual(self.client.get("/api/v1/catalog").json()["risk"]["max_daily_loss_pct"], {
             "default": 6.0,
             "min": 1.0,

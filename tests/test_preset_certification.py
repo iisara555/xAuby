@@ -235,6 +235,26 @@ class TestRecordIntegrity(_WithCertificateDir):
         with self.assertRaisesRegex(CertificationError, "sufficient native history"):
             apply_certification(_spec("binance-th-btcusdt-supertrend-v1"))
 
+    def test_protocol_v3_requires_every_locked_gate(self):
+        record = _record(
+            "okx-btc-supertrend-long-d1-v1",
+            protocol={
+                "name": "btc-long-d1-challenger-finalist",
+                "version": "3",
+                "manifest_sha256": "a" * 64,
+            },
+            data_source={
+                "venue": "okx",
+                "symbol": "BTC-USDT-SWAP",
+                "timeframe": "4h",
+                "native": True,
+            },
+            gate={"passed": True, "checks": {"fold_profit_factor_wins": False}},
+        )
+        self.write(record)
+        with self.assertRaisesRegex(CertificationError, "every locked gate"):
+            apply_certification(_spec("okx-btc-supertrend-long-d1-v1"))
+
 
 class TestShippedRecords(unittest.TestCase):
     """The certificates actually in the repo, checked against the live specs."""

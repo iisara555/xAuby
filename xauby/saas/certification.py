@@ -129,6 +129,28 @@ def load_record(preset_id: str) -> dict[str, Any] | None:
             raise CertificationError(f"{path}: protocol v2 certification requires sufficient native history")
         if record.get("verdict") == "certified" and not bool((record.get("gate") or {}).get("fold_gate_passed")):
             raise CertificationError(f"{path}: protocol v2 certification requires the 4/5 profitable-fold gate")
+    if str(protocol.get("version") or "1") == "3":
+        source = record.get("data_source")
+        if not isinstance(source, Mapping):
+            raise CertificationError(f"{path}: protocol v3 requires structured data_source")
+        missing = [key for key in ("venue", "symbol", "timeframe", "native") if key not in source]
+        if missing:
+            raise CertificationError(f"{path}: protocol v3 data_source missing {missing}")
+        if not str(protocol.get("manifest_sha256") or ""):
+            raise CertificationError(f"{path}: protocol v3 requires a locked manifest hash")
+        gate = record.get("gate") or {}
+        checks = gate.get("checks") or {}
+        if record.get("verdict") == "certified" and not bool(source.get("native")):
+            raise CertificationError(f"{path}: protocol v3 proxy evidence cannot certify")
+        if record.get("verdict") == "certified" and (
+            not bool(gate.get("passed"))
+            or not isinstance(checks, Mapping)
+            or not checks
+            or not all(value is True for value in checks.values())
+        ):
+            raise CertificationError(
+                f"{path}: protocol v3 certification requires every locked gate"
+            )
     return record
 
 
