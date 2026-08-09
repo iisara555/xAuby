@@ -212,6 +212,7 @@ def test_shadow_systemd_unit_has_no_live_capabilities_and_is_opt_in() -> None:
     assert "PrivateNetwork=true" in service
     assert "ProtectProc=invisible" in service
     assert "InaccessiblePaths=/var/lib/xauby/runtime /etc/xauby" in service
+    assert "-/var/lib/xauby/backup-gpg" in service
     assert "BindReadOnlyPaths=/var/lib/xauby/runtime/%i:/run/xauby-shadow/%i" in service
     assert "BindPaths=/var/lib/xauby/runtime/%i/shadow:/run/xauby-shadow/%i/shadow" in service
     assert "EnvironmentFile" not in service
