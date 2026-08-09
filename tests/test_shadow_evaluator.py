@@ -10,6 +10,7 @@ import pytest
 from xauby.engine.shadow import ShadowVirtualLedger
 from xauby.saas.shadow_spec import SHADOW_FILL_MODEL
 from xauby.shadow_evaluator import ShadowEvaluator, _sha256, run_worker
+from xauby.shadow_snapshot import create_snapshot
 
 
 def _spec(tenant: str = "pilot-1") -> dict:
@@ -128,6 +129,30 @@ def test_shadow_worker_is_durable_idempotent_and_never_mutates_source_db(tmp_pat
     assert restored["last_event_sha256"] == events[-1]["event_sha256"]
 
 
+def test_snapshot_copies_only_bounded_candles_without_mutating_live_db(
+    tmp_path: Path,
+) -> None:
+    runtime_root, runtime_dir, _, _, _ = _prepare(tmp_path)
+    source = runtime_dir / "xauby.db"
+    before_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    result = create_snapshot("pilot-1", runtime_root=runtime_root)
+
+    snapshot = runtime_dir / "shadow" / "candles.db"
+    assert result["contains"] == "ohlcv_only"
+    assert result["rows"] == 250
+    assert snapshot.is_file()
+    assert snapshot.stat().st_size < 1_000_000
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == before_hash
+    conn = sqlite3.connect(f"file:{snapshot}?mode=ro", uri=True)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0] == 250
+        assert [row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )] == ["prices"]
+    finally:
+        conn.close()
+
 def test_shadow_worker_repairs_only_an_incomplete_tail(tmp_path: Path) -> None:
     runtime_root, runtime_dir, _, spec, latest = _prepare(tmp_path)
     run_worker("pilot-1", runtime_root=runtime_root, now=latest + 14_401)
@@ -204,6 +229,9 @@ def test_shadow_ledger_state_round_trip_preserves_open_position() -> None:
 def test_shadow_systemd_unit_has_no_live_capabilities_and_is_opt_in() -> None:
     project = Path(__file__).resolve().parents[1]
     service = (project / "deploy/systemd/xauby-shadow@.service").read_text(encoding="utf-8")
+    snapshot_service = (
+        project / "deploy/systemd/xauby-shadow-snapshot@.service"
+    ).read_text(encoding="utf-8")
     timer = (project / "deploy/systemd/xauby-shadow@.timer").read_text(encoding="utf-8")
     installer = (project / "scripts/install_saas_host.sh").read_text(encoding="utf-8")
     provisioner = (project / "deploy/xauby-provision-tenant").read_text(encoding="utf-8")
@@ -213,14 +241,19 @@ def test_shadow_systemd_unit_has_no_live_capabilities_and_is_opt_in() -> None:
     assert "ProtectProc=invisible" in service
     assert "InaccessiblePaths=/var/lib/xauby/runtime /etc/xauby" in service
     assert "-/var/lib/xauby/backup-gpg" in service
-    assert "BindReadOnlyPaths=/var/lib/xauby/runtime/%i:/run/xauby-shadow/%i" in service
+    assert "Requires=xauby-shadow-snapshot@%i.service" in service
+    assert "BindReadOnlyPaths=/var/lib/xauby/runtime/%i" not in service
     assert "BindPaths=/var/lib/xauby/runtime/%i/shadow:/run/xauby-shadow/%i/shadow" in service
+    assert "--db /run/xauby-shadow/%i/shadow/candles.db" in service
     assert "EnvironmentFile" not in service
     assert 'shadow_user="xsh-${tenant}"' in provisioner
     assert 'u:"$shadow_user":r-x' in provisioner
-    assert 'u:"$shadow_user":r-- "$candle_file"' in provisioner
-    assert '"/var/lib/xauby/runtime/${tenant}/xauby.db"' in provisioner
     assert 'u:"$shadow_user":rwx,u:xauby-control:rwx' in provisioner
+    assert "PrivateNetwork=true" in snapshot_service
+    assert "User=xauby-control" in snapshot_service
+    assert "EnvironmentFile" not in snapshot_service
+    assert "ReadWritePaths=/var/lib/xauby/runtime/%i" in snapshot_service
+    assert "xauby-shadow-snapshot@.service" in installer
     assert "xauby-shadow@.service" in installer
     assert "xauby-shadow@.timer" in installer
     assert "OnUnitActiveSec=5min" in timer

@@ -43,6 +43,7 @@ for unit in xauby-control.service xauby-engine@.service xauby.target \
             xauby-backup.service xauby-backup.timer \
             xauby-healthcheck.service xauby-healthcheck.timer \
             xauby-deadman@.service xauby-deadman@.timer \
+            xauby-shadow-snapshot@.service \
             xauby-shadow@.service xauby-shadow@.timer; do
   sed "s#/opt/xauby/current#$install_root#g" "$repo/deploy/systemd/$unit" > "/etc/systemd/system/$unit"
 done

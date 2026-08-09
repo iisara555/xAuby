@@ -37,19 +37,6 @@ setfacl -m u:"$engine_user":rwx,u:xauby-control:rwx,u:"$shadow_user":r-x "/var/l
 setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx "/etc/xauby/tenants/${tenant}"
 setfacl -d -m u:"$engine_user":rwx,u:xauby-control:rwx,u:"$shadow_user":r-x "/var/lib/xauby/runtime/${tenant}"
 
-# Default ACLs cover SQLite files created after provisioning. Existing pilot
-# tenants already have their candle DB, so grant the credential-free reader
-# access to that one DB and any current WAL sidecars explicitly. Do not recurse:
-# strategy state, logs, and every other tenant artifact remain inaccessible.
-for candle_file in \
-  "/var/lib/xauby/runtime/${tenant}/xauby.db" \
-  "/var/lib/xauby/runtime/${tenant}/xauby.db-wal" \
-  "/var/lib/xauby/runtime/${tenant}/xauby.db-shm"; do
-  if [[ -f "$candle_file" && ! -L "$candle_file" ]]; then
-    setfacl -m u:"$shadow_user":r-- "$candle_file"
-  fi
-done
-
 # The credential-free evaluator gets one tenant-scoped identity. It can read
 # the tenant candle DB but writes only beneath shadow/. The control plane keeps
 # access so it can materialize specs and project status to the SaaS UI.
