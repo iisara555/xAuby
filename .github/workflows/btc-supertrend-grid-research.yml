@@ -61,7 +61,7 @@ jobs:
           printf '%s\n' "$RUNNER_NAME" > core/btc_supertrend_okx_pf_grid/runner_name.txt
       - name: Upload compact final artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: btc-supertrend-okx-grid-${{ github.run_id }}
           path: core/btc_supertrend_okx_pf_grid/
