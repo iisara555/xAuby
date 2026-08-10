@@ -1,5 +1,11 @@
 # BTCUSDT — champion search and the Donchian walk-forward
 
+> **Exploratory evidence only — not a strategy or ensemble certificate.** This
+> report and its raw artifact came from branch
+> `claude/xauusdt-backtest-strategy-x5psn1`. Its historical harness and
+> Donchian-short architecture are not being merged into current `main`; the
+> locked 50/50 protocol is documented separately.
+
 - **Run date:** 2026-08-08/09
 - **Venue/data:** OKX `BTC-USDT-SWAP` **native** 4h, 14,564 bars, 2019-12-16 →
   2026-08-08 (6.6 years). No proxy — selection and confirmation are both on the

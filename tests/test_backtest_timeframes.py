@@ -127,6 +127,63 @@ class TestRunPluginReplayTimeframes(unittest.TestCase):
     @patch("xauby.observability.replay.PositionSimulator")
     @patch("xauby.strategies.sandbox.StrategyRunner")
     @patch("xauby.strategies.load_strategy")
+    def test_trace_is_opt_in_aligned_and_uses_force_closed_final_balance(
+        self, mock_load_strat, _runner, mock_sim_cls, mock_engine_cls
+    ):
+        strategy = MagicMock()
+        strategy.min_bars = 2
+        mock_load_strat.return_value = strategy
+        simulator = MagicMock()
+        simulator._equity_curve = [1001.0, 1002.0]
+        simulator._position_side_curve = ["LONG", None]
+        simulator.bars_in_position = 1
+        mock_sim_cls.return_value = simulator
+        engine = MagicMock()
+        engine.replay_bars.return_value = ([], [], 999.0, [])
+        mock_engine_cls.return_value = engine
+        mock_engine_cls.stats.return_value = {
+            "net_profit_pct": -0.1,
+            "win_rate": 0.0,
+            "total_trades": 0,
+            "profit_factor": 0.0,
+            "max_drawdown_pct": 0.2,
+        }
+        df = pd.DataFrame(
+            {
+                "open": [100.0] * 4,
+                "high": [101.0] * 4,
+                "low": [99.0] * 4,
+                "close": [100.5] * 4,
+                "volume": [1000.0] * 4,
+                "timestamp": [10, 20, 30, 40],
+            }
+        )
+
+        compact = run_plugin_replay(
+            df,
+            strategy_config={},
+            engine_config={},
+            strategy_name="supertrend_ema200",
+            primary_timeframe="4h",
+        )
+        traced = run_plugin_replay(
+            df,
+            strategy_config={},
+            engine_config={},
+            strategy_name="supertrend_ema200",
+            primary_timeframe="4h",
+            include_trace=True,
+        )
+
+        self.assertNotIn("trace", compact)
+        self.assertEqual(traced["trace"]["timestamps"], [30, 40])
+        self.assertEqual(traced["trace"]["equity_curve"], [1001.0, 999.0])
+        self.assertEqual(traced["trace"]["position_side_curve"], ["LONG", None])
+
+    @patch("xauby.observability.replay.ReplayEngine")
+    @patch("xauby.observability.replay.PositionSimulator")
+    @patch("xauby.strategies.sandbox.StrategyRunner")
+    @patch("xauby.strategies.load_strategy")
     def test_run_plugin_replay_sets_timeframe_primary(
         self, mock_load_strat, _runner, _sim, mock_engine_cls
     ):

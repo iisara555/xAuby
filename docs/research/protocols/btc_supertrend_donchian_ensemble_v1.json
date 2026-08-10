@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "protocol_id": "btc-supertrend-donchian-ensemble-v1",
+  "ensemble_id": "okx-btc-supertrend-donchian-50-50-v1",
+  "ensemble_fingerprint": "6d8e512803204b6e",
+  "champion_preset_id": "okx-btc-supertrend-v1",
+  "members": [
+    {
+      "role": "champion",
+      "preset_id": "okx-btc-supertrend-v1",
+      "config_fingerprint": "2f8d06566fcc267f",
+      "weight": 0.5
+    },
+    {
+      "role": "donchian",
+      "preset_id": "research-okx-btc-donchian-long-4h-v1",
+      "config_fingerprint": "f767832f8812d045",
+      "weight": 0.5,
+      "preset": {
+        "id": "research-okx-btc-donchian-long-4h-v1",
+        "target_id": "okx-swap",
+        "label": "BTC Donchian Long · 4H Research Sleeve",
+        "exchange_id": "okx",
+        "market_type": "swap",
+        "symbol": "BTCUSDT",
+        "asset": "BTC",
+        "strategy": "xauby_donchian_trend",
+        "primary_timeframe": "4h",
+        "confirm_timeframe": "",
+        "allowed_sides": [
+          "long"
+        ],
+        "max_leverage": 1,
+        "allocation_pct": 30.0,
+        "risk_pct": 0.02,
+        "max_position_per_trade_pct": 25.0,
+        "live_certified": false,
+        "research_only": true,
+        "stop_loss_required": true,
+        "execution_profile": {
+          "entry_len": 48,
+          "exit_len": 24,
+          "ema_period": 200,
+          "atr_period": 14,
+          "adx_period": 14,
+          "adx_min": 20.0,
+          "vol_ma_period": 20,
+          "vol_min_ratio": 0.0,
+          "sl_atr_mult": 2.0,
+          "trailing_atr_mult": 6.0,
+          "fixed_tp_pct": 0.0,
+          "breakeven_sl_enabled": true,
+          "breakeven_activation_atr_mult": 1.5,
+          "breakeven_buffer_atr_mult": 0.1,
+          "exit_on_ema_loss": true,
+          "max_calc_bars": 1000,
+          "cool_down_minutes": 240
+        }
+      }
+    }
+  ],
+  "data_source": {
+    "venue": "okx",
+    "symbol": "BTC-USDT-SWAP",
+    "primary_timeframe": "4h",
+    "native": true,
+    "window_start": "2019-12-16T00:00:00Z",
+    "window_end": "2026-08-08T23:59:59Z",
+    "minimum_history_days": 2000
+  },
+  "exploratory_evidence": [
+    {
+      "path": "docs/research/artifacts/btc_champion_search_2026-08-08.results.json.gz",
+      "sha256": "43e358766a975864db9b466248c6508924bb515832b5c2afb5f073538b7f571e"
+    },
+    {
+      "path": "docs/research/artifacts/btc_donchian_wfa_2026-08-08.results.json.gz",
+      "sha256": "299f711269a6f8665f76f45dda4d350b59aea9ab20b7d6936ecd8ac21f42013d"
+    },
+    {
+      "path": "docs/research/artifacts/alpha_correlation_btc_2026-08-10.results.json.gz",
+      "sha256": "e87c592e8353848d8b7a9d4fca13d09b4d0fc7ebc7e52a5eaf51fc34218e8278"
+    }
+  ],
+  "donchian_4h_exploratory_parity": {
+    "baseline": {
+      "net_profit_pct": 35.57990209985435,
+      "profit_factor": 1.6579136892190496,
+      "max_drawdown_pct": 6.7408366189031605,
+      "total_trades": 130
+    },
+    "absolute_tolerance": {
+      "net_profit_pct": 0.1,
+      "profit_factor": 0.01,
+      "max_drawdown_pct": 0.1,
+      "total_trades": 0
+    }
+  },
+  "fill_model": "isolated_virtual_sleeves_close_fill_v1",
+  "execution_model": {
+    "fee_pct": 0.0005,
+    "slippage_bps": 2.0,
+    "funding_rate_8h": 0.00004,
+    "initial_balance": 1000.0,
+    "risk_pct": 0.02,
+    "max_position_per_trade_pct": 25.0,
+    "sl_confirm_ticks": 3,
+    "primary_weights": [
+      0.5,
+      0.5
+    ],
+    "sensitivity_weights": [
+      [
+        0.4,
+        0.6
+      ],
+      [
+        0.6,
+        0.4
+      ]
+    ]
+  },
+  "sampling": {
+    "continuous_shared_clock": true,
+    "calendar_month_resets": false,
+    "chronological_folds": 5,
+    "past_only_warmup_bars": 300,
+    "warmup_may_trade": false,
+    "recent_complete_months": {
+      "count": 24,
+      "window_start": "2024-08-01T00:00:00Z",
+      "window_end": "2026-07-31T23:59:59Z"
+    }
+  },
+  "gates": {
+    "ensemble_vs_champion_net_profit_ratio_min": 1.1,
+    "ensemble_vs_champion_profit_factor_ratio_min": 1.0,
+    "ensemble_vs_champion_max_drawdown_ratio_max": 0.8,
+    "ensemble_vs_champion_sharpe_edge_min": 0.1,
+    "ensemble_vs_champion_positive_months_min_additional": 3,
+    "profitable_folds_min": 4,
+    "drawdown_noninferior_folds_min": 4,
+    "recent_net_profit_pct_min_exclusive": 0.0,
+    "recent_profit_factor_min": 1.1,
+    "member_monthly_return_correlation_max": 0.6,
+    "sensitivity_net_profit_pct_min_exclusive": 0.0,
+    "sensitivity_max_drawdown_ratio_max": 1.0
+  },
+  "selection_disclosure": "The Donchian member and 50/50 allocation were selected after reviewing the 2026-08-08 exploratory branch, so this is a locked robustness and implementation-parity check rather than a pristine unseen holdout. Passing permits credential-free forward shadow only. The isolated virtual sleeves may hold opposing sides and are not executable on the current one-way live account."
+}

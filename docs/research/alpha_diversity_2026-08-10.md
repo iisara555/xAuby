@@ -1,5 +1,10 @@
 # How many distinct alphas does xAuby have, and what is worth building next?
 
+> **Exploratory evidence only — not a certificate.** This report and compressed
+> result were imported from branch `claude/xauusdt-backtest-strategy-x5psn1`.
+> Its monthly-reset portfolio arithmetic is selection evidence only and must not
+> be used as a live or forward-shadow approval.
+
 - **Run date:** 2026-08-10
 - **Data:** OKX `BTC-USDT-SWAP` native 4h, 14,572 bars, 80 calendar months
   (2019-12 → 2026-08). Every registered plugin, frozen default config,
