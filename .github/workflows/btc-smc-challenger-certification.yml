@@ -1,0 +1,46 @@
+name: BTC SMC Challenger certification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xauby-github-hosted-backtest
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Run locked native-OKX SMC protocol
+        run: >-
+          python scripts/certify_btc_smc_challenger.py
+          --out-dir core/btc_smc_structure_challenger
+          --fail-on-reject
+      - name: Record reproducibility metadata
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p core/btc_smc_structure_challenger
+          git rev-parse HEAD > core/btc_smc_structure_challenger/git_commit.txt
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > core/btc_smc_structure_challenger/completed_at_utc.txt
+          printf '%s\n' "$RUNNER_NAME" > core/btc_smc_structure_challenger/runner_name.txt
+      - name: Upload locked-run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-smc-structure-challenger-${{ github.run_id }}
+          path: core/btc_smc_structure_challenger/
+          if-no-files-found: error
+          retention-days: 90

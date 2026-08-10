@@ -64,7 +64,12 @@ class TestDeclaredPlugins(unittest.TestCase):
                     strategy_maturity(load_strategy(name, {})), "production")
 
     def test_research_mirrors_stay_research(self):
-        for name in ("supertrend_short", "rsi2_short", "donchian_short"):
+        for name in (
+            "supertrend_short",
+            "rsi2_short",
+            "donchian_short",
+            "xauby_smc_pro",
+        ):
             with self.subTest(strategy=name):
                 self.assertEqual(
                     strategy_maturity(load_strategy(name, {})), "research")

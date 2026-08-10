@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "protocol_id": "btc-smc-structure-challenger-v1",
+  "candidate_preset_id": "okx-btc-smc-structure-long-v1",
+  "candidate_config_fingerprint": "0778faa882f8ee73",
+  "champion_preset_id": "okx-btc-supertrend-v1",
+  "champion_config_fingerprint": "2f8d06566fcc267f",
+  "side_policy_comparator": {
+    "id": "okx-btc-smc-structure-long-short-v1-research-arm",
+    "base_candidate_preset_id": "okx-btc-smc-structure-long-v1",
+    "allowed_profile_changes": [
+      "allow_short"
+    ],
+    "execution_profile_override": {
+      "allow_short": true
+    }
+  },
+  "data_source": {
+    "venue": "okx",
+    "symbol": "BTC-USDT-SWAP",
+    "primary_timeframe": "4h",
+    "native": true,
+    "minimum_history_days": 2000
+  },
+  "execution_model": {
+    "fee_pct": 0.0005,
+    "slippage_bps": 2.0,
+    "funding_rate_8h": 0.00004,
+    "initial_balance": 1000.0,
+    "risk_pct": 0.02,
+    "max_position_per_trade_pct": 25.0,
+    "sl_confirm_ticks": 3
+  },
+  "sampling": {
+    "full_native_history": true,
+    "chronological_folds": 5,
+    "past_only_warmup_bars": 300,
+    "warmup_may_trade": false
+  },
+  "gates": {
+    "candidate_full_profit_factor_min": 1.15,
+    "candidate_full_net_profit_pct_min_exclusive": 0.0,
+    "candidate_full_max_drawdown_pct_max": 10.0,
+    "candidate_full_trades_min": 100,
+    "profitable_folds_min": 3,
+    "folds_with_profit_factor_at_least_one_min": 3,
+    "latest_fold_net_profit_pct_min_exclusive": 0.0,
+    "candidate_vs_champion_full_profit_factor_ratio_min": 0.75,
+    "candidate_vs_champion_full_max_drawdown_ratio_max": 1.0,
+    "candidate_vs_champion_fold_net_correlation_max": 0.8,
+    "candidate_positive_when_champion_nonpositive_folds_min": 1,
+    "long_only_vs_long_short_full_profit_factor_ratio_min": 0.95,
+    "long_only_vs_long_short_full_max_drawdown_ratio_max": 1.1,
+    "long_short_behavior_must_differ": true
+  },
+  "selection_disclosure": "The SMC family and confluence=1.0 profile were selected from the July 2026 Binance-spot grid and monthly WFA. Contrary to that report's original wording, its SMC arm was long-only because allow_short remained false. This locked native-OKX run is the first predeclared comparison with a long+short SMC arm. Passing permits forward shadow only; it does not approve live trading, allocation, or promotion."
+}
