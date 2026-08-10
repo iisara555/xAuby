@@ -31,6 +31,7 @@ TARGET_REGIMES = {"BULL_BREAKOUT", "BULL_TREND_STRONG", "BEAR_TREND_STRONG", "VO
 class SMCLuxAlgoStrategy(Strategy):
     version = "0.1.0"
     author = "xAuby"
+    maturity = "research"
     display_name = "xAuby SMC Pro"
     description = "Smart Money Concepts structure strategy inspired by LuxAlgo SMC."
     tags = ["smc", "luxalgo", "structure", "bos", "choch"]

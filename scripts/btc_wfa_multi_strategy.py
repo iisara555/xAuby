@@ -2,9 +2,12 @@
 """BTC 4h walk-forward evaluation across four strategy plugins.
 
 Compares ``bbrsi_mean_reversion``, ``supertrend_ema200``, ``xauby_actionzone``
-(CDC ActionZone) and ``xauby_smc_pro`` (SMC + FVG) on BTCUSDT 4h, long + short,
-using the repo's own plugin replay engine (decision on the last CLOSED bar,
-fill at the NEXT bar open — no look-ahead).
+(CDC ActionZone) and ``xauby_smc_pro`` (SMC + FVG) on BTCUSDT 4h using the
+repo's own plugin replay engine (decision on the last CLOSED bar, fill at the
+NEXT bar open — no look-ahead). The historical SMC grid below is long-only:
+unlike the other plugins it uses ``allow_short`` rather than ``enable_short``,
+and that switch was never overridden. Keep this disclosure with old results;
+use ``certify_btc_smc_challenger.py`` for the locked side-policy comparison.
 
 Walk-forward protocol (anchored rolling, monthly step):
   * train = 6 calendar months, test = the following 1 month
@@ -137,8 +140,10 @@ def _grid(base: dict, axes: dict) -> list:
     return combos
 
 
-# Long + short everywhere. Exits/sizing are fixed per strategy so the search
-# space stays honest (structural entry knobs only, small grids).
+# Exits/sizing are fixed per strategy so the search space stays honest
+# (structural entry knobs only, small grids). The three legacy strategies below
+# explicitly enable shorts; SMC deliberately retains its historical long-only
+# default so rerunning this script reproduces the published evidence.
 STRATEGIES: dict = {
     "bbrsi_mean_reversion": {
         "grid": _grid(
