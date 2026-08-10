@@ -1,0 +1,141 @@
+{
+  "record_version": 1,
+  "record_kind": "ensemble",
+  "ensemble_id": "okx-btc-supertrend-donchian-50-50-v1",
+  "ensemble_fingerprint": "6d8e512803204b6e",
+  "measured_at": "2026-08-10T13:10:09+00:00",
+  "protocol": {
+    "name": "btc-supertrend-donchian-50-50-shadow",
+    "version": "1",
+    "script": "scripts/certify_btc_ensemble.py",
+    "manifest": "docs/research/protocols/btc_supertrend_donchian_ensemble_v1.json",
+    "manifest_sha256": "f3073a10da86ecc05b5935d3460c3e013deff64e896f394c4671b372980ca899",
+    "workflow_provenance": {
+      "repository": "iisara555/xAuby",
+      "commit": "78f1b2b67e9939d28249f770a49e897a3fadfdf9",
+      "workflow": "BTC SuperTrend Donchian ensemble certification",
+      "run_id": "31391136677",
+      "run_attempt": "1",
+      "complete": true
+    }
+  },
+  "data_source": {
+    "venue": "okx",
+    "symbol": "BTC-USDT-SWAP",
+    "primary_timeframe": "4h",
+    "native": true,
+    "window_start": "2019-12-16T00:00:00Z",
+    "window_end": "2026-08-08T23:59:59Z",
+    "minimum_history_days": 2000,
+    "bars": 14567,
+    "observed_start": "2019-12-16 04:00:00+00:00",
+    "observed_end": "2026-08-08 20:00:00+00:00",
+    "ohlcv_sha256": "2a7904a242fb65186268a088ce232dd6483b7a2990ccb6b0da83ef6472995d90"
+  },
+  "members": [
+    {
+      "preset_id": "okx-btc-supertrend-v1",
+      "config_fingerprint": "2f8d06566fcc267f",
+      "weight": 0.5,
+      "role": "champion"
+    },
+    {
+      "preset_id": "research-okx-btc-donchian-long-4h-v1",
+      "config_fingerprint": "f767832f8812d045",
+      "weight": 0.5,
+      "role": "donchian"
+    }
+  ],
+  "fill_model": "isolated_virtual_sleeves_close_fill_v1",
+  "execution_model": {
+    "fee_pct": 0.0005,
+    "slippage_bps": 2.0,
+    "funding_rate_8h": 4e-05,
+    "initial_balance": 1000.0,
+    "risk_pct": 0.02,
+    "max_position_per_trade_pct": 25.0,
+    "sl_confirm_ticks": 3,
+    "primary_weights": [
+      0.5,
+      0.5
+    ],
+    "sensitivity_weights": [
+      [
+        0.4,
+        0.6
+      ],
+      [
+        0.6,
+        0.4
+      ]
+    ]
+  },
+  "gate": {
+    "passed": false,
+    "checks": {
+      "native_history_sufficient": true,
+      "full_net_uplift": true,
+      "full_profit_factor_noninferiority": true,
+      "full_drawdown_reduction": true,
+      "full_sharpe_edge": true,
+      "positive_month_edge": true,
+      "profitable_folds": true,
+      "drawdown_noninferior_folds": false,
+      "recent_net_positive": true,
+      "recent_profit_factor": true,
+      "member_monthly_correlation": true,
+      "weight_sensitivity": true,
+      "donchian_4h_exploratory_parity": false
+    },
+    "observed": {
+      "history_days": 2427,
+      "ensemble_vs_champion_net_profit_ratio": 1.489374,
+      "ensemble_vs_champion_profit_factor_ratio": 1.068637,
+      "ensemble_vs_champion_max_drawdown_ratio": 0.460681,
+      "ensemble_vs_champion_sharpe_edge": 0.280681,
+      "ensemble_vs_champion_positive_months_additional": 3,
+      "profitable_folds": 4,
+      "drawdown_noninferior_folds": 2,
+      "recent_net_profit_pct": 4.819857,
+      "recent_profit_factor": 1.44592,
+      "member_monthly_return_correlation": 0.104594,
+      "weight_sensitivity_passed": true,
+      "donchian_4h_parity_deltas": {
+        "net_profit_pct": -1.20938287,
+        "profit_factor": -0.01664271,
+        "max_drawdown_pct": -0.0,
+        "total_trades": -1.0
+      },
+      "virtual_sleeve_conflict_bars": 0,
+      "virtual_sleeve_conflict_rate_pct": 0.0
+    },
+    "thresholds": {
+      "ensemble_vs_champion_net_profit_ratio_min": 1.1,
+      "ensemble_vs_champion_profit_factor_ratio_min": 1.0,
+      "ensemble_vs_champion_max_drawdown_ratio_max": 0.8,
+      "ensemble_vs_champion_sharpe_edge_min": 0.1,
+      "ensemble_vs_champion_positive_months_min_additional": 3,
+      "profitable_folds_min": 4,
+      "drawdown_noninferior_folds_min": 4,
+      "recent_net_profit_pct_min_exclusive": 0.0,
+      "recent_profit_factor_min": 1.1,
+      "member_monthly_return_correlation_max": 0.6,
+      "sensitivity_net_profit_pct_min_exclusive": 0.0,
+      "sensitivity_max_drawdown_ratio_max": 1.0
+    }
+  },
+  "verdict": "failed",
+  "shadow_only": true,
+  "live_certified": false,
+  "note": "Fails one or more locked 50/50 ensemble acceptance gates; not eligible for forward shadow.",
+  "document": "docs/research/btc_supertrend_donchian_ensemble_2026-08.md",
+  "evidence": {
+    "status": "validated",
+    "score_label": "PF 1.57",
+    "period": "Dec 2019 \u2013 Aug 2026",
+    "duration": "6.6 years",
+    "max_drawdown_pct": 4.5,
+    "trades": 264,
+    "source": "OKX BTC-USDT-SWAP \u00b7 continuous 50/50 virtual sleeves \u00b7 measured 2026-08-10T13:10:09+00:00"
+  }
+}

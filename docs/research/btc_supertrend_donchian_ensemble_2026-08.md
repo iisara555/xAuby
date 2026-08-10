@@ -1,8 +1,35 @@
 # BTC SuperTrend + Donchian 50/50 shadow certification
 
-**Status: protocol locked; result unmeasured.** This document is not a
-certificate. The locked workflow must run on the exact merge commit before an
-ensemble record may be proposed for the Shadow Arena.
+**Status: REJECTED on 2026-08-10; no certificate and no runtime candidate.**
+The locked workflow ran on merge commit
+`78f1b2b67e9939d28249f770a49e897a3fadfdf9` ([run 31391136677](https://github.com/iisara555/xAuby/actions/runs/31391136677)).
+It published failed evidence exactly as required and stopped before Shadow Arena
+integration.
+
+## Locked result
+
+The 50/50 book improved the full-history headline numbers: +25.87% net versus
++17.37% Champion, PF 1.572 versus 1.471, MDD 4.52% versus 9.81%, Sharpe 0.874
+versus 0.593, and 32 versus 29 positive months. The latest 24 complete months
+also remained positive (+4.82%, PF 1.446), member monthly correlation was 0.105,
+and both weight-sensitivity controls passed.
+
+It nevertheless failed two pre-registered gates:
+
+- only 2/5 chronological folds had MDD no higher than Champion; 4/5 were
+  required
+- current Donchian 4H replay missed exploratory parity by one trade, -1.21
+  percentage points net, and -0.0166 PF
+
+Fold 5 was negative for both books and worse for the ensemble (-3.11% versus
+-2.64%). Under the locked protocol this is a rejection even though most
+aggregate metrics improved. No thresholds or weights were changed after seeing
+the result.
+
+Committed evidence is under
+[`runs/btc_supertrend_donchian_ensemble_2026-08-10/`](runs/btc_supertrend_donchian_ensemble_2026-08-10/).
+The immutable `results.json` SHA-256 is
+`d341aa285ae40710b4f5aa9b1c2bf41a09c59832c90538c0d6eb5daf81264ae5`.
 
 ## Scope
 
