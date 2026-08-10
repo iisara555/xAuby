@@ -176,6 +176,10 @@ class PositionSimulator:
         self.position: Optional[SimPosition] = None
         self.trades: List[SimTrade] = []
         self._equity_curve: List[float] = []  # per-bar mark-to-close equity
+        # Research callers may request the aligned per-bar position state.  It
+        # is kept beside the equity curve so two isolated sleeves can report
+        # how often they would oppose each other without touching broker code.
+        self._position_side_curve: List[Optional[str]] = []
         self.bars_in_position: int = 0  # bars held — for exposure %
 
     def _entry_scale(self, bar_time: int) -> float:
@@ -912,6 +916,12 @@ class ReplayEngine:
             # Record mark-to-close equity every bar for accurate drawdown
             self.simulator._equity_curve.append(
                 self.simulator.current_equity(float(row["close"]))
+            )
+            position = self.simulator.position
+            self.simulator._position_side_curve.append(
+                "SHORT" if position and position.side < 0
+                else "LONG" if position
+                else None
             )
 
         if self.simulator.has_position and len(df) > 0:

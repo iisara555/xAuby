@@ -34,6 +34,7 @@ def run_plugin_replay(
     primary_timeframe: Optional[str] = None,
     regime_timeframe: Optional[str] = None,
     min_bars_override: Optional[int] = None,
+    include_trace: bool = False,
 ) -> Dict[str, Any]:
     # TODO: make strategy_name a required parameter in a future breaking release
     """Run bar-by-bar replay using the real strategy plugin (ReplayEngine).
@@ -146,4 +147,26 @@ def run_plugin_replay(
         total_bars=len(simulator._equity_curve),
         tf_seconds=tf_seconds,
     )
-    return metrics.to_dict()
+    result = metrics.to_dict()
+    if include_trace:
+        # Trace fields are opt-in because the normal TUI/API response should
+        # stay compact.  Certification harnesses use them to combine virtual
+        # sleeves on one continuous clock without reconstructing equity from
+        # closed trades or resetting capital at month boundaries.
+        start = max(0, len(df) - len(simulator._equity_curve))
+        timestamps = [
+            int(value)
+            for value in df.iloc[start:]["timestamp"].tolist()
+        ]
+        equity_curve = [float(value) for value in simulator._equity_curve]
+        if equity_curve:
+            # replay_bars force-closes an open position after recording the
+            # final mark.  Pin the last observation to the actual final balance
+            # so a combined sleeve ends at the same value as its trade ledger.
+            equity_curve[-1] = float(final_bal)
+        result["trace"] = {
+            "timestamps": timestamps,
+            "equity_curve": equity_curve,
+            "position_side_curve": list(simulator._position_side_curve),
+        }
+    return result
