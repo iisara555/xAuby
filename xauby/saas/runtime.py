@@ -8,9 +8,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from xauby.runtime.paths import usd_thb_rate_path
 from xauby.saas.settings import SaaSSettings
 from xauby.saas.supervisor import TenantSupervisor
+from xauby.utils.currency import CurrencyRateUnavailable, get_thb_rate_quote
 
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,24}$")
 _TIMEFRAMES = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"}
@@ -272,38 +272,23 @@ class RuntimeGateway:
         portfolio = focus.get("portfolio") if isinstance(focus.get("portfolio"), dict) else {}
         equity = breakdown.get("portfolio_total_usdt") or focus.get("total_equity_usdt") or state.get("total_equity_usdt")
         cash = breakdown.get("usdt_balance_usdt") or portfolio.get("USDT") or portfolio.get("USD")
-        stored_currency = state.get("currency") if isinstance(state.get("currency"), dict) else {}
-        rate = stored_currency.get("usd_thb_rate")
-        rate_source = "state" if rate else ""
-        if not rate:
-            rate_paths: list[Path] = []
-            if runtime_dir is not None:
-                rate_paths.append(runtime_dir / "usd_thb_rate.json")
-            fallback_path = Path(usd_thb_rate_path())
-            if not fallback_path.is_absolute():
-                fallback_path = self.settings.project_root / fallback_path
-            if fallback_path not in rate_paths:
-                rate_paths.append(fallback_path)
-            for rate_path in rate_paths:
-                try:
-                    cached = json.loads(rate_path.read_text(encoding="utf-8"))
-                    rate = cached.get("rate")
-                    if rate:
-                        rate_source = "tenant_cache" if runtime_dir and rate_path.parent == runtime_dir else "cache"
-                        break
-                except (OSError, TypeError, ValueError, json.JSONDecodeError):
-                    continue
         try:
-            rate_value = float(rate) if rate is not None else None
-        except (TypeError, ValueError):
-            rate_value = None
+            rate_path = (
+                runtime_dir / "usd_thb_rate.json"
+                if runtime_dir is not None
+                else self.settings.project_root / "core" / "usd_thb_rate.json"
+            )
+            rate_quote = get_thb_rate_quote(cache_file=str(rate_path))
+        except CurrencyRateUnavailable:
+            rate_quote = {}
+        rate_value = rate_quote.get("rate")
 
         def convert(value: Any) -> float | None:
             try:
                 amount = float(value)
             except (TypeError, ValueError):
                 return None
-            return amount * rate_value if rate_value and rate_value > 0 else None
+            return amount * float(rate_value) if rate_value else None
 
         pnl = breakdown.get("unrealized_pnl_usdt")
         exposure = breakdown.get("symbol_exposure_usdt")
@@ -311,7 +296,14 @@ class RuntimeGateway:
             "equity_usdt": equity,
             "equity_thb": convert(equity),
             "usd_thb_rate": rate_value,
-            "rate_source": rate_source,
+            "rate_pair": rate_quote.get("pair"),
+            "rate_source": rate_quote.get("source"),
+            "rate_source_label": rate_quote.get("source_label"),
+            "rate_source_url": rate_quote.get("source_url"),
+            "rate_observed_at": rate_quote.get("observed_at"),
+            "rate_fetched_at": rate_quote.get("fetched_at"),
+            "rate_age_sec": rate_quote.get("age_sec"),
+            "rate_stale": bool(rate_quote.get("stale")) if rate_quote else True,
             "usdt_balance_usdt": cash,
             "usdt_balance_thb": convert(cash),
             "base_asset": breakdown.get("base_asset") or "",

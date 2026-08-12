@@ -56,6 +56,26 @@ function optionalPrice(value: unknown): string {
   return parsed == null || parsed <= 0 ? "—" : formatNumber(parsed);
 }
 
+function formatFxAge(value: unknown): string {
+  const seconds = numberOrNull(value);
+  if (seconds == null) return "unknown age";
+  if (seconds < 90) return "just now";
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  return `${Math.round(seconds / 3600)}h ago`;
+}
+
+function formatFxReferenceDate(value: unknown): string {
+  const seconds = numberOrNull(value);
+  if (seconds == null) return "";
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 export default function DashboardPage() {
   const user = useCurrentUser();
   const { data: bot, mutate: mutateBot } = useBot();
@@ -82,12 +102,10 @@ export default function DashboardPage() {
   const cash = valueAt(focus, "equity_breakdown", "usdt_balance_usdt") ?? valueAt(focus, "portfolio", "USDT") ?? snapshot?.currency?.usdt_balance_usdt;
   const exposure = valueAt(focus, "equity_breakdown", "symbol_exposure_usdt") ?? snapshot?.currency?.symbol_exposure_usdt;
   const positionOpen = String(valueAt(position, "state") ?? "idle").toLowerCase() === "bought";
-  const lastClosed = valueAt(focus, "last_closed_trade") as Record<string, unknown> | undefined;
-  const lastPnlConfirmed = Boolean(lastClosed && Number(valueAt(lastClosed, "pnl_confirmed") ?? 0));
-  const pnl = Number(positionOpen ? valueAt(position, "unrealized_pnl") ?? 0 : valueAt(lastClosed ?? {}, "net_pnl") ?? 0);
+  const pnl = Number(positionOpen ? valueAt(position, "unrealized_pnl") ?? 0 : 0);
   const pnlPct = positionOpen
     ? numberOrNull(valueAt(position, "unrealized_pnl_pct") ?? valueAt(position, "pnl_pct"))
-    : numberOrNull(valueAt(lastClosed ?? {}, "net_pnl_pct") ?? valueAt(lastClosed ?? {}, "pnl_pct"));
+    : null;
   const side = positionOpen ? String(valueAt(position, "position_side") ?? "FLAT").toUpperCase() : "FLAT";
   const managementMode = String(valueAt(position, "management_mode") ?? "strategy").toLowerCase();
   const signal = String(valueAt(focus, "signal_meta", "action") ?? "WAIT");
@@ -106,6 +124,13 @@ export default function DashboardPage() {
   const cashNumber = Number(cash);
   const exposureNumber = Number(exposure);
   const usdThbRate = numberOrNull(valueAt(currency, "usd_thb_rate"));
+  const fxPair = String(valueAt(currency, "rate_pair") ?? "");
+  const fxSource = String(valueAt(currency, "rate_source_label") ?? "");
+  const fxSourceUrl = String(valueAt(currency, "rate_source_url") ?? "");
+  const fxStale = Boolean(valueAt(currency, "rate_stale"));
+  const fxReferenceDate = formatFxReferenceDate(valueAt(currency, "rate_observed_at"));
+  const fxUnit = fxPair === "USD/THB" ? "THB / USD" : "THB / USDT";
+  const fxSourceLabel = fxSource || (fxPair === "USD/THB" ? "USD reference" : "USDT/THB market");
   const equityThb = valueAt(currency, "equity_thb") ?? (usdThbRate && Number.isFinite(equityNumber) ? equityNumber * usdThbRate : null);
   const cashThb = valueAt(currency, "usdt_balance_thb") ?? (usdThbRate && Number.isFinite(cashNumber) ? cashNumber * usdThbRate : null);
   const exposureThb = valueAt(currency, "symbol_exposure_thb") ?? (usdThbRate && Number.isFinite(exposureNumber) ? exposureNumber * usdThbRate : null);
@@ -113,7 +138,7 @@ export default function DashboardPage() {
     ? pnl * usdThbRate
     : positionOpen
       ? valueAt(currency, "unrealized_pnl_thb")
-      : valueAt(lastClosed ?? {}, "net_pnl_thb") ?? valueAt(lastClosed ?? {}, "pnl_thb");
+      : null;
   const totalForAllocation = Number.isFinite(equityNumber) && equityNumber > 0 ? equityNumber : 0;
   const exposurePct = positionOpen && totalForAllocation > 0 && Number.isFinite(exposureNumber)
     ? Math.min(100, Math.max(2, (Math.abs(exposureNumber) / totalForAllocation) * 100))
@@ -172,16 +197,22 @@ export default function DashboardPage() {
           <div className="hero-value">{Number.isFinite(equityNumber) ? `$${formatNumber(equityNumber)}` : "—"}<small>USDT</small></div>
           <div className="hero-secondary-value">
             <strong>{formatApproxBaht(equityThb)}</strong>
-            <span>{usdThbRate == null ? "FX rate unavailable" : `FX ${formatNumber(usdThbRate, 2)} THB / USDT`}</span>
+            <span className={fxStale ? "fx-stale" : undefined}>{usdThbRate == null
+              ? "FX rate unavailable"
+              : <>{fxStale ? `FX delayed (${formatFxAge(valueAt(currency, "rate_age_sec"))})` : "FX"} {formatNumber(usdThbRate, 2)} {fxUnit} · {fxSourceUrl
+                ? <a href={fxSourceUrl} target="_blank" rel="noreferrer">{fxSourceLabel}</a>
+                : fxSourceLabel}{fxPair === "USD/THB" ? <>{fxReferenceDate ? ` · ${fxReferenceDate}` : ""} · USDT≈USD</> : null}</>}</span>
           </div>
-          <div className={`hero-pnl ${pnlTone}`}>
-            <div><span>PnL</span><strong>{positionOpen || lastPnlConfirmed ? `${formatSigned(pnl)} USDT` : "—"}</strong></div>
-            <div><span>Return</span><strong>{positionOpen || lastPnlConfirmed ? formatSignedPercent(pnlPct) : "—"}</strong></div>
-            <small>
-              <span className="hero-pnl-tag">{positionOpen ? "Unrealized" : lastPnlConfirmed ? `Realized · ${target?.label ?? "OKX"} confirmed` : "No closed trades yet"}</span>
-              {positionOpen || lastPnlConfirmed ? formatApproxBaht(pnlThb, true, 2) : ""}
-            </small>
-          </div>
+          {positionOpen && (
+            <div className={`hero-pnl ${pnlTone}`}>
+              <div><span>PnL</span><strong>{formatSigned(pnl)} USDT</strong></div>
+              <div><span>Return</span><strong>{formatSignedPercent(pnlPct)}</strong></div>
+              <small>
+                <span className="hero-pnl-tag">Unrealized</span>
+                {formatApproxBaht(pnlThb, true, 2)}
+              </small>
+            </div>
+          )}
           <div className="hero-allocation">
             <div className="hero-allocation-head"><span>Capital allocation</span><strong>{totalForAllocation ? `${formatNumber(exposurePct, 1)}% deployed` : "Waiting for equity"}</strong></div>
             <div className="hero-allocation-track" role="meter" aria-label="Capital deployed" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(exposurePct)}>

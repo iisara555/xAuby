@@ -113,9 +113,18 @@ class RuntimeGatewayTests(unittest.TestCase):
         tenant_runtime = self.supervisor.runtime_dir("customer-one")
         runtime = tenant_runtime / "logs"
         runtime.mkdir(parents=True)
+        rate_timestamp = time.time()
         (tenant_runtime / "usd_thb_rate.json").write_text(json.dumps({
             "rate": 33.4,
-            "source": "test-cache",
+            "ts": rate_timestamp,
+            "fetched_at": rate_timestamp,
+            "observed_at": rate_timestamp,
+            "base": "USDT",
+            "quote": "THB",
+            "source_id": "binance_th",
+            "source_label": "Binance TH",
+            "source_url": "https://www.binance.th/en/trade/USDT_THB",
+            "endpoint_url": "https://api.binance.th/api/v1/ticker/24hr?symbol=USDTTHB",
         }))
         (runtime / "xauby_bot_state.json").write_text(json.dumps({
             "focus_symbol": "XAUUSDT",
@@ -136,7 +145,10 @@ class RuntimeGatewayTests(unittest.TestCase):
         self.assertEqual(payload["currency"]["equity_usdt"], 180.31)
         self.assertEqual(payload["currency"]["symbol_exposure_usdt"], 2.39)
         self.assertEqual(payload["currency"]["usd_thb_rate"], 33.4)
-        self.assertEqual(payload["currency"]["rate_source"], "tenant_cache")
+        self.assertEqual(payload["currency"]["rate_pair"], "USDT/THB")
+        self.assertEqual(payload["currency"]["rate_source"], "binance_th")
+        self.assertEqual(payload["currency"]["rate_source_label"], "Binance TH")
+        self.assertFalse(payload["currency"]["rate_stale"])
         self.assertAlmostEqual(payload["currency"]["equity_thb"], 6022.354)
         self.assertAlmostEqual(payload["currency"]["unrealized_pnl_thb"], 79.826)
 
