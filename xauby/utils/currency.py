@@ -1,128 +1,255 @@
-"""USDT/THB exchange-rate helper with disk-backed in-memory cache.
+"""Observed USDT/USD to THB rates with bounded, tenant-capable caching.
 
-The live Binance TH USDT/THB market is preferred.  Public USD/THB FX feeds
-are used only when that market is unavailable.  We never invent a rate: on a
-network failure the last observed rate is used, or conversion is unavailable.
+The live Binance TH USDT/THB market is preferred because xAuby's OKX
+portfolio values are denominated in USDT.  Daily public USD/THB reference
+feeds are fallbacks and are explicitly identified as USD rates.  Cached data
+is refreshed after 10 minutes and is never used after 24 hours.
 """
 from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+import threading
 import time
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Callable, Optional
+
+from xauby.runtime.paths import usd_thb_rate_path
+from xauby.utils.atomic_io import atomic_json_write
 
 logger = logging.getLogger("xauby.utils.currency")
 
-from xauby.runtime.paths import usd_thb_rate_path
 _CACHE_FILE = usd_thb_rate_path()
-_TTL = 600          # refresh every 10 minutes
-
-_rate_mem: Optional[float] = None
-_rate_ts: float = 0.0
+_TTL = 600
+_MAX_STALE = 86_400
+_MIN_PLAUSIBLE_RATE = 5.0
+_MAX_PLAUSIBLE_RATE = 100.0
+_FETCH_LOCK = threading.Lock()
 
 
 class CurrencyRateUnavailable(RuntimeError):
-    """Raised when no observed USDT/THB or USD/THB rate is available."""
+    """Raised when no sufficiently recent observed THB rate is available."""
 
 
-def _sources():
+def _unix_date(value: Any) -> float:
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    try:
+        return datetime.fromisoformat(text).replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _binance_th(data: dict[str, Any], fetched_at: float) -> dict[str, Any]:
+    if data.get("symbol") != "USDTTHB":
+        raise ValueError("Binance TH returned the wrong symbol")
+    bid = float(data.get("bidPrice") or 0)
+    ask = float(data.get("askPrice") or 0)
+    if bid > 0 and ask >= bid:
+        rate = (bid + ask) / 2
+        if (ask - bid) / rate > 0.02:
+            raise ValueError("Binance TH spread is too wide")
+    else:
+        rate = float(data.get("lastPrice") or data.get("price") or 0)
+    observed_at = float(data.get("closeTime") or 0) / 1000
+    if observed_at <= 0:
+        observed_at = fetched_at
+    if observed_at > fetched_at + 300 or fetched_at - observed_at > 900:
+        raise ValueError("Binance TH ticker is stale")
+    return {
+        "rate": rate,
+        "base": "USDT",
+        "quote": "THB",
+        "source": "binance_th",
+        "source_label": "Binance TH",
+        "source_url": "https://www.binance.th/en/trade/USDT_THB",
+        "observed_at": observed_at,
+    }
+
+
+def _frankfurter_ecb(data: dict[str, Any], fetched_at: float) -> dict[str, Any]:
+    if data.get("base") != "USD" or data.get("quote") != "THB":
+        raise ValueError("Frankfurter returned the wrong currency pair")
+    return {
+        "rate": float(data.get("rate") or 0),
+        "base": "USD",
+        "quote": "THB",
+        "source": "frankfurter_ecb",
+        "source_label": "ECB via Frankfurter",
+        "source_url": "https://frankfurter.dev/providers/ecb/",
+        "observed_at": _unix_date(data.get("date")) or fetched_at,
+    }
+
+
+def _exchange_rate_api(data: dict[str, Any], fetched_at: float) -> dict[str, Any]:
+    if data.get("result") != "success" or data.get("base_code") != "USD":
+        raise ValueError("ExchangeRate-API returned an invalid response")
+    rates = data.get("rates") if isinstance(data.get("rates"), dict) else {}
+    return {
+        "rate": float(rates.get("THB") or 0),
+        "base": "USD",
+        "quote": "THB",
+        "source": "exchange_rate_api",
+        "source_label": "ExchangeRate-API",
+        "source_url": "https://www.exchangerate-api.com",
+        "observed_at": float(data.get("time_last_update_unix") or fetched_at),
+    }
+
+
+def _sources() -> tuple[tuple[str, Callable[[dict[str, Any], float], dict[str, Any]]], ...]:
     """Return public price sources ordered by conversion accuracy."""
     return (
         (
             "https://api.binance.th/api/v1/ticker/24hr?symbol=USDTTHB",
-            lambda d: float(d.get("lastPrice", 0) or d.get("price", 0)),
+            _binance_th,
         ),
         (
-            "https://api.frankfurter.app/latest?from=USD&to=THB",
-            lambda d: float(d["rates"]["THB"]),
+            "https://api.frankfurter.dev/v2/rate/USD/THB?providers=ECB",
+            _frankfurter_ecb,
         ),
         (
             "https://open.er-api.com/v6/latest/USD",
-            lambda d: float(d["rates"]["THB"]),
+            _exchange_rate_api,
         ),
+    )
+
+
+def _validated_rate(value: Any) -> float:
+    rate = float(value)
+    if not math.isfinite(rate) or not (_MIN_PLAUSIBLE_RATE < rate < _MAX_PLAUSIBLE_RATE):
+        raise ValueError("THB rate is outside plausible bounds")
+    return rate
+
+
+def _cache_quote(cache_file: str, now: float) -> dict[str, Any] | None:
+    try:
+        with open(cache_file, "r", encoding="utf-8") as handle:
+            cached = json.load(handle)
+        if not isinstance(cached, dict):
+            return None
+        rate = _validated_rate(cached.get("rate"))
+        fetched_at = float(cached.get("fetched_at") or cached.get("ts") or 0)
+        if not math.isfinite(fetched_at) or fetched_at <= 0:
+            return None
+        endpoint_url = str(cached.get("endpoint_url") or cached.get("source") or "")
+        source_url = str(cached.get("source_url") or endpoint_url)
+        base = str(cached.get("base") or ("USDT" if "binance.th" in endpoint_url else "USD"))
+        source = str(cached.get("source_id") or ("binance_th" if "binance.th" in endpoint_url else "cached_fx"))
+        source_label = str(cached.get("source_label") or ("Binance TH" if source == "binance_th" else "Cached FX rate"))
+        observed_at = float(cached.get("observed_at") or fetched_at)
+        age_sec = max(0.0, now - fetched_at)
+        return {
+            "rate": rate,
+            "base": base,
+            "quote": "THB",
+            "pair": f"{base}/THB",
+            "source": source,
+            "source_label": source_label,
+            "source_url": source_url,
+            "endpoint_url": endpoint_url,
+            "observed_at": observed_at,
+            "fetched_at": fetched_at,
+            "age_sec": age_sec,
+            "stale": age_sec >= _TTL,
+        }
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _fetch_quote(now: float) -> dict[str, Any] | None:
+    import urllib.request
+
+    headers = {"User-Agent": "xauby-bot/1.0 (currency-helper)"}
+    for url, extractor in _sources():
+        try:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=4) as response:
+                data = json.loads(response.read())
+            if not isinstance(data, dict):
+                raise ValueError("rate response is not an object")
+            quote = extractor(data, now)
+            quote["rate"] = _validated_rate(quote.get("rate"))
+            quote.update({
+                "pair": f"{quote['base']}/THB",
+                "endpoint_url": url,
+                "fetched_at": now,
+                "age_sec": 0.0,
+                "stale": False,
+            })
+            return quote
+        except Exception as error:
+            logger.debug("THB rate fetch failed (%s): %s", url, error)
+    return None
+
+
+def get_thb_rate_quote(
+    *,
+    cache_file: Optional[str] = None,
+    now: Optional[float] = None,
+) -> dict[str, Any]:
+    """Return a validated THB quote with source and freshness metadata.
+
+    A stale quote is returned only when every network source fails and the last
+    successful observation was fetched less than 24 hours ago.
+    """
+    current_time = float(now if now is not None else time.time())
+    target = os.fspath(cache_file or _CACHE_FILE)
+    cached = _cache_quote(target, current_time)
+    if cached and not cached["stale"]:
+        return cached
+
+    with _FETCH_LOCK:
+        cached = _cache_quote(target, current_time)
+        if cached and not cached["stale"]:
+            return cached
+        fresh = _fetch_quote(current_time)
+        if fresh:
+            payload = {
+                "rate": fresh["rate"],
+                "ts": fresh["fetched_at"],
+                "fetched_at": fresh["fetched_at"],
+                "observed_at": fresh["observed_at"],
+                "base": fresh["base"],
+                "quote": "THB",
+                "source_id": fresh["source"],
+                "source_label": fresh["source_label"],
+                "source_url": fresh["source_url"],
+                "endpoint_url": fresh["endpoint_url"],
+            }
+            try:
+                atomic_json_write(target, payload, indent=2, mode=0o660)
+            except OSError as error:
+                logger.debug("THB rate cache write failed (%s): %s", target, error)
+            logger.debug(
+                "THB rate refreshed from %s: %.4f",
+                fresh["endpoint_url"],
+                fresh["rate"],
+            )
+            return fresh
+
+    cached = _cache_quote(target, current_time)
+    if cached and cached["age_sec"] <= _MAX_STALE:
+        return cached
+    raise CurrencyRateUnavailable(
+        "No observed USDT/THB or USD/THB rate newer than 24 hours is available"
     )
 
 
 def get_usd_thb_rate() -> float:
-    """Return USD→THB rate, refreshing at most once per _TTL seconds."""
-    global _rate_mem, _rate_ts
-    now = time.time()
-    if _rate_mem is not None and (now - _rate_ts) < _TTL:
-        return _rate_mem
-
-    # Disk cache is good enough?
-    try:
-        if os.path.exists(_CACHE_FILE):
-            with open(_CACHE_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-            cached_rate = float(d.get("rate", 0))
-            cached_ts = float(d.get("ts", 0))
-            if cached_rate > 0 and (now - cached_ts) < _TTL:
-                _rate_mem = cached_rate
-                _rate_ts = cached_ts
-                return _rate_mem
-    except Exception:
-        pass
-
-    # Fetch a fresh observed rate — try multiple public sources in order.
-    import urllib.request
-    _HEADERS = {"User-Agent": "xauby-bot/1.0 (currency-helper)"}
-    for url, extractor in _sources():
-        try:
-            req = urllib.request.Request(url, headers=_HEADERS)
-            with urllib.request.urlopen(req, timeout=4) as resp:
-                data = json.loads(resp.read())
-            rate = extractor(data)
-            # Reject malformed upstream values before caching them.  The wide
-            # bounds avoid encoding an assumed exchange rate in application
-            # logic while still catching unit/currency mistakes.
-            if 1.0 < rate < 1_000.0:
-                _rate_mem = rate
-                _rate_ts = now
-                try:
-                    from xauby.runtime.paths import ensure_runtime_dir
-                    ensure_runtime_dir()
-                    with open(_CACHE_FILE, "w", encoding="utf-8") as f:
-                        json.dump({"rate": rate, "ts": now, "source": url}, f)
-                except Exception:
-                    pass
-                logger.debug("USD/THB rate refreshed from %s: %.4f", url, rate)
-                return rate
-        except Exception as e:
-            logger.debug("USD/THB rate fetch failed (%s): %s", url, e)
-
-    # Use stale in-memory rate if available
-    if _rate_mem is not None:
-        return _rate_mem
-    # Last resort: try stale disk cache
-    try:
-        if os.path.exists(_CACHE_FILE):
-            with open(_CACHE_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-            rate = float(d.get("rate", 0))
-            if rate > 0:
-                _rate_mem = rate
-                _rate_ts = now - _TTL  # mark as stale so next call retries
-                return _rate_mem
-    except Exception:
-        pass
-    raise CurrencyRateUnavailable(
-        "No observed USDT/THB rate is available from the network or cache"
-    )
+    """Return the best observed THB rate (legacy numeric API)."""
+    return float(get_thb_rate_quote()["rate"])
 
 
 def usdt_to_thb(amount: float) -> float:
-    """Convert a USDT amount to Thai Baht using the cached rate."""
+    """Convert a USDT amount using the best observed THB quote."""
     return amount * get_usd_thb_rate()
 
 
 def format_thb(amount: float, compact: bool = False) -> str:
-    """Format a THB amount as a Thai Baht string.
-
-    compact=True  →  ฿34.5k / ฿1.2M
-    compact=False →  ฿34,512
-    """
+    """Format a THB amount as a Thai Baht string."""
     if compact:
         if abs(amount) >= 1_000_000:
             return f"฿{amount / 1_000_000:.1f}M"
