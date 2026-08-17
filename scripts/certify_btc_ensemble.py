@@ -232,7 +232,7 @@ def _run_arm(
     strategy_name: str,
     profile: Mapping[str, Any],
     config: Mapping[str, Any],
-    warmup_bars: int,
+    warmup_bars: int | None,
 ) -> dict[str, Any]:
     stats = run_plugin_replay(
         frame,
@@ -465,6 +465,7 @@ def evaluate_gate(
     member_correlation: float,
     history_days: int,
     manifest: Mapping[str, Any],
+    donchian_parity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     gates = manifest.get("gates") or {}
     profitable_folds = sum(
@@ -496,8 +497,9 @@ def evaluate_gate(
     parity = manifest.get("donchian_4h_exploratory_parity") or {}
     parity_baseline = parity.get("baseline") or {}
     parity_tolerance = parity.get("absolute_tolerance") or {}
+    parity_run = donchian if donchian_parity is None else donchian_parity
     parity_pass = bool(parity_baseline) and all(
-        abs(_number(donchian.get(key)) - _number(expected))
+        abs(_number(parity_run.get(key)) - _number(expected))
         <= _number(parity_tolerance.get(key))
         for key, expected in parity_baseline.items()
     )
@@ -543,7 +545,7 @@ def evaluate_gate(
             "member_monthly_return_correlation": member_correlation,
             "weight_sensitivity_passed": sensitivity_pass,
             "donchian_4h_parity_deltas": {
-                key: round(_number(donchian.get(key)) - _number(expected), 8)
+                key: round(_number(parity_run.get(key)) - _number(expected), 8)
                 for key, expected in parity_baseline.items()
             },
             "virtual_sleeve_conflict_bars": int(ensemble.get("conflict_bars") or 0),
@@ -631,8 +633,23 @@ def main() -> int:
         config=config,
         warmup_bars=warmup,
     )
+    # The parity baseline came from btc_champion_search._eval(), whose full
+    # history arm passed skip_bars=0 and therefore began at the strategy's own
+    # 240-bar minimum.  The locked 300-bar lead-in belongs to chronological
+    # folds/windows, where those bars are prior context that must not trade.
+    # Reusing it for this separate implementation-parity check silently
+    # removed Donchian's first trade.  Keep the portfolio run unchanged and
+    # replay the hash-locked exploratory semantics only for the parity gate.
+    donchian_parity_run = _run_arm(
+        native,
+        strategy_name=str(donchian["strategy"]),
+        profile=donchian_profile,
+        config=config,
+        warmup_bars=None,
+    )
     champion_full = _arm_summary(champion_run)
     donchian_full = _arm_summary(donchian_run)
+    donchian_parity_full = _arm_summary(donchian_parity_run)
     ensemble_full = combine_arms(champion_run, donchian_run, champion_weight=0.5)
     member_correlation = _member_monthly_correlation(champion_run, donchian_run)
 
@@ -708,6 +725,7 @@ def main() -> int:
         member_correlation=member_correlation,
         history_days=history_days,
         manifest=manifest,
+        donchian_parity=donchian_parity_full,
     )
     verdict = "certified" if gate["passed"] else "failed"
     measured_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
@@ -770,6 +788,7 @@ def main() -> int:
         "full_history": {
             "champion": champion_full,
             "donchian": donchian_full,
+            "donchian_exploratory_parity": donchian_parity_full,
             "ensemble": ensemble_full,
             "member_monthly_return_correlation": member_correlation,
         },

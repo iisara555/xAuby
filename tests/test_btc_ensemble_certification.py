@@ -12,6 +12,7 @@ from scripts.certify_btc_ensemble import (
     _economics,
     _preset,
     _research_member,
+    _run_arm,
     combine_arms,
     ensemble_fingerprint,
     evaluate_gate,
@@ -177,6 +178,86 @@ def test_all_preregistered_gates_pass_only_with_parity_and_robustness():
     )
     assert rejected["passed"] is False
     assert rejected["checks"]["donchian_4h_exploratory_parity"] is False
+
+
+def test_parity_gate_can_use_exploratory_full_history_semantics_separately():
+    manifest = _manifest()
+    parity = dict(manifest["donchian_4h_exploratory_parity"]["baseline"])
+    locked_member_run = dict(parity)
+    locked_member_run["total_trades"] -= 1
+    champion = {
+        "net_profit_pct": 100,
+        "profit_factor": 1.5,
+        "max_drawdown_pct": 10,
+        "sharpe": 0.6,
+        "positive_months": 6,
+    }
+    ensemble = {
+        "net_profit_pct": 120,
+        "profit_factor": 1.6,
+        "max_drawdown_pct": 8,
+        "sharpe": 0.71,
+        "positive_months": 9,
+        "conflict_bars": 0,
+        "conflict_rate_pct": 0,
+    }
+    folds = [
+        {
+            "champion": {"max_drawdown_pct": 5},
+            "ensemble": {"net_profit_pct": 1, "max_drawdown_pct": 5},
+        }
+        for _ in range(5)
+    ]
+
+    result = evaluate_gate(
+        champion,
+        locked_member_run,
+        ensemble,
+        folds,
+        {"net_profit_pct": 1, "profit_factor": 1.1},
+        {
+            "40_60": {"net_profit_pct": 1, "max_drawdown_pct": 10},
+            "60_40": {"net_profit_pct": 1, "max_drawdown_pct": 9},
+        },
+        member_correlation=0.6,
+        history_days=2000,
+        manifest=manifest,
+        donchian_parity=parity,
+    )
+
+    assert result["passed"] is True
+    assert result["checks"]["donchian_4h_exploratory_parity"] is True
+    assert all(
+        delta == 0
+        for delta in result["observed"]["donchian_4h_parity_deltas"].values()
+    )
+
+
+def test_exploratory_parity_replay_keeps_strategy_native_warmup(monkeypatch):
+    observed = {}
+
+    def fake_replay(_frame, **kwargs):
+        observed.update(kwargs)
+        return {
+            "trace": {
+                "timestamps": [1],
+                "equity_curve": [1000.0],
+                "position_side_curve": [None],
+            }
+        }
+
+    monkeypatch.setattr(
+        "scripts.certify_btc_ensemble.run_plugin_replay", fake_replay
+    )
+    _run_arm(
+        pd.DataFrame(),
+        strategy_name="xauby_donchian_trend",
+        profile={},
+        config={},
+        warmup_bars=None,
+    )
+
+    assert observed["min_bars_override"] is None
 
 
 def test_exploratory_archives_are_hash_locked():

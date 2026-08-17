@@ -26,6 +26,26 @@ Fold 5 was negative for both books and worse for the ensemble (-3.11% versus
 aggregate metrics improved. No thresholds or weights were changed after seeing
 the result.
 
+## Parity repair rerun — 2026-08-17
+
+The exploratory-parity mismatch was an implementation error in the
+certification harness, not strategy drift. The hash-locked exploratory
+full-history run began at Donchian's native 240-bar minimum, while the first
+certification run incorrectly reused the 300-bar no-trade lead-in intended for
+chronological folds and windows. That removed the first trade from the parity
+comparison.
+
+[Workflow run 31990266216](https://github.com/iisara555/xAuby/actions/runs/31990266216)
+on commit `b131b41337315c3912e1c76397359377df051218` separated the parity replay
+without changing the portfolio replay, member configs, 50/50 weights, or any
+acceptance threshold. The parity arm matched all locked values exactly: 130
+trades, +35.579902% net, PF 1.657913689, and 6.740837% MDD.
+
+The overall verdict remains **REJECTED**. The unchanged portfolio still passed
+only 2/5 fold-level drawdown non-inferiority checks against the required 4/5.
+Accordingly, regime-aware ensemble, dynamic-sizing, and runtime-shadow
+integration remain blocked.
+
 Committed evidence is under
 [`runs/btc_supertrend_donchian_ensemble_2026-08-10/`](runs/btc_supertrend_donchian_ensemble_2026-08-10/).
 The immutable `results.json` SHA-256 is
