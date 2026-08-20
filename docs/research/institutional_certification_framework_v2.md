@@ -2,10 +2,10 @@
 
 ## Status
 
-Phase 1, increments 1-2: the protocol contract, immutable trial ledger, and
-nested purged walk-forward engine are implemented. This document is the threat
-model for the remaining increments; it is not itself a claim that any strategy
-is certified.
+Phase 1, increments 1-3: the protocol contract, immutable trial ledger, nested
+purged walk-forward engine, and ledger-backed mandatory statistical gates are
+implemented. This document is the threat model for the remaining increments;
+it is not itself a claim that any strategy is certified.
 
 ## Trust boundary
 
@@ -36,6 +36,16 @@ history, or execution assumptions cannot be identified exactly.
    holding horizon before every inner and outer evaluation.
 10. Prepend past-only warm-up bars through `WindowSlice`; `run_slice()` always
     forwards the exact leading count as a non-trading override.
+11. Build the statistical return series only from untouched outer holdouts and
+    preserve the exact basis named by `statistical_policy.sharpe_basis`.
+12. Derive `n_trials`, completed-trial Sharpe dispersion, and the complete
+    selection p-value family from one verified `TrialLedgerSnapshot`. The
+    statistical gate has no caller arguments for trial count or Sharpe variance.
+13. Reject while any trial is pending, when a completed trial lacks a comparable
+    Sharpe or p-value, or when the exact selected trial is absent.
+14. Require the selected trial to pass the pre-registered Bonferroni or
+    Benjamini-Hochberg correction as well as PSR, DSR, circular moving-block
+    bootstrap, and path-dependent drawdown permutation gates.
 
 ## Threats addressed in this increment
 
@@ -50,6 +60,12 @@ history, or execution assumptions cannot be identified exactly.
 - Overlapping label horizons across training and evaluation boundaries.
 - Trading indicator warm-up bars or reading future bars into warm-up.
 - Reusing a validation plan against a shifted or reordered timeline.
+- Supplying a fictional trial count or Sharpe variance to the DSR calculation.
+- Omitting weak completed trials from the multiple-testing family.
+- Mixing Sharpe values calculated from different return bases.
+- Accepting a zero-variance series as statistically identifiable.
+- Applying an order permutation test to a statistic or sample whose order
+  cannot change the result.
 
 Hash chaining alone cannot prove that a ledger tail was not removed. The locked
 certificate must therefore retain the final ledger digest in a separately
@@ -57,7 +73,6 @@ published artifact. Signing and CI artifact provenance are later Phase 1 work.
 
 ## Remaining Phase 1 gates
 
-- Mandatory PSR/DSR, bootstrap, permutation, and multiple-testing gates.
 - Venue-native execution and cost stress testing.
 - One certification runner with immutable CI artifacts and adversarial
   self-certification tests.

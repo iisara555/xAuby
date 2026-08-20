@@ -46,6 +46,19 @@ def _protocol(**overrides):
             "primary_test": "deflated_sharpe_ratio",
             "alpha": 0.05,
             "multiple_testing": "benjamini_hochberg",
+            "sharpe_metric": "sharpe",
+            "sharpe_basis": "per_outer_fold_return",
+            "selection_p_value_metric": "selection_p_value",
+            "min_observations": 30,
+            "bootstrap_samples": 1_000,
+            "bootstrap_block_size": 3,
+            "min_bootstrap_p05_pct": 0.0,
+            "min_probability_profitable": 0.95,
+            "permutation_samples": 1_000,
+            "max_permutation_p_value": 0.05,
+            "benchmark_sharpe": 0.0,
+            "min_probabilistic_sharpe": 0.95,
+            "min_deflated_sharpe": 0.95,
         },
         "random_seed": 20260820,
         "created_at": "2026-08-20T00:00:00+00:00",
@@ -84,8 +97,12 @@ def test_protocol_fingerprint_is_canonical_and_detached_from_caller():
             "outer_folds",
         ),
         (
-            {"statistical_policy": {"primary_test": "dsr", "alpha": 1.0,
-                                    "multiple_testing": "bh"}},
+            {
+                "statistical_policy": {
+                    **dict(_protocol().statistical_policy),
+                    "alpha": 1.0,
+                }
+            },
             "alpha",
         ),
         ({"random_seed": True}, "random_seed"),
@@ -145,6 +162,21 @@ def test_failed_and_duplicate_candidates_remain_in_true_trial_count(tmp_path):
     assert evidence["n_aborted"] == 1
     assert evidence["selected_trial_ids"] == [winner]
     assert len(evidence["ledger_sha256"]) == 64
+
+
+def test_candidate_evidence_can_be_pinned_to_one_exact_completed_trial(tmp_path):
+    candidate = {"fast": 10, "slow": 30}
+    ledger = TrialLedger.create(tmp_path / "trials.jsonl", _protocol())
+    first = ledger.start_trial(candidate)
+    second = ledger.start_trial(candidate)
+    ledger.finish_trial(first, status="completed", metrics={"sharpe": 1.0})
+    ledger.finish_trial(second, status="completed", metrics={"sharpe": 1.1})
+
+    evidence = ledger.evidence_for_candidate(candidate, selected_trial_id=second)
+
+    assert evidence["selected_trial_ids"] == [second]
+    with pytest.raises(TrialLedgerError, match="selected trial"):
+        ledger.evidence_for_candidate(candidate, selected_trial_id="invented")
 
 
 def test_candidate_without_completed_ledger_trial_cannot_claim_evidence(tmp_path):

@@ -197,7 +197,13 @@ def bootstrap_returns(
         drawn: List[float] = []
         while len(drawn) < n:
             start = rng.randrange(n)
-            drawn.extend(values[start:start + block] if block > 1 else [values[start]])
+            if block > 1:
+                # Circular moving blocks give every start position the same
+                # block length. Truncating blocks at the series tail silently
+                # overweights late observations with shorter draws.
+                drawn.extend(values[(start + offset) % n] for offset in range(block))
+            else:
+                drawn.append(values[start])
         totals.append(compound(drawn[:n]))
     totals.sort()
     return BootstrapResult(

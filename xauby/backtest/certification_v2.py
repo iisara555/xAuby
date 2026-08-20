@@ -189,7 +189,24 @@ class CertificationProtocolV2:
             ),
             "statistical_policy": (
                 self.statistical_policy,
-                ("primary_test", "alpha", "multiple_testing"),
+                (
+                    "primary_test",
+                    "alpha",
+                    "multiple_testing",
+                    "sharpe_metric",
+                    "sharpe_basis",
+                    "selection_p_value_metric",
+                    "min_observations",
+                    "bootstrap_samples",
+                    "bootstrap_block_size",
+                    "min_bootstrap_p05_pct",
+                    "min_probability_profitable",
+                    "permutation_samples",
+                    "max_permutation_p_value",
+                    "benchmark_sharpe",
+                    "min_probabilistic_sharpe",
+                    "min_deflated_sharpe",
+                ),
             ),
         }
         for name, (value, required) in blocks.items():
@@ -214,8 +231,26 @@ class CertificationProtocolV2:
         _require_text_fields(
             "statistical_policy",
             self.statistical_policy,
-            ("primary_test", "multiple_testing"),
+            (
+                "primary_test",
+                "multiple_testing",
+                "sharpe_metric",
+                "sharpe_basis",
+                "selection_p_value_metric",
+            ),
         )
+        if self.statistical_policy["primary_test"] != "deflated_sharpe_ratio":
+            raise CertificationProtocolError(
+                "statistical_policy.primary_test must be deflated_sharpe_ratio"
+            )
+        if self.statistical_policy["multiple_testing"] not in {
+            "bonferroni",
+            "benjamini_hochberg",
+        }:
+            raise CertificationProtocolError(
+                "statistical_policy.multiple_testing must be bonferroni or "
+                "benjamini_hochberg"
+            )
 
         data_hash = str(self.data_identity.get("sha256") or "")
         if not _SHA256_RE.fullmatch(data_hash):
@@ -255,6 +290,36 @@ class CertificationProtocolV2:
             raise CertificationProtocolError("statistical_policy.alpha must be numeric")
         if not 0.0 < float(alpha) < 1.0:
             raise CertificationProtocolError("statistical_policy.alpha must be between 0 and 1")
+        for key, minimum in (
+            ("min_observations", 5),
+            ("bootstrap_samples", 100),
+            ("bootstrap_block_size", 2),
+            ("permutation_samples", 100),
+        ):
+            value = self.statistical_policy.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                raise CertificationProtocolError(
+                    f"statistical_policy.{key} must be an integer >= {minimum}"
+                )
+        for key in (
+            "min_probability_profitable",
+            "max_permutation_p_value",
+            "min_probabilistic_sharpe",
+            "min_deflated_sharpe",
+        ):
+            value = self.statistical_policy.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise CertificationProtocolError(f"statistical_policy.{key} must be numeric")
+            if not 0.0 <= float(value) <= 1.0:
+                raise CertificationProtocolError(
+                    f"statistical_policy.{key} must be between 0 and 1"
+                )
+        for key in ("min_bootstrap_p05_pct", "benchmark_sharpe"):
+            value = self.statistical_policy.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise CertificationProtocolError(f"statistical_policy.{key} must be numeric")
+            if not math.isfinite(float(value)):
+                raise CertificationProtocolError(f"statistical_policy.{key} must be finite")
 
         # Frozen dataclasses do not freeze mutable mappings.  Recursively freeze
         # them so neither caller mutation nor direct attribute access can alter
@@ -330,6 +395,56 @@ class TrialLedgerSnapshot:
             if math.isfinite(float(value)):
                 values.append(float(value))
         return values
+
+    def evidence_for_candidate(
+        self,
+        candidate: Mapping[str, Any],
+        *,
+        selected_trial_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Resolve candidate evidence from this exact immutable snapshot."""
+        candidate_hash = sha256_digest(dict(candidate))
+        starts = [
+            record
+            for record in self.records
+            if record.get("kind") == "trial_started"
+            and record.get("candidate_sha256") == candidate_hash
+        ]
+        finishes = {
+            record["trial_id"]: record
+            for record in self.records
+            if record.get("kind") == "trial_finished"
+        }
+        completed = [
+            record
+            for record in starts
+            if finishes.get(record["trial_id"], {}).get("status") == "completed"
+            and isinstance(finishes[record["trial_id"]].get("metrics"), Mapping)
+            and self.protocol.primary_metric in finishes[record["trial_id"]]["metrics"]
+        ]
+        if selected_trial_id is not None:
+            completed = [
+                record for record in completed if record["trial_id"] == selected_trial_id
+            ]
+        if not completed:
+            qualifier = (
+                f" selected trial {selected_trial_id!r}" if selected_trial_id is not None else ""
+            )
+            raise TrialLedgerError(
+                "candidate has no completed trial"
+                f"{qualifier} with the protocol primary metric in this ledger"
+            )
+        return {
+            "protocol_sha256": self.protocol_sha256,
+            "ledger_sha256": self.ledger_sha256,
+            "candidate_sha256": candidate_hash,
+            "selected_trial_ids": [record["trial_id"] for record in completed],
+            "n_trials": self.trials_started,
+            "n_completed": self.trials_completed,
+            "n_failed": self.trials_failed,
+            "n_aborted": self.trials_aborted,
+            "n_pending": self.trials_pending,
+        }
 
 
 class TrialLedger:
@@ -473,43 +588,18 @@ class TrialLedger:
             )
         return snapshot
 
-    def evidence_for_candidate(self, candidate: Mapping[str, Any]) -> dict[str, Any]:
+    def evidence_for_candidate(
+        self,
+        candidate: Mapping[str, Any],
+        *,
+        selected_trial_id: str | None = None,
+    ) -> dict[str, Any]:
         """Build evidence that cannot omit the unsuccessful search attempts."""
-        candidate_hash = sha256_digest(dict(candidate))
         snapshot = self.verify()
-        starts = [
-            record
-            for record in snapshot.records
-            if record.get("kind") == "trial_started"
-            and record.get("candidate_sha256") == candidate_hash
-        ]
-        finishes = {
-            record["trial_id"]: record
-            for record in snapshot.records
-            if record.get("kind") == "trial_finished"
-        }
-        completed = [
-            record
-            for record in starts
-            if finishes.get(record["trial_id"], {}).get("status") == "completed"
-            and isinstance(finishes[record["trial_id"]].get("metrics"), Mapping)
-            and snapshot.protocol.primary_metric in finishes[record["trial_id"]]["metrics"]
-        ]
-        if not completed:
-            raise TrialLedgerError(
-                "candidate has no completed trial with the protocol primary metric in this ledger"
-            )
-        return {
-            "protocol_sha256": snapshot.protocol_sha256,
-            "ledger_sha256": snapshot.ledger_sha256,
-            "candidate_sha256": candidate_hash,
-            "selected_trial_ids": [record["trial_id"] for record in completed],
-            "n_trials": snapshot.trials_started,
-            "n_completed": snapshot.trials_completed,
-            "n_failed": snapshot.trials_failed,
-            "n_aborted": snapshot.trials_aborted,
-            "n_pending": snapshot.trials_pending,
-        }
+        return snapshot.evidence_for_candidate(
+            candidate,
+            selected_trial_id=selected_trial_id,
+        )
 
     def _locked_file(self):
         if not self.path.is_file():
