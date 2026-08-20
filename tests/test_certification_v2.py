@@ -40,14 +40,63 @@ def _protocol(**overrides):
         },
         "execution_policy": {
             "fee_model": "venue_taker",
-            "slippage_model": "locked_bps_stress",
+            "slippage_model": "observed_plus_stress",
+            "funding_model": "adverse_venue_8h",
+            "latency_model": "observed_p95_stress",
+            "fill_model": "observed_ratio_stress",
+            "venue": "okx",
+            "market_type": "swap",
+            "taker_fee_bps": 5.0,
+            "baseline_slippage_bps": 2.0,
+            "funding_rate_8h_bps": 1.0,
+            "latency_bps_per_100ms": 0.1,
+            "min_observations": 30,
+            "min_native_coverage": 1.0,
+            "min_observed_fill_ratio": 0.95,
+            "max_latency_p95_ms": 500.0,
+            "certification_scenario": "adverse",
+            "scenarios": [
+                {
+                    "name": "baseline",
+                    "fee_multiplier": 1.0,
+                    "slippage_multiplier": 1.0,
+                    "funding_multiplier": 1.0,
+                    "latency_multiplier": 1.0,
+                    "fill_ratio_multiplier": 1.0,
+                    "min_compounded_return_pct": 0.0,
+                    "max_drawdown_pct": 25.0,
+                    "max_cost_to_gross_profit": 0.5,
+                },
+                {
+                    "name": "adverse",
+                    "fee_multiplier": 1.25,
+                    "slippage_multiplier": 2.0,
+                    "funding_multiplier": 2.0,
+                    "latency_multiplier": 1.5,
+                    "fill_ratio_multiplier": 0.95,
+                    "min_compounded_return_pct": 0.0,
+                    "max_drawdown_pct": 30.0,
+                    "max_cost_to_gross_profit": 0.75,
+                },
+                {
+                    "name": "severe",
+                    "fee_multiplier": 1.5,
+                    "slippage_multiplier": 3.0,
+                    "funding_multiplier": 3.0,
+                    "latency_multiplier": 2.0,
+                    "fill_ratio_multiplier": 0.85,
+                    "min_compounded_return_pct": -5.0,
+                    "max_drawdown_pct": 35.0,
+                    "max_cost_to_gross_profit": 1.0,
+                },
+            ],
         },
         "statistical_policy": {
             "primary_test": "deflated_sharpe_ratio",
             "alpha": 0.05,
             "multiple_testing": "benjamini_hochberg",
             "sharpe_metric": "sharpe",
-            "sharpe_basis": "per_outer_fold_return",
+            "sharpe_basis": "adverse_execution_outer_holdout_returns_pct",
             "selection_p_value_metric": "selection_p_value",
             "min_observations": 30,
             "bootstrap_samples": 1_000,
@@ -59,6 +108,12 @@ def _protocol(**overrides):
             "benchmark_sharpe": 0.0,
             "min_probabilistic_sharpe": 0.95,
             "min_deflated_sharpe": 0.95,
+        },
+        "artifact_policy": {
+            "schema": "institutional_certification_artifact_v2",
+            "hash_algorithm": "sha256",
+            "require_ci": True,
+            "repository": "iisara555/xAuby",
         },
         "random_seed": 20260820,
         "created_at": "2026-08-20T00:00:00+00:00",
@@ -118,6 +173,28 @@ def test_protocol_rejects_non_finite_or_non_json_values():
     policy["stress"] = float("nan")
     with pytest.raises(CertificationProtocolError, match="finite"):
         _protocol(execution_policy=policy)
+
+
+def test_protocol_locks_execution_statistics_and_ci_artifact_contracts_together():
+    execution = dict(_protocol().execution_policy)
+    execution["venue"] = "binance"
+    with pytest.raises(CertificationProtocolError, match="data_identity.venue"):
+        _protocol(execution_policy=execution)
+
+    statistics = dict(_protocol().statistical_policy)
+    statistics["sharpe_basis"] = "optimistic_returns"
+    with pytest.raises(CertificationProtocolError, match="certification scenario"):
+        _protocol(statistical_policy=statistics)
+
+    artifacts = dict(_protocol().artifact_policy)
+    artifacts["require_ci"] = False
+    with pytest.raises(CertificationProtocolError, match="require_ci"):
+        _protocol(artifact_policy=artifacts)
+
+    execution = dict(_protocol().execution_policy)
+    execution["scenarios"] = list(execution["scenarios"][:2])
+    with pytest.raises(CertificationProtocolError, match="at least three"):
+        _protocol(execution_policy=execution)
 
 
 def test_protocol_requires_aware_ordered_data_window():

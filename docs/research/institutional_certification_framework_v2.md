@@ -2,10 +2,12 @@
 
 ## Status
 
-Phase 1, increments 1-3: the protocol contract, immutable trial ledger, nested
-purged walk-forward engine, and ledger-backed mandatory statistical gates are
-implemented. This document is the threat model for the remaining increments;
-it is not itself a claim that any strategy is certified.
+Phase 1 implementation is complete: the protocol contract, immutable trial
+ledger, nested purged walk-forward engine, ledger-backed statistical gates,
+venue-locked execution stress, unified runner, create-once artifact bundle, and
+adversarial conformance suite are implemented. This is not itself a claim that
+any strategy is certified. A strategy receives a verdict only from a complete
+locked run whose external artifact digest is retained by CI.
 
 ## Trust boundary
 
@@ -46,6 +48,24 @@ history, or execution assumptions cannot be identified exactly.
 14. Require the selected trial to pass the pre-registered Bonferroni or
     Benjamini-Hochberg correction as well as PSR, DSR, circular moving-block
     bootstrap, and path-dependent drawdown permutation gates.
+15. Link every execution observation to the exact venue, symbol, market type,
+    data SHA-256, and outer-fold index. Proxy rows and incomplete fold coverage
+    fail closed.
+16. Re-price the outer-holdout observations under at least three locked
+    scenarios. Fees, two-sided slippage, adverse funding, latency, and partial
+    fills are stressed together.
+17. Feed only the protocol's designated stress-scenario returns into the
+    statistical gate. Execution and significance cannot use different return
+    streams.
+18. Require execution-observation counts to equal `total_trades` from every
+    outer holdout.
+19. Run all validation, execution, statistics, ledger, and CI-provenance checks
+    through `run_phase1_certification()` and derive the verdict from the logical
+    conjunction of every check.
+20. Write a new artifact directory exclusively. `certificate.json` is strict
+    canonical JSON, its component hashes bind all evidence, and
+    `certificate.sha256` supplies the external digest anchor. Existing bundles
+    are never overwritten.
 
 ## Threats addressed in this increment
 
@@ -66,16 +86,37 @@ history, or execution assumptions cannot be identified exactly.
 - Accepting a zero-variance series as statistically identifiable.
 - Applying an order permutation test to a statistic or sample whose order
   cannot change the result.
+- Certifying against proxy data while labelling it venue-native.
+- Omitting a weak outer fold from execution evidence.
+- Reporting optimistic statistical returns while showing a separate stress
+  table.
+- Ignoring funding, latency, or partial-fill degradation.
+- Rewriting an earlier artifact directory or changing one component without
+  breaking its hash chain.
+- Claiming CI provenance from a dirty source tree or another repository.
 
 Hash chaining alone cannot prove that a ledger tail was not removed. The locked
-certificate must therefore retain the final ledger digest in a separately
-published artifact. Signing and CI artifact provenance are later Phase 1 work.
+certificate therefore retains the final ledger digest in a separately
+published CI artifact, and operators must retain the external
+`certificate.sha256` value outside the bundle. Verification without that
+external anchor establishes internal consistency, not publisher authenticity.
 
-## Remaining Phase 1 gates
+## Phase 1 completion boundary
 
-- Venue-native execution and cost stress testing.
-- One certification runner with immutable CI artifacts and adversarial
-  self-certification tests.
+- `CertificationProtocolV2` freezes data, validation, execution, statistics,
+  artifact policy, thresholds, and random seed before search.
+- `TrialLedger` counts every attempted candidate and detects mutation.
+- `nested_purged_walk_forward()` enforces inner-only selection, untouched outer
+  holdouts, embargo, purge, timeline locking, and warm-up isolation.
+- `evaluate_execution_stress()` enforces native identity, fold coverage, cost
+  scenarios, fills, latency, and execution-to-replay trade parity.
+- `evaluate_statistical_gate()` enforces bootstrap, permutation, PSR/DSR, and
+  multiple-testing correction using ledger-derived search provenance.
+- `run_phase1_certification()` is the only Phase 1 verdict composition path and
+  writes a create-once artifact bundle.
+- `.github/workflows/institutional-certification-v2.yml` runs the adversarial
+  conformance suite, lint, secret scan, and uploads hash-indexed evidence.
 
-Regime Ensemble v2 and dynamic position sizing remain blocked until all of the
-above gates are implemented and the framework itself passes its test protocol.
+Phase 2 (Regime Ensemble v2) may begin after the Phase 1 conformance workflow is
+green on the landed commit. No certificate authorizes deployment, live capital,
+position sizing, tenant configuration changes, or an engine restart.

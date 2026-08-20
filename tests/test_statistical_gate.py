@@ -23,7 +23,7 @@ def _protocol(**statistical_overrides):
         "alpha": 0.05,
         "multiple_testing": "bonferroni",
         "sharpe_metric": "sharpe",
-        "sharpe_basis": "outer_holdout_trade_returns_pct",
+        "sharpe_basis": "adverse_execution_outer_holdout_returns_pct",
         "selection_p_value_metric": "selection_p_value",
         "min_observations": 10,
         "bootstrap_samples": 100,
@@ -66,9 +66,47 @@ def _protocol(**statistical_overrides):
         },
         execution_policy={
             "fee_model": "venue_taker",
-            "slippage_model": "locked_bps_stress",
+            "slippage_model": "observed_plus_stress",
+            "funding_model": "adverse_venue_8h",
+            "latency_model": "observed_p95_stress",
+            "fill_model": "observed_ratio_stress",
+            "venue": "okx",
+            "market_type": "swap",
+            "taker_fee_bps": 5.0,
+            "baseline_slippage_bps": 2.0,
+            "funding_rate_8h_bps": 1.0,
+            "latency_bps_per_100ms": 0.1,
+            "min_observations": 10,
+            "min_native_coverage": 1.0,
+            "min_observed_fill_ratio": 0.95,
+            "max_latency_p95_ms": 500.0,
+            "certification_scenario": "adverse",
+            "scenarios": [
+                {
+                    "name": name,
+                    "fee_multiplier": multiplier,
+                    "slippage_multiplier": multiplier,
+                    "funding_multiplier": multiplier,
+                    "latency_multiplier": multiplier,
+                    "fill_ratio_multiplier": fill,
+                    "min_compounded_return_pct": -99.0,
+                    "max_drawdown_pct": 100.0,
+                    "max_cost_to_gross_profit": 100.0,
+                }
+                for name, multiplier, fill in (
+                    ("baseline", 1.0, 1.0),
+                    ("adverse", 1.5, 0.95),
+                    ("severe", 2.0, 0.85),
+                )
+            ],
         },
         statistical_policy=statistical_policy,
+        artifact_policy={
+            "schema": "institutional_certification_artifact_v2",
+            "hash_algorithm": "sha256",
+            "require_ci": True,
+            "repository": "iisara555/xAuby",
+        },
         random_seed=20260820,
         created_at="2026-08-20T00:00:00+00:00",
     )
@@ -80,7 +118,7 @@ def _complete(
     *,
     sharpe,
     p_value,
-    basis="outer_holdout_trade_returns_pct",
+    basis="adverse_execution_outer_holdout_returns_pct",
 ):
     trial_id = ledger.start_trial(candidate)
     ledger.finish_trial(
@@ -161,7 +199,7 @@ def test_gate_fails_closed_while_any_trial_is_pending(tmp_path):
         (
             {
                 "sharpe": 0.3,
-                "sharpe_basis": "outer_holdout_trade_returns_pct",
+                "sharpe_basis": "adverse_execution_outer_holdout_returns_pct",
             },
             "selection_p_value",
         ),

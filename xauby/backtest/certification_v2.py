@@ -146,6 +146,7 @@ class CertificationProtocolV2:
     validation_policy: Mapping[str, Any]
     execution_policy: Mapping[str, Any]
     statistical_policy: Mapping[str, Any]
+    artifact_policy: Mapping[str, Any]
     random_seed: int
     created_at: str
     version: int = field(default=PROTOCOL_VERSION, init=False)
@@ -185,7 +186,25 @@ class CertificationProtocolV2:
             ),
             "execution_policy": (
                 self.execution_policy,
-                ("fee_model", "slippage_model"),
+                (
+                    "fee_model",
+                    "slippage_model",
+                    "funding_model",
+                    "latency_model",
+                    "fill_model",
+                    "venue",
+                    "market_type",
+                    "taker_fee_bps",
+                    "baseline_slippage_bps",
+                    "funding_rate_8h_bps",
+                    "latency_bps_per_100ms",
+                    "min_observations",
+                    "min_native_coverage",
+                    "min_observed_fill_ratio",
+                    "max_latency_p95_ms",
+                    "certification_scenario",
+                    "scenarios",
+                ),
             ),
             "statistical_policy": (
                 self.statistical_policy,
@@ -208,6 +227,15 @@ class CertificationProtocolV2:
                     "min_deflated_sharpe",
                 ),
             ),
+            "artifact_policy": (
+                self.artifact_policy,
+                (
+                    "schema",
+                    "hash_algorithm",
+                    "require_ci",
+                    "repository",
+                ),
+            ),
         }
         for name, (value, required) in blocks.items():
             if not isinstance(value, Mapping):
@@ -226,8 +254,44 @@ class CertificationProtocolV2:
                 "validation_policy.method must be nested_purged_walk_forward"
             )
         _require_text_fields(
-            "execution_policy", self.execution_policy, ("fee_model", "slippage_model")
+            "execution_policy",
+            self.execution_policy,
+            (
+                "fee_model",
+                "slippage_model",
+                "funding_model",
+                "latency_model",
+                "fill_model",
+                "venue",
+                "market_type",
+                "certification_scenario",
+            ),
         )
+        supported_execution_models = {
+            "fee_model": "venue_taker",
+            "slippage_model": "observed_plus_stress",
+            "funding_model": "adverse_venue_8h",
+            "latency_model": "observed_p95_stress",
+            "fill_model": "observed_ratio_stress",
+        }
+        for key, expected in supported_execution_models.items():
+            if self.execution_policy[key] != expected:
+                raise CertificationProtocolError(
+                    f"execution_policy.{key} must be {expected}"
+                )
+        _require_text_fields(
+            "artifact_policy",
+            self.artifact_policy,
+            ("schema", "hash_algorithm", "repository"),
+        )
+        if self.artifact_policy["schema"] != "institutional_certification_artifact_v2":
+            raise CertificationProtocolError(
+                "artifact_policy.schema must be institutional_certification_artifact_v2"
+            )
+        if self.artifact_policy["hash_algorithm"] != "sha256":
+            raise CertificationProtocolError("artifact_policy.hash_algorithm must be sha256")
+        if self.artifact_policy["require_ci"] is not True:
+            raise CertificationProtocolError("artifact_policy.require_ci must be true")
         _require_text_fields(
             "statistical_policy",
             self.statistical_policy,
@@ -321,6 +385,167 @@ class CertificationProtocolV2:
             if not math.isfinite(float(value)):
                 raise CertificationProtocolError(f"statistical_policy.{key} must be finite")
 
+        for key in (
+            "taker_fee_bps",
+            "baseline_slippage_bps",
+            "funding_rate_8h_bps",
+            "latency_bps_per_100ms",
+            "max_latency_p95_ms",
+        ):
+            value = self.execution_policy.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise CertificationProtocolError(f"execution_policy.{key} must be numeric")
+            if not math.isfinite(float(value)) or float(value) < 0.0:
+                raise CertificationProtocolError(f"execution_policy.{key} must be finite and >= 0")
+        execution_min_observations = self.execution_policy.get("min_observations")
+        if (
+            isinstance(execution_min_observations, bool)
+            or not isinstance(execution_min_observations, int)
+            or execution_min_observations < 5
+        ):
+            raise CertificationProtocolError(
+                "execution_policy.min_observations must be an integer >= 5"
+            )
+        for key in ("min_native_coverage", "min_observed_fill_ratio"):
+            value = self.execution_policy.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise CertificationProtocolError(f"execution_policy.{key} must be numeric")
+            if not 0.0 <= float(value) <= 1.0:
+                raise CertificationProtocolError(
+                    f"execution_policy.{key} must be between 0 and 1"
+                )
+        if float(self.execution_policy["min_native_coverage"]) != 1.0:
+            raise CertificationProtocolError(
+                "execution_policy.min_native_coverage must be 1.0"
+            )
+        scenarios = self.execution_policy.get("scenarios")
+        if not isinstance(scenarios, (list, tuple)) or len(scenarios) < 3:
+            raise CertificationProtocolError(
+                "execution_policy.scenarios must contain at least three stress scenarios"
+            )
+        scenario_names: list[str] = []
+        required_scenario_fields = (
+            "name",
+            "fee_multiplier",
+            "slippage_multiplier",
+            "funding_multiplier",
+            "latency_multiplier",
+            "fill_ratio_multiplier",
+            "min_compounded_return_pct",
+            "max_drawdown_pct",
+            "max_cost_to_gross_profit",
+        )
+        for index, scenario in enumerate(scenarios):
+            if not isinstance(scenario, Mapping):
+                raise CertificationProtocolError(
+                    f"execution_policy.scenarios[{index}] must be a mapping"
+                )
+            _require_keys(
+                f"execution_policy.scenarios[{index}]",
+                scenario,
+                required_scenario_fields,
+            )
+            name = str(scenario.get("name") or "").strip()
+            if not name:
+                raise CertificationProtocolError(
+                    f"execution_policy.scenarios[{index}].name is required"
+                )
+            scenario_names.append(name)
+            for key in required_scenario_fields[1:]:
+                value = scenario.get(key)
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise CertificationProtocolError(
+                        f"execution_policy.scenarios[{index}].{key} must be numeric"
+                    )
+                if not math.isfinite(float(value)):
+                    raise CertificationProtocolError(
+                        f"execution_policy.scenarios[{index}].{key} must be finite"
+                    )
+            for key in required_scenario_fields[1:6]:
+                if float(scenario[key]) < 0.0:
+                    raise CertificationProtocolError(
+                        f"execution_policy.scenarios[{index}].{key} must be >= 0"
+                    )
+            if not 0.0 <= float(scenario["fill_ratio_multiplier"]) <= 1.0:
+                raise CertificationProtocolError(
+                    "execution_policy.scenarios"
+                    f"[{index}].fill_ratio_multiplier must be between 0 and 1"
+                )
+            if float(scenario["min_compounded_return_pct"]) <= -100.0:
+                raise CertificationProtocolError(
+                    "execution_policy.scenarios"
+                    f"[{index}].min_compounded_return_pct must be > -100"
+                )
+            if not 0.0 <= float(scenario["max_drawdown_pct"]) <= 100.0:
+                raise CertificationProtocolError(
+                    f"execution_policy.scenarios[{index}].max_drawdown_pct must be "
+                    "between 0 and 100"
+                )
+            if float(scenario["max_cost_to_gross_profit"]) < 0.0:
+                raise CertificationProtocolError(
+                    "execution_policy.scenarios"
+                    f"[{index}].max_cost_to_gross_profit must be >= 0"
+                )
+        if len(set(scenario_names)) != len(scenario_names):
+            raise CertificationProtocolError("execution_policy scenario names must be unique")
+        if not {"baseline", "adverse", "severe"}.issubset(scenario_names):
+            raise CertificationProtocolError(
+                "execution_policy scenarios must include baseline, adverse, and severe"
+            )
+        by_name = {str(scenario["name"]): scenario for scenario in scenarios}
+        for key in (
+            "fee_multiplier",
+            "slippage_multiplier",
+            "funding_multiplier",
+            "latency_multiplier",
+        ):
+            if not (
+                float(by_name["baseline"][key])
+                <= float(by_name["adverse"][key])
+                <= float(by_name["severe"][key])
+            ):
+                raise CertificationProtocolError(
+                    f"execution_policy scenario {key} must increase with severity"
+                )
+        if not (
+            float(by_name["baseline"]["fill_ratio_multiplier"])
+            >= float(by_name["adverse"]["fill_ratio_multiplier"])
+            >= float(by_name["severe"]["fill_ratio_multiplier"])
+        ):
+            raise CertificationProtocolError(
+                "execution_policy scenario fill ratios must decrease with severity"
+            )
+        if self.execution_policy["certification_scenario"] not in scenario_names:
+            raise CertificationProtocolError(
+                "execution_policy.certification_scenario is not present in scenarios"
+            )
+        if self.execution_policy["certification_scenario"] != "adverse":
+            raise CertificationProtocolError(
+                "execution_policy.certification_scenario must be adverse"
+            )
+        if str(self.execution_policy["venue"]).lower() != str(
+            self.data_identity["venue"]
+        ).lower():
+            raise CertificationProtocolError(
+                "execution_policy.venue must match data_identity.venue"
+            )
+        expected_sharpe_basis = (
+            f"{self.execution_policy['certification_scenario']}"
+            "_execution_outer_holdout_returns_pct"
+        )
+        if self.statistical_policy["sharpe_basis"] != expected_sharpe_basis:
+            raise CertificationProtocolError(
+                "statistical_policy.sharpe_basis must match the locked execution "
+                "certification scenario"
+            )
+        if (
+            self.statistical_policy["min_observations"]
+            != self.execution_policy["min_observations"]
+        ):
+            raise CertificationProtocolError(
+                "statistical and execution min_observations must match"
+            )
+
         # Frozen dataclasses do not freeze mutable mappings.  Recursively freeze
         # them so neither caller mutation nor direct attribute access can alter
         # the pre-registered protocol after its fingerprint is issued.
@@ -341,6 +566,7 @@ class CertificationProtocolV2:
             "validation_policy": _thaw_json(self.validation_policy),
             "execution_policy": _thaw_json(self.execution_policy),
             "statistical_policy": _thaw_json(self.statistical_policy),
+            "artifact_policy": _thaw_json(self.artifact_policy),
             "random_seed": self.random_seed,
             "created_at": self.created_at,
         }
@@ -365,6 +591,7 @@ class CertificationProtocolV2:
                 validation_policy=value["validation_policy"],
                 execution_policy=value["execution_policy"],
                 statistical_policy=value["statistical_policy"],
+                artifact_policy=value["artifact_policy"],
                 random_seed=value["random_seed"],
                 created_at=value["created_at"],
             )
