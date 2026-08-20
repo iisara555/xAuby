@@ -2,9 +2,10 @@
 
 ## Status
 
-Phase 1, increment 1: the protocol contract and immutable trial ledger are
-implemented.  This document is the threat model for the remaining increments;
-it is not itself a claim that any strategy is certified.
+Phase 1, increments 1-2: the protocol contract, immutable trial ledger, and
+nested purged walk-forward engine are implemented. This document is the threat
+model for the remaining increments; it is not itself a claim that any strategy
+is certified.
 
 ## Trust boundary
 
@@ -28,6 +29,13 @@ history, or execution assumptions cannot be identified exactly.
    artifact. The external final digest is required to detect tail truncation.
 7. Obtain the multiple-testing trial count from `trials_started`; callers may
    not override it with a hand-entered value.
+8. Materialize nested folds from the protocol's locked validation policy. Inner
+   folds alone select a candidate; the selected candidate runs once on each
+   outer holdout.
+9. Keep an explicit embargo plus a purge interval equal to the maximum label or
+   holding horizon before every inner and outer evaluation.
+10. Prepend past-only warm-up bars through `WindowSlice`; `run_slice()` always
+    forwards the exact leading count as a non-trading override.
 
 ## Threats addressed in this increment
 
@@ -38,6 +46,10 @@ history, or execution assumptions cannot be identified exactly.
 - Changing the pre-registered protocol after the search begins.
 - Treating failed, aborted, retried, or crashed candidates as if they were never
   tested.
+- Selecting a candidate on the same outer fold later reported as out-of-sample.
+- Overlapping label horizons across training and evaluation boundaries.
+- Trading indicator warm-up bars or reading future bars into warm-up.
+- Reusing a validation plan against a shifted or reordered timeline.
 
 Hash chaining alone cannot prove that a ledger tail was not removed. The locked
 certificate must therefore retain the final ledger digest in a separately
@@ -45,7 +57,6 @@ published artifact. Signing and CI artifact provenance are later Phase 1 work.
 
 ## Remaining Phase 1 gates
 
-- Nested purged walk-forward validation with embargo and warm-up isolation.
 - Mandatory PSR/DSR, bootstrap, permutation, and multiple-testing gates.
 - Venue-native execution and cost stress testing.
 - One certification runner with immutable CI artifacts and adversarial

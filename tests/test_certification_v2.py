@@ -28,6 +28,12 @@ def _protocol(**overrides):
         "validation_policy": {
             "method": "nested_purged_walk_forward",
             "outer_folds": 5,
+            "inner_folds": 3,
+            "outer_test_bars": 180,
+            "outer_step_bars": 180,
+            "inner_validation_bars": 90,
+            "min_train_bars": 1_000,
+            "min_inner_train_bars": 500,
             "purge_bars": 24,
             "embargo_bars": 24,
             "warmup_bars": 200,
@@ -67,7 +73,12 @@ def test_protocol_fingerprint_is_canonical_and_detached_from_caller():
     [
         ({"data_identity": {"source": "x"}}, "data_identity missing"),
         (
-            {"validation_policy": {"method": "walk", "outer_folds": 1,
+            {"validation_policy": {"method": "nested_purged_walk_forward", "outer_folds": 1,
+                                   "inner_folds": 2, "outer_test_bars": 10,
+                                   "outer_step_bars": 10,
+                                   "inner_validation_bars": 5,
+                                   "min_train_bars": 20,
+                                   "min_inner_train_bars": 10,
                                    "purge_bars": 0, "embargo_bars": 0,
                                    "warmup_bars": 0}},
             "outer_folds",

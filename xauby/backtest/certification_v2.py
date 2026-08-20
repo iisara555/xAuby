@@ -169,7 +169,19 @@ class CertificationProtocolV2:
             ),
             "validation_policy": (
                 self.validation_policy,
-                ("method", "outer_folds", "purge_bars", "embargo_bars", "warmup_bars"),
+                (
+                    "method",
+                    "outer_folds",
+                    "inner_folds",
+                    "outer_test_bars",
+                    "outer_step_bars",
+                    "inner_validation_bars",
+                    "min_train_bars",
+                    "min_inner_train_bars",
+                    "purge_bars",
+                    "embargo_bars",
+                    "warmup_bars",
+                ),
             ),
             "execution_policy": (
                 self.execution_policy,
@@ -192,6 +204,10 @@ class CertificationProtocolV2:
             ("source", "venue", "symbol", "timeframe", "start", "end", "sha256"),
         )
         _require_text_fields("validation_policy", self.validation_policy, ("method",))
+        if self.validation_policy["method"] != "nested_purged_walk_forward":
+            raise CertificationProtocolError(
+                "validation_policy.method must be nested_purged_walk_forward"
+            )
         _require_text_fields(
             "execution_policy", self.execution_policy, ("fee_model", "slippage_model")
         )
@@ -209,9 +225,26 @@ class CertificationProtocolV2:
         if data_end <= data_start:
             raise CertificationProtocolError("data_identity.end must be after start")
 
-        outer_folds = self.validation_policy.get("outer_folds")
-        if isinstance(outer_folds, bool) or not isinstance(outer_folds, int) or outer_folds < 2:
+        for key in (
+            "outer_folds",
+            "inner_folds",
+            "outer_test_bars",
+            "outer_step_bars",
+            "inner_validation_bars",
+            "min_train_bars",
+            "min_inner_train_bars",
+        ):
+            value = self.validation_policy.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise CertificationProtocolError(f"validation_policy.{key} must be > 0")
+        if self.validation_policy["outer_folds"] < 2:
             raise CertificationProtocolError("validation_policy.outer_folds must be >= 2")
+        if self.validation_policy["inner_folds"] < 2:
+            raise CertificationProtocolError("validation_policy.inner_folds must be >= 2")
+        if self.validation_policy["outer_step_bars"] < self.validation_policy["outer_test_bars"]:
+            raise CertificationProtocolError(
+                "validation_policy.outer_step_bars must be >= outer_test_bars"
+            )
         for key in ("purge_bars", "embargo_bars", "warmup_bars"):
             value = self.validation_policy.get(key)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
