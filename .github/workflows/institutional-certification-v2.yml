@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -r requirements.txt ruff==0.16.0
+        run: pip install -r requirements-dev.txt ruff==0.16.0
       - name: Run Phase 1 adversarial conformance tests
         run: >-
           pytest -q
