@@ -122,6 +122,35 @@ class TestDerivativesRuntime(unittest.TestCase):
         self.assertTrue(exchange.created[4]["reduceOnly"])
         self.assertEqual(exchange.created[4]["tdMode"], "isolated")
 
+    def test_okx_short_stop_is_reduce_only_buy_in_contract_units(self):
+        exchange = FakeSwap()
+        cfg = {
+            **SWAP_CFG,
+            "exchange": {
+                **SWAP_CFG["exchange"],
+                "capabilities": {"stop_loss_limit": True},
+            },
+        }
+        client = CCXTExchangeClient(config=cfg, exchange_instance=exchange)
+
+        client.place_order(
+            "BTCUSDT",
+            "BUY",
+            "STOP_LOSS_LIMIT",
+            0.02,
+            price=50500.0,
+            stop_price=50250.0,
+            position_side="SHORT",
+            reduce_only=True,
+            amount_in_base=True,
+        )
+
+        self.assertEqual(exchange.created[1], "limit")
+        self.assertEqual(exchange.created[2], "buy")
+        self.assertEqual(exchange.created[3], 2.0)
+        self.assertTrue(exchange.created[4]["reduceOnly"])
+        self.assertEqual(exchange.created[4]["stopPrice"], 50250.0)
+
     def test_short_sim_margin_and_pnl(self):
         with tempfile.TemporaryDirectory() as tmp:
             broker = SimBroker(os.path.join(tmp, "sim.json"), initial_balance=1000, default_fee_pct=0)

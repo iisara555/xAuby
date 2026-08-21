@@ -161,6 +161,26 @@ class TestStopLossPlacementUsesAvailableBalance(unittest.TestCase):
         self.assertIsNone(result)
         self.engine.client.place_order.assert_not_called()
 
+    def test_short_sl_is_reduce_only_buy_above_trigger(self):
+        self.engine.client.get_balances = MagicMock()
+        self.engine.client.place_order = MagicMock(return_value={"orderId": "short-sl-1"})
+
+        result = self.engine._place_sl_with_retry(
+            qty=0.2,
+            stop_loss=105.0,
+            symbol="XAUTUSDT",
+            position_side="SHORT",
+        )
+
+        self.assertEqual(result, ("short-sl-1", 0.2))
+        self.engine.client.get_balances.assert_not_called()
+        kwargs = self.engine.client.place_order.call_args.kwargs
+        self.assertEqual(kwargs["side"], "BUY")
+        self.assertEqual(kwargs["position_side"], "SHORT")
+        self.assertTrue(kwargs["reduce_only"])
+        self.assertAlmostEqual(kwargs["stop_price"], 105.0)
+        self.assertAlmostEqual(kwargs["price"], 105.525)
+
 
 class TestExchangeStopLossPartialFill(unittest.TestCase):
     def setUp(self):
@@ -262,6 +282,48 @@ class TestExchangeStopLossPartialFill(unittest.TestCase):
         self.assertAlmostEqual(trade["amount"], 1.0)
         self.assertAlmostEqual(trade["exit_price"], 1945.0)
         self.assertAlmostEqual(trade["net_pnl"], -58.945, places=6)
+
+    def test_full_short_exchange_sl_fill_covers_with_inverted_pnl(self):
+        self.engine.db.save_trade_state(
+            symbol="XAUTUSDT",
+            state="bought",
+            entry_price=2000.0,
+            stop_loss=2050.0,
+            take_profit=0.0,
+            highest_price_seen=2020.0,
+            lowest_price_seen=1900.0,
+            quantity=1.0,
+            opened_at="2026-06-11T00:00:00",
+            last_transition_at="2026-06-11T00:00:00",
+            stop_loss_order_id="short-sl-1",
+            position_side="SHORT",
+            leverage=1.0,
+            margin_mode="isolated",
+        )
+        self.engine.client.get_order = MagicMock(
+            return_value={
+                "status": "FILLED",
+                "executedQty": "1.0",
+                "cummulativeQuoteQty": "2050",
+            }
+        )
+
+        state = self.engine._handle_exchange_sl_order(
+            self.engine.db.get_trade_state("XAUTUSDT"),
+            2050.0,
+            symbol="XAUTUSDT",
+        )
+
+        self.assertEqual(state.state, "idle")
+        trade = self.engine.db.get_closed_trades("XAUTUSDT", limit=1)[0]
+        self.assertEqual(trade["side"], "SHORT")
+        self.assertAlmostEqual(trade["net_pnl"], -54.05, places=6)
+        filled = [
+            payload for event_type, payload in self.events
+            if str(event_type).endswith("order_filled")
+        ][-1]
+        self.assertEqual(filled["side"], "BUY")
+        self.assertEqual(filled["position_side"], "SHORT")
 
     def test_okx_swap_stop_uses_exchange_confirmed_realized_pnl(self):
         self.engine.client.capabilities["position_history"] = True

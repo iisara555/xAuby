@@ -139,6 +139,47 @@ class TestShortDispatch(unittest.TestCase):
         calls.sell.assert_not_called()
         calls.buy.assert_not_called()
 
+    def test_short_hold_trails_stop_down_and_preserves_short_state(self):
+        short_state = {
+            "state": "bought", "position_side": "SHORT", "entry_price": 110.0,
+            "stop_loss": 120.0, "take_profit": 0.0,
+            "highest_price_seen": 110.0, "lowest_price_seen": 110.0,
+            "quantity": 1.0, "opened_at": "2026-06-21T00:00:00",
+            "last_transition_at": "2026-06-21T00:00:00",
+        }
+        engine, sym = self._engine(state=short_state)
+        signal = hold("short managed", volatility=2.0, trail_distance=4.0)
+
+        self._run_tick(
+            engine,
+            sym,
+            signal,
+            extra_patches=(
+                patch.object(
+                    engine,
+                    "_get_strategy_config",
+                    return_value={
+                        "disable_stop_loss": False,
+                        "trailing_atr_mult": 2.0,
+                        "breakeven_sl_enabled": True,
+                        "breakeven_activation_atr_mult": 1.2,
+                        "breakeven_buffer_atr_mult": 0.05,
+                    },
+                ),
+            ),
+        )
+
+        state = engine.db.trade_state
+        self.assertEqual(state.position_side, "SHORT")
+        self.assertAlmostEqual(state.stop_loss, 104.0)
+        self.assertAlmostEqual(state.lowest_price_seen, 100.0)
+        stop_events = [
+            event for event in engine.get_recent_events(50, symbol=sym)
+            if event.get("event_type") == "stop_loss_updated"
+        ]
+        self.assertTrue(stop_events)
+        self.assertEqual(stop_events[-1]["payload"]["position_side"], "SHORT")
+
     def test_manual_long_handoff_waits_for_green_then_exits_on_later_red(self):
         state = {
             "state": "bought", "position_side": "LONG", "entry_price": 100.0,

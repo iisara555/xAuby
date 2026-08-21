@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from xauby.engine.orders import OrderMixin
 
@@ -203,6 +204,39 @@ class _OrderEngine(OrderMixin):
 
 
 class TestOrderAllocationGuard(unittest.TestCase):
+    def test_live_short_open_places_reduce_only_exchange_stop(self):
+        engine = _ShortEngine()
+        engine.client = _LiveShortClient([100.0])
+        engine._execution_mode = lambda symbol: "live"
+        engine.config["strategy"]["config"]["cdc_action_zone"].update(
+            {"disable_stop_loss": False}
+        )
+        engine._place_sl_with_retry = MagicMock(return_value=("short-sl-1", 0.2))
+        signal = SimpleNamespace(stop_loss_distance=5.0, stop_loss_price=105.0)
+
+        effective = SimpleNamespace(
+            strategy_name="cdc_action_zone",
+            strategy={"disable_stop_loss": False},
+            portfolio={
+                "risk_pct": 0.01,
+                "max_position_per_trade_pct": 95.0,
+                "min_order_amount": 10.0,
+            },
+        )
+        with patch("xauby.engine.orders.resolve_trading_config", return_value=effective):
+            ok = engine.execute_open_short(signal, ticker_price=100.0, symbol="XAUUSDT")
+
+        self.assertTrue(ok)
+        engine._place_sl_with_retry.assert_called_once_with(
+            0.2,
+            105.0,
+            symbol="XAUUSDT",
+            position_side="SHORT",
+        )
+        self.assertEqual(engine.db.saved_state["stop_loss_order_id"], "short-sl-1")
+        self.assertEqual(engine.db.saved_state["position_side"], "SHORT")
+        self.assertEqual(engine.db.saved_state["lowest_price_seen"], 100.0)
+
     def test_reverse_short_waits_for_full_balance_before_opening(self):
         engine = _ShortEngine()
         engine.client = _LiveShortClient([30.0, 100.0])
