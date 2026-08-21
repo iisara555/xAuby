@@ -1,4 +1,4 @@
-name: BTC SuperTrend OKX grid research
+name: XAU CDC trailing-stop A/B research
 
 on:
   workflow_dispatch:
@@ -26,16 +26,16 @@ on:
 permissions:
   contents: read
 
-# Run one research process at a time. The Python harness uses multiprocessing
-# internally, so a matrix would only duplicate setup and artifact output.
+# This branch-only workflow reuses a dispatcher that exists on main so the
+# research can run on a GitHub-hosted runner without loading the trading VPS.
 concurrency:
   group: xauby-github-hosted-backtest
   cancel-in-progress: false
 
 jobs:
-  grid:
+  compare:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,25 +45,23 @@ jobs:
           python-version: "3.12"
       - name: Install Python dependencies
         run: pip install -r requirements.txt
-      - name: Run native OKX grid and finalist checks
+      - name: Run XAU CDC trailing-stop A/B
         run: >-
-          python scripts/btc_supertrend_okx_pf_grid.py
-          --out-dir core/btc_supertrend_okx_pf_grid
-          --workers "${{ inputs.workers }}"
-          --top-n "${{ inputs.top_n }}"
+          python scripts/xau_cdc_trailing_ab.py
+          --out-dir core/xau_cdc_trailing_ab
       - name: Record reproducibility metadata
         if: always()
         shell: bash
         run: |
-          mkdir -p core/btc_supertrend_okx_pf_grid
-          git rev-parse HEAD > core/btc_supertrend_okx_pf_grid/git_commit.txt
-          date -u +"%Y-%m-%dT%H:%M:%SZ" > core/btc_supertrend_okx_pf_grid/completed_at_utc.txt
-          printf '%s\n' "$RUNNER_NAME" > core/btc_supertrend_okx_pf_grid/runner_name.txt
-      - name: Upload compact final artifacts
+          mkdir -p core/xau_cdc_trailing_ab
+          git rev-parse HEAD > core/xau_cdc_trailing_ab/git_commit.txt
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > core/xau_cdc_trailing_ab/completed_at_utc.txt
+          printf '%s\n' "$RUNNER_NAME" > core/xau_cdc_trailing_ab/runner_name.txt
+      - name: Upload A/B report artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: btc-supertrend-okx-grid-${{ github.run_id }}
-          path: core/btc_supertrend_okx_pf_grid/
+          name: xau-cdc-trailing-ab-${{ github.run_id }}
+          path: core/xau_cdc_trailing_ab/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
