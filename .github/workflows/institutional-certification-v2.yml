@@ -1,0 +1,82 @@
+name: Institutional Certification Framework v2 conformance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/institutional-certification-v2.yml"
+      - "xauby/backtest/certification_v2.py"
+      - "xauby/backtest/certification_runner.py"
+      - "xauby/backtest/execution_stress.py"
+      - "xauby/backtest/significance.py"
+      - "xauby/backtest/statistical_gate.py"
+      - "xauby/backtest/walkforward.py"
+      - "scripts/verify_certification_artifact_v2.py"
+      - "tests/test_certification_v2.py"
+      - "tests/test_execution_stress.py"
+      - "tests/test_nested_purged_walkforward.py"
+      - "tests/test_phase1_certification_runner.py"
+      - "tests/test_significance.py"
+      - "tests/test_statistical_gate.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: institutional-certification-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt ruff==0.16.0
+      - name: Run Phase 1 adversarial conformance tests
+        run: >-
+          pytest -q
+          tests/test_certification_v2.py
+          tests/test_nested_purged_walkforward.py
+          tests/test_significance.py
+          tests/test_statistical_gate.py
+          tests/test_execution_stress.py
+          tests/test_phase1_certification_runner.py
+          --junitxml=/tmp/institutional-certification-v2/junit.xml
+      - name: Check Phase 1 implementation
+        run: >-
+          ruff check
+          xauby/backtest/certification_v2.py
+          xauby/backtest/certification_runner.py
+          xauby/backtest/execution_stress.py
+          xauby/backtest/statistical_gate.py
+          scripts/verify_certification_artifact_v2.py
+          tests/test_certification_v2.py
+          tests/test_execution_stress.py
+          tests/test_phase1_certification_runner.py
+          tests/test_statistical_gate.py
+      - name: Scan repository and history for secrets
+        run: python scripts/scan_secrets.py --tracked --history
+      - name: Record conformance provenance
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/institutional-certification-v2
+          git rev-parse HEAD > /tmp/institutional-certification-v2/git_commit.txt
+          git status --porcelain > /tmp/institutional-certification-v2/source_tree_status.txt
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > /tmp/institutional-certification-v2/completed_at_utc.txt
+          sha256sum /tmp/institutional-certification-v2/* > /tmp/institutional-certification-v2/SHA256SUMS
+      - name: Upload immutable conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: institutional-certification-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/institutional-certification-v2/
+          if-no-files-found: error
+          retention-days: 90
