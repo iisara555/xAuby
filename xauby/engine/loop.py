@@ -1478,7 +1478,13 @@ class LoopMixin:
         entry_cost = filled_qty * entry_price
         gross_exit = filled_qty * filled_price
         total_fees = entry_fee + exit_fee
-        net_pnl = gross_exit - entry_cost - total_fees
+        position_side = str(state.get("position_side") or "LONG").upper()
+        is_short = position_side == "SHORT"
+        net_pnl = (
+            entry_cost - gross_exit - total_fees
+            if is_short
+            else gross_exit - entry_cost - total_fees
+        )
         net_pnl_pct = (net_pnl / entry_cost) * 100 if entry_cost > 0 else 0.0
         now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         
@@ -1488,7 +1494,7 @@ class LoopMixin:
 
         return self.db.close_position_atomic(
             symbol=sym,
-            side="BUY",
+            side="SHORT" if is_short else "BUY",
             amount=filled_qty,
             entry_price=entry_price,
             exit_price=filled_price,
@@ -1664,8 +1670,7 @@ class LoopMixin:
 
         # Per-symbol gate: a sim-mode symbol (whitelist mode "sim") must never
         # touch real exchange SL orders even when another symbol runs live.
-        if (self._execution_mode(sym) == "live" and state["state"] == "bought"
-                and str(state.get("position_side") or "LONG").upper() != "SHORT"):
+        if self._execution_mode(sym) == "live" and state["state"] == "bought":
             state = self._handle_exchange_sl_order(state, ticker_price, symbol=sym)
 
         has_pos = state["state"] == "bought"
@@ -2422,12 +2427,20 @@ class LoopMixin:
             open_reverse_after_close(closed)
         elif action == "BUY" and state["state"] == "idle" and signal_side == "SHORT":
             self.execute_open_short(signal, ticker_price, symbol=sym)
-        elif state["state"] == "bought" and str(state.get("position_side") or "LONG").upper() != "SHORT":
-            # Short positions do not use this long-only trailing-stop branch,
-            # but they must still reach the state exporter below.  Returning
-            # here left by_symbol[SHORT] snapshots frozen while the engine
-            # continued evaluating the position.
-            highest_seen = max(state.get("highest_price_seen", 0.0), ticker_price)
+        elif state["state"] == "bought":
+            position_side = str(state.get("position_side") or "LONG").upper()
+            is_short = position_side == "SHORT"
+            highest_seen = max(
+                float(state.get("highest_price_seen", 0.0) or 0.0),
+                ticker_price,
+            )
+            previous_lowest = float(
+                state.get("lowest_price_seen")
+                or state.get("entry_price")
+                or ticker_price
+            )
+            lowest_seen = min(previous_lowest, ticker_price)
+            extreme_seen = lowest_seen if is_short else highest_seen
 
             current_sl = state.get("stop_loss", 0.0)
             # CDC-pure mode: no stop loss / no trailing — exit only on a RED zone
@@ -2440,9 +2453,9 @@ class LoopMixin:
             if sc.no_trade_state in ("NO_TRADE", "NO_TRADE_PENDING", "HANDOFF"):
                 trailing_mult = min(trailing_mult, float(sc.trailing_atr_mult or 1.0))
             candidate_sl = next_trailing_stop(
-                side="long",
+                side="short" if is_short else "long",
                 entry_price=float(state.get("entry_price", 0.0)),
-                extreme_price=float(highest_seen),
+                extreme_price=float(extreme_seen),
                 current_sl=float(current_sl),
                 atr=float(atr),
                 trailing_atr_mult=trailing_mult,
@@ -2464,8 +2477,9 @@ class LoopMixin:
                 strat_conf=strat_conf,
                 candidate_sl=float(candidate_sl),
                 current_sl=float(current_sl),
-                highest_seen=float(highest_seen),
+                highest_seen=float(extreme_seen),
                 atr=float(atr),
+                position_side=position_side,
             ):
                 new_sl = candidate_sl
                 state_changed = True
@@ -2494,12 +2508,15 @@ class LoopMixin:
                     if sl_order_id and not old_sl_cancelled:
                         placed_new_sl_res = None
                     else:
-                        if old_sl_cancelled:
+                        if old_sl_cancelled and not is_short:
                             self._wait_for_sl_replacement_balance(
                                 sym, state["quantity"], candidate_sl
                             )
                         placed_new_sl_res = self._place_sl_with_retry(
-                            state["quantity"], candidate_sl, symbol=sym
+                            state["quantity"],
+                            candidate_sl,
+                            symbol=sym,
+                            position_side=position_side,
                         )
 
                     if placed_new_sl_res:
@@ -2509,7 +2526,10 @@ class LoopMixin:
                         restored_sl_id = None
                         if old_sl_cancelled and current_sl > 0:
                             restored = self._place_sl_with_retry(
-                                state["quantity"], float(current_sl), symbol=sym
+                                state["quantity"],
+                                float(current_sl),
+                                symbol=sym,
+                                position_side=position_side,
                             )
                             restored_sl_id = restored[0] if restored else None
                             if not restored_sl_id:
@@ -2548,9 +2568,13 @@ class LoopMixin:
                             )
 
                 if sl_update_succeeded:
+                    direction_word = "Lowered" if is_short else "Raised"
+                    extreme_label = "Trough" if is_short else "Peak"
+                    arrow = "↘️" if is_short else "↗️"
                     msg = (
-                        f"↗️ [TRAILING STOP] Raised SL for {sym} to {new_sl:.2f} USDT "
-                        f"(Peak: {highest_seen:.2f})"
+                        f"{arrow} [TRAILING STOP] {direction_word} {position_side} SL "
+                        f"for {sym} to {new_sl:.2f} USDT "
+                        f"({extreme_label}: {extreme_seen:.2f})"
                     )
                     logger.info(msg)
                     self.last_log_message = msg
@@ -2558,15 +2582,25 @@ class LoopMixin:
                         EventType.STOP_LOSS_UPDATED,
                         old_sl=round(float(current_sl), 2),
                         new_sl=round(float(new_sl), 2),
-                        peak=round(float(highest_seen), 2),
+                        position_side=position_side,
+                        extreme=round(float(extreme_seen), 2),
+                        **(
+                            {"trough": round(float(extreme_seen), 2)}
+                            if is_short
+                            else {"peak": round(float(extreme_seen), 2)}
+                        ),
                     )
                     if self.config.get("monitoring", {}).get("alert_on_trailing_stop", True):
                         self.send_telegram_alert(
-                            f"↗️ *Trailing Stop Updated*\nSymbol: `{sym}`\n"
-                            f"New SL: `{new_sl:.2f} USDT`\nPeak: `{highest_seen:.2f} USDT`",
+                            f"{arrow} *Trailing Stop Updated*\nSymbol: `{sym}`\n"
+                            f"Side: `{position_side}`\nNew SL: `{new_sl:.2f} USDT`\n"
+                            f"{extreme_label}: `{extreme_seen:.2f} USDT`",
                             level=AlertLevel.POSITION,
                         )
-            elif highest_seen > state.get("highest_price_seen", 0.0):
+            elif (
+                highest_seen > float(state.get("highest_price_seen", 0.0) or 0.0)
+                or lowest_seen < previous_lowest
+            ):
                 state_changed = True
 
             if state_changed:
@@ -2577,10 +2611,20 @@ class LoopMixin:
                     stop_loss=new_sl,
                     take_profit=state.get("take_profit", 0.0),
                     highest_price_seen=highest_seen,
+                    lowest_price_seen=lowest_seen,
                     quantity=state["quantity"],
                     opened_at=state["opened_at"],
                     last_transition_at=state["last_transition_at"],
                     stop_loss_order_id=new_sl_order_id,
+                    position_side=position_side,
+                    leverage=state.get("leverage", 1.0),
+                    margin_mode=state.get("margin_mode", "spot"),
+                    liquidation_price=state.get("liquidation_price", 0.0),
+                    funding_paid=state.get("funding_paid", 0.0),
+                    management_mode=state.get("management_mode", "strategy"),
+                    exchange_position_id=state.get("exchange_position_id"),
+                    partial_tp_taken=bool(state.get("partial_tp_taken")),
+                    excursion_tracking_complete=state.get("excursion_tracking_complete"),
                 )
 
         updated_state = self.db.get_trade_state(sym)
@@ -2609,11 +2653,16 @@ class LoopMixin:
         current_sl: float,
         highest_seen: float,
         atr: float,
+        position_side: str = "LONG",
     ) -> bool:
-        if candidate_sl <= current_sl:
-            return False
+        is_short = str(position_side or "LONG").upper() == "SHORT"
         if current_sl <= 0:
-            return True
+            return candidate_sl > 0
+        moves_toward_profit = (
+            candidate_sl < current_sl if is_short else candidate_sl > current_sl
+        )
+        if not moves_toward_profit:
+            return False
 
         entry_price = float(state.get("entry_price", 0.0) or 0.0)
         try:
@@ -2627,14 +2676,22 @@ class LoopMixin:
             activation_atr_mult = float(strat_conf.get("trail_activation_atr_mult", 0.0) or 0.0)
         except (TypeError, ValueError):
             activation_atr_mult = 0.0
-        if atr > 0 and activation_atr_mult > 0 and highest_seen - entry_price < atr * activation_atr_mult:
+        favorable_excursion = (
+            entry_price - highest_seen if is_short else highest_seen - entry_price
+        )
+        if (
+            atr > 0
+            and activation_atr_mult > 0
+            and favorable_excursion < atr * activation_atr_mult
+        ):
             return False
 
         try:
             min_delta_atr = float(strat_conf.get("trail_update_min_delta_atr", 0.0) or 0.0)
         except (TypeError, ValueError):
             min_delta_atr = 0.0
-        if atr > 0 and min_delta_atr > 0 and candidate_sl - current_sl < atr * min_delta_atr:
+        stop_delta = current_sl - candidate_sl if is_short else candidate_sl - current_sl
+        if atr > 0 and min_delta_atr > 0 and stop_delta < atr * min_delta_atr:
             return False
         return True
 

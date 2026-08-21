@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from xauby.database.db import LiteDB
 from xauby.domain.models import Order
@@ -97,7 +97,7 @@ class _Engine(OrderMixin):
     def _get_base_asset(self, symbol):
         return "XAU"
 
-    def _place_sl_with_retry(self, qty, stop, symbol=None):
+    def _place_sl_with_retry(self, qty, stop, symbol=None, position_side="LONG"):
         return None
 
     def _report_slippage(self, side, ref_price, fill_price, symbol=None, kind="order"):
@@ -212,6 +212,39 @@ class TestExecutePartialTp(unittest.TestCase):
         self.assertEqual(trade["side"], "SHORT")
         self.assertAlmostEqual(trade["amount"], 0.75)
         self.assertTrue(any(payload.get("partial") for _, payload in self.eng.events))
+
+    def test_failed_short_close_restores_cancelled_exchange_stop(self):
+        self.broker.fail = True
+        self.db.save_trade_state(
+            symbol="XAUUSDT", state="bought", entry_price=2000.0,
+            stop_loss=2050.0, highest_price_seen=2000.0,
+            lowest_price_seen=1900.0, quantity=2.0,
+            opened_at="2026-07-01T00:00:00", position_side="SHORT",
+            margin_mode="isolated", stop_loss_order_id="short-sl-old",
+        )
+        state = self.db.get_trade_state("XAUUSDT")
+        self.eng.client.cancel_order = MagicMock()
+
+        with patch.object(
+            self.eng,
+            "_place_sl_with_retry",
+            return_value=("short-sl-restored", 2.0),
+        ) as place_sl:
+            ok = self.eng.execute_close_short(
+                state, 2010.0, trigger_reason="strategy cover", symbol="XAUUSDT"
+            )
+
+        self.assertFalse(ok)
+        self.eng.client.cancel_order.assert_called_once_with("XAUUSDT", "short-sl-old")
+        place_sl.assert_called_once_with(
+            2.0,
+            2050.0,
+            symbol="XAUUSDT",
+            position_side="SHORT",
+        )
+        restored = self.db.get_trade_state("XAUUSDT")
+        self.assertEqual(restored.position_side, "SHORT")
+        self.assertEqual(restored.stop_loss_order_id, "short-sl-restored")
 
     def test_one_shot_flag_blocks_second_fire(self):
         state = _bought_state(self.db)

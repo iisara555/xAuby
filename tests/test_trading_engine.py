@@ -271,6 +271,39 @@ class TestTradingEngineConcurrency(unittest.TestCase):
 
         self.assertTrue(allowed)
 
+    def test_short_trailing_update_ratchets_down_after_activation(self):
+        state = {
+            "entry_price": 100.0,
+            "lowest_price_seen": 96.0,
+            "opened_at": (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat(),
+        }
+        conf = {
+            "trail_activation_atr_mult": 1.0,
+            "trail_update_min_delta_atr": 0.25,
+        }
+
+        allowed = self.engine._trailing_stop_update_allowed(
+            state=state,
+            strat_conf=conf,
+            candidate_sl=98.0,
+            current_sl=102.0,
+            highest_seen=96.0,
+            atr=1.0,
+            position_side="SHORT",
+        )
+        moves_wrong_way = self.engine._trailing_stop_update_allowed(
+            state=state,
+            strat_conf=conf,
+            candidate_sl=103.0,
+            current_sl=102.0,
+            highest_seen=96.0,
+            atr=1.0,
+            position_side="SHORT",
+        )
+
+        self.assertTrue(allowed)
+        self.assertFalse(moves_wrong_way)
+
     def test_semi_auto_pending_thread_safety(self):
         """Telegram callback thread and main thread accessing _semi_auto_pending concurrently."""
         errors = []

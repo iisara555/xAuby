@@ -423,6 +423,11 @@ class OrderMixin:
             return False
         fill_price = float(result.price or ticker_price)
         fill_qty = float(result.qty or qty)
+        if not disable_sl:
+            # Anchor the actual risk distance to the confirmed fill.  The quote
+            # used to size the order can move before the market SELL fills; a
+            # stop derived from that stale quote would silently change risk.
+            stop_loss = fill_price + sl_distance
         # Opening a short is a market SELL; report fill vs the quote (live only —
         # sim fills are modelled, so their "slippage" is not a real venue cost).
         slip_bps = self._report_slippage(
@@ -442,10 +447,27 @@ class OrderMixin:
             reverse_entry=reverse_entry,
         )
         now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        sl_order_id = None
+        if live and not disable_sl:
+            sl_res = self._place_sl_with_retry(
+                fill_qty,
+                stop_loss,
+                symbol=sym,
+                position_side="SHORT",
+            )
+            sl_order_id = sl_res[0] if sl_res else None
+            if not sl_order_id:
+                self.send_telegram_alert(
+                    "🚨 *Exchange Stop Loss Failed*: SHORT position relies on "
+                    "local monitoring until protection is restored.",
+                    level=AlertLevel.CRITICAL,
+                )
         self.db.save_trade_state(
             symbol=sym, state="bought", entry_price=fill_price,
             stop_loss=stop_loss, take_profit=take_profit,
-            highest_price_seen=fill_price, quantity=fill_qty, opened_at=now_iso,
+            highest_price_seen=fill_price, lowest_price_seen=fill_price,
+            quantity=fill_qty, opened_at=now_iso,
+            last_transition_at=now_iso, stop_loss_order_id=sl_order_id,
             position_side="SHORT", leverage=leverage, margin_mode="isolated",
             funding_paid=0.0,
             management_mode=position_management_mode,
@@ -460,6 +482,8 @@ class OrderMixin:
             quantity=fill_qty,
             qty=fill_qty,
             leverage=leverage,
+            stop_loss=stop_loss,
+            stop_loss_order_id=sl_order_id,
             slippage_bps=slip_bps,
         )
         self.send_telegram_alert(
@@ -483,17 +507,61 @@ class OrderMixin:
         if self._use_sim_broker(sym):
             ticker_price = self._sim_fill_price(sym, ticker_price)
         broker = self._broker_for_symbol(sym)
+        live_exchange_stop_cancelled = False
+        sl_order_id = state.get("stop_loss_order_id")
+        if (
+            sl_order_id
+            and self._execution_mode(sym) == "live"
+            and not self._use_sim_broker(sym)
+            and not getattr(self, "simulate_only", False)
+        ):
+            try:
+                self.client.cancel_order(sym, sl_order_id)
+                live_exchange_stop_cancelled = True
+            except Exception as exc:
+                logger.error(
+                    "SHORT close blocked: failed to cancel exchange SL %s for %s: %s",
+                    sl_order_id,
+                    sym,
+                    exc,
+                )
+                self.send_telegram_alert(
+                    f"🚨 *SHORT Close Blocked*: Could not cancel exchange SL "
+                    f"`{sl_order_id}` for `{sym}`. Reconciliation required.",
+                    level=AlertLevel.CRITICAL,
+                )
+                return False
+
+        def restore_cancelled_stop() -> None:
+            if not live_exchange_stop_cancelled:
+                return
+            restored_id = self._restore_stop_loss(
+                qty,
+                float(state.get("stop_loss", 0.0) or 0.0),
+                symbol=sym,
+                position_side="SHORT",
+            )
+            self._save_stop_loss_state(
+                state,
+                symbol=sym,
+                quantity=qty,
+                stop_loss_order_id=restored_id,
+            )
+
         try:
             result = broker.execute_close(sym, "SHORT", qty, ticker_price, entry, entry * qty, funding)
         except Exception as exc:
             logger.error("SHORT close failed for %s: %s", sym, exc, exc_info=True)
+            restore_cancelled_stop()
             return False
         if not result.success:
             logger.error(result.error or "SHORT close failed")
+            restore_cancelled_stop()
             return False
         filled_qty = float(result.qty or qty)
         if filled_qty <= 0:
             logger.error("SHORT close returned no filled quantity for %s", sym)
+            restore_cancelled_stop()
             return False
         exit_price = float(result.price or ticker_price)
         entry_notional = entry * filled_qty
@@ -531,18 +599,26 @@ class OrderMixin:
                 slippage_bps=slip_bps,
             ):
                 return False
-            sl_order_id = state.get("stop_loss_order_id")
-            if sl_order_id and not self._use_sim_broker(sym) and not self.simulate_only:
-                try:
-                    self.client.cancel_order(sym, sl_order_id)
-                except Exception as exc:
-                    logger.error("Failed to cancel SHORT SL %s after partial close: %s", sl_order_id, exc)
-                self.send_telegram_alert(
-                    "⚠️ *Short Stop Loss Requires Review*: Partial close left a smaller "
-                    "SHORT remainder; existing exchange SL was cleared or may need manual resize.",
-                    level=AlertLevel.CRITICAL,
+            new_sl_order_id = None
+            if (
+                self._execution_mode(sym) == "live"
+                and not self._use_sim_broker(sym)
+                and not getattr(self, "simulate_only", False)
+                and float(state.get("stop_loss", 0.0) or 0.0) > 0
+            ):
+                new_sl_res = self._place_sl_with_retry(
+                    remaining_qty,
+                    float(state.get("stop_loss", 0.0)),
+                    symbol=sym,
+                    position_side="SHORT",
                 )
-                sl_order_id = None
+                new_sl_order_id = new_sl_res[0] if new_sl_res else None
+                if not new_sl_order_id:
+                    self.send_telegram_alert(
+                        "🚨 *Short Stop Loss Restore Failed*: Partial close left a "
+                        "SHORT remainder relying on local monitoring.",
+                        level=AlertLevel.CRITICAL,
+                    )
             now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
             self.db.save_trade_state(
                 symbol=sym,
@@ -551,10 +627,11 @@ class OrderMixin:
                 stop_loss=state.get("stop_loss", 0.0),
                 take_profit=state.get("take_profit", 0.0),
                 highest_price_seen=state.get("highest_price_seen", entry),
+                lowest_price_seen=state.get("lowest_price_seen", entry),
                 quantity=remaining_qty,
                 opened_at=state.get("opened_at"),
                 last_transition_at=now_iso,
-                stop_loss_order_id=sl_order_id,
+                stop_loss_order_id=new_sl_order_id,
                 position_side="SHORT",
                 leverage=state.get("leverage", 1.0),
                 margin_mode=state.get("margin_mode", "isolated"),
@@ -844,7 +921,10 @@ class OrderMixin:
             except Exception as exc:
                 logger.error("Failed to cancel SL %s before partial TP resize: %s", sl_order_id, exc)
             sl_res = self._place_sl_with_retry(
-                remaining, float(state.get("stop_loss", 0.0) or 0.0), symbol=sym
+                remaining,
+                float(state.get("stop_loss", 0.0) or 0.0),
+                symbol=sym,
+                position_side=side,
             )
             new_sl_id = sl_res[0] if sl_res else None
 
@@ -856,6 +936,7 @@ class OrderMixin:
             stop_loss=float(state.get("stop_loss", 0.0) or 0.0),
             take_profit=float(state.get("take_profit", 0.0) or 0.0),
             highest_price_seen=float(state.get("highest_price_seen", 0.0) or 0.0),
+            lowest_price_seen=state.get("lowest_price_seen"),
             quantity=remaining,
             opened_at=state.get("opened_at"),
             last_transition_at=now_iso,
@@ -1147,62 +1228,86 @@ class OrderMixin:
         return status, filled_qty, order_details
 
     def _place_sl_with_retry(
-        self, qty: float, stop_loss: float, max_attempts: int = 3, symbol: Optional[str] = None
+        self,
+        qty: float,
+        stop_loss: float,
+        max_attempts: int = 3,
+        symbol: Optional[str] = None,
+        position_side: str = "LONG",
     ) -> Optional[Tuple[str, float]]:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         if stop_loss <= 0 or qty <= 0:
             return None
+        normalized_side = str(position_side or "LONG").upper()
+        if normalized_side not in {"LONG", "SHORT"}:
+            raise ValueError(f"Unsupported stop-loss position side: {position_side!r}")
+        close_side = "BUY" if normalized_side == "SHORT" else "SELL"
+        limit_price = stop_loss * (1.005 if normalized_side == "SHORT" else 0.995)
         attempt_qty = qty
-        try:
-            balances = self.client.get_balances()
-            base_coin = self._get_base_asset(sym)
-            base_bal = balances.get(base_coin) or {}
-            available = float(base_bal.get("available", 0.0) or 0.0)
-            reserved = float(base_bal.get("reserved", 0.0) or 0.0)
-            if 0 < available < attempt_qty:
-                filters = self._symbol_filters_cached(sym)
-                step = float(filters.get("stepSize") or 0.0)
-                capped_qty = round_step(available, step) if step > 0 else available
-                min_qty = float(filters.get("minQty") or 0.0)
-                min_notional = float(filters.get("minNotional") or 0.0)
-                min_allowed = max(min_qty, step, 0.0)
-                if capped_qty < min_allowed or (
-                    min_notional > 0 and capped_qty * float(stop_loss) < min_notional
-                ):
-                    logger.warning(
-                        "Available %s balance %.8f is below exchange SL minimum "
-                        "(reserved %.8f); skipping dust SL placement",
-                        base_coin,
-                        available,
-                        reserved,
-                    )
-                    return None
-                if capped_qty >= max(min_qty, step, 0.0):
-                    logger.warning(
-                        "Capping SL qty for %s from %.8f to available %.8f (rounded %.8f)",
-                        sym,
-                        attempt_qty,
-                        available,
-                        capped_qty,
-                    )
-                    attempt_qty = capped_qty
-        except Exception as e:
-            logger.warning("Unable to cap SL qty from available balance for %s: %s", sym, e)
+        # Spot LONG stops reserve/sell the base asset and may need quantity
+        # capping.  A derivative SHORT stop is a reduce-only BUY against an
+        # existing contract position; spot wallet balances are irrelevant.
+        if normalized_side == "LONG":
+            try:
+                balances = self.client.get_balances()
+                base_coin = self._get_base_asset(sym)
+                base_bal = balances.get(base_coin) or {}
+                available = float(base_bal.get("available", 0.0) or 0.0)
+                reserved = float(base_bal.get("reserved", 0.0) or 0.0)
+                if 0 < available < attempt_qty:
+                    filters = self._symbol_filters_cached(sym)
+                    step = float(filters.get("stepSize") or 0.0)
+                    capped_qty = round_step(available, step) if step > 0 else available
+                    min_qty = float(filters.get("minQty") or 0.0)
+                    min_notional = float(filters.get("minNotional") or 0.0)
+                    min_allowed = max(min_qty, step, 0.0)
+                    if capped_qty < min_allowed or (
+                        min_notional > 0 and capped_qty * float(stop_loss) < min_notional
+                    ):
+                        logger.warning(
+                            "Available %s balance %.8f is below exchange SL minimum "
+                            "(reserved %.8f); skipping dust SL placement",
+                            base_coin,
+                            available,
+                            reserved,
+                        )
+                        return None
+                    if capped_qty >= max(min_qty, step, 0.0):
+                        logger.warning(
+                            "Capping SL qty for %s from %.8f to available %.8f (rounded %.8f)",
+                            sym,
+                            attempt_qty,
+                            available,
+                            capped_qty,
+                        )
+                        attempt_qty = capped_qty
+            except Exception as e:
+                logger.warning("Unable to cap SL qty from available balance for %s: %s", sym, e)
         for attempt in range(max_attempts):
             try:
                 client_id = make_client_id(f"sl{attempt}")
                 sl_res = self.client.place_order(
                     symbol=sym,
-                    side="SELL",
+                    side=close_side,
                     order_type="STOP_LOSS_LIMIT",
                     amount=attempt_qty,
-                    price=stop_loss * 0.995,
+                    price=limit_price,
                     stop_price=stop_loss,
                     client_id=client_id,
+                    position_side=normalized_side,
+                    reduce_only=True,
+                    amount_in_base=True,
                 )
                 sl_order_id = str(sl_res.get("orderId") or sl_res.get("id") or "")
                 if sl_order_id:
-                    logger.info(f"Exchange-side STOP_LOSS_LIMIT placed (ID: {sl_order_id}, qty={attempt_qty:.6f})")
+                    logger.info(
+                        "Exchange-side %s STOP_LOSS_LIMIT placed "
+                        "(ID: %s, side=%s, qty=%.6f)",
+                        normalized_side,
+                        sl_order_id,
+                        close_side,
+                        attempt_qty,
+                    )
                     return (sl_order_id, attempt_qty)
                 logger.error(
                     "Exchange-side STOP_LOSS_LIMIT response missing order id for %s (qty=%.6f)",
@@ -1230,26 +1335,66 @@ class OrderMixin:
                 time.sleep(2.0 ** attempt)
         return None
 
+    def _save_stop_loss_state(
+        self,
+        state: Dict[str, Any],
+        *,
+        symbol: str,
+        quantity: float,
+        stop_loss_order_id: Optional[str],
+        stop_loss: Optional[float] = None,
+    ) -> None:
+        """Persist stop protection without dropping derivative/short fields."""
+        self.db.save_trade_state(
+            symbol=symbol,
+            state=state.get("state", "bought"),
+            entry_price=state.get("entry_price", 0.0),
+            stop_loss=(
+                float(stop_loss)
+                if stop_loss is not None
+                else float(state.get("stop_loss", 0.0) or 0.0)
+            ),
+            take_profit=state.get("take_profit", 0.0),
+            highest_price_seen=state.get("highest_price_seen", 0.0),
+            lowest_price_seen=state.get("lowest_price_seen"),
+            quantity=quantity,
+            opened_at=state.get("opened_at"),
+            last_transition_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            stop_loss_order_id=stop_loss_order_id,
+            position_side=str(state.get("position_side") or "LONG").upper(),
+            leverage=state.get("leverage", 1.0),
+            margin_mode=state.get("margin_mode", "spot"),
+            liquidation_price=state.get("liquidation_price", 0.0),
+            funding_paid=state.get("funding_paid", 0.0),
+            management_mode=state.get("management_mode", "strategy"),
+            exchange_position_id=state.get("exchange_position_id"),
+            partial_tp_taken=bool(state.get("partial_tp_taken")),
+            excursion_tracking_complete=state.get("excursion_tracking_complete"),
+        )
+
     def _ensure_sl_protected(self, state: Dict[str, Any], symbol: Optional[str] = None) -> Dict[str, Any]:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         if self._execution_mode(sym) != "live" or state.get("state") != "bought":
             return state
 
+        position_side = str(state.get("position_side") or "LONG").upper()
         sl_order_id = state.get("stop_loss_order_id")
         stop_loss = float(state.get("stop_loss", 0.0))
         qty = float(state.get("quantity", 0.0))
         if stop_loss <= 0 or qty <= 0:
             return state
         tradeable_qty = self._min_tradeable_base_qty(sym, stop_loss)
-        try:
-            balances = self.client.get_balances()
-            base_coin = self._get_base_asset(sym)
-            base_bal = balances.get(base_coin) or {}
-            total_base = float(base_bal.get("available", 0.0) or 0.0) + float(
-                base_bal.get("reserved", 0.0) or 0.0
-            )
-        except Exception:
-            total_base = qty
+        total_base = qty
+        if position_side != "SHORT":
+            try:
+                balances = self.client.get_balances()
+                base_coin = self._get_base_asset(sym)
+                base_bal = balances.get(base_coin) or {}
+                total_base = float(base_bal.get("available", 0.0) or 0.0) + float(
+                    base_bal.get("reserved", 0.0) or 0.0
+                )
+            except Exception:
+                total_base = qty
         if tradeable_qty > 0 and max(qty, total_base) < tradeable_qty:
             logger.warning(
                 "Tracked %s remainder %.8f is below tradeable threshold %.8f; clearing dust state.",
@@ -1273,22 +1418,26 @@ class OrderMixin:
                 logger.warning(f"SL order {sl_order_id} not found on exchange.")
 
         if not sl_alive:
-            logger.warning("Position missing exchange SL — attempting restore...")
-            self._cancel_orphan_orders(tracked_sl_id=sl_order_id, symbol=sym)
-            new_sl_res = self._place_sl_with_retry(qty, stop_loss, symbol=sym)
+            logger.warning("%s position missing exchange SL — attempting restore...", position_side)
+            self._cancel_orphan_orders(
+                tracked_sl_id=sl_order_id,
+                symbol=sym,
+                position_side=position_side,
+            )
+            new_sl_res = self._place_sl_with_retry(
+                qty,
+                stop_loss,
+                symbol=sym,
+                position_side=position_side,
+            )
             new_sl_id = new_sl_res[0] if new_sl_res else None
             if new_sl_id:
-                self.db.save_trade_state(
+                self._save_stop_loss_state(
+                    state,
                     symbol=sym,
-                    state="bought",
-                    entry_price=state.get("entry_price", 0.0),
-                    stop_loss=stop_loss,
-                    take_profit=state.get("take_profit", 0.0),
-                    highest_price_seen=state.get("highest_price_seen", 0.0),
                     quantity=qty,
-                    opened_at=state.get("opened_at"),
-                    last_transition_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                     stop_loss_order_id=new_sl_id,
+                    stop_loss=stop_loss,
                 )
                 state = self.db.get_trade_state(sym)
             else:
@@ -1298,10 +1447,18 @@ class OrderMixin:
                 )
         return state
 
-    def _cancel_orphan_orders(self, tracked_sl_id: Optional[str] = None, symbol: Optional[str] = None):
+    def _cancel_orphan_orders(
+        self,
+        tracked_sl_id: Optional[str] = None,
+        symbol: Optional[str] = None,
+        position_side: str = "LONG",
+    ):
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         if self._execution_mode(sym) != "live":
             return
+        expected_close_side = (
+            "BUY" if str(position_side or "LONG").upper() == "SHORT" else "SELL"
+        )
         try:
             opens = self.client.get_open_orders(sym)
             for o in opens:
@@ -1310,7 +1467,7 @@ class OrderMixin:
                     continue
                 side = o.get("side", "")
                 otype = str(o.get("type", "")).upper()
-                if side == "SELL" and "STOP" in otype:
+                if side == expected_close_side and "STOP" in otype:
                     logger.warning(f"Cancelling orphan SL order {oid} ({side} {otype})")
                     try:
                         self.client.cancel_order(sym, oid)
@@ -1319,8 +1476,19 @@ class OrderMixin:
         except Exception as e:
             logger.error(f"Failed to enumerate open orders: {e}")
 
-    def _restore_stop_loss(self, qty: float, stop_loss: float, symbol: Optional[str] = None) -> Optional[str]:
-        sl_res = self._place_sl_with_retry(qty, stop_loss, symbol=symbol)
+    def _restore_stop_loss(
+        self,
+        qty: float,
+        stop_loss: float,
+        symbol: Optional[str] = None,
+        position_side: str = "LONG",
+    ) -> Optional[str]:
+        sl_res = self._place_sl_with_retry(
+            qty,
+            stop_loss,
+            symbol=symbol,
+            position_side=position_side,
+        )
         sl_id = sl_res[0] if sl_res else None
         if not sl_id:
             self.send_telegram_alert(
@@ -1332,18 +1500,18 @@ class OrderMixin:
     def _restore_stop_loss_state(self, state: Dict[str, Any], qty: float, symbol: Optional[str] = None):
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         stop_loss = state.get("stop_loss", 0.0)
-        new_sl_id = self._restore_stop_loss(qty, stop_loss, symbol=sym)
-        self.db.save_trade_state(
+        position_side = str(state.get("position_side") or "LONG").upper()
+        new_sl_id = self._restore_stop_loss(
+            qty,
+            stop_loss,
             symbol=sym,
-            state=state.get("state", "bought"),
-            entry_price=state.get("entry_price", 0.0),
-            stop_loss=stop_loss,
-            take_profit=state.get("take_profit", 0.0),
-            highest_price_seen=state.get("highest_price_seen", 0.0),
+            position_side=position_side,
+        )
+        self._save_stop_loss_state(
+            state,
+            symbol=sym,
             quantity=qty,
-            opened_at=state.get("opened_at"),
-            last_transition_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-            stop_loss_order_id=new_sl_id
+            stop_loss_order_id=new_sl_id,
         )
 
     def _queue_exchange_confirmed_stop_close(
@@ -1394,20 +1562,53 @@ class OrderMixin:
             self._set_exchange_wait_meta(symbol, reason)
         return bool(self._complete_pending_exchange_close(symbol, pending))
 
-    def _handle_exchange_sl_order(self, state: Dict[str, Any], ticker_price: float, symbol: Optional[str] = None) -> Dict[str, Any]:
+    def _handle_exchange_sl_order(
+        self,
+        state: Dict[str, Any],
+        ticker_price: float,
+        symbol: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Reconcile a live exchange stop for either a LONG or SHORT position."""
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         if self._execution_mode(sym) != "live" or state.get("state") != "bought":
             return state
 
+        position_side = str(state.get("position_side") or "LONG").upper()
+        is_short = position_side == "SHORT"
+        exit_side = "BUY" if is_short else "SELL"
         sl_order_id = state.get("stop_loss_order_id")
         if not sl_order_id:
             return self._ensure_sl_protected(state, symbol=sym)
 
+        def restore_stop() -> Dict[str, Any]:
+            new_sl_res = self._place_sl_with_retry(
+                float(state.get("quantity", 0.0)),
+                float(state.get("stop_loss", 0.0)),
+                symbol=sym,
+                position_side=position_side,
+            )
+            new_sl_id = new_sl_res[0] if new_sl_res else None
+            if not new_sl_id:
+                self.send_telegram_alert(
+                    f"🚨 *CRITICAL*: Failed to restore {position_side} exchange SL "
+                    f"for `{sym}`. Position relies on local monitoring only.",
+                    level=AlertLevel.CRITICAL,
+                )
+            self._save_stop_loss_state(
+                state,
+                symbol=sym,
+                quantity=float(state.get("quantity", 0.0)),
+                stop_loss_order_id=new_sl_id,
+            )
+            return self.db.get_trade_state(sym)
+
         try:
             order_details = self.client.get_order(sym, sl_order_id)
-            status = order_details.get("status", "").upper()
+            status = str(order_details.get("status") or "").upper()
             reported_filled_qty = float(order_details.get("executedQty", 0.0) or 0.0)
-            cummulative_quote_qty = float(order_details.get("cummulativeQuoteQty", 0.0) or 0.0)
+            cummulative_quote_qty = float(
+                order_details.get("cummulativeQuoteQty", 0.0) or 0.0
+            )
             average_fill_price = float(
                 order_details.get("average", 0.0)
                 or order_details.get("avgPrice", 0.0)
@@ -1431,9 +1632,13 @@ class OrderMixin:
                 filled_qty = tracked_qty
 
             if status == "FILLED" and filled_qty > 0:
-                logger.info(f"⚡ [EXCHANGE STOP LOSS FILLED] Stop-loss order {sl_order_id} hit on exchange.")
+                logger.info(
+                    "⚡ [EXCHANGE %s STOP LOSS FILLED] Stop-loss order %s hit on exchange.",
+                    position_side,
+                    sl_order_id,
+                )
                 slip_bps = self._report_slippage(
-                    side="SELL",
+                    side=exit_side,
                     ref_price=ticker_price,
                     fill_price=filled_price,
                     symbol=sym,
@@ -1453,7 +1658,8 @@ class OrderMixin:
                 if confirmed is not None:
                     self._emit_event(
                         EventType.ORDER_FILLED,
-                        side="SELL",
+                        side=exit_side,
+                        position_side=position_side,
                         order_id=sl_order_id,
                         qty=round(filled_qty, 8),
                         price=round(filled_price, 8),
@@ -1463,25 +1669,27 @@ class OrderMixin:
                     if not confirmed:
                         base_coin = self._get_base_asset(sym)
                         msg = (
-                            f"🔴 [EXCHANGE STOP LOSS HIT] Exit {filled_qty:.6f} {base_coin} "
-                            f"@ {filled_price:.2f} USDT | Realized PnL verification pending"
+                            f"🔴 [EXCHANGE {position_side} STOP LOSS HIT] "
+                            f"Exit {filled_qty:.6f} {base_coin} @ {filled_price:.2f} USDT "
+                            "| Realized PnL verification pending"
                         )
                         logger.warning(msg)
                         self.last_log_message = msg
                         self.send_telegram_alert(msg)
                     return self.db.get_trade_state(sym)
 
-                entry_cost = filled_qty * state["entry_price"]
+                entry_cost = filled_qty * float(state.get("entry_price", 0.0))
                 gross_exit = filled_qty * filled_price
                 fee_pct = self._symbol_fee_pct(sym)
                 entry_fee = entry_cost * fee_pct
                 exit_fee = gross_exit * fee_pct
-                net_pnl, net_pnl_pct = self._closed_pnl_after_fees(
-                    entry_cost=entry_cost,
-                    gross_exit=gross_exit,
-                    entry_fee=entry_fee,
-                    exit_fee=exit_fee,
+                total_fees = entry_fee + exit_fee
+                net_pnl = (
+                    entry_cost - gross_exit - total_fees
+                    if is_short
+                    else gross_exit - entry_cost - total_fees
                 )
+                net_pnl_pct = (net_pnl / entry_cost * 100.0) if entry_cost > 0 else 0.0
                 if not self._record_closed_trade_atomic(
                     state,
                     filled_qty,
@@ -1495,7 +1703,8 @@ class OrderMixin:
                 else:
                     base_coin = self._get_base_asset(sym)
                     msg = (
-                        f"🔴 [EXCHANGE STOP LOSS HIT] Exit {filled_qty:.6f} {base_coin} @ {filled_price:.2f} USDT "
+                        f"🔴 [EXCHANGE {position_side} STOP LOSS HIT] "
+                        f"Exit {filled_qty:.6f} {base_coin} @ {filled_price:.2f} USDT "
                         f"| PnL: {net_pnl:+.2f} USDT ({net_pnl_pct:+.2f}%)"
                     )
                     logger.info(msg)
@@ -1503,7 +1712,8 @@ class OrderMixin:
                     self.send_telegram_alert(msg)
                     self._emit_event(
                         EventType.ORDER_FILLED,
-                        side="SELL",
+                        side=exit_side,
+                        position_side=position_side,
                         order_id=sl_order_id,
                         qty=round(filled_qty, 6),
                         price=round(filled_price, 2),
@@ -1514,7 +1724,7 @@ class OrderMixin:
                         EventType.POSITION_CLOSED,
                         exit=round(filled_price, 2),
                         exit_price=filled_price,
-                        position_side="LONG",
+                        position_side=position_side,
                         quantity=filled_qty,
                         pnl=round(net_pnl, 2),
                         pnl_pct=round(net_pnl_pct, 2),
@@ -1525,13 +1735,18 @@ class OrderMixin:
                 return self.db.get_trade_state(sym)
 
             if status == "PARTIALLY_FILLED" and filled_qty > 0:
-                logger.warning(f"Exchange SL order {sl_order_id} partially filled ({filled_qty:.6f})")
-                remaining = float(state.get("quantity", 0.0)) - filled_qty
+                logger.warning(
+                    "Exchange %s SL order %s partially filled (%.6f)",
+                    position_side,
+                    sl_order_id,
+                    filled_qty,
+                )
+                remaining = max(0.0, tracked_qty - filled_qty)
                 entry_cost = filled_qty * float(state.get("entry_price", 0.0))
                 gross_exit = filled_qty * filled_price
                 fee_pct = self._symbol_fee_pct(sym)
                 slip_bps = self._report_slippage(
-                    side="SELL",
+                    side=exit_side,
                     ref_price=ticker_price,
                     fill_price=filled_price,
                     symbol=sym,
@@ -1545,11 +1760,13 @@ class OrderMixin:
                     entry_fee=entry_cost * fee_pct,
                     exit_fee=gross_exit * fee_pct,
                     symbol=sym,
+                    side="SHORT" if is_short else "BUY",
                     slippage_bps=slip_bps,
                 )
                 self._emit_event(
                     EventType.ORDER_FILLED,
-                    side="SELL",
+                    side=exit_side,
+                    position_side=position_side,
                     order_id=sl_order_id,
                     qty=round(filled_qty, 6),
                     price=round(filled_price, 2),
@@ -1560,70 +1777,38 @@ class OrderMixin:
                     try:
                         self.client.cancel_order(sym, sl_order_id)
                     except Exception as ce:
-                        logger.error(f"Failed to cancel partial SL order {sl_order_id}: {ce}")
-                    new_sl_res = self._place_sl_with_retry(remaining, float(state.get("stop_loss", 0.0)), symbol=sym)
-                    new_sl_id = new_sl_res[0] if new_sl_res else None
-                    self.db.save_trade_state(
+                        logger.error("Failed to cancel partial SL order %s: %s", sl_order_id, ce)
+                    new_sl_res = self._place_sl_with_retry(
+                        remaining,
+                        float(state.get("stop_loss", 0.0)),
                         symbol=sym,
-                        state="bought",
-                        entry_price=state.get("entry_price", 0.0),
-                        stop_loss=state.get("stop_loss", 0.0),
-                        take_profit=state.get("take_profit", 0.0),
-                        highest_price_seen=state.get("highest_price_seen", 0.0),
+                        position_side=position_side,
+                    )
+                    new_sl_id = new_sl_res[0] if new_sl_res else None
+                    self._save_stop_loss_state(
+                        state,
+                        symbol=sym,
                         quantity=remaining,
-                        opened_at=state.get("opened_at"),
-                        last_transition_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                         stop_loss_order_id=new_sl_id,
                     )
                 return self.db.get_trade_state(sym)
 
             if status in ("CANCELED", "REJECTED", "EXPIRED"):
-                logger.warning(f"Exchange stop-loss order {sl_order_id} was {status}. Restoring SL...")
-                new_sl_res = self._place_sl_with_retry(
-                    float(state.get("quantity", 0.0)),
-                    float(state.get("stop_loss", 0.0)),
-                    symbol=sym,
+                logger.warning(
+                    "Exchange %s stop-loss order %s was %s. Restoring SL...",
+                    position_side,
+                    sl_order_id,
+                    status,
                 )
-                new_sl_id = new_sl_res[0] if new_sl_res else None
-                self.db.save_trade_state(
-                    symbol=sym,
-                    state="bought",
-                    entry_price=state.get("entry_price", 0.0),
-                    stop_loss=state.get("stop_loss", 0.0),
-                    take_profit=state.get("take_profit", 0.0),
-                    highest_price_seen=state.get("highest_price_seen", 0.0),
-                    quantity=state.get("quantity", 0.0),
-                    opened_at=state.get("opened_at"),
-                    last_transition_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-                    stop_loss_order_id=new_sl_id,
-                )
-                return self.db.get_trade_state(sym)
+                return restore_stop()
 
-        except ExchangeAPIError as e:
-            if e.code in (-2013, -2026):
-                logger.warning(f"SL order {sl_order_id} not found on exchange; restoring...")
-                new_sl_res = self._place_sl_with_retry(
-                    float(state.get("quantity", 0.0)),
-                    float(state.get("stop_loss", 0.0)),
-                    symbol=sym,
-                )
-                new_sl_id = new_sl_res[0] if new_sl_res else None
-                self.db.save_trade_state(
-                    symbol=sym,
-                    state="bought",
-                    entry_price=state.get("entry_price", 0.0),
-                    stop_loss=state.get("stop_loss", 0.0),
-                    take_profit=state.get("take_profit", 0.0),
-                    highest_price_seen=state.get("highest_price_seen", 0.0),
-                    quantity=state.get("quantity", 0.0),
-                    opened_at=state.get("opened_at"),
-                    last_transition_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-                    stop_loss_order_id=new_sl_id,
-                )
-                return self.db.get_trade_state(sym)
-            logger.error(f"Error checking exchange stop-loss order status: {e}")
-        except Exception as e:
-            logger.error(f"Error checking exchange stop-loss order status: {e}")
+        except ExchangeAPIError as exc:
+            if exc.code in (-2013, -2026):
+                logger.warning("SL order %s not found on exchange; restoring...", sl_order_id)
+                return restore_stop()
+            logger.error("Error checking exchange stop-loss order status: %s", exc)
+        except Exception as exc:
+            logger.error("Error checking exchange stop-loss order status: %s", exc)
 
         return state
 
