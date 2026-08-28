@@ -133,6 +133,9 @@ def compute_indicators(
         "cdc_zone_4h_prev": "UNKNOWN",
         "cdc_zone_4h_green_streak": 0,
         "cdc_zone_4h_red_streak": 0,
+        "cdc_zone_4h_green_streak_started_with_ema_cross": None,
+        "cdc_zone_4h_red_streak_started_with_ema_cross": None,
+        "cdc_zone_4h_streak_started_at": None,
         "ema_fast_4h": 0.0,
         "ema_slow_4h": 0.0,
         "ema_fast_4h_prev": 0.0,
@@ -251,6 +254,35 @@ def compute_indicators(
                         res["cdc_zone_4h_green_streak"] = streak
                     else:
                         res["cdc_zone_4h_red_streak"] = streak
+
+                    # A CDC zone can turn GREEN/RED because price crosses the
+                    # EMA band even when EMA12 crossed EMA26 much earlier.  A
+                    # later bar in fresh_zone_window must therefore prove that
+                    # the first bar of this zone streak contained the matching
+                    # EMA cross; the streak length alone is not evidence of it.
+                    streak_start_idx = closed_idx - (streak - 1)
+                    before_start_idx = streak_start_idx - 1
+                    raw_started_at = df_primary["timestamp"].iloc[streak_start_idx]
+                    if isinstance(raw_started_at, (int, float, np.integer, np.floating)):
+                        started_at = float(raw_started_at)
+                        if started_at > 10_000_000_000:
+                            started_at /= 1000.0
+                    else:
+                        started_at = pd.Timestamp(raw_started_at).timestamp()
+                    res["cdc_zone_4h_streak_started_at"] = started_at
+                    if len(ema_fast_4h) + before_start_idx >= 0:
+                        start_fast = float(ema_fast_4h.iloc[streak_start_idx])
+                        start_slow = float(ema_slow_4h.iloc[streak_start_idx])
+                        before_fast = float(ema_fast_4h.iloc[before_start_idx])
+                        before_slow = float(ema_slow_4h.iloc[before_start_idx])
+                        if target_zone == "GREEN":
+                            res["cdc_zone_4h_green_streak_started_with_ema_cross"] = (
+                                start_fast > start_slow and before_fast <= before_slow
+                            )
+                        else:
+                            res["cdc_zone_4h_red_streak_started_with_ema_cross"] = (
+                                start_fast < start_slow and before_fast >= before_slow
+                            )
 
             bar_high = float(high_4h.iloc[closed_idx])
             bar_low = float(low_4h.iloc[closed_idx])

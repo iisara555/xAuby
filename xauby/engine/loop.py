@@ -2217,7 +2217,10 @@ class LoopMixin:
                 )
                 action = "HOLD"
                 reason = f"Blocked: max open positions ({max_open})"
-            blocked, block_reason = self._is_buy_blocked_by_cooldown(symbol=sym)
+            blocked, block_reason = self._is_buy_blocked_by_cooldown(
+                symbol=sym,
+                signal=signal,
+            )
             if blocked:
                 logger.warning("BUY blocked by cooldown: %s", block_reason)
                 action = "HOLD"

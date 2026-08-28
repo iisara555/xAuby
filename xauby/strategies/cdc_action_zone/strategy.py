@@ -172,11 +172,13 @@ class CDCActionZoneStrategy(Strategy):
         ema_slow_prev: float,
         green_streak: int = 1,
         fresh_zone_window: int = 0,
+        streak_started_with_cross: Optional[bool] = None,
     ) -> tuple[bool, str]:
         """Bullish EMA cross: prev bar fast <= slow, current bar fast > slow.
 
         On the crossover bar (green_streak == 1) the prev<= rule is enforced.
-        Later bars inside fresh_zone_window only require the current bull state.
+        Later bars inside fresh_zone_window must prove the zone streak began
+        with the matching EMA cross; a GREEN streak alone is not sufficient.
         fresh_zone_window == 0 skips the prev<= rule (current bull only).
         """
         if ema_fast <= 0 or ema_slow <= 0:
@@ -185,11 +187,13 @@ class CDCActionZoneStrategy(Strategy):
             return False, f"curr EMA12 {ema_fast:.2f} <= EMA26 {ema_slow:.2f}"
         if fresh_zone_window == 0:
             return True, "bull (fresh zone disabled)"
+        if green_streak > 1 and green_streak <= fresh_zone_window:
+            if streak_started_with_cross is True:
+                return True, "bull within verified fresh-cross window"
+            return False, "GREEN streak did not start with a bullish EMA cross"
         if ema_fast_prev <= 0 or ema_slow_prev <= 0:
             return True, "bull (no prev EMA data)"
         prev_not_bull = ema_fast_prev <= ema_slow_prev
-        if green_streak > 1 and green_streak <= fresh_zone_window:
-            return True, "bull within fresh window"
         if not prev_not_bull:
             return False, (
                 f"prev EMA12 {ema_fast_prev:.2f} > EMA26 {ema_slow_prev:.2f} "
@@ -205,12 +209,13 @@ class CDCActionZoneStrategy(Strategy):
         ema_slow_prev: float,
         red_streak: int = 1,
         fresh_zone_window: int = 0,
+        streak_started_with_cross: Optional[bool] = None,
     ) -> tuple[bool, str]:
         """Bearish EMA cross: prev fast >= slow, current fast < slow.
 
         Mirror of :meth:`_ema_cross_check` for SHORT entries. On the crossover
         bar (red_streak == 1) the prev>= rule is enforced; later bars inside
-        fresh_zone_window only require the current bear state.
+        fresh_zone_window must prove the streak began with that cross.
         """
         if ema_fast <= 0 or ema_slow <= 0:
             return False, "EMA values unavailable"
@@ -218,11 +223,13 @@ class CDCActionZoneStrategy(Strategy):
             return False, f"curr EMA12 {ema_fast:.2f} >= EMA26 {ema_slow:.2f}"
         if fresh_zone_window == 0:
             return True, "bear (fresh zone disabled)"
+        if red_streak > 1 and red_streak <= fresh_zone_window:
+            if streak_started_with_cross is True:
+                return True, "bear within verified fresh-cross window"
+            return False, "RED streak did not start with a bearish EMA cross"
         if ema_fast_prev <= 0 or ema_slow_prev <= 0:
             return True, "bear (no prev EMA data)"
         prev_not_bear = ema_fast_prev >= ema_slow_prev
-        if red_streak > 1 and red_streak <= fresh_zone_window:
-            return True, "bear within fresh window"
         if not prev_not_bear:
             return False, (
                 f"prev EMA12 {ema_fast_prev:.2f} < EMA26 {ema_slow_prev:.2f} "
@@ -239,6 +246,7 @@ class CDCActionZoneStrategy(Strategy):
         green_streak: int,
         fresh_zone_window: int,
         require_fresh_zone: bool,
+        streak_started_with_cross: bool | None = None,
     ) -> tuple[bool, str]:
         """Checklist row for fresh bullish EMA cross (separate from bull alignment)."""
         ok, _ = CDCActionZoneStrategy._ema_cross_check(
@@ -248,6 +256,7 @@ class CDCActionZoneStrategy(Strategy):
             ema_slow_prev,
             green_streak=green_streak,
             fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
+            streak_started_with_cross=streak_started_with_cross,
         )
         if ema_fast <= 0 or ema_slow <= 0:
             return False, "N/A"
@@ -259,7 +268,11 @@ class CDCActionZoneStrategy(Strategy):
             and green_streak > 1
             and green_streak <= fresh_zone_window
         ):
-            return True, f"Win {green_streak}/{fresh_zone_window}"
+            return (
+                (True, f"Win {green_streak}/{fresh_zone_window}")
+                if ok
+                else (False, "No cross")
+            )
         if ema_fast_prev > 0 and ema_slow_prev > 0 and ema_fast_prev <= ema_slow_prev:
             return ok, "Fresh cross"
         return False, "No cross"
@@ -273,6 +286,7 @@ class CDCActionZoneStrategy(Strategy):
         red_streak: int,
         fresh_zone_window: int,
         require_fresh_zone: bool,
+        streak_started_with_cross: bool | None = None,
     ) -> tuple[bool, str]:
         """Checklist row for a fresh bearish EMA cross."""
         ok, _ = CDCActionZoneStrategy._ema_cross_check_bear(
@@ -282,6 +296,7 @@ class CDCActionZoneStrategy(Strategy):
             ema_slow_prev,
             red_streak=red_streak,
             fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
+            streak_started_with_cross=streak_started_with_cross,
         )
         if ema_fast <= 0 or ema_slow <= 0:
             return False, "N/A"
@@ -293,7 +308,11 @@ class CDCActionZoneStrategy(Strategy):
             and red_streak > 1
             and red_streak <= fresh_zone_window
         ):
-            return True, f"Win {red_streak}/{fresh_zone_window}"
+            return (
+                (True, f"Win {red_streak}/{fresh_zone_window}")
+                if ok
+                else (False, "No cross")
+            )
         if ema_fast_prev > 0 and ema_slow_prev > 0 and ema_fast_prev >= ema_slow_prev:
             return ok, "Fresh cross"
         return False, "No cross"
@@ -475,6 +494,9 @@ class CDCActionZoneStrategy(Strategy):
                 ema_fast, ema_slow, ema_fast_prev, ema_slow_prev,
                 green_streak=green_streak,
                 fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
+                streak_started_with_cross=indicators.get(
+                    "cdc_zone_4h_green_streak_started_with_ema_cross"
+                ),
             )
             if not ema_ok:
                 return hold(f"EMA cross check failed: {ema_reason}", **common)
@@ -509,6 +531,9 @@ class CDCActionZoneStrategy(Strategy):
                 ema_fast, ema_slow, ema_fast_prev, ema_slow_prev,
                 red_streak=red_streak,
                 fresh_zone_window=fresh_zone_window if require_fresh_zone else 0,
+                streak_started_with_cross=indicators.get(
+                    "cdc_zone_4h_red_streak_started_with_ema_cross"
+                ),
             )
             if not ema_ok:
                 return hold(f"Bearish EMA cross check failed: {ema_reason}", **common)
@@ -701,6 +726,9 @@ class CDCActionZoneStrategy(Strategy):
                 red_streak=red_streak,
                 fresh_zone_window=fresh_zone_window,
                 require_fresh_zone=require_fresh_zone,
+                streak_started_with_cross=indicators.get(
+                    "cdc_zone_4h_red_streak_started_with_ema_cross"
+                ),
             )
         else:
             ema_cross_ok, cross_val = self._ema_cross_display(
@@ -708,6 +736,9 @@ class CDCActionZoneStrategy(Strategy):
                 green_streak=green_streak,
                 fresh_zone_window=fresh_zone_window,
                 require_fresh_zone=require_fresh_zone,
+                streak_started_with_cross=indicators.get(
+                    "cdc_zone_4h_green_streak_started_with_ema_cross"
+                ),
             )
 
         in_target_zone = h4_zone == target_zone

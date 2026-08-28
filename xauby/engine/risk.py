@@ -407,11 +407,36 @@ class RiskMixin:
             return {}
         return cfg
 
-    def _is_buy_blocked_by_cooldown(self, symbol: Optional[str] = None) -> Tuple[bool, str]:
+    def _is_buy_blocked_by_cooldown(
+        self,
+        symbol: Optional[str] = None,
+        signal: Any = None,
+    ) -> Tuple[bool, str]:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
         last = self._latest_closed_trade_for_cooldown(sym)
         if not last:
             return False, ""
+
+        # CDC fresh-zone windows may span several bars.  Do not allow an exit
+        # (including minimal ROI) to reuse the same EMA cross: the candidate
+        # streak must have started strictly after the latest closed trade.
+        if self._strategy_name_for_symbol(sym) == "xauby_actionzone" and signal is not None:
+            indicators = getattr(signal, "indicators", {}) or {}
+            try:
+                streak_started_at = datetime.fromtimestamp(
+                    float(indicators.get("cdc_zone_4h_streak_started_at")),
+                    tz=timezone.utc,
+                )
+            except (TypeError, ValueError, OSError):
+                streak_started_at = None
+            closed_at = self._closed_trade_dt(last)
+            if closed_at is not None and (
+                streak_started_at is None or streak_started_at <= closed_at
+            ):
+                return True, (
+                    f"{sym} waiting for a new CDC EMA cross after exit at "
+                    f"{closed_at.replace(tzinfo=None).isoformat()}"
+                )
 
         guard_cfg = self._strategy_reentry_guard_config(sym)
         if guard_cfg:

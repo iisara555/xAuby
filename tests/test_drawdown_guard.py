@@ -318,6 +318,62 @@ class TestDrawdownGuard(unittest.TestCase):
 
         self.assertEqual(e._is_buy_blocked_by_cooldown("SOLUSDT"), (False, ""))
 
+    def test_cdc_reentry_guard_blocks_cross_that_predates_latest_exit(self):
+        e = _stub({})
+        e._sym = lambda: "XAUUSDT"
+        e._execution_mode = lambda symbol=None: "live"
+        e._strategy_name_for_symbol = lambda symbol: "xauby_actionzone"
+        e.db = mock.Mock()
+        closed_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        e.db.get_closed_trades.return_value = [
+            {
+                "closed_at": closed_at.replace(tzinfo=None).isoformat(),
+                "net_pnl": 3.0,
+                "trigger": "Minimal ROI reached",
+                "execution_mode": "live",
+            }
+        ]
+        signal = mock.Mock(
+            indicators={
+                "cdc_zone_4h_streak_started_at": (
+                    closed_at - timedelta(hours=4)
+                ).timestamp()
+            }
+        )
+
+        blocked, reason = e._is_buy_blocked_by_cooldown("XAUUSDT", signal=signal)
+
+        self.assertTrue(blocked)
+        self.assertIn("waiting for a new CDC EMA cross", reason)
+
+    def test_cdc_reentry_guard_allows_cross_after_latest_exit(self):
+        e = _stub({})
+        e._sym = lambda: "XAUUSDT"
+        e._execution_mode = lambda symbol=None: "live"
+        e._strategy_name_for_symbol = lambda symbol: "xauby_actionzone"
+        e.db = mock.Mock()
+        closed_at = datetime.now(timezone.utc) - timedelta(hours=4)
+        e.db.get_closed_trades.return_value = [
+            {
+                "closed_at": closed_at.replace(tzinfo=None).isoformat(),
+                "net_pnl": 3.0,
+                "trigger": "Minimal ROI reached",
+                "execution_mode": "live",
+            }
+        ]
+        signal = mock.Mock(
+            indicators={
+                "cdc_zone_4h_streak_started_at": (
+                    closed_at + timedelta(hours=1)
+                ).timestamp()
+            }
+        )
+
+        self.assertEqual(
+            e._is_buy_blocked_by_cooldown("XAUUSDT", signal=signal),
+            (False, ""),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
