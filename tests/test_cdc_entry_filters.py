@@ -157,7 +157,84 @@ class TestEntryThrust(unittest.TestCase):
         self.assertEqual(sig.action, "BUY")
 
 
+class TestFreshZoneCrossProvenance(unittest.TestCase):
+    def setUp(self):
+        self.strat = CDCActionZoneStrategy()
+
+    def test_later_green_bar_is_blocked_when_streak_did_not_start_with_cross(self):
+        indicators = _long_ind(
+            cdc_zone_4h_green_streak=2,
+            ema_fast_4h_prev=101.0,
+            ema_slow_4h_prev=100.0,
+            cdc_zone_4h_green_streak_started_with_ema_cross=False,
+        )
+        with patch(PATCH, return_value=indicators):
+            sig = self.strat.analyze(_ctx(fresh_zone_window=3))
+
+        self.assertEqual(sig.action, "HOLD")
+        self.assertIn("did not start with a bullish EMA cross", sig.reason)
+
+    def test_later_green_bar_passes_when_streak_started_with_cross(self):
+        indicators = _long_ind(
+            cdc_zone_4h_green_streak=2,
+            ema_fast_4h_prev=101.0,
+            ema_slow_4h_prev=100.0,
+            cdc_zone_4h_green_streak_started_with_ema_cross=True,
+        )
+        with patch(PATCH, return_value=indicators):
+            sig = self.strat.analyze(_ctx(fresh_zone_window=3))
+
+        self.assertEqual(sig.action, "BUY")
+
+    def test_later_red_bar_is_blocked_when_streak_did_not_start_with_cross(self):
+        indicators = _short_ind(
+            cdc_zone_4h_red_streak=2,
+            ema_fast_4h_prev=99.0,
+            ema_slow_4h_prev=100.0,
+            cdc_zone_4h_red_streak_started_with_ema_cross=False,
+        )
+        with patch(PATCH, return_value=indicators):
+            sig = self.strat.analyze(_ctx(fresh_zone_window=3))
+
+        self.assertEqual(sig.action, "HOLD")
+        self.assertIn("did not start with a bearish EMA cross", sig.reason)
+
+
 class TestClosePosIndicator(unittest.TestCase):
+    def test_streak_provenance_rejects_zone_transition_without_ema_cross(self):
+        from xauby.strategies.cdc_action_zone.indicators import compute_indicators
+
+        n = 120
+        close = [100.5] * (n - 2) + [102.0, 102.0]
+        frame = pd.DataFrame(
+            {
+                "open": close,
+                "high": [value + 1.0 for value in close],
+                "low": [value - 1.0 for value in close],
+                "close": close,
+                "volume": [1.0] * n,
+                "timestamp": list(range(n)),
+            }
+        )
+        fast = pd.Series([101.0] * n)
+        slow = pd.Series([100.0] * n)
+
+        with patch(
+            "xauby.strategies.cdc_action_zone.indicators.ta.ema",
+            side_effect=[fast, slow],
+        ):
+            result = compute_indicators(
+                frame,
+                None,
+                ap_smoothing=1,
+                last_bar_is_forming=False,
+            )
+
+        self.assertEqual(result["cdc_zone_4h_green_streak"], 2)
+        self.assertFalse(
+            result["cdc_zone_4h_green_streak_started_with_ema_cross"]
+        )
+
     def test_compute_close_position(self):
         from xauby.strategies.cdc_action_zone.indicators import compute_indicators
 
