@@ -21,6 +21,9 @@ set -euo pipefail
 echo "$*" >> "$FAKE_CURL_LOG"
 if [[ "${FAKE_BAD_ORIGIN:-}" != "" && "$*" == *"${FAKE_BAD_ORIGIN}/healthz"* ]]; then
   echo '{"ok":false}'
+elif [[ "${FAKE_FAIL_ORIGIN:-}" != "" && "$*" == *"${FAKE_FAIL_ORIGIN}/healthz"* ]]; then
+  echo 'curl: (22) upstream returned 502' >&2
+  exit 22
 else
   echo '{"ok":true}'
 fi
@@ -33,13 +36,14 @@ fi
     def tearDown(self):
         self.temp.cleanup()
 
-    def _run(self, bad_origin=""):
+    def _run(self, bad_origin="", fail_origin=""):
         env = os.environ.copy()
         env.update(
             {
                 "CURL_BIN": str(self.curl),
                 "FAKE_CURL_LOG": str(self.log),
                 "FAKE_BAD_ORIGIN": bad_origin,
+                "FAKE_FAIL_ORIGIN": fail_origin,
                 "XAUBY_PUBLIC_URL": "https://frontend.example",
                 "XAUBY_API_ORIGIN": "https://api.example",
             }
@@ -59,6 +63,15 @@ fi
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("control-plane health did not return ok=true", result.stderr)
+
+    def test_transport_failure_names_origin_and_still_checks_the_other_origin(self):
+        result = self._run(fail_origin="https://frontend.example")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("frontend health request failed", result.stderr)
+        self.assertIn("upstream returned 502", result.stderr)
+        calls = self.log.read_text(encoding="utf-8")
+        self.assertIn("https://api.example/healthz", calls)
 
 
 if __name__ == "__main__":

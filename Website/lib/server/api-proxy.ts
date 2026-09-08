@@ -56,6 +56,27 @@ function upstreamUrl(request: Request, pathname: string): URL {
   return target;
 }
 
+function upstreamErrorDetails(error: unknown): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    name: error instanceof Error ? error.name : "UnknownError",
+    message: error instanceof Error ? error.message : "unknown error",
+  };
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (!cause || typeof cause !== "object") return details;
+
+  // Undici puts the useful network diagnosis on Error.cause. Keep the log
+  // deliberately allow-listed: enough to distinguish DNS, timeout and reset
+  // failures without serialising request headers, cookies or bodies.
+  const causeRecord = cause as Record<string, unknown>;
+  for (const key of ["name", "message", "code", "errno", "syscall"]) {
+    const value = causeRecord[key];
+    if (typeof value === "string" || typeof value === "number") {
+      details[`cause_${key}`] = value;
+    }
+  }
+  return details;
+}
+
 export function scopedPath(prefix: string, segments: string[]): string | null {
   // Catch-all route params are user controlled. Reject traversal and encoded
   // separators before URL resolution can normalize them outside the route's
@@ -104,7 +125,8 @@ export async function proxyApiRequest(request: Request, pathname: string): Promi
     console.error("xAuby API upstream request failed", {
       method: request.method,
       pathname,
-      error: error instanceof Error ? error.message : "unknown error",
+      region: process.env.VERCEL_REGION ?? "unknown",
+      ...upstreamErrorDetails(error),
     });
     return Response.json({ detail: "API upstream unavailable" }, { status: 502 });
   }
