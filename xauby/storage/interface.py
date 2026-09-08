@@ -116,6 +116,7 @@ class IDatabaseRepository(ABC):
         entry_regime: Optional[str] = None,
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
+        strategy_config_fingerprint: Optional[str] = None,
         execution_mode: Optional[str] = None,
         exchange_close_id: Optional[str] = None,
         exchange_position_id: Optional[str] = None,

@@ -15,12 +15,36 @@ sys.path.insert(0, str(ROOT))
 from xauby.runtime.strategy_pair_config import backtest_data_proxy_for_symbol
 from xauby.runtime.trading_config import (
     canonical_runtime_config,
+    effective_config_fingerprint,
     resolve_trading_config,
     strategy_name_for_symbol,
 )
 
 
 class TestTradingConfigResolver(unittest.TestCase):
+    def test_effective_config_fingerprint_is_stable_and_risk_sensitive(self):
+        base = {
+            "strategy": {"active": "supertrend_ema200"},
+            "portfolio": {"risk_pct": 0.01},
+        }
+        changed = {
+            "strategy": {"active": "supertrend_ema200"},
+            "portfolio": {"risk_pct": 0.02},
+        }
+
+        first = resolve_trading_config(base, symbol="BTCUSDT")
+        same = resolve_trading_config(dict(base), symbol="BTCUSDT")
+        other = resolve_trading_config(changed, symbol="BTCUSDT")
+
+        self.assertEqual(
+            effective_config_fingerprint(first),
+            effective_config_fingerprint(same),
+        )
+        self.assertNotEqual(
+            effective_config_fingerprint(first),
+            effective_config_fingerprint(other),
+        )
+
     def test_canonical_runtime_config_exposes_symbols_and_exchange(self):
         with tempfile.TemporaryDirectory() as tmp:
             whitelist_path = os.path.join(tmp, "coin_whitelist.json")

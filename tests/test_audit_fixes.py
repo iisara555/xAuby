@@ -116,6 +116,7 @@ class TestStopLossPlacementUsesAvailableBalance(unittest.TestCase):
         self.engine.live_trading_allowed = True
 
     def test_sl_qty_caps_to_available_balance_after_buy_fee(self):
+        self.engine.client.capabilities["swap"] = False
         self.engine.client.get_balances = MagicMock(
             return_value={"XAUT": {"available": 0.0112887, "reserved": 0.0}}
         )
@@ -139,6 +140,7 @@ class TestStopLossPlacementUsesAvailableBalance(unittest.TestCase):
         self.assertAlmostEqual(self.engine.client.place_order.call_args.kwargs["amount"], 0.0112)
 
     def test_sl_does_not_place_dust_order_when_balance_locked_by_existing_stop(self):
+        self.engine.client.capabilities["swap"] = False
         self.engine.client.get_balances = MagicMock(
             return_value={"SOL": {"available": 0.003319, "reserved": 0.68}}
         )
@@ -180,6 +182,27 @@ class TestStopLossPlacementUsesAvailableBalance(unittest.TestCase):
         self.assertTrue(kwargs["reduce_only"])
         self.assertAlmostEqual(kwargs["stop_price"], 105.0)
         self.assertAlmostEqual(kwargs["price"], 105.525)
+
+    def test_swap_sl_cancels_order_when_submitted_quantity_does_not_cover_position(self):
+        self.engine.client.cancel_order = MagicMock()
+        self.engine.client.place_order = MagicMock(
+            return_value={
+                "orderId": "undersized-sl",
+                "submittedBaseQty": 0.0005,
+            }
+        )
+
+        result = self.engine._place_sl_with_retry(
+            qty=0.0006,
+            stop_loss=62000.0,
+            symbol="BTCUSDT",
+            position_side="LONG",
+        )
+
+        self.assertIsNone(result)
+        self.engine.client.cancel_order.assert_called_once_with(
+            "BTCUSDT", "undersized-sl"
+        )
 
 
 class TestExchangeStopLossPartialFill(unittest.TestCase):

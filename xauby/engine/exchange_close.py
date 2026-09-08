@@ -179,9 +179,12 @@ def build_confirmed_trade(
         "trigger": trigger or "Exchange-confirmed position close",
         "opened_at": opened_at,
         "closed_at": history.get("closed_at"),
-        "entry_regime": None,
+        "entry_regime": state.get("entry_regime"),
         "exit_regime": None,
         "strategy_name": strategy_name,
+        "strategy_config_fingerprint": state.get(
+            "strategy_config_fingerprint"
+        ),
         "execution_mode": execution_mode,
         "exchange_close_id": history.get("exchange_close_id"),
         "exchange_position_id": history.get("exchange_position_id"),

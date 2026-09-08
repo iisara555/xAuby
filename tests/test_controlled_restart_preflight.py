@@ -192,7 +192,10 @@ def test_derivative_preflight_matches_side_quantity_and_entry(monkeypatch):
     )
     FakeClient.balances = {}
     FakeClient.orders = {
-        "BTCUSDT": [{"symbol": "BTC/USDT:USDT", "orderId": "sl-123"}]
+        "BTCUSDT": [{
+            "symbol": "BTC/USDT:USDT", "orderId": "sl-123",
+            "origQty": 0.0008, "side": "BUY",
+        }]
     }
     FakeClient.positions = [{
         "symbol": "BTC/USDT:USDT", "position_side": "SHORT",
@@ -207,6 +210,32 @@ def test_derivative_preflight_matches_side_quantity_and_entry(monkeypatch):
 
     assert report["safe_to_restart"] is True
     assert report["exchange_positions"]["BTCUSDT"]["position_side"] == "SHORT"
+
+
+def test_derivative_preflight_blocks_undersized_exchange_stop(monkeypatch):
+    FakeDB.position = FakePosition(
+        "bought", quantity=0.0008, stop_loss=62000.0,
+        stop_loss_order_id="sl-123", position_side="LONG", entry_price=63733.9,
+    )
+    FakeClient.balances = {}
+    FakeClient.orders = {
+        "BTCUSDT": [{
+            "symbol": "BTC/USDT:USDT", "orderId": "sl-123",
+            "origQty": 0.0007, "side": "SELL",
+        }]
+    }
+    FakeClient.positions = [{
+        "symbol": "BTC/USDT:USDT", "position_side": "LONG",
+        "quantity": 0.0008, "entry_price": 63733.9,
+    }]
+    _patch_common(
+        monkeypatch, {"aggregate": {"open_positions": 1}}, market_type="swap"
+    )
+
+    report = preflight.run_preflight()
+
+    assert report["safe_to_restart"] is False
+    assert any("stop quantity mismatch" in reason for reason in report["reasons"])
 
 
 def test_derivative_preflight_blocks_missing_exchange_stop(monkeypatch):

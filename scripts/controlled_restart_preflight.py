@@ -108,6 +108,19 @@ def _order_id(order: Any) -> str:
     return ""
 
 
+def _order_quantity(order: Any) -> float:
+    if not isinstance(order, dict):
+        return 0.0
+    for key in ("origQty", "amount", "quantity"):
+        value = order.get(key)
+        if value is not None:
+            try:
+                return abs(float(value))
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
 def _open_position_from_snapshot(snapshot: Dict[str, Any], symbol: str) -> Dict[str, Any]:
     pos = snapshot.get("position") or {}
     if pos.get("state") != "bought":
@@ -368,10 +381,15 @@ def run_preflight(
                         )
                     )
                 )
-                matching_sl_open = bool(
-                    tracked_sl_id
-                    and any(_order_id(order) == tracked_sl_id for order in orders)
+                matching_sl_order = next(
+                    (
+                        order
+                        for order in orders
+                        if tracked_sl_id and _order_id(order) == tracked_sl_id
+                    ),
+                    None,
                 )
+                matching_sl_open = matching_sl_order is not None
                 if exchange_sl_expected and not tracked_sl_id:
                     report["reasons"].append(
                         f"{pair.symbol} has a tracked stop price but no exchange stop order id"
@@ -380,6 +398,38 @@ def run_preflight(
                     report["reasons"].append(
                         f"{pair.symbol} tracked exchange stop {tracked_sl_id} is not open"
                     )
+                elif exchange_sl_expected and matching_sl_order is not None:
+                    expected_qty = float(
+                        (report["exchange_positions"].get(pair.symbol) or {}).get(
+                            "quantity"
+                        )
+                        or (tracked or {}).get("quantity")
+                        or 0.0
+                    )
+                    stop_qty = _order_quantity(matching_sl_order)
+                    strict_tolerance = max(abs(expected_qty) * 1e-9, 1e-12)
+                    if stop_qty <= 0:
+                        report["reasons"].append(
+                            f"{pair.symbol} tracked exchange stop {tracked_sl_id} "
+                            "quantity is unavailable"
+                        )
+                    elif abs(stop_qty - expected_qty) > strict_tolerance:
+                        report["reasons"].append(
+                            f"{pair.symbol} stop quantity mismatch: "
+                            f"exchange_stop={stop_qty} exchange_position={expected_qty}"
+                        )
+                    expected_side = (
+                        "BUY"
+                        if str((tracked or {}).get("position_side") or "LONG").upper()
+                        == "SHORT"
+                        else "SELL"
+                    )
+                    stop_side = str(matching_sl_order.get("side") or "").upper()
+                    if stop_side and stop_side != expected_side:
+                        report["reasons"].append(
+                            f"{pair.symbol} stop side mismatch: "
+                            f"exchange_stop={stop_side} expected={expected_side}"
+                        )
                 if orders:
                     report["open_orders"][pair.symbol] = orders
                     untracked_orders = [

@@ -12,7 +12,7 @@ from xauby.runtime.paths import runtime_path
 
 logger = logging.getLogger("lite_db")
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 DEFAULT_DB_PATH = "core/xauby.db"
 
 
@@ -130,6 +130,7 @@ class LiteDB(IDatabaseRepository):
                         entry_regime TEXT,
                         exit_regime TEXT,
                         strategy_name TEXT,
+                        strategy_config_fingerprint TEXT,
                         execution_mode TEXT,
                         exchange_close_id TEXT,
                         exchange_position_id TEXT,
@@ -166,6 +167,8 @@ class LiteDB(IDatabaseRepository):
                         ,funding_paid REAL NOT NULL DEFAULT 0.0
                         ,management_mode TEXT NOT NULL DEFAULT 'strategy'
                         ,exchange_position_id TEXT
+                        ,entry_regime TEXT
+                        ,strategy_config_fingerprint TEXT
                         ,partial_tp_taken INTEGER NOT NULL DEFAULT 0
                         ,excursion_tracking_complete INTEGER NOT NULL DEFAULT 0
                     )
@@ -440,6 +443,17 @@ class LiteDB(IDatabaseRepository):
                         except sqlite3.OperationalError:
                             pass
 
+                if user_version < 14:
+                    for sql in (
+                        "ALTER TABLE trade_states ADD COLUMN entry_regime TEXT",
+                        "ALTER TABLE trade_states ADD COLUMN strategy_config_fingerprint TEXT",
+                        "ALTER TABLE closed_trades ADD COLUMN strategy_config_fingerprint TEXT",
+                    ):
+                        try:
+                            conn.execute(sql)
+                        except sqlite3.OperationalError:
+                            pass
+
                 if user_version < SCHEMA_VERSION:
                     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
 
@@ -549,6 +563,8 @@ class LiteDB(IDatabaseRepository):
             "funding_paid": 0.0,
             "management_mode": "strategy",
             "exchange_position_id": None,
+            "entry_regime": None,
+            "strategy_config_fingerprint": None,
             "partial_tp_taken": 0,
         }
 
@@ -585,6 +601,8 @@ class LiteDB(IDatabaseRepository):
                 funding_paid=float(d.get("funding_paid", 0.0) or 0.0),
                 management_mode=str(d.get("management_mode") or "strategy").lower(),
                 exchange_position_id=d.get("exchange_position_id"),
+                entry_regime=d.get("entry_regime"),
+                strategy_config_fingerprint=d.get("strategy_config_fingerprint"),
                 partial_tp_taken=bool(d.get("partial_tp_taken", 0) or 0),
             )
         except Exception as e:
@@ -613,6 +631,8 @@ class LiteDB(IDatabaseRepository):
         funding_paid: float = 0.0,
         management_mode: str = "strategy",
         exchange_position_id: Optional[str] = None,
+        entry_regime: Optional[str] = None,
+        strategy_config_fingerprint: Optional[str] = None,
         partial_tp_taken: bool = False,
         excursion_tracking_complete: Optional[bool] = None,
         *,
@@ -649,6 +669,8 @@ class LiteDB(IDatabaseRepository):
             funding_paid = pos.funding_paid
             management_mode = pos.management_mode
             exchange_position_id = pos.exchange_position_id
+            entry_regime = pos.entry_regime
+            strategy_config_fingerprint = pos.strategy_config_fingerprint
             partial_tp_taken = pos.partial_tp_taken
         elif symbol_or_position is not None:
             symbol = symbol_or_position
@@ -664,7 +686,8 @@ class LiteDB(IDatabaseRepository):
                 if str(state or "").lower() == "bought":
                     existing = conn.execute(
                         "SELECT state, exchange_position_id, lowest_price_seen, "
-                        "excursion_tracking_complete "
+                        "excursion_tracking_complete, entry_regime, "
+                        "strategy_config_fingerprint "
                         "FROM trade_states WHERE symbol=?",
                         (sym,),
                     ).fetchone()
@@ -672,6 +695,12 @@ class LiteDB(IDatabaseRepository):
                         exchange_position_id = existing["exchange_position_id"]
                     if lowest_price_seen is None and existing:
                         lowest_price_seen = float(existing["lowest_price_seen"] or 0.0)
+                    if entry_regime is None and existing:
+                        entry_regime = existing["entry_regime"]
+                    if strategy_config_fingerprint is None and existing:
+                        strategy_config_fingerprint = existing[
+                            "strategy_config_fingerprint"
+                        ]
                     if not lowest_price_seen or lowest_price_seen <= 0:
                         lowest_price_seen = float(entry_price or 0.0)
                     if excursion_tracking_complete is None:
@@ -683,16 +712,19 @@ class LiteDB(IDatabaseRepository):
                 else:
                     lowest_price_seen = 0.0
                     excursion_tracking_complete = False
+                    entry_regime = None
+                    strategy_config_fingerprint = None
                 conn.execute("""
                     INSERT INTO trade_states (
                         symbol, state, entry_price, stop_loss, take_profit,
                         highest_price_seen, lowest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
                         liquidation_price, funding_paid, management_mode,
-                        exchange_position_id,
+                        exchange_position_id, entry_regime,
+                        strategy_config_fingerprint,
                         partial_tp_taken, excursion_tracking_complete
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state=excluded.state,
                         entry_price=excluded.entry_price,
@@ -711,6 +743,8 @@ class LiteDB(IDatabaseRepository):
                         funding_paid=excluded.funding_paid,
                         management_mode=excluded.management_mode,
                         exchange_position_id=excluded.exchange_position_id,
+                        entry_regime=excluded.entry_regime,
+                        strategy_config_fingerprint=excluded.strategy_config_fingerprint,
                         partial_tp_taken=excluded.partial_tp_taken,
                         excursion_tracking_complete=excluded.excursion_tracking_complete
                 """, (
@@ -722,6 +756,12 @@ class LiteDB(IDatabaseRepository):
                     float(liquidation_price or 0.0), float(funding_paid or 0.0),
                     str(management_mode or "strategy").lower(),
                     str(exchange_position_id) if exchange_position_id else None,
+                    str(entry_regime) if entry_regime else None,
+                    (
+                        str(strategy_config_fingerprint)
+                        if strategy_config_fingerprint
+                        else None
+                    ),
                     1 if partial_tp_taken else 0,
                     1 if excursion_tracking_complete else 0,
                 ))
@@ -806,6 +846,7 @@ class LiteDB(IDatabaseRepository):
         entry_regime: Optional[str] = None,
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
+        strategy_config_fingerprint: Optional[str] = None,
         execution_mode: Optional[str] = None,
         exchange_close_id: Optional[str] = None,
         exchange_position_id: Optional[str] = None,
@@ -836,6 +877,7 @@ class LiteDB(IDatabaseRepository):
             entry_regime = t.get("entry_regime")
             exit_regime = t.get("exit_regime")
             strategy_name = t.get("strategy_name")
+            strategy_config_fingerprint = t.get("strategy_config_fingerprint")
             execution_mode = t.get("execution_mode")
             exchange_close_id = t.get("exchange_close_id")
             exchange_position_id = t.get("exchange_position_id")
@@ -867,16 +909,17 @@ class LiteDB(IDatabaseRepository):
                         symbol, side, amount, entry_price, exit_price, entry_cost,
                         gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                         net_pnl_pct, trigger, opened_at, closed_at, entry_regime, exit_regime,
-                        strategy_name, execution_mode, exchange_close_id,
+                        strategy_name, strategy_config_fingerprint, execution_mode, exchange_close_id,
                         exchange_position_id, pnl_source, pnl_confirmed, funding_fee,
                         mae_pct, mfe_pct, excursion_measured
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     sym, side, amount, entry_price, exit_price, entry_cost,
                     gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                     net_pnl_pct, trigger, opened_at, closed_str, entry_regime, exit_regime,
-                    strategy_name, mode, exchange_close_id, exchange_position_id,
+                    strategy_name, strategy_config_fingerprint, mode, exchange_close_id,
+                    exchange_position_id,
                     str(pnl_source or "engine"), 1 if pnl_confirmed else 0,
                     float(funding_fee or 0.0),
                     float(mae_pct or 0.0), float(mfe_pct or 0.0),
@@ -908,6 +951,7 @@ class LiteDB(IDatabaseRepository):
         entry_regime: Optional[str] = None,
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
+        strategy_config_fingerprint: Optional[str] = None,
         execution_mode: Optional[str] = None,
         exchange_close_id: Optional[str] = None,
         exchange_position_id: Optional[str] = None,
@@ -927,10 +971,17 @@ class LiteDB(IDatabaseRepository):
             with conn:
                 state_row = conn.execute(
                     "SELECT position_side, highest_price_seen, lowest_price_seen, "
-                    "excursion_tracking_complete "
+                    "excursion_tracking_complete, entry_regime, "
+                    "strategy_config_fingerprint "
                     "FROM trade_states WHERE symbol=? AND state='bought'",
                     (sym,),
                 ).fetchone()
+                if entry_regime is None and state_row is not None:
+                    entry_regime = state_row["entry_regime"]
+                if strategy_config_fingerprint is None and state_row is not None:
+                    strategy_config_fingerprint = state_row[
+                        "strategy_config_fingerprint"
+                    ]
                 excursion_measured = bool(
                     float(entry_price or 0.0) > 0
                     and state_row is not None
@@ -959,16 +1010,17 @@ class LiteDB(IDatabaseRepository):
                         symbol, side, amount, entry_price, exit_price, entry_cost,
                         gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                         net_pnl_pct, trigger, opened_at, closed_at, entry_regime, exit_regime,
-                        strategy_name, execution_mode, exchange_close_id,
+                        strategy_name, strategy_config_fingerprint, execution_mode, exchange_close_id,
                         exchange_position_id, pnl_source, pnl_confirmed, funding_fee,
                         mae_pct, mfe_pct, excursion_measured
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     sym, side, amount, entry_price, exit_price, entry_cost,
                     gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                     net_pnl_pct, trigger, opened_at, closed_str, entry_regime, exit_regime,
-                    strategy_name, mode, exchange_close_id, exchange_position_id,
+                    strategy_name, strategy_config_fingerprint, mode, exchange_close_id,
+                    exchange_position_id,
                     str(pnl_source or "engine"), 1 if pnl_confirmed else 0,
                     float(funding_fee or 0.0),
                     float(mae_pct or 0.0), float(mfe_pct or 0.0),
@@ -980,10 +1032,11 @@ class LiteDB(IDatabaseRepository):
                         highest_price_seen, lowest_price_seen, quantity, opened_at, last_transition_at,
                         stop_loss_order_id, position_side, leverage, margin_mode,
                         liquidation_price, funding_paid, management_mode,
-                        exchange_position_id,
+                        exchange_position_id, entry_regime,
+                        strategy_config_fingerprint,
                         partial_tp_taken, excursion_tracking_complete
                     )
-                    VALUES (?, 'idle', 0, 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0, 0)
+                    VALUES (?, 'idle', 0, 0, 0, 0, 0, 0, NULL, ?, NULL, 'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, NULL, NULL, 0, 0)
                     ON CONFLICT(symbol) DO UPDATE SET
                         state='idle',
                         entry_price=0,
@@ -998,6 +1051,8 @@ class LiteDB(IDatabaseRepository):
                         position_side='LONG', leverage=1.0, margin_mode='spot',
                         liquidation_price=0, funding_paid=0, management_mode='strategy',
                         exchange_position_id=NULL,
+                        entry_regime=NULL,
+                        strategy_config_fingerprint=NULL,
                         partial_tp_taken=0,
                         excursion_tracking_complete=0
                 """, (sym, transition_str))
@@ -1058,11 +1113,13 @@ class LiteDB(IDatabaseRepository):
                             highest_price_seen, lowest_price_seen, quantity, opened_at, last_transition_at,
                             stop_loss_order_id, position_side, leverage, margin_mode,
                             liquidation_price, funding_paid, management_mode,
-                            exchange_position_id, partial_tp_taken,
+                            exchange_position_id, entry_regime,
+                            strategy_config_fingerprint, partial_tp_taken,
                             excursion_tracking_complete
                         )
                         VALUES (?, 'idle', 0, 0, 0, 0, 0, 0, NULL, ?, NULL,
-                                'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL, 0, 0)
+                                'LONG', 1.0, 'spot', 0, 0, 'strategy', NULL,
+                                NULL, NULL, 0, 0)
                         ON CONFLICT(symbol) DO UPDATE SET
                             state='idle', entry_price=0, stop_loss=0, take_profit=0,
                             highest_price_seen=0, lowest_price_seen=0, quantity=0, opened_at=NULL,
@@ -1070,6 +1127,7 @@ class LiteDB(IDatabaseRepository):
                             stop_loss_order_id=NULL, position_side='LONG', leverage=1.0,
                             margin_mode='spot', liquidation_price=0, funding_paid=0,
                             management_mode='strategy', exchange_position_id=NULL,
+                            entry_regime=NULL, strategy_config_fingerprint=NULL,
                             partial_tp_taken=0,
                             excursion_tracking_complete=0
                         """,
@@ -1157,13 +1215,14 @@ class LiteDB(IDatabaseRepository):
                             symbol, side, amount, entry_price, exit_price, entry_cost,
                             gross_exit, entry_fee, exit_fee, total_fees, net_pnl,
                             net_pnl_pct, trigger, opened_at, closed_at, entry_regime,
-                            exit_regime, strategy_name, execution_mode,
+                            exit_regime, strategy_name, strategy_config_fingerprint,
+                            execution_mode,
                             exchange_close_id, exchange_position_id, pnl_source,
                             pnl_confirmed, funding_fee, mae_pct, mfe_pct,
                             excursion_measured
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(trade["symbol"]).upper().replace("_", ""),
@@ -1184,6 +1243,7 @@ class LiteDB(IDatabaseRepository):
                             trade.get("entry_regime"),
                             trade.get("exit_regime"),
                             trade.get("strategy_name"),
+                            trade.get("strategy_config_fingerprint"),
                             str(trade.get("execution_mode") or "live").lower(),
                             exchange_close_id,
                             trade.get("exchange_position_id"),

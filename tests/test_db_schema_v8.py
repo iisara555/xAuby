@@ -19,6 +19,7 @@ class TestSchemaV8Migration(unittest.TestCase):
                 cols = [r[1] for r in conn.execute("PRAGMA table_info(closed_trades)").fetchall()]
                 state_cols = [r[1] for r in conn.execute("PRAGMA table_info(trade_states)").fetchall()]
                 self.assertIn("execution_mode", cols)
+                self.assertIn("strategy_config_fingerprint", cols)
                 self.assertIn("exchange_close_id", cols)
                 self.assertIn("exchange_position_id", cols)
                 self.assertIn("pnl_source", cols)
@@ -31,6 +32,8 @@ class TestSchemaV8Migration(unittest.TestCase):
                 self.assertIn("exchange_position_id", state_cols)
                 self.assertIn("lowest_price_seen", state_cols)
                 self.assertIn("excursion_tracking_complete", state_cols)
+                self.assertIn("entry_regime", state_cols)
+                self.assertIn("strategy_config_fingerprint", state_cols)
                 conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='regime_history'"
                 )
@@ -124,6 +127,50 @@ class TestSchemaV8Migration(unittest.TestCase):
 
             state = db.get_trade_state("BTCUSDT")
             self.assertEqual(state.management_mode, "manual")
+
+    def test_entry_telemetry_survives_position_updates_and_closes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = LiteDB(os.path.join(tmp, "test.db"))
+            db.save_trade_state(
+                symbol="BTCUSDT",
+                state="bought",
+                entry_price=64000.0,
+                quantity=0.001,
+                entry_regime="BULL_TREND_WEAK",
+                strategy_config_fingerprint="0123456789abcdef",
+            )
+            # A trailing/quantity state update does not know the entry labels;
+            # the DB must preserve the frozen values rather than erase them.
+            db.save_trade_state(
+                symbol="BTCUSDT",
+                state="bought",
+                entry_price=64000.0,
+                stop_loss=63000.0,
+                quantity=0.0008,
+            )
+
+            state = db.get_trade_state("BTCUSDT")
+            self.assertEqual(state.entry_regime, "BULL_TREND_WEAK")
+            self.assertEqual(
+                state.strategy_config_fingerprint, "0123456789abcdef"
+            )
+            self.assertTrue(
+                db.close_position_atomic(
+                    "BTCUSDT",
+                    side="BUY",
+                    amount=0.0008,
+                    entry_price=64000.0,
+                    exit_price=65000.0,
+                    entry_cost=51.2,
+                    gross_exit=52.0,
+                    strategy_name="supertrend_ema200",
+                )
+            )
+            trade = db.get_closed_trades("BTCUSDT", limit=1)[0]
+            self.assertEqual(trade["entry_regime"], "BULL_TREND_WEAK")
+            self.assertEqual(
+                trade["strategy_config_fingerprint"], "0123456789abcdef"
+            )
 
     def test_strategy_handoff_transition_is_conditional_and_persistent(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1489,7 +1489,9 @@ class LoopMixin:
         now_iso = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         
         opened_at_str = state.get("opened_at") or now_iso
-        entry_regime = self.db.get_regime_at(opened_at_str, sym)
+        entry_regime = state.get("entry_regime") or self.db.get_regime_at(
+            opened_at_str, sym
+        )
         exit_regime = self.db.get_regime_at(now_iso, sym)
 
         return self.db.close_position_atomic(
@@ -1511,6 +1513,7 @@ class LoopMixin:
             entry_regime=entry_regime,
             exit_regime=exit_regime,
             strategy_name=self._strategy_name_for_symbol(sym),
+            strategy_config_fingerprint=state.get("strategy_config_fingerprint"),
             execution_mode=self._execution_mode(sym),
         )
 

@@ -161,6 +161,8 @@ class MockDatabaseRepository(IDatabaseRepository):
         funding_paid: float = 0.0,
         management_mode: str = "strategy",
         exchange_position_id: Optional[str] = None,
+        entry_regime: Optional[str] = None,
+        strategy_config_fingerprint: Optional[str] = None,
         partial_tp_taken: bool = False,
         excursion_tracking_complete: Optional[bool] = None,
         *,
@@ -174,6 +176,16 @@ class MockDatabaseRepository(IDatabaseRepository):
             symbol = str(symbol_or_position)
         if symbol is None:
             raise ValueError("save_trade_state requires a symbol or Position")
+        existing = self.trade_state
+        if (
+            str(state or "").lower() == "bought"
+            and isinstance(existing, Position)
+            and existing.symbol == symbol
+        ):
+            if entry_regime is None:
+                entry_regime = existing.entry_regime
+            if strategy_config_fingerprint is None:
+                strategy_config_fingerprint = existing.strategy_config_fingerprint
         self.trade_state = Position(
             symbol=symbol,
             state=state or "idle",
@@ -198,6 +210,8 @@ class MockDatabaseRepository(IDatabaseRepository):
             funding_paid=funding_paid,
             management_mode=management_mode,
             exchange_position_id=exchange_position_id,
+            entry_regime=entry_regime,
+            strategy_config_fingerprint=strategy_config_fingerprint,
             partial_tp_taken=partial_tp_taken,
         )
 
@@ -307,6 +321,7 @@ class MockDatabaseRepository(IDatabaseRepository):
         entry_regime: Optional[str] = None,
         exit_regime: Optional[str] = None,
         strategy_name: Optional[str] = None,
+        strategy_config_fingerprint: Optional[str] = None,
         execution_mode: Optional[str] = None,
         exchange_close_id: Optional[str] = None,
         exchange_position_id: Optional[str] = None,
@@ -335,6 +350,7 @@ class MockDatabaseRepository(IDatabaseRepository):
             "entry_regime": entry_regime,
             "exit_regime": exit_regime,
             "strategy_name": strategy_name,
+            "strategy_config_fingerprint": strategy_config_fingerprint,
             "execution_mode": execution_mode,
             "exchange_close_id": exchange_close_id,
             "exchange_position_id": exchange_position_id,
