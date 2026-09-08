@@ -18,11 +18,20 @@ class FakeRegistry:
 
 
 class FakePosition:
-    def __init__(self, state="idle", quantity=0.0, stop_loss_order_id=None,
-                 position_side="LONG", entry_price=0.0, exchange_position_id=None):
+    def __init__(
+        self,
+        state="idle",
+        quantity=0.0,
+        stop_loss=0.0,
+        stop_loss_order_id=None,
+        position_side="LONG",
+        entry_price=0.0,
+        exchange_position_id=None,
+    ):
         self._data = {
             "state": state,
             "quantity": quantity,
+            "stop_loss": stop_loss,
             "stop_loss_order_id": stop_loss_order_id,
             "position_side": position_side,
             "entry_price": entry_price,
@@ -47,6 +56,7 @@ class FakeClient:
     balances = {}
     orders = {}
     positions = []
+    capabilities = {"supports_stop_loss_limit": True}
 
     def __init__(self, *args, **kwargs):
         pass
@@ -176,11 +186,14 @@ def test_default_credentials_prefer_materialized_tenant_env(monkeypatch, tmp_pat
 
 def test_derivative_preflight_matches_side_quantity_and_entry(monkeypatch):
     FakeDB.position = FakePosition(
-        "bought", quantity=0.0008, position_side="SHORT", entry_price=63733.9,
+        "bought", quantity=0.0008, stop_loss=64500.0,
+        stop_loss_order_id="sl-123", position_side="SHORT", entry_price=63733.9,
         exchange_position_id="pos-1",
     )
     FakeClient.balances = {}
-    FakeClient.orders = {}
+    FakeClient.orders = {
+        "BTCUSDT": [{"symbol": "BTC/USDT:USDT", "orderId": "sl-123"}]
+    }
     FakeClient.positions = [{
         "symbol": "BTC/USDT:USDT", "position_side": "SHORT",
         "quantity": 0.0008, "entry_price": 63733.9,
@@ -194,6 +207,53 @@ def test_derivative_preflight_matches_side_quantity_and_entry(monkeypatch):
 
     assert report["safe_to_restart"] is True
     assert report["exchange_positions"]["BTCUSDT"]["position_side"] == "SHORT"
+
+
+def test_derivative_preflight_blocks_missing_exchange_stop(monkeypatch):
+    FakeDB.position = FakePosition(
+        "bought", quantity=0.0008, stop_loss=62000.0,
+        position_side="LONG", entry_price=63733.9,
+    )
+    FakeClient.balances = {}
+    FakeClient.orders = {}
+    FakeClient.positions = [{
+        "symbol": "BTCUSDT", "position_side": "LONG",
+        "quantity": 0.0008, "entry_price": 63733.9,
+    }]
+    _patch_common(
+        monkeypatch, {"aggregate": {"open_positions": 1}}, market_type="swap"
+    )
+
+    report = preflight.run_preflight()
+
+    assert report["safe_to_restart"] is False
+    assert (
+        "BTCUSDT has a tracked stop price but no exchange stop order id"
+        in report["reasons"]
+    )
+
+
+def test_derivative_preflight_blocks_exchange_stop_missing_from_order_book(
+    monkeypatch,
+):
+    FakeDB.position = FakePosition(
+        "bought", quantity=0.0008, stop_loss=62000.0,
+        stop_loss_order_id="sl-missing", position_side="LONG", entry_price=63733.9,
+    )
+    FakeClient.balances = {}
+    FakeClient.orders = {}
+    FakeClient.positions = [{
+        "symbol": "BTCUSDT", "position_side": "LONG",
+        "quantity": 0.0008, "entry_price": 63733.9,
+    }]
+    _patch_common(
+        monkeypatch, {"aggregate": {"open_positions": 1}}, market_type="swap"
+    )
+
+    report = preflight.run_preflight()
+
+    assert report["safe_to_restart"] is False
+    assert "BTCUSDT tracked exchange stop sl-missing is not open" in report["reasons"]
 
 
 def test_derivative_preflight_blocks_side_quantity_and_entry_drift(monkeypatch):

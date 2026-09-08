@@ -122,7 +122,7 @@ class TestDerivativesRuntime(unittest.TestCase):
         self.assertTrue(exchange.created[4]["reduceOnly"])
         self.assertEqual(exchange.created[4]["tdMode"], "isolated")
 
-    def test_okx_short_stop_is_reduce_only_buy_in_contract_units(self):
+    def test_okx_short_stop_uses_reduce_only_conditional_in_contract_units(self):
         exchange = FakeSwap()
         cfg = {
             **SWAP_CFG,
@@ -149,7 +149,8 @@ class TestDerivativesRuntime(unittest.TestCase):
         self.assertEqual(exchange.created[2], "buy")
         self.assertEqual(exchange.created[3], 2.0)
         self.assertTrue(exchange.created[4]["reduceOnly"])
-        self.assertEqual(exchange.created[4]["stopPrice"], 50250.0)
+        self.assertEqual(exchange.created[4]["stopLossPrice"], 50250.0)
+        self.assertNotIn("stopPrice", exchange.created[4])
 
     def test_short_sim_margin_and_pnl(self):
         with tempfile.TemporaryDirectory() as tmp:
