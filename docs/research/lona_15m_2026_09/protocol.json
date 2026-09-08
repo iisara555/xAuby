@@ -1,0 +1,49 @@
+{
+  "id": "btc-xau-okx-15m-lona-screen-v1",
+  "locked_before_results": "2026-09-08T23:44:06Z",
+  "engine": "LONA Backtrader remote; strategy.py",
+  "purpose": "Research candidates; native xAuby replay and certification still required for Arena admission.",
+  "timeframe": "15m",
+  "data": {"source": "OKX public history-candles", "warmup_start": "2026-03-09", "end_exclusive": "2026-09-08", "proxy": false},
+  "windows": {
+    "development": {"feed_start": "2026-03-09", "trade_start": 20260312, "trade_end": 20260708, "feed_end": "2026-07-10"},
+    "holdout": {"feed_start": "2026-07-07", "trade_start": 20260710, "trade_end": 20260906, "feed_end": "2026-09-08"}
+  },
+  "execution": {
+    "initial_cash_usdt": 10000,
+    "leverage": 1,
+    "max_exposure": 0.25,
+    "risk_fraction": 0.005,
+    "commission_base_per_side": 0.0007,
+    "commission_stress_per_side": 0.0012,
+    "cost_model": "All-in proportional cost: assumed 5 bp taker fee plus 2 bp friction per side; stress adds 5 bp per side. No historical funding or bid/ask reconstruction.",
+    "buy_on_close": false,
+    "fill_model": "Next-bar open market fills; close-based ATR stop/trail and time exits. Stops are not intrabar protection.",
+    "end_policy": "Flatten signals begin two UTC calendar days before each feed end; require zero remaining open trades.",
+    "quantity_step": {"BTCUSDT": 0.0001, "XAUUSDT": 0.001},
+    "quantity_note": "Current OKX ctVal times lotSz; historical lot-size changes and account-specific fees are not modeled."
+  },
+  "families": [
+    {"id": "donchian", "mode": 0, "name": "Donchian 48 + EMA200", "expected_regime": "Directional expansion, efficiency ratio >= 0.30", "trail_multiple": 4.0, "max_hold_bars": 96},
+    {"id": "vwap-pullback", "mode": 1, "name": "EMA20 reclaim + session VWAP", "expected_regime": "Trending pullback, efficiency ratio >= 0.25", "trail_multiple": 3.0, "max_hold_bars": 48},
+    {"id": "bb-rsi-range", "mode": 2, "name": "Bollinger re-entry + RSI", "expected_regime": "Range, efficiency ratio <= 0.25", "trail_multiple": 4.0, "max_hold_bars": 32}
+  ],
+  "symbols": ["BTCUSDT", "XAUUSDT"],
+  "sides": ["long", "short"],
+  "selection": {
+    "parameter_search": false,
+    "tests": "Six fixed pair/family candidates on two independent windows; stress only preliminary passers.",
+    "preliminary_gate": {"development_net_return_min_exclusive": 0, "holdout_net_return_min_exclusive": 0, "holdout_profit_factor_min": 1.2, "holdout_closed_trades_min": 30, "holdout_drawdown_max_pct": 10, "open_trades_max": 0},
+    "stress_gate": {"net_return_min_exclusive": 0, "profit_factor_min": 1.05},
+    "rank_by": "Holdout net return among passers, with drawdown/trades displayed; this is screening, not certification.",
+    "failed_policy": "Retain rejected research records; no live allocation.",
+    "live_weight": 0
+  },
+  "sources": [
+    "https://www.quantconnect.com/docs/v2/writing-algorithms/indicators/supported-indicators/donchian-channel",
+    "https://www.quantconnect.com/docs/v2/writing-algorithms/indicators/supported-indicators/intraday-vwap",
+    "https://www.bollingerbands.com/bollinger-band-rules",
+    "https://www.backtrader.com/docu/order-creation-execution/order-creation-execution/"
+  ],
+  "limits": ["180-day screen, not multiple market cycles", "Six inspected holdouts introduce selection bias; a new untouched forward window is needed", "Fixed cost assumptions, no historical funding", "Close-based stops may exceed nominal risk within a bar", "No xAuby live plugin parity or certification asserted"]
+}

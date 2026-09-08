@@ -1,0 +1,908 @@
+{
+  "protocol_id": "btc-xau-okx-15m-lona-screen-v1",
+  "regime_note": "Past-only ER20 descriptive attribution; not the production regime classifier",
+  "candidates": [
+    {
+      "key": "btc-donchian",
+      "symbol": "BTCUSDT",
+      "family": "donchian",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "reasons": [
+        "development net return is not positive",
+        "holdout net return is not positive",
+        "holdout PF below 1.20 or undefined"
+      ],
+      "results": {
+        "development": {
+          "report_id": "186b3d1c-50b9-4dcc-9931-7137ffd87404",
+          "audit_pass": true,
+          "net_return_pct": -2.9487,
+          "gross_pnl": 120.3511,
+          "modeled_costs": 415.2161,
+          "max_drawdown_pct": 4.56,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 120,
+          "net_pnl": -294.8651,
+          "profit_factor": 0.8086,
+          "win_rate_pct": 31.67,
+          "by_side": {
+            "SHORT": {
+              "trades": 60,
+              "net_pnl": 3.6908,
+              "profit_factor": 1.0049,
+              "win_rate_pct": 38.33
+            },
+            "LONG": {
+              "trades": 60,
+              "net_pnl": -298.5558,
+              "profit_factor": 0.6203,
+              "win_rate_pct": 25.0
+            }
+          },
+          "by_entry_regime": {
+            "directional_down": {
+              "trades": 60,
+              "net_pnl": 3.6908,
+              "profit_factor": 1.0049,
+              "win_rate_pct": 38.33
+            },
+            "directional_up": {
+              "trades": 60,
+              "net_pnl": -298.5558,
+              "profit_factor": 0.6203,
+              "win_rate_pct": 25.0
+            }
+          },
+          "by_exit_month": {
+            "2026-03": {
+              "trades": 22,
+              "net_pnl": -113.4211,
+              "profit_factor": 0.7135,
+              "win_rate_pct": 31.82
+            },
+            "2026-04": {
+              "trades": 33,
+              "net_pnl": -5.8846,
+              "profit_factor": 0.9848,
+              "win_rate_pct": 33.33
+            },
+            "2026-05": {
+              "trades": 26,
+              "net_pnl": -9.0056,
+              "profit_factor": 0.9603,
+              "win_rate_pct": 26.92
+            },
+            "2026-06": {
+              "trades": 30,
+              "net_pnl": -64.1152,
+              "profit_factor": 0.8477,
+              "win_rate_pct": 36.67
+            },
+            "2026-07": {
+              "trades": 9,
+              "net_pnl": -102.4385,
+              "profit_factor": 0.0706,
+              "win_rate_pct": 22.22
+            }
+          }
+        },
+        "holdout": {
+          "report_id": "1ef87269-2f76-4f9b-a0dd-158aab239eab",
+          "audit_pass": true,
+          "net_return_pct": -1.5483,
+          "gross_pnl": 82.8222,
+          "modeled_costs": 237.6485,
+          "max_drawdown_pct": 3.51,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 69,
+          "net_pnl": -154.8263,
+          "profit_factor": 0.7945,
+          "win_rate_pct": 23.19,
+          "by_side": {
+            "LONG": {
+              "trades": 39,
+              "net_pnl": 76.2809,
+              "profit_factor": 1.1901,
+              "win_rate_pct": 23.08
+            },
+            "SHORT": {
+              "trades": 30,
+              "net_pnl": -231.1072,
+              "profit_factor": 0.344,
+              "win_rate_pct": 23.33
+            }
+          },
+          "by_entry_regime": {
+            "directional_up": {
+              "trades": 39,
+              "net_pnl": 76.2809,
+              "profit_factor": 1.1901,
+              "win_rate_pct": 23.08
+            },
+            "directional_down": {
+              "trades": 30,
+              "net_pnl": -231.1072,
+              "profit_factor": 0.344,
+              "win_rate_pct": 23.33
+            }
+          },
+          "by_exit_month": {
+            "2026-07": {
+              "trades": 28,
+              "net_pnl": -216.7807,
+              "profit_factor": 0.2936,
+              "win_rate_pct": 25.0
+            },
+            "2026-08": {
+              "trades": 37,
+              "net_pnl": 57.1717,
+              "profit_factor": 1.1464,
+              "win_rate_pct": 21.62
+            },
+            "2026-09": {
+              "trades": 4,
+              "net_pnl": 4.7826,
+              "profit_factor": 1.0851,
+              "win_rate_pct": 25.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "btc-vwap-pullback",
+      "symbol": "BTCUSDT",
+      "family": "vwap-pullback",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "reasons": [
+        "development net return is not positive",
+        "holdout net return is not positive",
+        "holdout PF below 1.20 or undefined",
+        "fewer than 30 holdout trades"
+      ],
+      "results": {
+        "development": {
+          "report_id": "163f963a-cd4b-48ad-b974-1b39baa7c54e",
+          "audit_pass": true,
+          "net_return_pct": -4.9425,
+          "gross_pnl": -340.8725,
+          "modeled_costs": 153.3815,
+          "max_drawdown_pct": 5.24,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 45,
+          "net_pnl": -494.254,
+          "profit_factor": 0.1704,
+          "win_rate_pct": 15.56,
+          "by_side": {
+            "LONG": {
+              "trades": 23,
+              "net_pnl": -266.9638,
+              "profit_factor": 0.1922,
+              "win_rate_pct": 17.39
+            },
+            "SHORT": {
+              "trades": 22,
+              "net_pnl": -227.2902,
+              "profit_factor": 0.1433,
+              "win_rate_pct": 13.64
+            }
+          },
+          "by_entry_regime": {
+            "directional_up": {
+              "trades": 15,
+              "net_pnl": -118.0268,
+              "profit_factor": 0.3249,
+              "win_rate_pct": 26.67
+            },
+            "transition": {
+              "trades": 21,
+              "net_pnl": -205.0256,
+              "profit_factor": 0.1792,
+              "win_rate_pct": 14.29
+            },
+            "directional_down": {
+              "trades": 9,
+              "net_pnl": -171.2016,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            }
+          },
+          "by_exit_month": {
+            "2026-03": {
+              "trades": 7,
+              "net_pnl": -60.4753,
+              "profit_factor": 0.2806,
+              "win_rate_pct": 28.57
+            },
+            "2026-04": {
+              "trades": 12,
+              "net_pnl": -164.8857,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            },
+            "2026-05": {
+              "trades": 10,
+              "net_pnl": -96.0448,
+              "profit_factor": 0.2501,
+              "win_rate_pct": 10.0
+            },
+            "2026-06": {
+              "trades": 12,
+              "net_pnl": -148.7435,
+              "profit_factor": 0.2017,
+              "win_rate_pct": 25.0
+            },
+            "2026-07": {
+              "trades": 4,
+              "net_pnl": -24.1047,
+              "profit_factor": 0.2571,
+              "win_rate_pct": 25.0
+            }
+          }
+        },
+        "holdout": {
+          "report_id": "460f556f-9e24-42fe-9109-a1ab6315ece0",
+          "audit_pass": true,
+          "net_return_pct": -1.1411,
+          "gross_pnl": -13.1504,
+          "modeled_costs": 100.9637,
+          "max_drawdown_pct": 1.41,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 29,
+          "net_pnl": -114.1141,
+          "profit_factor": 0.4948,
+          "win_rate_pct": 24.14,
+          "by_side": {
+            "SHORT": {
+              "trades": 11,
+              "net_pnl": -52.0379,
+              "profit_factor": 0.4301,
+              "win_rate_pct": 18.18
+            },
+            "LONG": {
+              "trades": 18,
+              "net_pnl": -62.0762,
+              "profit_factor": 0.5387,
+              "win_rate_pct": 27.78
+            }
+          },
+          "by_entry_regime": {
+            "directional_down": {
+              "trades": 5,
+              "net_pnl": 0.9426,
+              "profit_factor": 1.0264,
+              "win_rate_pct": 20.0
+            },
+            "transition": {
+              "trades": 21,
+              "net_pnl": -90.6015,
+              "profit_factor": 0.4533,
+              "win_rate_pct": 28.57
+            },
+            "directional_up": {
+              "trades": 3,
+              "net_pnl": -24.4553,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            }
+          },
+          "by_exit_month": {
+            "2026-07": {
+              "trades": 12,
+              "net_pnl": -12.239,
+              "profit_factor": 0.8736,
+              "win_rate_pct": 33.33
+            },
+            "2026-08": {
+              "trades": 13,
+              "net_pnl": -59.9229,
+              "profit_factor": 0.3118,
+              "win_rate_pct": 23.08
+            },
+            "2026-09": {
+              "trades": 4,
+              "net_pnl": -41.9523,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "btc-bb-rsi-range",
+      "symbol": "BTCUSDT",
+      "family": "bb-rsi-range",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "reasons": [
+        "development net return is not positive",
+        "holdout net return is not positive",
+        "holdout PF below 1.20 or undefined"
+      ],
+      "results": {
+        "development": {
+          "report_id": "b6dfceb5-0b2b-445e-8d6a-8574d3bf2857",
+          "audit_pass": true,
+          "net_return_pct": -4.1995,
+          "gross_pnl": 80.4864,
+          "modeled_costs": 500.4316,
+          "max_drawdown_pct": 4.72,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 147,
+          "net_pnl": -419.9452,
+          "profit_factor": 0.5737,
+          "win_rate_pct": 48.3,
+          "by_side": {
+            "SHORT": {
+              "trades": 70,
+              "net_pnl": -219.8295,
+              "profit_factor": 0.5065,
+              "win_rate_pct": 41.43
+            },
+            "LONG": {
+              "trades": 77,
+              "net_pnl": -200.1156,
+              "profit_factor": 0.6291,
+              "win_rate_pct": 54.55
+            }
+          },
+          "by_entry_regime": {
+            "range": {
+              "trades": 147,
+              "net_pnl": -419.9452,
+              "profit_factor": 0.5737,
+              "win_rate_pct": 48.3
+            }
+          },
+          "by_exit_month": {
+            "2026-03": {
+              "trades": 20,
+              "net_pnl": -66.0376,
+              "profit_factor": 0.6233,
+              "win_rate_pct": 50.0
+            },
+            "2026-04": {
+              "trades": 40,
+              "net_pnl": -174.531,
+              "profit_factor": 0.3517,
+              "win_rate_pct": 40.0
+            },
+            "2026-05": {
+              "trades": 42,
+              "net_pnl": -159.9252,
+              "profit_factor": 0.3261,
+              "win_rate_pct": 38.1
+            },
+            "2026-06": {
+              "trades": 36,
+              "net_pnl": -3.7842,
+              "profit_factor": 0.9842,
+              "win_rate_pct": 63.89
+            },
+            "2026-07": {
+              "trades": 9,
+              "net_pnl": -15.6671,
+              "profit_factor": 0.7509,
+              "win_rate_pct": 66.67
+            }
+          }
+        },
+        "holdout": {
+          "report_id": "e8dcb69f-5b4f-4bdf-b00d-4a2d35d74d04",
+          "audit_pass": true,
+          "net_return_pct": -2.1763,
+          "gross_pnl": -37.344,
+          "modeled_costs": 180.2877,
+          "max_drawdown_pct": 2.48,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 52,
+          "net_pnl": -217.6317,
+          "profit_factor": 0.3395,
+          "win_rate_pct": 40.38,
+          "by_side": {
+            "SHORT": {
+              "trades": 31,
+              "net_pnl": -186.8735,
+              "profit_factor": 0.2133,
+              "win_rate_pct": 38.71
+            },
+            "LONG": {
+              "trades": 21,
+              "net_pnl": -30.7582,
+              "profit_factor": 0.6655,
+              "win_rate_pct": 42.86
+            }
+          },
+          "by_entry_regime": {
+            "range": {
+              "trades": 52,
+              "net_pnl": -217.6317,
+              "profit_factor": 0.3395,
+              "win_rate_pct": 40.38
+            }
+          },
+          "by_exit_month": {
+            "2026-07": {
+              "trades": 20,
+              "net_pnl": -76.3224,
+              "profit_factor": 0.4081,
+              "win_rate_pct": 40.0
+            },
+            "2026-08": {
+              "trades": 28,
+              "net_pnl": -113.4064,
+              "profit_factor": 0.2969,
+              "win_rate_pct": 39.29
+            },
+            "2026-09": {
+              "trades": 4,
+              "net_pnl": -27.9029,
+              "profit_factor": 0.289,
+              "win_rate_pct": 50.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "xau-donchian",
+      "symbol": "XAUUSDT",
+      "family": "donchian",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "reasons": [
+        "development net return is not positive",
+        "holdout net return is not positive",
+        "holdout PF below 1.20 or undefined"
+      ],
+      "results": {
+        "development": {
+          "report_id": "58ff7879-50a1-4f00-9886-fdd97e88fd0a",
+          "audit_pass": true,
+          "net_return_pct": -5.3408,
+          "gross_pnl": -37.0222,
+          "modeled_costs": 497.0539,
+          "max_drawdown_pct": 6.42,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 147,
+          "net_pnl": -534.0761,
+          "profit_factor": 0.5823,
+          "win_rate_pct": 28.57,
+          "by_side": {
+            "LONG": {
+              "trades": 76,
+              "net_pnl": -488.4003,
+              "profit_factor": 0.3174,
+              "win_rate_pct": 19.74
+            },
+            "SHORT": {
+              "trades": 71,
+              "net_pnl": -45.6758,
+              "profit_factor": 0.9189,
+              "win_rate_pct": 38.03
+            }
+          },
+          "by_entry_regime": {
+            "directional_up": {
+              "trades": 76,
+              "net_pnl": -488.4003,
+              "profit_factor": 0.3174,
+              "win_rate_pct": 19.74
+            },
+            "directional_down": {
+              "trades": 71,
+              "net_pnl": -45.6758,
+              "profit_factor": 0.9189,
+              "win_rate_pct": 38.03
+            }
+          },
+          "by_exit_month": {
+            "2026-03": {
+              "trades": 27,
+              "net_pnl": -180.8765,
+              "profit_factor": 0.5068,
+              "win_rate_pct": 18.52
+            },
+            "2026-04": {
+              "trades": 42,
+              "net_pnl": -198.1851,
+              "profit_factor": 0.3152,
+              "win_rate_pct": 28.57
+            },
+            "2026-05": {
+              "trades": 33,
+              "net_pnl": -63.8301,
+              "profit_factor": 0.7238,
+              "win_rate_pct": 33.33
+            },
+            "2026-06": {
+              "trades": 34,
+              "net_pnl": -41.2801,
+              "profit_factor": 0.8679,
+              "win_rate_pct": 32.35
+            },
+            "2026-07": {
+              "trades": 11,
+              "net_pnl": -49.9043,
+              "profit_factor": 0.3683,
+              "win_rate_pct": 27.27
+            }
+          }
+        },
+        "holdout": {
+          "report_id": "58a58de1-15e7-4176-90a1-d8b3b35cb765",
+          "audit_pass": true,
+          "net_return_pct": -1.7819,
+          "gross_pnl": 80.9686,
+          "modeled_costs": 259.1625,
+          "max_drawdown_pct": 2.54,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 75,
+          "net_pnl": -178.1939,
+          "profit_factor": 0.7005,
+          "win_rate_pct": 25.33,
+          "by_side": {
+            "SHORT": {
+              "trades": 34,
+              "net_pnl": -124.7461,
+              "profit_factor": 0.5015,
+              "win_rate_pct": 26.47
+            },
+            "LONG": {
+              "trades": 41,
+              "net_pnl": -53.4477,
+              "profit_factor": 0.8449,
+              "win_rate_pct": 24.39
+            }
+          },
+          "by_entry_regime": {
+            "directional_down": {
+              "trades": 34,
+              "net_pnl": -124.7461,
+              "profit_factor": 0.5015,
+              "win_rate_pct": 26.47
+            },
+            "directional_up": {
+              "trades": 41,
+              "net_pnl": -53.4477,
+              "profit_factor": 0.8449,
+              "win_rate_pct": 24.39
+            }
+          },
+          "by_exit_month": {
+            "2026-07": {
+              "trades": 30,
+              "net_pnl": -162.3333,
+              "profit_factor": 0.3479,
+              "win_rate_pct": 23.33
+            },
+            "2026-08": {
+              "trades": 38,
+              "net_pnl": -45.8645,
+              "profit_factor": 0.84,
+              "win_rate_pct": 26.32
+            },
+            "2026-09": {
+              "trades": 7,
+              "net_pnl": 30.0039,
+              "profit_factor": 1.505,
+              "win_rate_pct": 28.57
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "xau-vwap-pullback",
+      "symbol": "XAUUSDT",
+      "family": "vwap-pullback",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "reasons": [
+        "development net return is not positive",
+        "holdout net return is not positive",
+        "holdout PF below 1.20 or undefined",
+        "fewer than 30 holdout trades"
+      ],
+      "results": {
+        "development": {
+          "report_id": "02048582-a039-4023-a021-9b223aa6133a",
+          "audit_pass": true,
+          "net_return_pct": -1.1183,
+          "gross_pnl": 58.8025,
+          "modeled_costs": 170.6323,
+          "max_drawdown_pct": 1.59,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 49,
+          "net_pnl": -111.8298,
+          "profit_factor": 0.7291,
+          "win_rate_pct": 28.57,
+          "by_side": {
+            "SHORT": {
+              "trades": 28,
+              "net_pnl": -72.7708,
+              "profit_factor": 0.7325,
+              "win_rate_pct": 28.57
+            },
+            "LONG": {
+              "trades": 21,
+              "net_pnl": -39.059,
+              "profit_factor": 0.7225,
+              "win_rate_pct": 28.57
+            }
+          },
+          "by_entry_regime": {
+            "transition": {
+              "trades": 32,
+              "net_pnl": -146.8124,
+              "profit_factor": 0.5555,
+              "win_rate_pct": 31.25
+            },
+            "directional_down": {
+              "trades": 12,
+              "net_pnl": 67.4651,
+              "profit_factor": 2.3809,
+              "win_rate_pct": 25.0
+            },
+            "directional_up": {
+              "trades": 5,
+              "net_pnl": -32.4824,
+              "profit_factor": 0.0359,
+              "win_rate_pct": 20.0
+            }
+          },
+          "by_exit_month": {
+            "2026-03": {
+              "trades": 10,
+              "net_pnl": -97.9232,
+              "profit_factor": 0.4394,
+              "win_rate_pct": 20.0
+            },
+            "2026-04": {
+              "trades": 9,
+              "net_pnl": 43.0884,
+              "profit_factor": 2.2753,
+              "win_rate_pct": 22.22
+            },
+            "2026-05": {
+              "trades": 12,
+              "net_pnl": 47.3848,
+              "profit_factor": 1.7056,
+              "win_rate_pct": 41.67
+            },
+            "2026-06": {
+              "trades": 14,
+              "net_pnl": -46.6956,
+              "profit_factor": 0.4126,
+              "win_rate_pct": 35.71
+            },
+            "2026-07": {
+              "trades": 4,
+              "net_pnl": -57.6842,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            }
+          }
+        },
+        "holdout": {
+          "report_id": "7308fa03-98ea-4ed9-a3fe-6157c7be7a07",
+          "audit_pass": true,
+          "net_return_pct": -0.5476,
+          "gross_pnl": 15.0241,
+          "modeled_costs": 69.7819,
+          "max_drawdown_pct": 0.72,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 20,
+          "net_pnl": -54.7578,
+          "profit_factor": 0.5961,
+          "win_rate_pct": 20.0,
+          "by_side": {
+            "SHORT": {
+              "trades": 9,
+              "net_pnl": -92.3898,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            },
+            "LONG": {
+              "trades": 11,
+              "net_pnl": 37.632,
+              "profit_factor": 1.8713,
+              "win_rate_pct": 36.36
+            }
+          },
+          "by_entry_regime": {
+            "transition": {
+              "trades": 11,
+              "net_pnl": 33.3118,
+              "profit_factor": 1.7011,
+              "win_rate_pct": 36.36
+            },
+            "directional_up": {
+              "trades": 4,
+              "net_pnl": -33.0298,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            },
+            "directional_down": {
+              "trades": 5,
+              "net_pnl": -55.0398,
+              "profit_factor": 0.0,
+              "win_rate_pct": 0.0
+            }
+          },
+          "by_exit_month": {
+            "2026-07": {
+              "trades": 8,
+              "net_pnl": -32.3237,
+              "profit_factor": 0.1878,
+              "win_rate_pct": 12.5
+            },
+            "2026-08": {
+              "trades": 8,
+              "net_pnl": -18.541,
+              "profit_factor": 0.7001,
+              "win_rate_pct": 25.0
+            },
+            "2026-09": {
+              "trades": 4,
+              "net_pnl": -3.8932,
+              "profit_factor": 0.8853,
+              "win_rate_pct": 25.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": "xau-bb-rsi-range",
+      "symbol": "XAUUSDT",
+      "family": "bb-rsi-range",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "reasons": [
+        "development net return is not positive",
+        "holdout net return is not positive",
+        "holdout PF below 1.20 or undefined"
+      ],
+      "results": {
+        "development": {
+          "report_id": "e8332f01-22d3-4489-afc0-e73e6f7e44e5",
+          "audit_pass": true,
+          "net_return_pct": -4.1059,
+          "gross_pnl": -13.4705,
+          "modeled_costs": 397.1146,
+          "max_drawdown_pct": 4.24,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 116,
+          "net_pnl": -410.5851,
+          "profit_factor": 0.2982,
+          "win_rate_pct": 37.93,
+          "by_side": {
+            "LONG": {
+              "trades": 65,
+              "net_pnl": -195.8175,
+              "profit_factor": 0.3302,
+              "win_rate_pct": 38.46
+            },
+            "SHORT": {
+              "trades": 51,
+              "net_pnl": -214.7676,
+              "profit_factor": 0.2662,
+              "win_rate_pct": 37.25
+            }
+          },
+          "by_entry_regime": {
+            "range": {
+              "trades": 116,
+              "net_pnl": -410.5851,
+              "profit_factor": 0.2982,
+              "win_rate_pct": 37.93
+            }
+          },
+          "by_exit_month": {
+            "2026-03": {
+              "trades": 12,
+              "net_pnl": -92.0007,
+              "profit_factor": 0.1276,
+              "win_rate_pct": 25.0
+            },
+            "2026-04": {
+              "trades": 35,
+              "net_pnl": -83.3579,
+              "profit_factor": 0.5082,
+              "win_rate_pct": 45.71
+            },
+            "2026-05": {
+              "trades": 29,
+              "net_pnl": -60.1371,
+              "profit_factor": 0.4009,
+              "win_rate_pct": 34.48
+            },
+            "2026-06": {
+              "trades": 34,
+              "net_pnl": -175.3663,
+              "profit_factor": 0.1319,
+              "win_rate_pct": 35.29
+            },
+            "2026-07": {
+              "trades": 6,
+              "net_pnl": 0.2769,
+              "profit_factor": 1.036,
+              "win_rate_pct": 50.0
+            }
+          }
+        },
+        "holdout": {
+          "report_id": "0865934c-ef60-45e8-8e3b-73e0e2cb0e0b",
+          "audit_pass": true,
+          "net_return_pct": -1.8624,
+          "gross_pnl": 35.5753,
+          "modeled_costs": 221.813,
+          "max_drawdown_pct": 1.86,
+          "drawdown_source": "LONA marked-to-market summary; trade ledger alone cannot rederive intrabar drawdown",
+          "open_trades": 0,
+          "trades": 64,
+          "net_pnl": -186.2377,
+          "profit_factor": 0.2685,
+          "win_rate_pct": 28.12,
+          "by_side": {
+            "LONG": {
+              "trades": 30,
+              "net_pnl": -89.1565,
+              "profit_factor": 0.3114,
+              "win_rate_pct": 33.33
+            },
+            "SHORT": {
+              "trades": 34,
+              "net_pnl": -97.0812,
+              "profit_factor": 0.224,
+              "win_rate_pct": 23.53
+            }
+          },
+          "by_entry_regime": {
+            "range": {
+              "trades": 64,
+              "net_pnl": -186.2377,
+              "profit_factor": 0.2685,
+              "win_rate_pct": 28.12
+            }
+          },
+          "by_exit_month": {
+            "2026-07": {
+              "trades": 15,
+              "net_pnl": -47.8308,
+              "profit_factor": 0.1977,
+              "win_rate_pct": 26.67
+            },
+            "2026-08": {
+              "trades": 42,
+              "net_pnl": -111.4192,
+              "profit_factor": 0.3333,
+              "win_rate_pct": 28.57
+            },
+            "2026-09": {
+              "trades": 7,
+              "net_pnl": -26.9877,
+              "profit_factor": 0.0311,
+              "win_rate_pct": 28.57
+            }
+          }
+        }
+      }
+    }
+  ]
+}

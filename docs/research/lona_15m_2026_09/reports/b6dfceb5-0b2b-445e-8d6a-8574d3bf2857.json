@@ -1,0 +1,1518 @@
+{
+  "id": "b6dfceb5-0b2b-445e-8d6a-8574d3bf2857",
+  "name": "Candidate BTCUSDT 15m BB RSI Range v1.0.0 - Run #1",
+  "status": "COMPLETED",
+  "totalStats": {
+    "final_portfolio_value": 9580.05,
+    "realized_pnl": -419.95,
+    "total_return": -4.2,
+    "maximum_drawdown_percentage": 4.72,
+    "number_of_trades": 147,
+    "open_trades": 0,
+    "percentage_of_winning_trades": 48.3,
+    "annualized_sharpe_ratio": 0,
+    "cagr": -11.96,
+    "profit_factor": 0.57,
+    "payoff_ratio": 0.61,
+    "expectancy": -2.86,
+    "average_trade": -2.86,
+    "recovery_factor": 0.89,
+    "calmar_ratio": -2.53,
+    "std_dev_returns": 0.0165,
+    "annualized_volatility": 3.1,
+    "avg_bars_held": 7.7,
+    "beta": null,
+    "alpha": null,
+    "sortino_ratio": -5.24,
+    "information_ratio": -2.82
+  },
+  "trades": [
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-13T09:00:00+00:00",
+      "exit_time": "2026-03-13T10:30:00+00:00",
+      "entry_price": 71795.3,
+      "exit_price": 72328.4,
+      "quantity": 0.034800000000000005,
+      "pnl": -18.5518799999997
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-13T16:45:00+00:00",
+      "exit_time": "2026-03-13T21:15:00+00:00",
+      "entry_price": 71790.9,
+      "exit_price": 71369.9,
+      "quantity": 0.0347,
+      "pnl": -14.6087
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-13T23:00:00+00:00",
+      "exit_time": "2026-03-14T03:15:00+00:00",
+      "entry_price": 70785.1,
+      "exit_price": 70960,
+      "quantity": 0.0351,
+      "pnl": 6.138989999999795
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-14T07:00:00+00:00",
+      "exit_time": "2026-03-14T11:15:00+00:00",
+      "entry_price": 70591.7,
+      "exit_price": 70628.8,
+      "quantity": 0.0352,
+      "pnl": 1.305920000000205
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-15T09:45:00+00:00",
+      "exit_time": "2026-03-15T12:30:00+00:00",
+      "entry_price": 71709,
+      "exit_price": 71673.3,
+      "quantity": 0.0347,
+      "pnl": 1.238789999999899
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-15T22:15:00+00:00",
+      "exit_time": "2026-03-15T22:45:00+00:00",
+      "entry_price": 71766.9,
+      "exit_price": 72349.9,
+      "quantity": 0.0346,
+      "pnl": -20.1718
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-16T14:30:00+00:00",
+      "exit_time": "2026-03-16T14:45:00+00:00",
+      "entry_price": 73570,
+      "exit_price": 73107.4,
+      "quantity": 0.0337,
+      "pnl": 15.589620000000197
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-18T20:30:00+00:00",
+      "exit_time": "2026-03-18T21:45:00+00:00",
+      "entry_price": 70940.1,
+      "exit_price": 71290.5,
+      "quantity": 0.035,
+      "pnl": 12.263999999999797
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-19T12:45:00+00:00",
+      "exit_time": "2026-03-19T13:15:00+00:00",
+      "entry_price": 69610.1,
+      "exit_price": 69066.7,
+      "quantity": 0.0357,
+      "pnl": -19.399380000000313
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-20T08:45:00+00:00",
+      "exit_time": "2026-03-20T09:30:00+00:00",
+      "entry_price": 71075.1,
+      "exit_price": 70481.7,
+      "quantity": 0.0349,
+      "pnl": 20.709660000000305
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-20T14:30:00+00:00",
+      "exit_time": "2026-03-20T18:00:00+00:00",
+      "entry_price": 69911.2,
+      "exit_price": 69965.2,
+      "quantity": 0.035500000000000004,
+      "pnl": 1.9170000000000003
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-22T08:15:00+00:00",
+      "exit_time": "2026-03-22T08:30:00+00:00",
+      "entry_price": 68950,
+      "exit_price": 68588,
+      "quantity": 0.036000000000000004,
+      "pnl": -13.032000000000002
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-25T05:45:00+00:00",
+      "exit_time": "2026-03-25T08:00:00+00:00",
+      "entry_price": 71192.8,
+      "exit_price": 70891.2,
+      "quantity": 0.034800000000000005,
+      "pnl": 10.495680000000204
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-25T15:30:00+00:00",
+      "exit_time": "2026-03-25T16:30:00+00:00",
+      "entry_price": 70989.9,
+      "exit_price": 71468,
+      "quantity": 0.035,
+      "pnl": 16.733500000000205
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-26T16:00:00+00:00",
+      "exit_time": "2026-03-26T18:00:00+00:00",
+      "entry_price": 69052,
+      "exit_price": 68460.8,
+      "quantity": 0.036000000000000004,
+      "pnl": -21.283199999999898
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-27T04:30:00+00:00",
+      "exit_time": "2026-03-27T05:15:00+00:00",
+      "entry_price": 68504.9,
+      "exit_price": 68784.7,
+      "quantity": 0.0362,
+      "pnl": 10.128760000000106
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-27T09:30:00+00:00",
+      "exit_time": "2026-03-27T10:45:00+00:00",
+      "entry_price": 67899.9,
+      "exit_price": 66860,
+      "quantity": 0.036500000000000005,
+      "pnl": -37.956349999999794
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-29T03:45:00+00:00",
+      "exit_time": "2026-03-29T05:30:00+00:00",
+      "entry_price": 66886.8,
+      "exit_price": 66597.4,
+      "quantity": 0.0369,
+      "pnl": 10.678860000000324
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-03-29T23:15:00+00:00",
+      "exit_time": "2026-03-30T00:30:00+00:00",
+      "entry_price": 66065.5,
+      "exit_price": 66540.1,
+      "quantity": 0.0374,
+      "pnl": 17.75004000000022
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-31T14:45:00+00:00",
+      "exit_time": "2026-03-31T15:00:00+00:00",
+      "entry_price": 67190.1,
+      "exit_price": 66552.8,
+      "quantity": 0.0368,
+      "pnl": 23.452640000000105
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-03-31T17:30:00+00:00",
+      "exit_time": "2026-04-01T00:15:00+00:00",
+      "entry_price": 68003.9,
+      "exit_price": 68010,
+      "quantity": 0.036500000000000005,
+      "pnl": -0.22265000000021248
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-01T05:45:00+00:00",
+      "exit_time": "2026-04-01T06:45:00+00:00",
+      "entry_price": 68480,
+      "exit_price": 69188.6,
+      "quantity": 0.0362,
+      "pnl": -25.65132000000021
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-02T10:30:00+00:00",
+      "exit_time": "2026-04-02T13:45:00+00:00",
+      "entry_price": 66335,
+      "exit_price": 65825.1,
+      "quantity": 0.0373,
+      "pnl": -19.019269999999782
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-04T11:30:00+00:00",
+      "exit_time": "2026-04-04T14:45:00+00:00",
+      "entry_price": 67093.1,
+      "exit_price": 67066.5,
+      "quantity": 0.0368,
+      "pnl": 0.9788800000002141
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-04T16:15:00+00:00",
+      "exit_time": "2026-04-04T18:45:00+00:00",
+      "entry_price": 67305.5,
+      "exit_price": 67243.8,
+      "quantity": 0.0366,
+      "pnl": 2.2582199999998935
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-05T02:30:00+00:00",
+      "exit_time": "2026-04-05T04:30:00+00:00",
+      "entry_price": 67100,
+      "exit_price": 67154.9,
+      "quantity": 0.0367,
+      "pnl": 2.0148299999997867
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-05T06:45:00+00:00",
+      "exit_time": "2026-04-05T09:15:00+00:00",
+      "entry_price": 66793.1,
+      "exit_price": 66894.1,
+      "quantity": 0.0369,
+      "pnl": 3.7269
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-05T13:00:00+00:00",
+      "exit_time": "2026-04-05T14:45:00+00:00",
+      "entry_price": 66756.2,
+      "exit_price": 66910.3,
+      "quantity": 0.0369,
+      "pnl": 5.6862900000002154
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-05T16:00:00+00:00",
+      "exit_time": "2026-04-05T19:45:00+00:00",
+      "entry_price": 67281,
+      "exit_price": 67284.3,
+      "quantity": 0.0366,
+      "pnl": -0.12078000000010652
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-05T21:15:00+00:00",
+      "exit_time": "2026-04-05T22:30:00+00:00",
+      "entry_price": 67492.2,
+      "exit_price": 67403,
+      "quantity": 0.036500000000000005,
+      "pnl": 3.255799999999894
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-06T10:00:00+00:00",
+      "exit_time": "2026-04-06T12:15:00+00:00",
+      "entry_price": 69700.1,
+      "exit_price": 69458.8,
+      "quantity": 0.0354,
+      "pnl": 8.542020000000104
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-06T16:30:00+00:00",
+      "exit_time": "2026-04-06T17:15:00+00:00",
+      "entry_price": 69865.3,
+      "exit_price": 69307.1,
+      "quantity": 0.035300000000000005,
+      "pnl": 19.7044599999999
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-07T10:00:00+00:00",
+      "exit_time": "2026-04-07T10:30:00+00:00",
+      "entry_price": 69106.4,
+      "exit_price": 68701.3,
+      "quantity": 0.0357,
+      "pnl": 14.46206999999969
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-08T13:45:00+00:00",
+      "exit_time": "2026-04-08T14:00:00+00:00",
+      "entry_price": 71658.1,
+      "exit_price": 71567.4,
+      "quantity": 0.0345,
+      "pnl": 3.129150000000402
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-08T15:15:00+00:00",
+      "exit_time": "2026-04-08T17:00:00+00:00",
+      "entry_price": 71076.8,
+      "exit_price": 71561.4,
+      "quantity": 0.034800000000000005,
+      "pnl": 16.8640799999997
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-09T14:45:00+00:00",
+      "exit_time": "2026-04-09T15:15:00+00:00",
+      "entry_price": 70867.4,
+      "exit_price": 71311.7,
+      "quantity": 0.0349,
+      "pnl": 15.506070000000102
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-10T08:15:00+00:00",
+      "exit_time": "2026-04-10T10:45:00+00:00",
+      "entry_price": 71578,
+      "exit_price": 71764.1,
+      "quantity": 0.0346,
+      "pnl": 6.439060000000201
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-11T17:00:00+00:00",
+      "exit_time": "2026-04-11T18:45:00+00:00",
+      "entry_price": 73000.4,
+      "exit_price": 73441.5,
+      "quantity": 0.034,
+      "pnl": -14.9974000000002
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-12T11:15:00+00:00",
+      "exit_time": "2026-04-12T13:00:00+00:00",
+      "entry_price": 71481.7,
+      "exit_price": 71053.9,
+      "quantity": 0.0346,
+      "pnl": -14.8018800000001
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-12T22:45:00+00:00",
+      "exit_time": "2026-04-13T00:45:00+00:00",
+      "entry_price": 70789.8,
+      "exit_price": 71028.4,
+      "quantity": 0.0349,
+      "pnl": 8.327139999999696
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-14T07:30:00+00:00",
+      "exit_time": "2026-04-14T09:45:00+00:00",
+      "entry_price": 74632.6,
+      "exit_price": 74479.8,
+      "quantity": 0.033100000000000004,
+      "pnl": 5.057680000000097
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-15T20:15:00+00:00",
+      "exit_time": "2026-04-15T23:15:00+00:00",
+      "entry_price": 74627.1,
+      "exit_price": 74705.6,
+      "quantity": 0.033100000000000004,
+      "pnl": -2.5983500000000004
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-17T14:15:00+00:00",
+      "exit_time": "2026-04-17T14:45:00+00:00",
+      "entry_price": 77054.4,
+      "exit_price": 77940.5,
+      "quantity": 0.032100000000000004,
+      "pnl": -28.44381000000019
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-18T09:00:00+00:00",
+      "exit_time": "2026-04-18T10:15:00+00:00",
+      "entry_price": 76700,
+      "exit_price": 76267.1,
+      "quantity": 0.032100000000000004,
+      "pnl": -13.896089999999814
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-18T17:45:00+00:00",
+      "exit_time": "2026-04-18T22:00:00+00:00",
+      "entry_price": 75841.2,
+      "exit_price": 75776.6,
+      "quantity": 0.0324,
+      "pnl": -2.093039999999717
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-19T07:45:00+00:00",
+      "exit_time": "2026-04-19T11:00:00+00:00",
+      "entry_price": 75149,
+      "exit_price": 75197.3,
+      "quantity": 0.0327,
+      "pnl": 1.5794100000000952
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-20T07:45:00+00:00",
+      "exit_time": "2026-04-20T14:15:00+00:00",
+      "entry_price": 74907.6,
+      "exit_price": 75035.4,
+      "quantity": 0.0328,
+      "pnl": -4.191839999999618
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-20T18:30:00+00:00",
+      "exit_time": "2026-04-20T21:15:00+00:00",
+      "entry_price": 76069.6,
+      "exit_price": 75961.9,
+      "quantity": 0.0323,
+      "pnl": 3.478710000000376
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-22T00:30:00+00:00",
+      "exit_time": "2026-04-22T02:30:00+00:00",
+      "entry_price": 76240.2,
+      "exit_price": 77218.8,
+      "quantity": 0.0322,
+      "pnl": -31.510920000000187
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-22T11:45:00+00:00",
+      "exit_time": "2026-04-22T13:45:00+00:00",
+      "entry_price": 78170.7,
+      "exit_price": 78562.4,
+      "quantity": 0.0313,
+      "pnl": -12.26020999999991
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-23T00:30:00+00:00",
+      "exit_time": "2026-04-23T02:45:00+00:00",
+      "entry_price": 78415.5,
+      "exit_price": 77837.4,
+      "quantity": 0.031100000000000003,
+      "pnl": -17.978910000000184
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-23T10:30:00+00:00",
+      "exit_time": "2026-04-23T12:15:00+00:00",
+      "entry_price": 77356.1,
+      "exit_price": 77684.3,
+      "quantity": 0.0315,
+      "pnl": 10.338299999999908
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-23T18:00:00+00:00",
+      "exit_time": "2026-04-23T18:15:00+00:00",
+      "entry_price": 77717.9,
+      "exit_price": 77917.4,
+      "quantity": 0.031400000000000004,
+      "pnl": 6.2643
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-24T12:00:00+00:00",
+      "exit_time": "2026-04-24T14:15:00+00:00",
+      "entry_price": 78191.3,
+      "exit_price": 77836.1,
+      "quantity": 0.031200000000000002,
+      "pnl": 11.08223999999991
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-26T11:45:00+00:00",
+      "exit_time": "2026-04-26T12:15:00+00:00",
+      "entry_price": 78035.2,
+      "exit_price": 77941.7,
+      "quantity": 0.0313,
+      "pnl": 2.92655
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-26T19:30:00+00:00",
+      "exit_time": "2026-04-26T21:45:00+00:00",
+      "entry_price": 78153.9,
+      "exit_price": 77938.8,
+      "quantity": 0.031200000000000002,
+      "pnl": 6.711119999999728
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-27T01:30:00+00:00",
+      "exit_time": "2026-04-27T05:00:00+00:00",
+      "entry_price": 78864.8,
+      "exit_price": 78879.7,
+      "quantity": 0.031,
+      "pnl": -0.46189999999981957
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-29T10:45:00+00:00",
+      "exit_time": "2026-04-29T12:15:00+00:00",
+      "entry_price": 77524.4,
+      "exit_price": 77283.8,
+      "quantity": 0.0315,
+      "pnl": 7.578899999999725
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-04-29T14:00:00+00:00",
+      "exit_time": "2026-04-29T15:15:00+00:00",
+      "entry_price": 76735.2,
+      "exit_price": 76220.5,
+      "quantity": 0.0318,
+      "pnl": -16.36745999999991
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-04-30T14:00:00+00:00",
+      "exit_time": "2026-04-30T16:45:00+00:00",
+      "entry_price": 76369.5,
+      "exit_price": 76307.9,
+      "quantity": 0.031900000000000005,
+      "pnl": 1.965040000000186
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-01T09:00:00+00:00",
+      "exit_time": "2026-05-01T10:15:00+00:00",
+      "entry_price": 77325.5,
+      "exit_price": 77129.8,
+      "quantity": 0.0315,
+      "pnl": 6.164549999999909
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-02T22:30:00+00:00",
+      "exit_time": "2026-05-03T00:15:00+00:00",
+      "entry_price": 78595.4,
+      "exit_price": 78541,
+      "quantity": 0.031,
+      "pnl": 1.6863999999998196
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-03T02:00:00+00:00",
+      "exit_time": "2026-05-03T06:00:00+00:00",
+      "entry_price": 78200,
+      "exit_price": 78202.6,
+      "quantity": 0.031200000000000002,
+      "pnl": 0.08112000000018162
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-03T21:00:00+00:00",
+      "exit_time": "2026-05-03T21:45:00+00:00",
+      "entry_price": 78877.2,
+      "exit_price": 78669,
+      "quantity": 0.0309,
+      "pnl": 6.43337999999991
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-04T02:30:00+00:00",
+      "exit_time": "2026-05-04T03:15:00+00:00",
+      "entry_price": 79689,
+      "exit_price": 80347.9,
+      "quantity": 0.030600000000000002,
+      "pnl": -20.162339999999823
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-05T03:00:00+00:00",
+      "exit_time": "2026-05-05T05:30:00+00:00",
+      "entry_price": 80526.8,
+      "exit_price": 81018.7,
+      "quantity": 0.0302,
+      "pnl": -14.855379999999824
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-06T09:15:00+00:00",
+      "exit_time": "2026-05-06T10:45:00+00:00",
+      "entry_price": 81768.2,
+      "exit_price": 82200,
+      "quantity": 0.0297,
+      "pnl": -12.824460000000087
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-07T10:45:00+00:00",
+      "exit_time": "2026-05-07T12:45:00+00:00",
+      "entry_price": 80851.5,
+      "exit_price": 81038.3,
+      "quantity": 0.029900000000000003,
+      "pnl": 5.585320000000087
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-07T14:15:00+00:00",
+      "exit_time": "2026-05-07T14:45:00+00:00",
+      "entry_price": 80632.4,
+      "exit_price": 80115,
+      "quantity": 0.030000000000000002,
+      "pnl": -15.521999999999826
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-08T02:45:00+00:00",
+      "exit_time": "2026-05-08T05:45:00+00:00",
+      "entry_price": 79491.1,
+      "exit_price": 79706.3,
+      "quantity": 0.0304,
+      "pnl": 6.5420799999999115
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-08T07:30:00+00:00",
+      "exit_time": "2026-05-08T08:00:00+00:00",
+      "entry_price": 79320,
+      "exit_price": 79636.3,
+      "quantity": 0.030500000000000003,
+      "pnl": 9.64715000000009
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-09T04:30:00+00:00",
+      "exit_time": "2026-05-09T06:00:00+00:00",
+      "entry_price": 80435.7,
+      "exit_price": 80340.1,
+      "quantity": 0.030100000000000002,
+      "pnl": 2.8775599999997374
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-10T15:30:00+00:00",
+      "exit_time": "2026-05-10T16:00:00+00:00",
+      "entry_price": 80920,
+      "exit_price": 81374.6,
+      "quantity": 0.029900000000000003,
+      "pnl": -13.592540000000175
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-10T21:30:00+00:00",
+      "exit_time": "2026-05-10T22:15:00+00:00",
+      "entry_price": 80796,
+      "exit_price": 81276.3,
+      "quantity": 0.029900000000000003,
+      "pnl": 14.360970000000089
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-11T16:45:00+00:00",
+      "exit_time": "2026-05-11T21:00:00+00:00",
+      "entry_price": 81536.6,
+      "exit_price": 81775,
+      "quantity": 0.0297,
+      "pnl": -7.080479999999827
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-12T08:30:00+00:00",
+      "exit_time": "2026-05-12T12:15:00+00:00",
+      "entry_price": 80830.3,
+      "exit_price": 80789.7,
+      "quantity": 0.029900000000000003,
+      "pnl": -1.213940000000174
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-12T14:15:00+00:00",
+      "exit_time": "2026-05-12T14:45:00+00:00",
+      "entry_price": 80660.3,
+      "exit_price": 80745.4,
+      "quantity": 0.029900000000000003,
+      "pnl": 2.544489999999739
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-12T17:15:00+00:00",
+      "exit_time": "2026-05-12T17:45:00+00:00",
+      "entry_price": 80164.7,
+      "exit_price": 80467.2,
+      "quantity": 0.030100000000000002,
+      "pnl": 9.10525
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-13T02:00:00+00:00",
+      "exit_time": "2026-05-13T05:45:00+00:00",
+      "entry_price": 80959.5,
+      "exit_price": 80993.1,
+      "quantity": 0.0298,
+      "pnl": -1.0012800000001734
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-13T11:45:00+00:00",
+      "exit_time": "2026-05-13T12:30:00+00:00",
+      "entry_price": 80649.6,
+      "exit_price": 80322.5,
+      "quantity": 0.029900000000000003,
+      "pnl": -9.780290000000175
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-14T04:15:00+00:00",
+      "exit_time": "2026-05-14T05:00:00+00:00",
+      "entry_price": 79223,
+      "exit_price": 79411.2,
+      "quantity": 0.0304,
+      "pnl": 5.721279999999911
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-14T06:30:00+00:00",
+      "exit_time": "2026-05-14T09:30:00+00:00",
+      "entry_price": 79788,
+      "exit_price": 79701,
+      "quantity": 0.0302,
+      "pnl": 2.6274
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-17T15:00:00+00:00",
+      "exit_time": "2026-05-17T18:00:00+00:00",
+      "entry_price": 78004.9,
+      "exit_price": 78050.1,
+      "quantity": 0.0309,
+      "pnl": 1.3966800000003596
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-17T20:15:00+00:00",
+      "exit_time": "2026-05-17T22:15:00+00:00",
+      "entry_price": 78299.1,
+      "exit_price": 78082.4,
+      "quantity": 0.0308,
+      "pnl": 6.674360000000359
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-18T06:45:00+00:00",
+      "exit_time": "2026-05-18T07:15:00+00:00",
+      "entry_price": 76798.7,
+      "exit_price": 76910,
+      "quantity": 0.031400000000000004,
+      "pnl": 3.4948200000000917
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-18T12:30:00+00:00",
+      "exit_time": "2026-05-18T13:45:00+00:00",
+      "entry_price": 77307,
+      "exit_price": 76787.5,
+      "quantity": 0.031200000000000002,
+      "pnl": 16.2084
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-21T01:30:00+00:00",
+      "exit_time": "2026-05-21T05:15:00+00:00",
+      "entry_price": 77843.4,
+      "exit_price": 77877.5,
+      "quantity": 0.031,
+      "pnl": -1.0571000000001805
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-21T11:15:00+00:00",
+      "exit_time": "2026-05-21T13:45:00+00:00",
+      "entry_price": 77285.9,
+      "exit_price": 76736.1,
+      "quantity": 0.031200000000000002,
+      "pnl": -17.15375999999964
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-21T18:00:00+00:00",
+      "exit_time": "2026-05-21T22:00:00+00:00",
+      "entry_price": 77832.9,
+      "exit_price": 77635.3,
+      "quantity": 0.031,
+      "pnl": 6.1255999999997295
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-24T22:15:00+00:00",
+      "exit_time": "2026-05-24T22:30:00+00:00",
+      "entry_price": 76946.1,
+      "exit_price": 76802,
+      "quantity": 0.0313,
+      "pnl": -4.510330000000183
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-25T15:30:00+00:00",
+      "exit_time": "2026-05-25T18:00:00+00:00",
+      "entry_price": 77562.6,
+      "exit_price": 77523.5,
+      "quantity": 0.031,
+      "pnl": 1.2121000000001805
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-25T21:15:00+00:00",
+      "exit_time": "2026-05-25T23:00:00+00:00",
+      "entry_price": 77338.7,
+      "exit_price": 77080.9,
+      "quantity": 0.031100000000000003,
+      "pnl": -8.017580000000091
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-26T11:15:00+00:00",
+      "exit_time": "2026-05-26T13:30:00+00:00",
+      "entry_price": 77231.6,
+      "exit_price": 76777,
+      "quantity": 0.031100000000000003,
+      "pnl": 14.138060000000182
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-26T14:45:00+00:00",
+      "exit_time": "2026-05-26T15:00:00+00:00",
+      "entry_price": 76791.8,
+      "exit_price": 76873.5,
+      "quantity": 0.0313,
+      "pnl": -2.557209999999909
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-27T05:00:00+00:00",
+      "exit_time": "2026-05-27T06:15:00+00:00",
+      "entry_price": 75540,
+      "exit_price": 75702.7,
+      "quantity": 0.0318,
+      "pnl": 5.173859999999908
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-27T18:30:00+00:00",
+      "exit_time": "2026-05-27T20:00:00+00:00",
+      "entry_price": 74883.9,
+      "exit_price": 75040.7,
+      "quantity": 0.032100000000000004,
+      "pnl": 5.033280000000094
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-27T22:30:00+00:00",
+      "exit_time": "2026-05-28T03:30:00+00:00",
+      "entry_price": 74565.7,
+      "exit_price": 73713.8,
+      "quantity": 0.0323,
+      "pnl": -27.516369999999814
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-28T14:00:00+00:00",
+      "exit_time": "2026-05-28T16:45:00+00:00",
+      "entry_price": 72994,
+      "exit_price": 73330,
+      "quantity": 0.0329,
+      "pnl": 11.0544
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-29T13:00:00+00:00",
+      "exit_time": "2026-05-29T14:15:00+00:00",
+      "entry_price": 73264.8,
+      "exit_price": 72977.3,
+      "quantity": 0.0328,
+      "pnl": -9.430000000000001
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-30T19:00:00+00:00",
+      "exit_time": "2026-05-30T20:15:00+00:00",
+      "entry_price": 74000.1,
+      "exit_price": 73918.5,
+      "quantity": 0.0324,
+      "pnl": 2.6438400000001883
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-05-31T01:30:00+00:00",
+      "exit_time": "2026-05-31T05:45:00+00:00",
+      "entry_price": 74067.9,
+      "exit_price": 74062.4,
+      "quantity": 0.0324,
+      "pnl": 0.1782
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-05-31T15:15:00+00:00",
+      "exit_time": "2026-05-31T17:45:00+00:00",
+      "entry_price": 73637.9,
+      "exit_price": 73686.9,
+      "quantity": 0.0325,
+      "pnl": 1.5925
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-01T02:15:00+00:00",
+      "exit_time": "2026-06-01T02:45:00+00:00",
+      "entry_price": 73510,
+      "exit_price": 73744.7,
+      "quantity": 0.032600000000000004,
+      "pnl": 7.651219999999906
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-01T07:00:00+00:00",
+      "exit_time": "2026-06-01T08:30:00+00:00",
+      "entry_price": 73109,
+      "exit_price": 72707.4,
+      "quantity": 0.0328,
+      "pnl": -13.172480000000192
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-02T02:30:00+00:00",
+      "exit_time": "2026-06-02T04:45:00+00:00",
+      "entry_price": 70787.6,
+      "exit_price": 70999,
+      "quantity": 0.033800000000000004,
+      "pnl": 7.145319999999804
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-02T07:45:00+00:00",
+      "exit_time": "2026-06-02T09:15:00+00:00",
+      "entry_price": 70184.7,
+      "exit_price": 69536.8,
+      "quantity": 0.0341,
+      "pnl": -22.0933899999998
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-02T23:15:00+00:00",
+      "exit_time": "2026-06-03T03:45:00+00:00",
+      "entry_price": 66666,
+      "exit_price": 65723.5,
+      "quantity": 0.0358,
+      "pnl": -33.7415
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-03T21:15:00+00:00",
+      "exit_time": "2026-06-03T22:00:00+00:00",
+      "entry_price": 65368.9,
+      "exit_price": 65743,
+      "quantity": 0.0364,
+      "pnl": 13.617239999999947
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-05T03:30:00+00:00",
+      "exit_time": "2026-06-05T04:30:00+00:00",
+      "entry_price": 62572.3,
+      "exit_price": 63213.6,
+      "quantity": 0.0381,
+      "pnl": 24.433529999999834
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-05T06:45:00+00:00",
+      "exit_time": "2026-06-05T07:45:00+00:00",
+      "entry_price": 62115.7,
+      "exit_price": 62847.80000000001,
+      "quantity": 0.038400000000000004,
+      "pnl": 28.112640000000226
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-05T19:30:00+00:00",
+      "exit_time": "2026-06-05T20:15:00+00:00",
+      "entry_price": 59811.6,
+      "exit_price": 60825.8,
+      "quantity": 0.04,
+      "pnl": 40.568000000000175
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-07T13:00:00+00:00",
+      "exit_time": "2026-06-07T15:45:00+00:00",
+      "entry_price": 61867,
+      "exit_price": 62074.100000000006,
+      "quantity": 0.0388,
+      "pnl": 8.035479999999943
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-07T20:15:00+00:00",
+      "exit_time": "2026-06-07T21:15:00+00:00",
+      "entry_price": 61550.1,
+      "exit_price": 61930,
+      "quantity": 0.0391,
+      "pnl": 14.854090000000058
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-07T22:30:00+00:00",
+      "exit_time": "2026-06-08T02:45:00+00:00",
+      "entry_price": 62974,
+      "exit_price": 63034.9,
+      "quantity": 0.038200000000000005,
+      "pnl": -2.326380000000056
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-09T01:15:00+00:00",
+      "exit_time": "2026-06-09T04:00:00+00:00",
+      "entry_price": 62631.6,
+      "exit_price": 62839.40000000001,
+      "quantity": 0.038400000000000004,
+      "pnl": 7.979520000000113
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-11T11:30:00+00:00",
+      "exit_time": "2026-06-11T12:30:00+00:00",
+      "entry_price": 63127.9,
+      "exit_price": 62650.99999999999,
+      "quantity": 0.0381,
+      "pnl": 18.169890000000056
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-11T18:15:00+00:00",
+      "exit_time": "2026-06-11T22:45:00+00:00",
+      "entry_price": 63446.2,
+      "exit_price": 63468.80000000001,
+      "quantity": 0.038,
+      "pnl": -0.8588000000002212
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-12T10:00:00+00:00",
+      "exit_time": "2026-06-12T12:30:00+00:00",
+      "entry_price": 63719.9,
+      "exit_price": 63430.1,
+      "quantity": 0.0378,
+      "pnl": 10.95444000000011
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-12T14:00:00+00:00",
+      "exit_time": "2026-06-12T14:30:00+00:00",
+      "entry_price": 63194.6,
+      "exit_price": 63600.200000000004,
+      "quantity": 0.0381,
+      "pnl": 15.453359999999945
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-13T08:15:00+00:00",
+      "exit_time": "2026-06-13T13:00:00+00:00",
+      "entry_price": 63757.5,
+      "exit_price": 64098.50000000001,
+      "quantity": 0.0379,
+      "pnl": -12.923900000000001
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-15T04:00:00+00:00",
+      "exit_time": "2026-06-15T05:00:00+00:00",
+      "entry_price": 65883.7,
+      "exit_price": 65600.1,
+      "quantity": 0.0366,
+      "pnl": 10.379759999999681
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-15T12:30:00+00:00",
+      "exit_time": "2026-06-15T13:30:00+00:00",
+      "entry_price": 66244.3,
+      "exit_price": 66798.9,
+      "quantity": 0.0364,
+      "pnl": -20.187439999999683
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-16T03:15:00+00:00",
+      "exit_time": "2026-06-16T05:45:00+00:00",
+      "entry_price": 65779.1,
+      "exit_price": 66051.6,
+      "quantity": 0.0366,
+      "pnl": 9.9735
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-16T13:45:00+00:00",
+      "exit_time": "2026-06-16T14:30:00+00:00",
+      "entry_price": 66094.2,
+      "exit_price": 65521.50000000001,
+      "quantity": 0.0364,
+      "pnl": -20.846279999999894
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-19T05:15:00+00:00",
+      "exit_time": "2026-06-19T06:15:00+00:00",
+      "entry_price": 62644.6,
+      "exit_price": 62822.7,
+      "quantity": 0.0383,
+      "pnl": 6.821229999999944
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-19T09:45:00+00:00",
+      "exit_time": "2026-06-19T11:30:00+00:00",
+      "entry_price": 62389.7,
+      "exit_price": 62610.700000000004,
+      "quantity": 0.0385,
+      "pnl": 8.5085
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-20T05:30:00+00:00",
+      "exit_time": "2026-06-20T08:15:00+00:00",
+      "entry_price": 63605,
+      "exit_price": 63515.40000000001,
+      "quantity": 0.0378,
+      "pnl": 3.386879999999945
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-20T14:30:00+00:00",
+      "exit_time": "2026-06-20T15:00:00+00:00",
+      "entry_price": 63345.4,
+      "exit_price": 63930,
+      "quantity": 0.0379,
+      "pnl": 22.156339999999947
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-21T04:45:00+00:00",
+      "exit_time": "2026-06-21T05:00:00+00:00",
+      "entry_price": 64455.4,
+      "exit_price": 64245.3,
+      "quantity": 0.0374,
+      "pnl": 7.857739999999946
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-21T21:45:00+00:00",
+      "exit_time": "2026-06-21T23:45:00+00:00",
+      "entry_price": 63854.9,
+      "exit_price": 63290.5,
+      "quantity": 0.037700000000000004,
+      "pnl": -21.277880000000057
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-23T13:45:00+00:00",
+      "exit_time": "2026-06-23T14:00:00+00:00",
+      "entry_price": 62370.3,
+      "exit_price": 62449.99999999999,
+      "quantity": 0.0385,
+      "pnl": 3.068449999999888
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-24T11:45:00+00:00",
+      "exit_time": "2026-06-24T12:00:00+00:00",
+      "entry_price": 62710.6,
+      "exit_price": 62887.40000000001,
+      "quantity": 0.0383,
+      "pnl": 6.771440000000112
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-26T11:15:00+00:00",
+      "exit_time": "2026-06-26T13:30:00+00:00",
+      "entry_price": 59462.5,
+      "exit_price": 58892.7,
+      "quantity": 0.040400000000000005,
+      "pnl": -23.01992000000012
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-27T14:30:00+00:00",
+      "exit_time": "2026-06-27T15:15:00+00:00",
+      "entry_price": 60572.3,
+      "exit_price": 60847.9,
+      "quantity": 0.0396,
+      "pnl": -10.913759999999943
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-28T09:00:00+00:00",
+      "exit_time": "2026-06-28T10:30:00+00:00",
+      "entry_price": 60334.3,
+      "exit_price": 60074.1,
+      "quantity": 0.0397,
+      "pnl": 10.329940000000173
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-28T23:15:00+00:00",
+      "exit_time": "2026-06-28T23:30:00+00:00",
+      "entry_price": 59233.5,
+      "exit_price": 59511.3,
+      "quantity": 0.040400000000000005,
+      "pnl": 11.223120000000119
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-06-29T12:30:00+00:00",
+      "exit_time": "2026-06-29T12:45:00+00:00",
+      "entry_price": 60419.8,
+      "exit_price": 59929.4,
+      "quantity": 0.0397,
+      "pnl": 19.46888000000006
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-06-30T09:00:00+00:00",
+      "exit_time": "2026-06-30T12:30:00+00:00",
+      "entry_price": 59280.1,
+      "exit_price": 58828,
+      "quantity": 0.0405,
+      "pnl": -18.31004999999994
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-07-01T01:30:00+00:00",
+      "exit_time": "2026-07-01T01:45:00+00:00",
+      "entry_price": 58324.6,
+      "exit_price": 58865.40000000001,
+      "quantity": 0.041100000000000005,
+      "pnl": 22.226880000000122
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-07-01T12:30:00+00:00",
+      "exit_time": "2026-07-01T13:30:00+00:00",
+      "entry_price": 58528,
+      "exit_price": 58784.50000000001,
+      "quantity": 0.041,
+      "pnl": 10.5165
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-01T14:45:00+00:00",
+      "exit_time": "2026-07-01T15:30:00+00:00",
+      "entry_price": 59576.7,
+      "exit_price": 60285.399999999994,
+      "quantity": 0.0403,
+      "pnl": -28.560610000000178
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-01T22:30:00+00:00",
+      "exit_time": "2026-07-01T23:15:00+00:00",
+      "entry_price": 60538.3,
+      "exit_price": 60222,
+      "quantity": 0.0396,
+      "pnl": 12.525480000000115
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-02T10:30:00+00:00",
+      "exit_time": "2026-07-02T13:30:00+00:00",
+      "entry_price": 61185.4,
+      "exit_price": 61665.3,
+      "quantity": 0.0392,
+      "pnl": -18.812080000000055
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-03T11:00:00+00:00",
+      "exit_time": "2026-07-03T14:15:00+00:00",
+      "entry_price": 61890.1,
+      "exit_price": 61737.7,
+      "quantity": 0.0386,
+      "pnl": 5.882640000000056
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-07-05T10:00:00+00:00",
+      "exit_time": "2026-07-05T13:15:00+00:00",
+      "entry_price": 62595.4,
+      "exit_price": 62706.799999999996,
+      "quantity": 0.038200000000000005,
+      "pnl": 4.255480000000056
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-06T16:30:00+00:00",
+      "exit_time": "2026-07-06T20:15:00+00:00",
+      "entry_price": 63440.4,
+      "exit_price": 63584.09999999999,
+      "quantity": 0.037700000000000004,
+      "pnl": -5.417489999999891
+    },
+    {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-06T22:15:00+00:00",
+      "exit_time": "2026-07-07T00:00:00+00:00",
+      "entry_price": 64347.1,
+      "exit_price": 64025.5,
+      "quantity": 0.0371,
+      "pnl": 11.931359999999946
+    }
+  ],
+  "symbolStats": {
+    "BTCUSDT OKX swap 15m Mar-Sep 2026": {
+      "symbol": "BTCUSDT OKX swap 15m Mar-Sep 2026",
+      "trades": 147,
+      "total_pnl": -419.95,
+      "win_rate": 48.3,
+      "avg_pnl": -2.8568027210884352
+    }
+  },
+  "_usage": {
+    "credits_consumed": 26,
+    "credits_remaining": 74,
+    "credits_total_monthly": 100,
+    "period": "2026-09",
+    "plan": "basic",
+    "message": "Basic plan — 100 credits per month."
+  }
+}

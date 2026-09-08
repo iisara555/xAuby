@@ -1,0 +1,529 @@
+{
+  "protocol_id": "btc-xau-okx-15m-lona-screen-v1",
+  "candidate_location": "LONA saved strategies and this research registry; not production Arena",
+  "datasets": {
+    "BTCUSDT": {
+      "symbol_id": "d96178c4-597a-4175-8cb5-22be7dfc2335",
+      "sha256": "6b15dc785e026bcb93b9eeb134e0aa6cbe1fab3cf2b2c76772528bb2183583ba",
+      "bars": 17568,
+      "start": "2026-03-09T00:00:00Z",
+      "end": "2026-09-07T23:45:00Z",
+      "gaps": 0
+    },
+    "XAUUSDT": {
+      "symbol_id": "d62c6945-90ec-4f6a-bde6-024fe255c76b",
+      "sha256": "d3dacc1c4388244397b3ffa50a7e3571abff1c744bd32356f6e7bf7294e54150",
+      "bars": 17568,
+      "start": "2026-03-09T00:00:00Z",
+      "end": "2026-09-07T23:45:00Z",
+      "gaps": 0
+    }
+  },
+  "credits": {
+    "before": 98,
+    "after": 74,
+    "used_this_screen": 24
+  },
+  "candidates": [
+    {
+      "key": "btc-donchian",
+      "symbol": "BTCUSDT",
+      "family": "donchian",
+      "strategy_id": "97d08f77-0e58-41cd-ba31-238695a6f622",
+      "mode": 0,
+      "trail": 4,
+      "hold": 96,
+      "data_id": "d96178c4-597a-4175-8cb5-22be7dfc2335",
+      "step": 0.0001,
+      "timeframe": "15m",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "source_file": "strategy.py",
+      "source_default_overrides": {
+        "mode": 0,
+        "trail_multiple": 4,
+        "max_hold_bars": 96,
+        "quantity_step": 0.0001
+      },
+      "results_file": "screen_results.json",
+      "certification_status": "not_assessed",
+      "eligible_for_arena": false
+    },
+    {
+      "key": "btc-vwap-pullback",
+      "symbol": "BTCUSDT",
+      "family": "vwap-pullback",
+      "mode": 1,
+      "trail": 3,
+      "hold": 48,
+      "data_id": "d96178c4-597a-4175-8cb5-22be7dfc2335",
+      "step": 0.0001,
+      "label": "EMA VWAP Pullback",
+      "strategy_id": "e6e6cabb-9528-4655-bb04-cacaf5baf228",
+      "timeframe": "15m",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "source_file": "strategy.py",
+      "source_default_overrides": {
+        "mode": 1,
+        "trail_multiple": 3,
+        "max_hold_bars": 48,
+        "quantity_step": 0.0001
+      },
+      "results_file": "screen_results.json",
+      "certification_status": "not_assessed",
+      "eligible_for_arena": false
+    },
+    {
+      "key": "btc-bb-rsi-range",
+      "symbol": "BTCUSDT",
+      "family": "bb-rsi-range",
+      "mode": 2,
+      "trail": 4,
+      "hold": 32,
+      "data_id": "d96178c4-597a-4175-8cb5-22be7dfc2335",
+      "step": 0.0001,
+      "label": "BB RSI Range",
+      "strategy_id": "a3e821b0-b387-4a47-896a-9b1c8c4d141d",
+      "timeframe": "15m",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "source_file": "strategy.py",
+      "source_default_overrides": {
+        "mode": 2,
+        "trail_multiple": 4,
+        "max_hold_bars": 32,
+        "quantity_step": 0.0001
+      },
+      "results_file": "screen_results.json",
+      "certification_status": "not_assessed",
+      "eligible_for_arena": false
+    },
+    {
+      "key": "xau-donchian",
+      "symbol": "XAUUSDT",
+      "family": "donchian",
+      "mode": 0,
+      "trail": 4,
+      "hold": 96,
+      "data_id": "d62c6945-90ec-4f6a-bde6-024fe255c76b",
+      "step": 0.001,
+      "label": "Donchian 48 EMA200",
+      "strategy_id": "d0415ebd-efeb-4396-8e89-b1129ac16beb",
+      "timeframe": "15m",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "source_file": "strategy.py",
+      "source_default_overrides": {
+        "mode": 0,
+        "trail_multiple": 4,
+        "max_hold_bars": 96,
+        "quantity_step": 0.001
+      },
+      "results_file": "screen_results.json",
+      "certification_status": "not_assessed",
+      "eligible_for_arena": false
+    },
+    {
+      "key": "xau-vwap-pullback",
+      "symbol": "XAUUSDT",
+      "family": "vwap-pullback",
+      "mode": 1,
+      "trail": 3,
+      "hold": 48,
+      "data_id": "d62c6945-90ec-4f6a-bde6-024fe255c76b",
+      "step": 0.001,
+      "label": "EMA VWAP Pullback",
+      "strategy_id": "814d345e-98dd-4d6d-9e9c-f46423c7954e",
+      "timeframe": "15m",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "source_file": "strategy.py",
+      "source_default_overrides": {
+        "mode": 1,
+        "trail_multiple": 3,
+        "max_hold_bars": 48,
+        "quantity_step": 0.001
+      },
+      "results_file": "screen_results.json",
+      "certification_status": "not_assessed",
+      "eligible_for_arena": false
+    },
+    {
+      "key": "xau-bb-rsi-range",
+      "symbol": "XAUUSDT",
+      "family": "bb-rsi-range",
+      "mode": 2,
+      "trail": 4,
+      "hold": 32,
+      "data_id": "d62c6945-90ec-4f6a-bde6-024fe255c76b",
+      "step": 0.001,
+      "label": "BB RSI Range",
+      "strategy_id": "33cd17fe-c9d3-4ca4-b2b4-ebbe741dadbd",
+      "timeframe": "15m",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "source_file": "strategy.py",
+      "source_default_overrides": {
+        "mode": 2,
+        "trail_multiple": 4,
+        "max_hold_bars": 32,
+        "quantity_step": 0.001
+      },
+      "results_file": "screen_results.json",
+      "certification_status": "not_assessed",
+      "eligible_for_arena": false
+    }
+  ],
+  "runs": [
+    {
+      "key": "btc-donchian",
+      "window": "development",
+      "report_id": "186b3d1c-50b9-4dcc-9931-7137ffd87404",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "97d08f77-0e58-41cd-ba31-238695a6f622",
+        "data_ids": [
+          "d96178c4-597a-4175-8cb5-22be7dfc2335"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-03-09",
+        "end_date": "2026-07-10",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260312
+          },
+          {
+            "name": "trade_end",
+            "value": 20260708
+          }
+        ]
+      }
+    },
+    {
+      "key": "btc-donchian",
+      "window": "holdout",
+      "report_id": "1ef87269-2f76-4f9b-a0dd-158aab239eab",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "97d08f77-0e58-41cd-ba31-238695a6f622",
+        "data_ids": [
+          "d96178c4-597a-4175-8cb5-22be7dfc2335"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-07-07",
+        "end_date": "2026-09-08",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260710
+          },
+          {
+            "name": "trade_end",
+            "value": 20260906
+          }
+        ]
+      }
+    },
+    {
+      "key": "btc-vwap-pullback",
+      "window": "development",
+      "report_id": "163f963a-cd4b-48ad-b974-1b39baa7c54e",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "e6e6cabb-9528-4655-bb04-cacaf5baf228",
+        "data_ids": [
+          "d96178c4-597a-4175-8cb5-22be7dfc2335"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-03-09",
+        "end_date": "2026-07-10",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260312
+          },
+          {
+            "name": "trade_end",
+            "value": 20260708
+          }
+        ]
+      }
+    },
+    {
+      "key": "btc-vwap-pullback",
+      "window": "holdout",
+      "report_id": "460f556f-9e24-42fe-9109-a1ab6315ece0",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "e6e6cabb-9528-4655-bb04-cacaf5baf228",
+        "data_ids": [
+          "d96178c4-597a-4175-8cb5-22be7dfc2335"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-07-07",
+        "end_date": "2026-09-08",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260710
+          },
+          {
+            "name": "trade_end",
+            "value": 20260906
+          }
+        ]
+      }
+    },
+    {
+      "key": "btc-bb-rsi-range",
+      "window": "development",
+      "report_id": "b6dfceb5-0b2b-445e-8d6a-8574d3bf2857",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "a3e821b0-b387-4a47-896a-9b1c8c4d141d",
+        "data_ids": [
+          "d96178c4-597a-4175-8cb5-22be7dfc2335"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-03-09",
+        "end_date": "2026-07-10",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260312
+          },
+          {
+            "name": "trade_end",
+            "value": 20260708
+          }
+        ]
+      }
+    },
+    {
+      "key": "btc-bb-rsi-range",
+      "window": "holdout",
+      "report_id": "e8dcb69f-5b4f-4bdf-b00d-4a2d35d74d04",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "a3e821b0-b387-4a47-896a-9b1c8c4d141d",
+        "data_ids": [
+          "d96178c4-597a-4175-8cb5-22be7dfc2335"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-07-07",
+        "end_date": "2026-09-08",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260710
+          },
+          {
+            "name": "trade_end",
+            "value": 20260906
+          }
+        ]
+      }
+    },
+    {
+      "key": "xau-donchian",
+      "window": "development",
+      "report_id": "58ff7879-50a1-4f00-9886-fdd97e88fd0a",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "d0415ebd-efeb-4396-8e89-b1129ac16beb",
+        "data_ids": [
+          "d62c6945-90ec-4f6a-bde6-024fe255c76b"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-03-09",
+        "end_date": "2026-07-10",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260312
+          },
+          {
+            "name": "trade_end",
+            "value": 20260708
+          }
+        ]
+      }
+    },
+    {
+      "key": "xau-donchian",
+      "window": "holdout",
+      "report_id": "58a58de1-15e7-4176-90a1-d8b3b35cb765",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "d0415ebd-efeb-4396-8e89-b1129ac16beb",
+        "data_ids": [
+          "d62c6945-90ec-4f6a-bde6-024fe255c76b"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-07-07",
+        "end_date": "2026-09-08",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260710
+          },
+          {
+            "name": "trade_end",
+            "value": 20260906
+          }
+        ]
+      }
+    },
+    {
+      "key": "xau-vwap-pullback",
+      "window": "development",
+      "report_id": "02048582-a039-4023-a021-9b223aa6133a",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "814d345e-98dd-4d6d-9e9c-f46423c7954e",
+        "data_ids": [
+          "d62c6945-90ec-4f6a-bde6-024fe255c76b"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-03-09",
+        "end_date": "2026-07-10",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260312
+          },
+          {
+            "name": "trade_end",
+            "value": 20260708
+          }
+        ]
+      }
+    },
+    {
+      "key": "xau-vwap-pullback",
+      "window": "holdout",
+      "report_id": "7308fa03-98ea-4ed9-a3fe-6157c7be7a07",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "814d345e-98dd-4d6d-9e9c-f46423c7954e",
+        "data_ids": [
+          "d62c6945-90ec-4f6a-bde6-024fe255c76b"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-07-07",
+        "end_date": "2026-09-08",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260710
+          },
+          {
+            "name": "trade_end",
+            "value": 20260906
+          }
+        ]
+      }
+    },
+    {
+      "key": "xau-bb-rsi-range",
+      "window": "development",
+      "report_id": "e8332f01-22d3-4489-afc0-e73e6f7e44e5",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "33cd17fe-c9d3-4ca4-b2b4-ebbe741dadbd",
+        "data_ids": [
+          "d62c6945-90ec-4f6a-bde6-024fe255c76b"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-03-09",
+        "end_date": "2026-07-10",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260312
+          },
+          {
+            "name": "trade_end",
+            "value": 20260708
+          }
+        ]
+      }
+    },
+    {
+      "key": "xau-bb-rsi-range",
+      "window": "holdout",
+      "report_id": "0865934c-ef60-45e8-8e3b-73e0e2cb0e0b",
+      "commission": 0.0007,
+      "request": {
+        "strategy_id": "33cd17fe-c9d3-4ca4-b2b4-ebbe741dadbd",
+        "data_ids": [
+          "d62c6945-90ec-4f6a-bde6-024fe255c76b"
+        ],
+        "frequency": "15m",
+        "start_date": "2026-07-07",
+        "end_date": "2026-09-08",
+        "initial_cash": 10000,
+        "commission": 0.0007,
+        "leverage": 1,
+        "buy_on_close": false,
+        "parameters": [
+          {
+            "name": "trade_start",
+            "value": 20260710
+          },
+          {
+            "name": "trade_end",
+            "value": 20260906
+          }
+        ]
+      }
+    }
+  ],
+  "strategy_source_sha256": "4744255268456be8aebca5c15154a7b7151f9abb6abdbf73d6e18c87b3d8675c"
+}

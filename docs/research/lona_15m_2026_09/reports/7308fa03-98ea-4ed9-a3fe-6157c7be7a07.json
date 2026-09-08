@@ -1,0 +1,248 @@
+{
+  "id": "7308fa03-98ea-4ed9-a3fe-6157c7be7a07",
+  "name": "Candidate XAUUSDT 15m EMA VWAP Pullback v1.0.0 - Run #2",
+  "status": "COMPLETED",
+  "totalStats": {
+    "final_portfolio_value": 9945.24,
+    "realized_pnl": -54.76,
+    "total_return": -0.55,
+    "maximum_drawdown_percentage": 0.72,
+    "number_of_trades": 20,
+    "open_trades": 0,
+    "percentage_of_winning_trades": 20,
+    "annualized_sharpe_ratio": 0,
+    "cagr": -3.18,
+    "profit_factor": 0.6,
+    "payoff_ratio": 2.38,
+    "expectancy": -2.74,
+    "average_trade": -2.74,
+    "recovery_factor": 0.76,
+    "calmar_ratio": -4.42,
+    "std_dev_returns": 0.0076,
+    "annualized_volatility": 1.44,
+    "avg_bars_held": 20.3,
+    "beta": null,
+    "alpha": null,
+    "sortino_ratio": -5,
+    "information_ratio": -1.89
+  },
+  "trades": [
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-10T11:00:00+00:00",
+      "exit_time": "2026-07-10T12:15:00+00:00",
+      "entry_price": 4109.5,
+      "exit_price": 4119.6,
+      "quantity": 0.608,
+      "pnl": -6.140800000000221
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-07-11T08:15:00+00:00",
+      "exit_time": "2026-07-11T13:00:00+00:00",
+      "entry_price": 4122.1,
+      "exit_price": 4121,
+      "quantity": 0.605,
+      "pnl": -0.66550000000022
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-13T22:00:00+00:00",
+      "exit_time": "2026-07-14T02:00:00+00:00",
+      "entry_price": 4010.3,
+      "exit_price": 4017.1,
+      "quantity": 0.622,
+      "pnl": -4.22959999999983
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-07-17T19:00:00+00:00",
+      "exit_time": "2026-07-18T07:15:00+00:00",
+      "entry_price": 4017.7,
+      "exit_price": 4022.4999999999995,
+      "quantity": 0.62,
+      "pnl": 2.9760000000001128
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-25T05:30:00+00:00",
+      "exit_time": "2026-07-25T11:00:00+00:00",
+      "entry_price": 4061,
+      "exit_price": 4061.8,
+      "quantity": 0.614,
+      "pnl": -0.49120000000011166
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-07-26T07:15:00+00:00",
+      "exit_time": "2026-07-26T11:30:00+00:00",
+      "entry_price": 4067.5,
+      "exit_price": 4069.3999999999996,
+      "quantity": 0.613,
+      "pnl": 1.1647000000000558
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-07-28T13:30:00+00:00",
+      "exit_time": "2026-07-28T15:45:00+00:00",
+      "entry_price": 4034.8,
+      "exit_price": 4047.7,
+      "quantity": 0.617,
+      "pnl": -7.959299999999775
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-07-30T13:15:00+00:00",
+      "exit_time": "2026-07-31T00:30:00+00:00",
+      "entry_price": 4082.7,
+      "exit_price": 4100.7,
+      "quantity": 0.609,
+      "pnl": 10.962
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-08-07T12:45:00+00:00",
+      "exit_time": "2026-08-07T14:15:00+00:00",
+      "entry_price": 4362.9,
+      "exit_price": 4333.4,
+      "quantity": 0.5710000000000001,
+      "pnl": -16.844500000000004
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-08-10T13:30:00+00:00",
+      "exit_time": "2026-08-10T14:30:00+00:00",
+      "entry_price": 4337.5,
+      "exit_price": 4348.6,
+      "quantity": 0.5730000000000001,
+      "pnl": -6.360300000000209
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-08-12T11:30:00+00:00",
+      "exit_time": "2026-08-12T16:45:00+00:00",
+      "entry_price": 4416.7,
+      "exit_price": 4413.1,
+      "quantity": 0.562,
+      "pnl": -2.0231999999996937
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-08-13T05:45:00+00:00",
+      "exit_time": "2026-08-13T10:30:00+00:00",
+      "entry_price": 4390.9,
+      "exit_price": 4391.2,
+      "quantity": 0.5650000000000001,
+      "pnl": -0.1695000000001028
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-08-19T18:45:00+00:00",
+      "exit_time": "2026-08-20T01:00:00+00:00",
+      "entry_price": 4489.4,
+      "exit_price": 4504.2,
+      "quantity": 0.552,
+      "pnl": 8.1696000000001
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-08-21T05:45:00+00:00",
+      "exit_time": "2026-08-21T18:00:00+00:00",
+      "entry_price": 4544.3,
+      "exit_price": 4621.4,
+      "quantity": 0.546,
+      "pnl": 42.096599999999704
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-08-23T15:15:00+00:00",
+      "exit_time": "2026-08-23T21:45:00+00:00",
+      "entry_price": 4613.5,
+      "exit_price": 4614.3,
+      "quantity": 0.54,
+      "pnl": 0.43200000000009825
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-08-28T14:15:00+00:00",
+      "exit_time": "2026-08-28T15:00:00+00:00",
+      "entry_price": 4550.6,
+      "exit_price": 4579.8,
+      "quantity": 0.547,
+      "pnl": -15.972399999999901
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-09-02T23:45:00+00:00",
+      "exit_time": "2026-09-03T12:00:00+00:00",
+      "entry_price": 4389.4,
+      "exit_price": 4448.7,
+      "quantity": 0.5660000000000001,
+      "pnl": 33.56380000000011
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "LONG",
+      "entry_time": "2026-09-03T21:30:00+00:00",
+      "exit_time": "2026-09-04T01:30:00+00:00",
+      "entry_price": 4480.6,
+      "exit_price": 4473.7,
+      "quantity": 0.556,
+      "pnl": -3.8364000000003036
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-09-04T12:45:00+00:00",
+      "exit_time": "2026-09-04T13:45:00+00:00",
+      "entry_price": 4395.8,
+      "exit_price": 4426,
+      "quantity": 0.5670000000000001,
+      "pnl": -17.123399999999897
+    },
+    {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "direction": "SHORT",
+      "entry_time": "2026-09-05T00:45:00+00:00",
+      "exit_time": "2026-09-05T01:15:00+00:00",
+      "entry_price": 4434.5,
+      "exit_price": 4439,
+      "quantity": 0.561,
+      "pnl": -2.5245
+    }
+  ],
+  "symbolStats": {
+    "XAUUSDT OKX swap 15m Mar-Sep 2026": {
+      "symbol": "XAUUSDT OKX swap 15m Mar-Sep 2026",
+      "trades": 20,
+      "total_pnl": -54.76,
+      "win_rate": 20,
+      "avg_pnl": -2.738
+    }
+  },
+  "_usage": {
+    "credits_consumed": 26,
+    "credits_remaining": 74,
+    "credits_total_monthly": 100,
+    "period": "2026-09",
+    "plan": "basic",
+    "message": "Basic plan — 100 credits per month."
+  }
+}
