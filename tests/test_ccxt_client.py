@@ -117,6 +117,8 @@ class FakeOKXAlgoSwap(FakeCCXTExchange):
         self.markets_by_id = {"BTC-USDT-SWAP": [self.markets["BTC/USDT:USDT"]]}
         self.cancel_algo_payload = None
         self.algo_state = "live"
+        self.algo_ord_type = "trigger"
+        self.algo_pending_queries = []
 
     def fetch_open_orders(self, symbol=None):
         return []
@@ -146,11 +148,11 @@ class FakeOKXAlgoSwap(FakeCCXTExchange):
         raise OrderNotFound("order does not exist")
 
     def _algo(self):
-        return {
+        algo = {
             "algoId": "3815029827304853504",
             "algoClOrdId": "xaubyslrepair17861991485428dcb50",
             "instId": "BTC-USDT-SWAP",
-            "ordType": "trigger",
+            "ordType": self.algo_ord_type,
             "side": "sell",
             "posSide": "net",
             "sz": "0.07",
@@ -158,9 +160,15 @@ class FakeOKXAlgoSwap(FakeCCXTExchange):
             "actualPx": "64860.7" if self.algo_state == "effective" else "",
             "ordId": "3816358391141998594" if self.algo_state == "effective" else "",
             "tdMode": "isolated",
-            "triggerPx": "63100.8",
             "state": self.algo_state,
         }
+        if self.algo_ord_type == "conditional":
+            algo["slTriggerPx"] = "63100.8"
+            algo["slOrdPx"] = "62785.3"
+        else:
+            algo["triggerPx"] = "63100.8"
+            algo["orderPx"] = "62785.3"
+        return algo
 
     def privateGetTradeOrderAlgo(self, params):
         if params["algoId"] != "3815029827304853504":
@@ -168,7 +176,12 @@ class FakeOKXAlgoSwap(FakeCCXTExchange):
         return {"code": "0", "data": [self._algo()], "msg": ""}
 
     def privateGetTradeOrdersAlgoPending(self, params):
-        rows = [self._algo()] if self.algo_state == "live" else []
+        self.algo_pending_queries.append(dict(params))
+        rows = (
+            [self._algo()]
+            if self.algo_state == "live" and params.get("ordType") == self.algo_ord_type
+            else []
+        )
         return {"code": "0", "data": rows, "msg": ""}
 
     def privatePostTradeCancelAlgos(self, payload):
@@ -297,8 +310,38 @@ class TestCCXTClient(unittest.TestCase):
         self.assertAlmostEqual(orders[0]["stopPrice"], 63100.8)
         self.assertEqual(fetched["status"], "NEW")
         self.assertEqual(
+            [query["ordType"] for query in exchange.algo_pending_queries],
+            ["trigger", "conditional"],
+        )
+        self.assertEqual(
             exchange.cancel_algo_payload,
             [{"instId": "BTC-USDT-SWAP", "algoId": "3815029827304853504"}],
+        )
+
+    def test_okx_conditional_stop_is_visible_after_restart(self):
+        exchange = FakeOKXAlgoSwap()
+        exchange.algo_ord_type = "conditional"
+        client = CCXTExchangeClient(
+            config={
+                "exchange": {
+                    "provider": "ccxt",
+                    "ccxt_id": "okx",
+                    "market_type": "swap",
+                    "margin_mode": "isolated",
+                }
+            },
+            exchange_instance=exchange,
+        )
+
+        orders = client.get_open_orders("BTCUSDT")
+
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0]["orderId"], "3815029827304853504")
+        self.assertAlmostEqual(orders[0]["stopPrice"], 63100.8)
+        self.assertAlmostEqual(orders[0]["price"], 62785.3)
+        self.assertEqual(
+            [query["ordType"] for query in exchange.algo_pending_queries],
+            ["trigger", "conditional"],
         )
 
     def test_okx_triggered_swap_fill_uses_base_quantity_and_average_price(self):

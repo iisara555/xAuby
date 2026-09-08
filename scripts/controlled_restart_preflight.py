@@ -116,6 +116,7 @@ def _open_position_from_snapshot(snapshot: Dict[str, Any], symbol: str) -> Dict[
         "symbol": symbol,
         "state": "bought",
         "quantity": float(pos.get("quantity", 0.0) or 0.0),
+        "stop_loss": float(pos.get("stop_loss", 0.0) or 0.0),
         "stop_loss_order_id": pos.get("stop_loss_order_id"),
     }
 
@@ -131,6 +132,7 @@ def _load_tracked_positions(pairs: List[Any], state: Dict[str, Any]) -> Dict[str
                     "symbol": pair.symbol,
                     "state": "bought",
                     "quantity": float(pos.get("quantity", 0.0) or 0.0),
+                    "stop_loss": float(pos.get("stop_loss", 0.0) or 0.0),
                     "position_side": str(
                         pos.get("position_side") or "LONG"
                     ).upper(),
@@ -350,13 +352,40 @@ def run_preflight(
                 report["reasons"].extend(position_reasons)
             for pair in pairs:
                 orders = client.get_open_orders(pair.symbol)
+                tracked = (
+                    tracked_positions.get(pair.symbol)
+                    if allow_tracked_positions
+                    else None
+                )
+                tracked_sl_id = str((tracked or {}).get("stop_loss_order_id") or "")
+                exchange_sl_expected = bool(
+                    is_derivative
+                    and tracked
+                    and float((tracked or {}).get("stop_loss") or 0.0) > 0
+                    and bool(
+                        (getattr(client, "capabilities", None) or {}).get(
+                            "supports_stop_loss_limit"
+                        )
+                    )
+                )
+                matching_sl_open = bool(
+                    tracked_sl_id
+                    and any(_order_id(order) == tracked_sl_id for order in orders)
+                )
+                if exchange_sl_expected and not tracked_sl_id:
+                    report["reasons"].append(
+                        f"{pair.symbol} has a tracked stop price but no exchange stop order id"
+                    )
+                elif exchange_sl_expected and not matching_sl_open:
+                    report["reasons"].append(
+                        f"{pair.symbol} tracked exchange stop {tracked_sl_id} is not open"
+                    )
                 if orders:
                     report["open_orders"][pair.symbol] = orders
-                    tracked_sl_id = str(
-                        (tracked_positions.get(pair.symbol) or {}).get("stop_loss_order_id") or ""
-                    )
                     untracked_orders = [
-                        order for order in orders if not tracked_sl_id or _order_id(order) != tracked_sl_id
+                        order
+                        for order in orders
+                        if not tracked_sl_id or _order_id(order) != tracked_sl_id
                     ]
                     if not allow_tracked_positions:
                         report["reasons"].append(f"{pair.symbol} has {len(orders)} open orders")
@@ -376,7 +405,6 @@ def run_preflight(
                                 f"{base} spot balance is non-zero ({qty}) on derivative account"
                             )
                         continue
-                    tracked = tracked_positions.get(pair.symbol) if allow_tracked_positions else None
                     expected_qty = float((tracked or {}).get("quantity", 0.0) or 0.0)
                     if not tracked:
                         tol = _qty_tolerance(client, pair.symbol)

@@ -754,14 +754,26 @@ class CCXTExchangeClient(IExchangeGateway):
             orders = self._call("fetch_open_orders")
         normalized = [self._normalize_order(o, fallback_symbol=symbol or "") for o in orders or []]
         if self.exchange_id == "okx" and self.derivatives["market_type"] == "swap":
-            params: Dict[str, Any] = {"instType": "SWAP", "ordType": "trigger"}
-            if symbol:
-                params.update(self._okx_algo_request_params(symbol))
-            payload = self._call("privateGetTradeOrdersAlgoPending", params) or {}
-            for row in payload.get("data") or []:
-                algo = self._normalize_okx_algo_order(row, fallback_symbol=symbol or "")
-                self._okx_algo_order_ids.add(str(algo.get("orderId") or ""))
-                normalized.append(algo)
+            # OKX keeps generic triggers and TP/SL conditionals on separate
+            # algo books. Protective reduce-only stops must use the conditional
+            # book (generic triggers are rejected with sCode 51205), so query
+            # both or a valid exchange-side stop becomes invisible after a
+            # process restart.
+            for ord_type in ("trigger", "conditional"):
+                params: Dict[str, Any] = {
+                    "instType": "SWAP",
+                    "ordType": ord_type,
+                }
+                if symbol:
+                    params.update(self._okx_algo_request_params(symbol))
+                payload = self._call("privateGetTradeOrdersAlgoPending", params) or {}
+                for row in payload.get("data") or []:
+                    algo = self._normalize_okx_algo_order(
+                        row,
+                        fallback_symbol=symbol or "",
+                    )
+                    self._okx_algo_order_ids.add(str(algo.get("orderId") or ""))
+                    normalized.append(algo)
         deduped: Dict[str, Dict[str, Any]] = {}
         for order in normalized:
             key = str(order.get("orderId") or order.get("clientOrderId") or "")
@@ -873,7 +885,19 @@ class CCXTExchangeClient(IExchangeGateway):
         if post_only or order_type_uc == "LIMIT_MAKER":
             params.setdefault("postOnly", True)
         if stop_price is not None:
-            params.setdefault("stopPrice", stop_price)
+            if (
+                order_type_uc == "STOP_LOSS_LIMIT"
+                and self.exchange_id == "okx"
+                and self.derivatives["market_type"] == "swap"
+            ):
+                # CCXT maps stopPrice to an OKX generic trigger algo. OKX
+                # rejects reduceOnly on that algo type (sCode 51205). The
+                # stopLossPrice form maps to the venue-native conditional TP/SL
+                # payload (slTriggerPx/slOrdPx), which accepts reduceOnly.
+                params.pop("stopPrice", None)
+                params.setdefault("stopLossPrice", stop_price)
+            else:
+                params.setdefault("stopPrice", stop_price)
 
         order_price = float(price) if price is not None and type_lc != "market" else None
         data = self._call("create_order", ccxt_symbol, type_lc, side_lc, base_amount, order_price, params)
