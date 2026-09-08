@@ -10,7 +10,10 @@ check_health() {
   local label="$1"
   local base="$2"
   local response
-  response="$($CURL -fsS --connect-timeout 5 --max-time 15 "$base/healthz")"
+  if ! response="$($CURL -fsS --connect-timeout 5 --max-time 15 "$base/healthz" 2>&1)"; then
+    echo "[ERR] $label health request failed: $base/healthz ($response)" >&2
+    return 1
+  fi
   if [[ "$response" != *'"ok":true'* && "$response" != *'"ok": true'* ]]; then
     echo "[ERR] $label health did not return ok=true: $base/healthz" >&2
     return 1
@@ -18,5 +21,7 @@ check_health() {
   echo "[OK] $label $base/healthz"
 }
 
-check_health "frontend" "$PUBLIC_URL"
-check_health "control-plane" "$API_URL"
+failures=0
+check_health "frontend" "$PUBLIC_URL" || failures=$((failures + 1))
+check_health "control-plane" "$API_URL" || failures=$((failures + 1))
+exit "$failures"
