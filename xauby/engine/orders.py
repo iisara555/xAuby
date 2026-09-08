@@ -8,7 +8,11 @@ from xauby.api.utils import make_client_id, round_step
 from xauby.api.errors import ExchangeAPIError
 from xauby.observability import EventType
 from xauby.notifications.interface import AlertLevel
-from xauby.runtime.trading_config import bounded_position_fraction, resolve_trading_config
+from xauby.runtime.trading_config import (
+    bounded_position_fraction,
+    effective_config_fingerprint,
+    resolve_trading_config,
+)
 from xauby.runtime.exits import fixed_take_profit_price
 from xauby.analytics.calculator import position_excursions_pct
 from xauby.engine.exchange_close import reconciliation_key
@@ -23,6 +27,20 @@ class OrderMixin:
         if isinstance(getattr(self, "config", None), dict):
             return self.config.get("execution", {}) or {}
         return {}
+
+    def _entry_telemetry(self, symbol: str, effective_config: Any) -> Tuple[str, str]:
+        """Freeze regime and effective config identity at position entry."""
+        try:
+            context = self._sc(symbol)
+            current = getattr(context, "current_regime", None)
+            regime = str(
+                getattr(current, "regime", "")
+                or getattr(context, "confirmed_regime", "")
+                or "UNKNOWN"
+            )
+        except Exception:
+            regime = "UNKNOWN"
+        return regime, effective_config_fingerprint(effective_config)
 
     def _resolve_entry_order_type(self) -> str:
         """Pick the live BUY order type.
@@ -307,6 +325,9 @@ class OrderMixin:
         eff_cfg = resolve_trading_config(
             self.config, self._strategy_name_for_symbol(sym), symbol=sym, for_live=True
         )
+        entry_regime, strategy_config_fingerprint = self._entry_telemetry(
+            sym, eff_cfg
+        )
         min_order = float(eff_cfg.portfolio.get("min_order_amount", 10.0) or 10.0)
         disable_sl = bool(eff_cfg.strategy.get("disable_stop_loss", False))
         risk_pct = 0.0
@@ -471,6 +492,8 @@ class OrderMixin:
             position_side="SHORT", leverage=leverage, margin_mode="isolated",
             funding_paid=0.0,
             management_mode=position_management_mode,
+            entry_regime=entry_regime,
+            strategy_config_fingerprint=strategy_config_fingerprint,
             partial_tp_taken=False,
         )
         self._emit_event(
@@ -485,6 +508,8 @@ class OrderMixin:
             stop_loss=stop_loss,
             stop_loss_order_id=sl_order_id,
             slippage_bps=slip_bps,
+            entry_regime=entry_regime,
+            strategy_config_fingerprint=strategy_config_fingerprint,
         )
         self.send_telegram_alert(
             f"SHORT OPEN {'LIVE' if live else 'PAPER'} {sym} qty={fill_qty:.6f} "
@@ -638,6 +663,10 @@ class OrderMixin:
                 liquidation_price=state.get("liquidation_price", 0.0),
                 funding_paid=funding - funding_share,
                 management_mode=state.get("management_mode", "strategy"),
+                entry_regime=state.get("entry_regime"),
+                strategy_config_fingerprint=state.get(
+                    "strategy_config_fingerprint"
+                ),
                 partial_tp_taken=bool(state.get("partial_tp_taken")),
             )
             self.send_telegram_alert(
@@ -652,6 +681,8 @@ class OrderMixin:
             entry_fee=entry_fee, exit_fee=exit_fee, total_fees=entry_fee + exit_fee,
             net_pnl=net_pnl, net_pnl_pct=net_pct, trigger=trigger_reason,
             opened_at=state.get("opened_at"), strategy_name=self._strategy_name_for_symbol(sym),
+            entry_regime=state.get("entry_regime"),
+            strategy_config_fingerprint=state.get("strategy_config_fingerprint"),
             execution_mode=self._execution_mode(sym),
         )
         if ok:
@@ -756,6 +787,10 @@ class OrderMixin:
                 leverage=state.get("leverage", 1.0),
                 margin_mode=state.get("margin_mode", "spot"),
                 funding_paid=funding - funding_share,
+                entry_regime=state.get("entry_regime"),
+                strategy_config_fingerprint=state.get(
+                    "strategy_config_fingerprint"
+                ),
             )
             base_coin = self._get_base_asset(sym)
             msg = (
@@ -773,6 +808,8 @@ class OrderMixin:
             entry_fee=entry_fee, exit_fee=exit_fee, total_fees=entry_fee + exit_fee,
             net_pnl=net_pnl, net_pnl_pct=net_pct, trigger=trigger_reason,
             opened_at=state.get("opened_at"), strategy_name=self._strategy_name_for_symbol(sym),
+            entry_regime=state.get("entry_regime"),
+            strategy_config_fingerprint=state.get("strategy_config_fingerprint"),
             execution_mode=self._execution_mode(sym),
         )
         if ok:
@@ -1110,12 +1147,14 @@ class OrderMixin:
                 net_pnl_pct = (net_pnl / entry_cost * 100.0) if entry_cost > 0 else 0.0
         closed_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         opened_at = state.get("opened_at")
+        entry_regime = state.get("entry_regime")
+        exit_regime = None
         try:
-            entry_regime = self.db.get_regime_at(opened_at or closed_at, sym)
+            if not entry_regime:
+                entry_regime = self.db.get_regime_at(opened_at or closed_at, sym)
             exit_regime = self.db.get_regime_at(closed_at, sym)
         except Exception:
-            entry_regime = None
-            exit_regime = None
+            pass
         try:
             mae_pct, mfe_pct = position_excursions_pct(
                 entry_price=entry_price,
@@ -1147,6 +1186,9 @@ class OrderMixin:
                 entry_regime=entry_regime,
                 exit_regime=exit_regime,
                 strategy_name=self._strategy_name_for_symbol(sym),
+                strategy_config_fingerprint=state.get(
+                    "strategy_config_fingerprint"
+                ),
                 execution_mode=self._execution_mode(sym),
                 mae_pct=mae_pct,
                 mfe_pct=mfe_pct,
@@ -1244,10 +1286,12 @@ class OrderMixin:
         close_side = "BUY" if normalized_side == "SHORT" else "SELL"
         limit_price = stop_loss * (1.005 if normalized_side == "SHORT" else 0.995)
         attempt_qty = qty
+        capabilities = getattr(self.client, "capabilities", {}) or {}
+        is_swap = bool(capabilities.get("swap"))
         # Spot LONG stops reserve/sell the base asset and may need quantity
-        # capping.  A derivative SHORT stop is a reduce-only BUY against an
-        # existing contract position; spot wallet balances are irrelevant.
-        if normalized_side == "LONG":
+        # capping. Derivative stops are reduce-only orders against an existing
+        # contract position; spot wallet balances are irrelevant for both sides.
+        if normalized_side == "LONG" and not is_swap:
             try:
                 balances = self.client.get_balances()
                 base_coin = self._get_base_asset(sym)
@@ -1300,6 +1344,29 @@ class OrderMixin:
                 )
                 sl_order_id = str(sl_res.get("orderId") or sl_res.get("id") or "")
                 if sl_order_id:
+                    submitted_base_raw = sl_res.get("submittedBaseQty")
+                    if is_swap and submitted_base_raw is not None:
+                        submitted_base = float(submitted_base_raw or 0.0)
+                        coverage_tolerance = max(abs(attempt_qty) * 1e-9, 1e-12)
+                        if abs(submitted_base - attempt_qty) > coverage_tolerance:
+                            logger.critical(
+                                "Cancelling under/over-sized swap stop %s for %s: "
+                                "requested_base=%.12f submitted_base=%.12f",
+                                sl_order_id,
+                                sym,
+                                attempt_qty,
+                                submitted_base,
+                            )
+                            try:
+                                self.client.cancel_order(sym, sl_order_id)
+                            except Exception as cancel_exc:
+                                logger.critical(
+                                    "Failed to cancel invalid swap stop %s for %s: %s",
+                                    sl_order_id,
+                                    sym,
+                                    cancel_exc,
+                                )
+                            return None
                     logger.info(
                         "Exchange-side %s STOP_LOSS_LIMIT placed "
                         "(ID: %s, side=%s, qty=%.6f)",
@@ -1308,7 +1375,12 @@ class OrderMixin:
                         close_side,
                         attempt_qty,
                     )
-                    return (sl_order_id, attempt_qty)
+                    return (
+                        sl_order_id,
+                        float(submitted_base_raw)
+                        if submitted_base_raw is not None
+                        else attempt_qty,
+                    )
                 logger.error(
                     "Exchange-side STOP_LOSS_LIMIT response missing order id for %s (qty=%.6f)",
                     sym,
@@ -1316,7 +1388,11 @@ class OrderMixin:
                 )
                 return None
             except ExchangeAPIError as e:
-                if e.code in (-2010, -2018, -1013, -1111) and attempt < max_attempts - 1:
+                if (
+                    not is_swap
+                    and e.code in (-2010, -2018, -1013, -1111)
+                    and attempt < max_attempts - 1
+                ):
                     logger.warning(
                         f"SL place attempt {attempt + 1} failed ({e.code}); "
                         f"shrinking qty from {attempt_qty:.6f} -> {attempt_qty * 0.995:.6f}"
@@ -1941,6 +2017,9 @@ class OrderMixin:
             symbol=sym,
             for_live=True,
         )
+        entry_regime, strategy_config_fingerprint = self._entry_telemetry(
+            sym, eff_cfg
+        )
         risk_pct = float(eff_cfg.portfolio.get("risk_pct", 0.01))
         if risk_pct_override is not None and risk_pct_override > 0:
             risk_pct = float(risk_pct_override)
@@ -2051,6 +2130,8 @@ class OrderMixin:
                 opened_at=now_iso,
                 last_transition_at=now_iso,
                 management_mode=position_management_mode,
+                entry_regime=entry_regime,
+                strategy_config_fingerprint=strategy_config_fingerprint,
                 partial_tp_taken=False,
             )
             
@@ -2073,6 +2154,8 @@ class OrderMixin:
                 take_profit=round(take_profit, 2),
                 qty=round(qty, 6),
                 quantity=round(qty, 6),
+                entry_regime=entry_regime,
+                strategy_config_fingerprint=strategy_config_fingerprint,
             )
             return True
 
@@ -2126,6 +2209,8 @@ class OrderMixin:
                 opened_at=now_iso,
                 last_transition_at=now_iso,
                 management_mode=position_management_mode,
+                entry_regime=entry_regime,
+                strategy_config_fingerprint=strategy_config_fingerprint,
                 partial_tp_taken=False,
             )
 
@@ -2148,6 +2233,8 @@ class OrderMixin:
                 take_profit=round(take_profit, 2),
                 qty=round(qty, 6),
                 quantity=round(qty, 6),
+                entry_regime=entry_regime,
+                strategy_config_fingerprint=strategy_config_fingerprint,
             )
             return True
         else:
@@ -2444,6 +2531,8 @@ class OrderMixin:
                         position_side="LONG",
                         leverage=float((self.config.get("derivatives") or {}).get("default_leverage", 1) or 1),
                         margin_mode="isolated" if is_live_swap else "spot",
+                        entry_regime=entry_regime,
+                        strategy_config_fingerprint=strategy_config_fingerprint,
                         partial_tp_taken=False,
                     )
                     
@@ -2474,6 +2563,8 @@ class OrderMixin:
                         order_path=order_path,
                         slippage_bps=slip_bps,
                         order_total_ms=metrics.get("order_total_ms", order_total_ms),
+                        entry_regime=entry_regime,
+                        strategy_config_fingerprint=strategy_config_fingerprint,
                     )
                     return True
                 else:

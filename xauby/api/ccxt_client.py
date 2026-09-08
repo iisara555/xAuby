@@ -841,6 +841,27 @@ class CCXTExchangeClient(IExchangeGateway):
             raise ValueError("Price is required for LIMIT BUY order")
         return float(amount) / float(price)
 
+    @staticmethod
+    def _swap_contract_amount(amount: float, contract_size: Any, *, amount_in_base: bool) -> Decimal:
+        """Return the native contract amount without binary-float underflow.
+
+        CCXT applies the venue's amount precision after this conversion.  A
+        float division such as ``0.0006 / 0.01`` can produce
+        ``0.059999999999...``; an exchange adapter that truncates to its amount
+        step then submits 0.05 contracts and leaves an avoidable residual.  Use
+        the human decimal representations until the CCXT boundary instead.
+        """
+        requested = Decimal(str(amount))
+        size = Decimal(str(contract_size or 1))
+        if requested <= 0:
+            raise ValueError("Order amount must be positive")
+        if size <= 0:
+            raise CCXTAPIError(
+                "invalid_contract_size",
+                f"Swap contract size must be positive, got {contract_size!r}",
+            )
+        return requested / size if amount_in_base else requested
+
     def place_order(
         self,
         symbol: str,
@@ -862,11 +883,23 @@ class CCXTExchangeClient(IExchangeGateway):
                 "STOP_LOSS_LIMIT is not enabled for this CCXT adapter. Use local SL monitoring or enable an exchange-specific adapter.",
             )
         type_lc = "limit" if order_type_uc in ("LIMIT_MAKER", "STOP_LOSS_LIMIT") else order_type.lower()
+        contract_size_decimal: Optional[Decimal] = None
+        requested_base_decimal: Optional[Decimal] = None
         if self.derivatives["market_type"] == "swap":
             market = self._load_markets().get(ccxt_symbol, {}) or {}
-            contract_size = float(market.get("contractSize") or 1.0)
             amount_in_base = bool(kwargs.get("amount_in_base", True))
-            base_amount = float(amount) / contract_size if amount_in_base else float(amount)
+            contract_size_decimal = Decimal(str(market.get("contractSize") or 1))
+            contract_amount_decimal = self._swap_contract_amount(
+                amount,
+                contract_size_decimal,
+                amount_in_base=amount_in_base,
+            )
+            base_amount = float(contract_amount_decimal)
+            requested_base_decimal = (
+                Decimal(str(amount))
+                if amount_in_base
+                else contract_amount_decimal * contract_size_decimal
+            )
         else:
             base_amount = self._base_amount_for_order(ccxt_symbol, side, order_type, amount, price)
         params = dict(kwargs.get("params") or {})
@@ -902,6 +935,22 @@ class CCXTExchangeClient(IExchangeGateway):
         order_price = float(price) if price is not None and type_lc != "market" else None
         data = self._call("create_order", ccxt_symbol, type_lc, side_lc, base_amount, order_price, params)
         normalized = self._normalize_order(data, fallback_symbol=symbol)
+        if contract_size_decimal is not None and requested_base_decimal is not None:
+            # Preserve both units so risk controls can verify that a reduce-only
+            # close or protective stop covers the complete base position.
+            submitted_contracts = Decimal(
+                str(normalized.get("origQty") or base_amount)
+            )
+            normalized.update(
+                {
+                    "requestedBaseQty": float(requested_base_decimal),
+                    "submittedContractQty": float(submitted_contracts),
+                    "submittedBaseQty": float(
+                        submitted_contracts * contract_size_decimal
+                    ),
+                    "contractSize": float(contract_size_decimal),
+                }
+            )
         if (
             order_type_uc == "STOP_LOSS_LIMIT"
             and self.exchange_id == "okx"

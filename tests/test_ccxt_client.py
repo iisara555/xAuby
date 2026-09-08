@@ -284,6 +284,48 @@ class TestCCXTClient(unittest.TestCase):
         self.assertAlmostEqual(filters["stepSize"], 0.0001)
         self.assertEqual(filters["minNotional"], 10.0)
 
+    def test_swap_base_quantity_conversion_does_not_lose_one_contract_step(self):
+        exchange = FakeOKXAlgoSwap()
+        client = CCXTExchangeClient(
+            config={
+                "exchange": {
+                    "provider": "ccxt",
+                    "ccxt_id": "okx",
+                    "market_type": "swap",
+                    "margin_mode": "isolated",
+                    "capabilities": {"stop_loss_limit": True},
+                }
+            },
+            exchange_instance=exchange,
+        )
+
+        close_order = client.place_order(
+            "BTCUSDT",
+            "SELL",
+            "MARKET",
+            amount=0.0006,
+            amount_in_base=True,
+            reduce_only=True,
+            position_side="LONG",
+        )
+        stop_order = client.place_order(
+            "BTCUSDT",
+            "SELL",
+            "STOP_LOSS_LIMIT",
+            amount=0.0006,
+            price=62000.0,
+            stop_price=62300.0,
+            amount_in_base=True,
+            reduce_only=True,
+            position_side="LONG",
+        )
+
+        self.assertEqual(exchange.created_orders[0]["amount"], 0.06)
+        self.assertEqual(exchange.created_orders[1]["amount"], 0.06)
+        self.assertEqual(close_order.get("submittedContractQty"), 0.06)
+        self.assertEqual(close_order.get("submittedBaseQty"), 0.0006)
+        self.assertEqual(stop_order.get("submittedBaseQty"), 0.0006)
+
     def test_okx_trigger_algo_orders_are_visible_fetchable_and_cancellable(self):
         exchange = FakeOKXAlgoSwap()
         client = CCXTExchangeClient(

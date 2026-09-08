@@ -12,6 +12,8 @@ should call these helpers so they agree on the same effective values.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
@@ -90,6 +92,22 @@ class EffectiveTradingConfig:
             }
         )
         return out
+
+
+def effective_config_fingerprint(config: EffectiveTradingConfig) -> str:
+    """Stable identity for the exact strategy and risk config used at entry."""
+    payload = {
+        "strategy_name": getattr(config, "strategy_name", ""),
+        "symbol": getattr(config, "symbol", ""),
+        "strategy": getattr(config, "strategy", {}) or {},
+        "portfolio": getattr(config, "portfolio", {}) or {},
+        "primary_timeframe": getattr(config, "primary_timeframe", ""),
+        "confirm_timeframe": getattr(config, "confirm_timeframe", ""),
+    }
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=str
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:16]
 
 
 @dataclass(frozen=True)

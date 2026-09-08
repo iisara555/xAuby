@@ -129,6 +129,9 @@ class Position:
     funding_paid: float = 0.0
     management_mode: str = "strategy"
     exchange_position_id: Optional[str] = None
+    # Captured at entry so later config/regime changes cannot relabel a trade.
+    entry_regime: Optional[str] = None
+    strategy_config_fingerprint: Optional[str] = None
     # One-shot partial take-profit already banked for this position (persisted
     # so an engine restart cannot re-fire the partial exit).
     partial_tp_taken: bool = False
@@ -154,7 +157,8 @@ class Position:
             "excursion_tracking_complete", "opened_at", "last_transition_at",
             "stop_loss_order_id", "position_side", "leverage", "margin_mode",
             "liquidation_price", "funding_paid", "management_mode",
-            "exchange_position_id", "partial_tp_taken",
+            "exchange_position_id", "entry_regime",
+            "strategy_config_fingerprint", "partial_tp_taken",
         )
 
     def __contains__(self, key):
