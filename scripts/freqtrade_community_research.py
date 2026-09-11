@@ -51,8 +51,9 @@ def make_config(pair: str) -> dict:
         "order_types": {"entry": "market", "exit": "market", "stoploss": "market", "stoploss_on_exchange": False},
         "order_time_in_force": {"entry": "GTC", "exit": "GTC"},
         "unfilledtimeout": {"entry": 10, "exit": 10, "unit": "minutes"},
-        "telegram": {"enabled": False}, "api_server": {"enabled": False},
-        "dataformat_ohlcv": "feather",
+        # Omit unused optional services: their schemas require credentials even
+        # when enabled=False. Neither a backtest nor a download starts them.
+        "dataformat_ohlcv": "feather", "dataformat_trades": "feather",
     }
 
 
@@ -61,7 +62,9 @@ def run_command(args: list[str], log: Path, commands: list[dict], timeout: int =
     if not args or args[0] not in ALLOWED_COMMANDS:
         raise ValueError("Only non-trading Freqtrade research commands are permitted")
     log.parent.mkdir(parents=True, exist_ok=True)
-    command = [sys.executable, "-m", "freqtrade", *args]
+    # Use the installed console entry point, which propagates main()'s exit
+    # status. The 2026.8 python -m entry point can return zero on config errors.
+    command = [str(Path(sys.executable).with_name("freqtrade")), *args]
     print(f"START {log.stem}", flush=True)
     started = datetime.now(timezone.utc).isoformat()
     with log.open("w") as stream:

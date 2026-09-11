@@ -73,7 +73,8 @@ def test_research_config_has_no_credentials_or_live_mode(research):
     assert config["dry_run"] is True
     assert config["exchange"]["pair_whitelist"] == ["XAU/USDT:USDT"]
     assert all(config["exchange"][key] == "" for key in ("key", "secret", "password"))
-    assert config["api_server"]["enabled"] is False
+    assert config.get("api_server", {}).get("enabled", False) is False
+    assert config.get("telegram", {}).get("enabled", False) is False
 
 
 def test_session_filter_dst_weekend_and_boundaries(strategies):
