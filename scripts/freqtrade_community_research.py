@@ -90,6 +90,17 @@ def compatible_upstream(name: str, source: bytes) -> tuple[bytes, list[str]]:
     return text.encode("utf-8"), patches
 
 
+def recursive_startups(protocol: dict) -> list[int]:
+    # Native OKX permits five 300-candle calls, minus the current candle.
+    # This caps DIAGNOSTIC probes only; strategy startup counts are unchanged.
+    return sorted({min(value, 1499) for value in protocol["validation"]["recursive_startups"]})
+
+
+def fatal_log_errors(text: str) -> list[str]:
+    # Native analysis commands can log a caught ConfigurationError and exit 0.
+    return [line for line in text.splitlines() if " - ERROR - " in line or " - CRITICAL - " in line or line.startswith("Traceback (most recent call last)")]
+
+
 def run_command(args: list[str], log: Path, commands: list[dict], timeout: int = 1200) -> bool:
     require_hosted_runner()
     if not args or args[0] not in ALLOWED_COMMANDS:
@@ -106,7 +117,12 @@ def run_command(args: list[str], log: Path, commands: list[dict], timeout: int =
             code = result.returncode
         except subprocess.TimeoutExpired:
             code = 124
-    commands.append({"argv": command, "started_at": started, "returncode": code, "log": str(log)})
+    process_code = code
+    errors = fatal_log_errors(log.read_text())
+    if code == 0 and errors:
+        code = 1
+    commands.append({"argv": command, "started_at": started, "returncode": code,
+                     "process_returncode": process_code, "fatal_log_errors": errors, "log": str(log)})
     write_json(log.parents[1] / "commands.json", commands)
     print(f"END {log.stem}: {code}", flush=True)
     if code:
@@ -385,9 +401,11 @@ def main() -> int:
             ok = run_command(lookahead, out / "logs" / f"lookahead_{candidate['id']}.log", commands)
             row["lookahead"] = lookahead_status(lookahead_csv) if ok else {"status": "command_failed"}
             recursive = common(candidate, "recursive-analysis") + [
-                "--timerange", "20260215-20260908", "--startup-candle", "199", "499", "999", "1999"]
+                "--timerange", "20260312-20260908", "--startup-candle", *map(str, recursive_startups(protocol))]
             ok = run_command(recursive, out / "logs" / f"recursive_{candidate['id']}.log", commands)
             row["recursive"] = "completed_requires_table_review" if ok else "command_failed"
+            row["recursive_probe_note"] = {"requested": protocol["validation"]["recursive_startups"],
+                "effective": recursive_startups(protocol), "reason": "OKX native startup cap 1499; trading-strategy startup counts unchanged. Diagnostic starts after available warmup."}
             if not row["screen_reasons"]:
                 row["stress"] = {window: backtest(candidate, window, protocol["execution"]["stress_cost_per_side"], "stress") for window in protocol["windows"]}
                 row["status"] = "historical_metrics_pass_requires_manual_stress_bias_and_forward_review"

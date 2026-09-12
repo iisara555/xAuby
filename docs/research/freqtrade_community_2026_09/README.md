@@ -60,6 +60,11 @@ report is unverified, never passed. Recursive tables require manual review;
 these tools only test the observed signals/indicator endpoints, not every
 possible market path. Historical metric passers get cost-stress runs but remain
 research-only pending bias, funding, native xAuby parity and untouched evidence.
+The requested 1999-candle recursive probe exceeds OKX's native 1499-candle
+limit. Diagnostic probes are explicitly capped at 1499, with both requested and
+effective values reported; strategy warmup remains 499/999. Diagnostics start
+after available warmup. Logged native errors fail the command even if Freqtrade
+returns process status zero; the failed earlier recursive run is not a pass.
 
 12 September–12 November 2026 is reserved as a future untouched evaluation
 window. It is not available now; no automated recurring job or live trade is

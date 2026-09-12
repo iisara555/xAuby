@@ -105,6 +105,18 @@ def test_compatibility_patch_only_adds_parameter_space(research):
         research.compatible_upstream("FReinforcedStrategy.py", b"different source")
 
 
+def test_logged_native_errors_are_not_success(research):
+    assert research.fatal_log_errors("2026-09-12 - ERROR - Configuration error")
+    assert research.fatal_log_errors("2026-09-12 - CRITICAL - invalid configuration")
+    assert not research.fatal_log_errors("2026-09-12 - WARNING - using historical data")
+
+
+def test_recursive_probes_respect_venue_limit_without_mutating_protocol(research):
+    protocol = {"validation": {"recursive_startups": [199, 499, 999, 1999]}}
+    assert research.recursive_startups(protocol) == [199, 499, 999, 1499]
+    assert protocol["validation"]["recursive_startups"][-1] == 1999
+
+
 def test_session_filter_dst_weekend_and_boundaries(strategies):
     clocks = pd.Series(pd.to_datetime([
         "2026-01-12T07:00Z", "2026-01-12T08:00Z", "2026-01-12T12:00Z",
