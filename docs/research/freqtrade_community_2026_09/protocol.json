@@ -1,0 +1,47 @@
+{
+  "id": "freqtrade-community-btc-xau-screen-v1",
+  "locked_at_utc": "2026-09-11T13:40:00Z",
+  "purpose": "Exploratory historical screening, not certification or live allocation",
+  "engine": "freqtrade==2026.8",
+  "upstream_commit": "f3340ce11f5bdf62f598522e64d1f5638eaa13f5",
+  "source_repository": "https://github.com/freqtrade/freqtrade-strategies",
+  "data_start": "20260215",
+  "data_end_exclusive": "20260908",
+  "windows": {
+    "early": "20260312-20260710",
+    "late": "20260710-20260908"
+  },
+  "window_warning": "Both historical windows overlap previously inspected LONA research. Neither is a fresh holdout. No hyperopt or parameter selection on these results.",
+  "reserved_forward_window": {
+    "start": "20260912",
+    "end_exclusive": "20261112",
+    "status": "future_unavailable_not_scheduled",
+    "rule": "Evaluate unchanged finalists only after this window completes; any parameter change requires a new protocol and untouched window. No live or recurring job is authorized by this reservation."
+  },
+  "execution": {
+    "initial_cash_usdt": 10000,
+    "base_cost_per_side": 0.0007,
+    "stress_cost_per_side": 0.0012,
+    "cost_note": "Assumed 5 bp taker fee plus 2 bp proportional friction, stress adds 5 bp. Friction is a fee proxy, not price-path slippage.",
+    "funding_note": "Use available native funding and mark data; explicitly permit zero fallback for missing rates. Missing historic funding blocks certification even if screening metrics pass.",
+    "detail_timeframes": {"1h": "5m", "5m": "1m"},
+    "risk_variants": {"leverage": 1, "max_realized_wallet_fraction": 0.25, "stoploss": -0.02, "max_holding_hours": 48, "position_adjustment_enable": false},
+    "original_controls": "Upstream entry/exit/risk defaults unchanged; common 2500 USDT proposed stake, wallet/cost/data/execution settings. Not risk-matched to derivatives."
+  },
+  "candidates": [
+    {"id": "btc-volatility-1h-risk", "pair": "BTC/USDT:USDT", "strategy": "CommunityVolatilityRisk", "timeframe": "1h", "informative": "3h", "status": "pending_screen", "live_weight": 0},
+    {"id": "btc-freinforced-5m-risk", "pair": "BTC/USDT:USDT", "strategy": "CommunityReinforcedRisk", "timeframe": "5m", "informative": "1h", "status": "pending_screen", "live_weight": 0},
+    {"id": "xau-volatility-1h-risk", "pair": "XAU/USDT:USDT", "strategy": "CommunityVolatilityRisk", "timeframe": "1h", "informative": "3h", "status": "pending_screen", "live_weight": 0},
+    {"id": "xau-volatility-1h-session", "pair": "XAU/USDT:USDT", "strategy": "CommunityVolatilitySession", "timeframe": "1h", "informative": "3h", "status": "pending_screen", "live_weight": 0}
+  ],
+  "session_rule": "Entry fill clock: Monday-Friday, 08:00 <= London local time < 12:00 OR 08:00 <= New York local time < 12:00. IANA timezone DST; exits always allowed. Identical entry logic and risk to XAU unfiltered control.",
+  "screen_gate": {"positive_return_both_windows": true, "late_profit_factor_min": 1.2, "late_trades_min": 30, "max_drawdown_fraction_max": 0.10, "stress_positive_both_windows": true, "stress_late_profit_factor_min": 1.05},
+  "validation": {"lookahead_minimum_trades": 10, "lookahead_target_trades": 30, "recursive_startups": [199, 499, 999, 1999], "risk_strategy_startup": {"1h": 499, "5m": 999}, "insufficient_bias_evidence": "unverified_not_passed"},
+  "deferred": {
+    "freqai": "Conditional next study after useful baseline evidence; not trained or claimed validated here",
+    "nfi_x8": "Reference benchmark only; multi-pair 5m assumptions need separate study",
+    "orderflow": "Requires verified raw-trade history and separate resources",
+    "15m_adaptation": "Not silently substituted for upstream 5m/1h. Separate preregistered comparison if native-timeframe evidence warrants it."
+  },
+  "live_weight": 0
+}
