@@ -1,0 +1,285 @@
+{
+  "scope": "Read-only audit of native exported reports, not a rerun.",
+  "runs": [
+    {
+      "run": "btc-freinforced-5m-risk_early_base",
+      "strategy": "CommunityReinforcedRisk",
+      "risk_derivative": true,
+      "trades": 61,
+      "starting_balance": 10000,
+      "final_balance": 9802.95047583,
+      "net_pnl_usdt": -197.04952417,
+      "net_return_pct": -1.9704952417000001,
+      "profit_factor": 0.4465108345989625,
+      "max_drawdown_pct": 2.550705269099999,
+      "exit_reasons": {
+        "exit_signal": 61
+      },
+      "max_duration_minutes": 390,
+      "zip_file": "results/btc-freinforced-5m-risk_early_base/backtest-result-2026-09-12_01-20-00.zip",
+      "zip_sha256": "011ec081859c2be87c15549cb4854469da358de1cc5a874b05f9ac1ecf16c17b",
+      "issues": []
+    },
+    {
+      "run": "btc-freinforced-5m-risk_late_base",
+      "strategy": "CommunityReinforcedRisk",
+      "risk_derivative": true,
+      "trades": 29,
+      "starting_balance": 10000,
+      "final_balance": 9851.09629707,
+      "net_pnl_usdt": -148.90370292999998,
+      "net_return_pct": -1.4890370292999997,
+      "profit_factor": 0.0381260852806955,
+      "max_drawdown_pct": 1.489037029299998,
+      "exit_reasons": {
+        "exit_signal": 29
+      },
+      "max_duration_minutes": 140,
+      "zip_file": "results/btc-freinforced-5m-risk_late_base/backtest-result-2026-09-12_01-20-05.zip",
+      "zip_sha256": "bfb34ca7e31445e59989cf8334e3fc3bc5bd1b4c14525673207d926805186b1b",
+      "issues": []
+    },
+    {
+      "run": "btc-freinforced-original_early_base",
+      "strategy": "FReinforcedStrategy",
+      "risk_derivative": false,
+      "trades": 61,
+      "starting_balance": 10000,
+      "final_balance": 9799.8826866,
+      "net_pnl_usdt": -200.11731339999997,
+      "net_return_pct": -2.0011731339999996,
+      "profit_factor": 0.45130456132383107,
+      "max_drawdown_pct": 2.605172346700001,
+      "exit_reasons": {
+        "exit_signal": 61
+      },
+      "max_duration_minutes": 390,
+      "zip_file": "results/btc-freinforced-original_early_base/backtest-result-2026-09-12_01-18-57.zip",
+      "zip_sha256": "b72f115adea3efac8db3bbc57a94af796976349f2714e01c3485d1483cb1d909",
+      "issues": []
+    },
+    {
+      "run": "btc-freinforced-original_late_base",
+      "strategy": "FReinforcedStrategy",
+      "risk_derivative": false,
+      "trades": 29,
+      "starting_balance": 10000,
+      "final_balance": 9848.5001901,
+      "net_pnl_usdt": -151.4998099,
+      "net_return_pct": -1.514998099,
+      "profit_factor": 0.03818338230941439,
+      "max_drawdown_pct": 1.514998099000004,
+      "exit_reasons": {
+        "exit_signal": 29
+      },
+      "max_duration_minutes": 140,
+      "zip_file": "results/btc-freinforced-original_late_base/backtest-result-2026-09-12_01-19-02.zip",
+      "zip_sha256": "d2de9ddc3f5bfc32d4da84c3ae7d7f850c8524aa9e9472c5ff7b8744dd0cb30e",
+      "issues": []
+    },
+    {
+      "run": "btc-volatility-1h-risk_early_base",
+      "strategy": "CommunityVolatilityRisk",
+      "risk_derivative": true,
+      "trades": 17,
+      "starting_balance": 10000,
+      "final_balance": 10130.90442362,
+      "net_pnl_usdt": 130.90442362000005,
+      "net_return_pct": 1.3090442362000005,
+      "profit_factor": 1.3853060094170964,
+      "max_drawdown_pct": 2.0091619438316646,
+      "exit_reasons": {
+        "research_timeout_48h": 11,
+        "stop_loss": 6
+      },
+      "max_duration_minutes": 2880,
+      "zip_file": "results/btc-volatility-1h-risk_early_base/backtest-result-2026-09-12_01-19-08.zip",
+      "zip_sha256": "c173a8cdb6a384f7ebbee72fdc46fe519574fdf29866002370255fe5d67375f2",
+      "issues": []
+    },
+    {
+      "run": "btc-volatility-1h-risk_late_base",
+      "strategy": "CommunityVolatilityRisk",
+      "risk_derivative": true,
+      "trades": 11,
+      "starting_balance": 10000,
+      "final_balance": 10348.80401705,
+      "net_pnl_usdt": 348.80401704999997,
+      "net_return_pct": 3.4880401704999993,
+      "profit_factor": 3.05007961942936,
+      "max_drawdown_pct": 0.9292112086905262,
+      "exit_reasons": {
+        "research_timeout_48h": 9,
+        "stop_loss": 2
+      },
+      "max_duration_minutes": 2880,
+      "zip_file": "results/btc-volatility-1h-risk_late_base/backtest-result-2026-09-12_01-19-14.zip",
+      "zip_sha256": "266b5e1526d572b12e04f52c37debcfa3cfa9cc6aa220e86183b49d292cd8b23",
+      "issues": []
+    },
+    {
+      "run": "btc-volatility-original_early_base",
+      "strategy": "VolatilitySystem",
+      "risk_derivative": false,
+      "trades": 9,
+      "starting_balance": 10000,
+      "final_balance": 9399.53266131,
+      "net_pnl_usdt": -600.46733869,
+      "net_return_pct": -6.0046733869,
+      "profit_factor": 0.5237106488831761,
+      "max_drawdown_pct": 9.194479622670968,
+      "exit_reasons": {
+        "exit_signal": 8,
+        "force_exit": 1
+      },
+      "max_duration_minutes": 50040,
+      "zip_file": "results/btc-volatility-original_early_base/backtest-result-2026-09-12_01-17-49.zip",
+      "zip_sha256": "0369280a25ea12436449ad41c6e4ba8a00896a2ebc9ce8ce77a6018acd65a4ee",
+      "issues": []
+    },
+    {
+      "run": "btc-volatility-original_late_base",
+      "strategy": "VolatilitySystem",
+      "risk_derivative": false,
+      "trades": 8,
+      "starting_balance": 10000,
+      "final_balance": 10844.04819779,
+      "net_pnl_usdt": 844.0481977899999,
+      "net_return_pct": 8.4404819779,
+      "profit_factor": 4.691970076681046,
+      "max_drawdown_pct": 2.191500695199993,
+      "exit_reasons": {
+        "exit_signal": 7,
+        "force_exit": 1
+      },
+      "max_duration_minutes": 26640,
+      "zip_file": "results/btc-volatility-original_late_base/backtest-result-2026-09-12_01-18-05.zip",
+      "zip_sha256": "315cc10de824f1b878863cc29efaf9bee48ddfe05c5090c79024296b3f68ca3a",
+      "issues": []
+    },
+    {
+      "run": "xau-volatility-1h-risk_early_base",
+      "strategy": "CommunityVolatilityRisk",
+      "risk_derivative": true,
+      "trades": 23,
+      "starting_balance": 10000,
+      "final_balance": 10082.97181969,
+      "net_pnl_usdt": 82.97181969000005,
+      "net_return_pct": 0.8297181969000004,
+      "profit_factor": 1.1878397402150116,
+      "max_drawdown_pct": 2.344182992639241,
+      "exit_reasons": {
+        "research_timeout_48h": 14,
+        "exit_signal": 4,
+        "stop_loss": 4,
+        "force_exit": 1
+      },
+      "max_duration_minutes": 2880,
+      "zip_file": "results/xau-volatility-1h-risk_early_base/backtest-result-2026-09-12_01-20-43.zip",
+      "zip_sha256": "c589d4a31ecc78474bc726990d4da928fb60ceab75f5aa54479f528de9176fc5",
+      "issues": []
+    },
+    {
+      "run": "xau-volatility-1h-risk_late_base",
+      "strategy": "CommunityVolatilityRisk",
+      "risk_derivative": true,
+      "trades": 12,
+      "starting_balance": 10000,
+      "final_balance": 9939.92623177,
+      "net_pnl_usdt": -60.073768230000006,
+      "net_return_pct": -0.6007376823,
+      "profit_factor": 0.7517636256153731,
+      "max_drawdown_pct": 1.3720778188999976,
+      "exit_reasons": {
+        "stop_loss": 3,
+        "research_timeout_48h": 7,
+        "exit_signal": 2
+      },
+      "max_duration_minutes": 2880,
+      "zip_file": "results/xau-volatility-1h-risk_late_base/backtest-result-2026-09-12_01-20-48.zip",
+      "zip_sha256": "5783e6fdc8a5c081106caffb5a9e3f36f9116286bc4941ab6532db6d2fe882cb",
+      "issues": []
+    },
+    {
+      "run": "xau-volatility-1h-session_early_base",
+      "strategy": "CommunityVolatilitySession",
+      "risk_derivative": true,
+      "trades": 12,
+      "starting_balance": 10000,
+      "final_balance": 10244.0400131,
+      "net_pnl_usdt": 244.04001309999998,
+      "net_return_pct": 2.440400131,
+      "profit_factor": 2.4887559231140868,
+      "max_drawdown_pct": 1.1661415053312196,
+      "exit_reasons": {
+        "research_timeout_48h": 10,
+        "exit_signal": 1,
+        "force_exit": 1
+      },
+      "max_duration_minutes": 2880,
+      "zip_file": "results/xau-volatility-1h-session_early_base/backtest-result-2026-09-12_01-21-35.zip",
+      "zip_sha256": "e35b5ca55322e2bfedd1f34665b72790c6d4401110d0364fd6cb995a6cee183f",
+      "issues": []
+    },
+    {
+      "run": "xau-volatility-1h-session_late_base",
+      "strategy": "CommunityVolatilitySession",
+      "risk_derivative": true,
+      "trades": 5,
+      "starting_balance": 10000,
+      "final_balance": 9963.76965487,
+      "net_pnl_usdt": -36.230345129999996,
+      "net_return_pct": -0.36230345129999997,
+      "profit_factor": 0.7429175257153653,
+      "max_drawdown_pct": 1.0664063012000042,
+      "exit_reasons": {
+        "stop_loss": 2,
+        "research_timeout_48h": 3
+      },
+      "max_duration_minutes": 2880,
+      "zip_file": "results/xau-volatility-1h-session_late_base/backtest-result-2026-09-12_01-21-40.zip",
+      "zip_sha256": "eb7dbb5a7fb09c18e795d20e2d34864637b3bd1d1a681c78bc8a40b2d3d5520c",
+      "issues": []
+    },
+    {
+      "run": "xau-volatility-original_early_base",
+      "strategy": "VolatilitySystem",
+      "risk_derivative": false,
+      "trades": 19,
+      "starting_balance": 10000,
+      "final_balance": 9701.3130315,
+      "net_pnl_usdt": -298.68696850000003,
+      "net_return_pct": -2.9868696850000003,
+      "profit_factor": 0.6973901847499464,
+      "max_drawdown_pct": 7.730253897280898,
+      "exit_reasons": {
+        "exit_signal": 18,
+        "force_exit": 1
+      },
+      "max_duration_minutes": 19620,
+      "zip_file": "results/xau-volatility-original_early_base/backtest-result-2026-09-12_01-18-34.zip",
+      "zip_sha256": "610a5c9d7d66a3a266fab68009fa86530e1597d6e026e5799bef30d803c70b41",
+      "issues": []
+    },
+    {
+      "run": "xau-volatility-original_late_base",
+      "strategy": "VolatilitySystem",
+      "risk_derivative": false,
+      "trades": 5,
+      "starting_balance": 10000,
+      "final_balance": 10723.76848347,
+      "net_pnl_usdt": 723.7684834699999,
+      "net_return_pct": 7.2376848347,
+      "profit_factor": 10.035657873884444,
+      "max_drawdown_pct": 0.8010135991999959,
+      "exit_reasons": {
+        "exit_signal": 4,
+        "force_exit": 1
+      },
+      "max_duration_minutes": 37980,
+      "zip_file": "results/xau-volatility-original_late_base/backtest-result-2026-09-12_01-18-51.zip",
+      "zip_sha256": "a928759d2f22491f1a0e6423b1b16ba32c8adfd3f9910a11dcc2e291d6f98ce9",
+      "issues": []
+    }
+  ]
+}

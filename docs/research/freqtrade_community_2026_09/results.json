@@ -1,0 +1,734 @@
+{
+  "study": "freqtrade-community-btc-xau-screen-v1",
+  "live_weight": 0,
+  "certified": false,
+  "window_warning": "Both historical windows overlap previously inspected LONA research. Neither is a fresh holdout. No hyperopt or parameter selection on these results.",
+  "candidates": [
+    {
+      "id": "btc-volatility-1h-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "CommunityVolatilityRisk",
+      "timeframe": "1h",
+      "informative": "3h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "results": {
+        "early": {
+          "net_return_pct": 1.3090442362000005,
+          "net_pnl_usdt": 130.90442362000005,
+          "profit_factor": 1.3853060094170961,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 2.0091619438316646,
+          "trades": 17,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": -0.21934208208280262,
+          "side_breakdown": {
+            "long": {
+              "trades": 12,
+              "net_pnl_usdt": -73.69367697999999
+            },
+            "short": {
+              "trades": 5,
+              "net_pnl_usdt": 204.59810059999998
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 11,
+              "net_pnl_usdt": 74.02870532999998
+            },
+            "mixed": {
+              "trades": 3,
+              "net_pnl_usdt": 48.14521183
+            },
+            "range": {
+              "trades": 3,
+              "net_pnl_usdt": 8.730506459999994
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": 3.4880401704999993,
+          "net_pnl_usdt": 348.80401704999997,
+          "profit_factor": 3.05007961942936,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 0.9292112086905262,
+          "trades": 11,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": -1.6630598586755698,
+          "side_breakdown": {
+            "long": {
+              "trades": 7,
+              "net_pnl_usdt": 384.82412207
+            },
+            "short": {
+              "trades": 4,
+              "net_pnl_usdt": -36.02010502
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 6,
+              "net_pnl_usdt": 288.70779215
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": 4.882135520000002
+            },
+            "range": {
+              "trades": 3,
+              "net_pnl_usdt": 55.214089380000004
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "late: insufficient trades"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityVolatilityRisk",
+            "has_bias": "False",
+            "total_signals": "28",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review",
+      "recursive_probe_note": {
+        "requested": [
+          199,
+          499,
+          999,
+          1999
+        ],
+        "effective": [
+          199,
+          499,
+          999,
+          1499
+        ],
+        "reason": "OKX native startup cap 1499; trading-strategy startup counts unchanged. Diagnostic starts after available warmup."
+      }
+    },
+    {
+      "id": "btc-freinforced-5m-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "CommunityReinforcedRisk",
+      "timeframe": "5m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "results": {
+        "early": {
+          "net_return_pct": -1.9704952417000001,
+          "net_pnl_usdt": -197.04952417,
+          "profit_factor": 0.4465108345989625,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 2.550705269099999,
+          "trades": 61,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 0.17114366250667637,
+          "side_breakdown": {
+            "long": {
+              "trades": 31,
+              "net_pnl_usdt": -139.57715225
+            },
+            "short": {
+              "trades": 30,
+              "net_pnl_usdt": -57.47237191999999
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 19,
+              "net_pnl_usdt": -77.44194364
+            },
+            "mixed": {
+              "trades": 1,
+              "net_pnl_usdt": 2.52043378
+            },
+            "range": {
+              "trades": 41,
+              "net_pnl_usdt": -122.12801430999998
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": -1.4890370292999997,
+          "net_pnl_usdt": -148.90370292999998,
+          "profit_factor": 0.0381260852806955,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.489037029299998,
+          "trades": 29,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 0.3177000201489941,
+          "side_breakdown": {
+            "long": {
+              "trades": 18,
+              "net_pnl_usdt": -93.86749904
+            },
+            "short": {
+              "trades": 11,
+              "net_pnl_usdt": -55.03620389
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 8,
+              "net_pnl_usdt": -21.123615790000002
+            },
+            "mixed": {
+              "trades": 7,
+              "net_pnl_usdt": -43.92099651
+            },
+            "range": {
+              "trades": 14,
+              "net_pnl_usdt": -83.85909063
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "early: non-positive return",
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityReinforcedRisk",
+            "has_bias": "False",
+            "total_signals": "30",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review",
+      "recursive_probe_note": {
+        "requested": [
+          199,
+          499,
+          999,
+          1999
+        ],
+        "effective": [
+          199,
+          499,
+          999,
+          1499
+        ],
+        "reason": "OKX native startup cap 1499; trading-strategy startup counts unchanged. Diagnostic starts after available warmup."
+      }
+    },
+    {
+      "id": "xau-volatility-1h-risk",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "CommunityVolatilityRisk",
+      "timeframe": "1h",
+      "informative": "3h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "results": {
+        "early": {
+          "net_return_pct": 0.8297181969000004,
+          "net_pnl_usdt": 82.97181969000005,
+          "profit_factor": 1.1878397402150118,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 2.344182992639241,
+          "trades": 23,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": 1.9028971390115939,
+          "side_breakdown": {
+            "long": {
+              "trades": 10,
+              "net_pnl_usdt": 8.378583849999998
+            },
+            "short": {
+              "trades": 13,
+              "net_pnl_usdt": 74.59323584
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 14,
+              "net_pnl_usdt": -28.32956874
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": 27.0583124
+            },
+            "range": {
+              "trades": 7,
+              "net_pnl_usdt": 84.24307603
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": -0.6007376823,
+          "net_pnl_usdt": -60.073768230000006,
+          "profit_factor": 0.7517636256153731,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.3720778188999976,
+          "trades": 12,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 3.258966737048813,
+          "side_breakdown": {
+            "long": {
+              "trades": 7,
+              "net_pnl_usdt": 41.433664639999996
+            },
+            "short": {
+              "trades": 5,
+              "net_pnl_usdt": -101.50743287
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 9,
+              "net_pnl_usdt": -118.27861418
+            },
+            "range": {
+              "trades": 3,
+              "net_pnl_usdt": 58.20484595
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityVolatilityRisk",
+            "has_bias": "False",
+            "total_signals": "30",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review",
+      "recursive_probe_note": {
+        "requested": [
+          199,
+          499,
+          999,
+          1999
+        ],
+        "effective": [
+          199,
+          499,
+          999,
+          1499
+        ],
+        "reason": "OKX native startup cap 1499; trading-strategy startup counts unchanged. Diagnostic starts after available warmup."
+      }
+    },
+    {
+      "id": "xau-volatility-1h-session",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "CommunityVolatilitySession",
+      "timeframe": "1h",
+      "informative": "3h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "results": {
+        "early": {
+          "net_return_pct": 2.440400131,
+          "net_pnl_usdt": 244.04001309999998,
+          "profit_factor": 2.4887559231140868,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.1661415053312196,
+          "trades": 12,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": -0.05791723136086943,
+          "side_breakdown": {
+            "long": {
+              "trades": 5,
+              "net_pnl_usdt": 171.00730307999999
+            },
+            "short": {
+              "trades": 7,
+              "net_pnl_usdt": 73.03271002000001
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 8,
+              "net_pnl_usdt": 38.05096484000002
+            },
+            "range": {
+              "trades": 4,
+              "net_pnl_usdt": 205.98904826
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": -0.36230345129999997,
+          "net_pnl_usdt": -36.230345129999996,
+          "profit_factor": 0.7429175257153653,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.0664063012000042,
+          "trades": 5,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 3.0156459302872243,
+          "side_breakdown": {
+            "long": {
+              "trades": 3,
+              "net_pnl_usdt": 50.194181269999994
+            },
+            "short": {
+              "trades": 2,
+              "net_pnl_usdt": -86.42452639999999
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 5,
+              "net_pnl_usdt": -36.230345129999996
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityVolatilitySession",
+            "has_bias": "False",
+            "total_signals": "17",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review",
+      "recursive_probe_note": {
+        "requested": [
+          199,
+          499,
+          999,
+          1999
+        ],
+        "effective": [
+          199,
+          499,
+          999,
+          1499
+        ],
+        "reason": "OKX native startup cap 1499; trading-strategy startup counts unchanged. Diagnostic starts after available warmup."
+      }
+    }
+  ],
+  "original_controls": [
+    {
+      "id": "btc-volatility-original",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "VolatilitySystem",
+      "timeframe": "1h",
+      "results": {
+        "early": {
+          "net_return_pct": -6.0046733869,
+          "net_pnl_usdt": -600.46733869,
+          "profit_factor": 0.5237106488831761,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 9.194479622670968,
+          "trades": 9,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": 7.323402002356648,
+          "side_breakdown": {
+            "long": {
+              "trades": 5,
+              "net_pnl_usdt": -486.05063411
+            },
+            "short": {
+              "trades": 4,
+              "net_pnl_usdt": -114.41670457999999
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 5,
+              "net_pnl_usdt": -1013.4022161700001
+            },
+            "mixed": {
+              "trades": 1,
+              "net_pnl_usdt": -66.97254247
+            },
+            "range": {
+              "trades": 3,
+              "net_pnl_usdt": 479.90741995
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": 8.4404819779,
+          "net_pnl_usdt": 844.0481977899999,
+          "profit_factor": 4.691970076681047,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 2.191500695199993,
+          "trades": 8,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": -21.36367125878478,
+          "side_breakdown": {
+            "long": {
+              "trades": 4,
+              "net_pnl_usdt": 920.49542599
+            },
+            "short": {
+              "trades": 4,
+              "net_pnl_usdt": -76.4472282
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 4,
+              "net_pnl_usdt": -141.12929291
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": 1017.2739074799999
+            },
+            "range": {
+              "trades": 2,
+              "net_pnl_usdt": -32.09641678
+            }
+          }
+        }
+      },
+      "status": "reference_only_not_risk_matched"
+    },
+    {
+      "id": "xau-volatility-original",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "VolatilitySystem",
+      "timeframe": "1h",
+      "results": {
+        "early": {
+          "net_return_pct": -2.9868696850000003,
+          "net_pnl_usdt": -298.68696850000003,
+          "profit_factor": 0.6973901847499463,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 7.730253897280898,
+          "trades": 19,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": 1.0157134423759135,
+          "side_breakdown": {
+            "long": {
+              "trades": 9,
+              "net_pnl_usdt": -466.55341132
+            },
+            "short": {
+              "trades": 10,
+              "net_pnl_usdt": 167.86644282000003
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 11,
+              "net_pnl_usdt": -5.612118719999984
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": -37.220985139999996
+            },
+            "range": {
+              "trades": 6,
+              "net_pnl_usdt": -255.85386464
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": 7.2376848347,
+          "net_pnl_usdt": 723.7684834699999,
+          "profit_factor": 10.035657873884444,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 0.8010135991999959,
+          "trades": 5,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": 16.13169968036977,
+          "side_breakdown": {
+            "long": {
+              "trades": 2,
+              "net_pnl_usdt": 624.1155340099999
+            },
+            "short": {
+              "trades": 3,
+              "net_pnl_usdt": 99.65294946
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 3,
+              "net_pnl_usdt": -80.10135992000001
+            },
+            "range": {
+              "trades": 2,
+              "net_pnl_usdt": 803.8698433899999
+            }
+          }
+        }
+      },
+      "status": "reference_only_not_risk_matched"
+    },
+    {
+      "id": "btc-freinforced-original",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "FReinforcedStrategy",
+      "timeframe": "5m",
+      "results": {
+        "early": {
+          "net_return_pct": -2.0011731339999996,
+          "net_pnl_usdt": -200.11731339999997,
+          "profit_factor": 0.45130456132383107,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 2.605172346700001,
+          "trades": 61,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 0.1772254185698539,
+          "side_breakdown": {
+            "long": {
+              "trades": 31,
+              "net_pnl_usdt": -143.02197822
+            },
+            "short": {
+              "trades": 30,
+              "net_pnl_usdt": -57.09533518
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 19,
+              "net_pnl_usdt": -79.04677714
+            },
+            "mixed": {
+              "trades": 1,
+              "net_pnl_usdt": 2.60394212
+            },
+            "range": {
+              "trades": 41,
+              "net_pnl_usdt": -123.67447838000001
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": -1.514998099,
+          "net_pnl_usdt": -151.4998099,
+          "profit_factor": 0.03818338230941439,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.514998099000004,
+          "trades": 29,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 0.32442388934261684,
+          "side_breakdown": {
+            "long": {
+              "trades": 18,
+              "net_pnl_usdt": -95.42626435
+            },
+            "short": {
+              "trades": 11,
+              "net_pnl_usdt": -56.07354555
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 8,
+              "net_pnl_usdt": -21.473934770000003
+            },
+            "mixed": {
+              "trades": 7,
+              "net_pnl_usdt": -44.62184432
+            },
+            "range": {
+              "trades": 14,
+              "net_pnl_usdt": -85.40403081000001
+            }
+          }
+        }
+      },
+      "status": "reference_only_not_risk_matched",
+      "source_note": "Compatibility control: three missing IntParameter space annotations; unchanged numeric defaults/signals, no hyperopt. See upstream_sources.json and upstream_pristine."
+    }
+  ],
+  "errors": []
+}

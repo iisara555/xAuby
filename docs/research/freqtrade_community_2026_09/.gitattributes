@@ -1,0 +1,2 @@
+# Preserve evidence byte hashes across platforms and core.autocrlf settings.
+* text eol=lf
