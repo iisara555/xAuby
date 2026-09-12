@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "study": "freqtrade-community-btc-xau-screen-v1",
+  "updated_at_utc": "2026-09-12",
+  "scope": "research_only",
+  "production_arena_admitted": false,
+  "certified": false,
+  "live_weight": 0,
+  "decision": "No candidate passed the frozen historical screen. Priority for more research is not approval for allocation.",
+  "results_file": "results.json",
+  "provenance_file": "provenance.json",
+  "common_certification_blockers": [
+    "Both windows reuse inspected history; no fresh holdout result.",
+    "Historical funding is incomplete and missing rates use zero fallback.",
+    "No base-screen passer: conditional cost-stress runs were not triggered.",
+    "No xAuby native-engine parity or paper-trading validation."
+  ],
+  "candidates": [
+    {
+      "id": "btc-volatility-1h-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "CommunityVolatilityRisk",
+      "timeframe": "1h",
+      "informative": "3h",
+      "status": "rejected_screen",
+      "screen_reasons": [
+        "late: insufficient trades"
+      ],
+      "live_weight": 0,
+      "certified": false,
+      "production_arena_admitted": false,
+      "research_disposition": "priority_for_unchanged_fresh_sample",
+      "next_action": "Keep parameters frozen; evaluate the reserved forward window after 2026-11-12, subject to data quality and original gates. No scheduled job or live order.",
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityVolatilityRisk",
+            "has_bias": "False",
+            "total_signals": "28",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive_review": {
+        "status": "reviewed_no_material_variance_at_actual_startup_in_printed_table",
+        "startup_candles": 499,
+        "observation": "ATR and resample_180_atr: 0.338% at 199; 0.000% at actual 499 and at 999; dash at 1499.",
+        "printed_resolution_pct": 0.001,
+        "scope": "One final indicator endpoint and one early indicator-only lookahead check; not all market paths.",
+        "log": "logs/recursive_btc-volatility-1h-risk.log",
+        "log_sha256": "7c98613069c2a078d84fde6210a83541ac7f07770be74c4632bad99aec45fdc6"
+      }
+    },
+    {
+      "id": "btc-freinforced-5m-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "CommunityReinforcedRisk",
+      "timeframe": "5m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "screen_reasons": [
+        "early: non-positive return",
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "live_weight": 0,
+      "certified": false,
+      "production_arena_admitted": false,
+      "research_disposition": "archive_failed_screen",
+      "next_action": "Do not allocate. Any new variant needs a separate protocol and untouched evaluation data.",
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityReinforcedRisk",
+            "has_bias": "False",
+            "total_signals": "30",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive_review": {
+        "status": "reviewed_no_material_variance_at_actual_startup_in_printed_table",
+        "startup_candles": 999,
+        "observation": "resample_60_sma: NaN at 199/499, -0.000% at actual 999 and at 1499. Other reported indicators at actual startup are dash or +/-0.000%.",
+        "printed_resolution_pct": 0.001,
+        "scope": "One final indicator endpoint and one early indicator-only lookahead check; not all market paths.",
+        "log": "logs/recursive_btc-freinforced-5m-risk.log",
+        "log_sha256": "b469cb87724e727cbe697505344e54bd9b0b4529ad881160ce9b9432b9bb44dd"
+      }
+    },
+    {
+      "id": "xau-volatility-1h-risk",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "CommunityVolatilityRisk",
+      "timeframe": "1h",
+      "informative": "3h",
+      "status": "rejected_screen",
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "live_weight": 0,
+      "certified": false,
+      "production_arena_admitted": false,
+      "research_disposition": "archive_failed_screen",
+      "next_action": "Do not allocate. Any new variant needs a separate protocol and untouched evaluation data.",
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityVolatilityRisk",
+            "has_bias": "False",
+            "total_signals": "30",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive_review": {
+        "status": "reviewed_no_material_variance_at_actual_startup_in_printed_table",
+        "startup_candles": 499,
+        "observation": "ATR and resample_180_atr: 0.598% at 199; 0.000% at actual 499 and at 999; dash at 1499.",
+        "printed_resolution_pct": 0.001,
+        "scope": "One final indicator endpoint and one early indicator-only lookahead check; not all market paths.",
+        "log": "logs/recursive_xau-volatility-1h-risk.log",
+        "log_sha256": "abb2e4e2af52b9201bc5b43ddeac560a2ed9b83d39fdcc54edb2a40a9db2f8c1"
+      }
+    },
+    {
+      "id": "xau-volatility-1h-session",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "CommunityVolatilitySession",
+      "timeframe": "1h",
+      "informative": "3h",
+      "status": "rejected_screen",
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "live_weight": 0,
+      "certified": false,
+      "production_arena_admitted": false,
+      "research_disposition": "archive_failed_screen",
+      "next_action": "Do not allocate. Any new variant needs a separate protocol and untouched evaluation data.",
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "CommunityVolatilitySession",
+            "has_bias": "False",
+            "total_signals": "17",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive_review": {
+        "status": "reviewed_no_material_variance_at_actual_startup_in_printed_table",
+        "startup_candles": 499,
+        "observation": "ATR and resample_180_atr: 0.598% at 199; 0.000% at actual 499 and at 999; dash at 1499.",
+        "printed_resolution_pct": 0.001,
+        "scope": "One final indicator endpoint and one early indicator-only lookahead check; not all market paths.",
+        "log": "logs/recursive_xau-volatility-1h-session.log",
+        "log_sha256": "49977f5201ff56beb1629c20e05355adde03a2b7233af7512ff6a67a9f32a4e3"
+      }
+    }
+  ]
+}
