@@ -30,6 +30,9 @@ Historical windows are 12 March–10 July and 10 July–8 September (end exclusi
 Both overlap earlier inspected research; neither is described as a fresh
 holdout. Each pair/strategy/window starts independently with 10,000 USDT.
 No parameter optimization or data-dependent session selection is performed.
+The downloader requests one additional day as a boundary buffer because the
+native downloader can discard its final candle. Audits and backtests still stop
+at the frozen end-exclusive date; no missing candles are fabricated.
 
 Derivative risk: at most 25% of realized wallet (and proposed stake), 1x leverage,
 2% stop, no position additions, 48-hour time exit. Gaps and execution costs can

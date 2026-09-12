@@ -17,7 +17,7 @@ import subprocess
 import sys
 import urllib.request
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +55,14 @@ def make_config(pair: str) -> dict:
         # when enabled=False. Neither a backtest nor a download starts them.
         "dataformat_ohlcv": "feather", "dataformat_trades": "feather",
     }
+
+
+def download_timerange(protocol: dict) -> str:
+    # Some native exchange downloads discard their last returned candle as
+    # potentially incomplete. Fetch a closed-day buffer, but neither audit nor
+    # backtest extends beyond the frozen data_end_exclusive / window bounds.
+    end = datetime.strptime(protocol["data_end_exclusive"], "%Y%m%d") + timedelta(days=1)
+    return f"{protocol['data_start']}-{end:%Y%m%d}"
 
 
 def run_command(args: list[str], log: Path, commands: list[dict], timeout: int = 1200) -> bool:
@@ -275,7 +283,7 @@ def main() -> int:
         timeframes = ["1m", "5m", "1h"] if symbol == "BTC" else ["5m", "1h"]
         download = ["download-data", "-c", str(config), "--userdir", str(out),
                     "--datadir", str(out / "data"), "--timeframes", *timeframes,
-                    "--timerange", f"{protocol['data_start']}-{protocol['data_end_exclusive']}"]
+                    "--timerange", download_timerange(protocol)]
         if not run_command(download, out / "logs" / f"download_{symbol}.log", commands):
             summary["errors"].append(f"{symbol}: data download failed")
             continue
@@ -284,6 +292,7 @@ def main() -> int:
             write_json(out / f"data_audit_{symbol}.json", audit)
         except ValueError as error:
             summary["errors"].append(str(error))
+            print(f"DATA GATE: {error}", flush=True)
             continue
     if summary["errors"]:
         write_json(out / "summary.json", summary)

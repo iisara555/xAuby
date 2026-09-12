@@ -77,6 +77,14 @@ def test_research_config_has_no_credentials_or_live_mode(research):
     assert config.get("telegram", {}).get("enabled", False) is False
 
 
+def test_download_buffer_does_not_change_locked_windows(research):
+    protocol = {"data_start": "20260215", "data_end_exclusive": "20260908",
+                "windows": {"late": "20260710-20260908"}}
+    assert research.download_timerange(protocol) == "20260215-20260909"
+    assert protocol["data_end_exclusive"] == "20260908"
+    assert protocol["windows"]["late"] == "20260710-20260908"
+
+
 def test_session_filter_dst_weekend_and_boundaries(strategies):
     clocks = pd.Series(pd.to_datetime([
         "2026-01-12T07:00Z", "2026-01-12T08:00Z", "2026-01-12T12:00Z",
