@@ -14,10 +14,19 @@ strategy pool, dependencies of the application, or deployment procedures.
 | XAU/USDT:USDT | CommunityVolatilitySession | 1h / 3h | Same risk model, plus fixed London/NY entry sessions |
 
 Three upstream controls (VolatilitySystem on both pairs, FReinforcedStrategy on
-BTC) preserve their strategy defaults. Common wallet, proposed stake and costs
+BTC) preserve their numeric strategy defaults. Common wallet, proposed stake and costs
 do **not** make those controls risk-equivalent: the original volatility system
 uses 2x leverage, a very wide stop and can add to a position. Risk derivatives
 are separately named and are not represented as upstream performance.
+
+Compatibility exception, documented after the first native attempt: Freqtrade
+2026.8 refuses three upstream FReinforced `IntParameter` declarations that lack
+an explicit parameter category. Both its control and derivative receive only
+`space="buy"` annotations; no values, ranges or signal expressions change and
+no hyperopt runs. Original source bytes, executed bytes, both hashes and exact
+patches are retained in each artifact. This is a **compatibility control**, not
+a claim that the byte-for-byte upstream file executed successfully. A unit test
+checks AST equality after removing only those added annotations.
 
 The native 5m and 1h timeframes are intentional. Changing FReinforced to 15m
 would also change its higher-timeframe filter to 3h. A 15m adaptation is deferred
@@ -69,6 +78,7 @@ The workflow artifact contains `summary.json`, exact protocol, resolved
 dependencies, pinned upstream source + hashes, native zipped reports/trades,
 data coverage/hashes, cached public data and all command logs. It preserves
 failures instead of substituting data or silently tuning a strategy.
+Artifacts are retained for 90 days to cover the reserved forward window.
 
 Sources: [community repository](https://github.com/freqtrade/freqtrade-strategies),
 [native backtesting](https://www.freqtrade.io/en/stable/backtesting/),

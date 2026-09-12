@@ -65,6 +65,31 @@ def download_timerange(protocol: dict) -> str:
     return f"{protocol['data_start']}-{end:%Y%m%d}"
 
 
+def compatible_upstream(name: str, source: bytes) -> tuple[bytes, list[str]]:
+    """Annotate missing parameter categories, without changing any values.
+
+    Native 2026.8 refuses the upstream's three unprefixed IntParameters. No
+    hyperopt or parameter files are used here, so category metadata does not
+    change evaluated defaults, indicator formulas, entry or exit rules.
+    """
+    if name != "FReinforcedStrategy.py":
+        return source, []
+    text = source.decode("utf-8")
+    declarations = [
+        'adx_period = IntParameter(4, 24, default=14)',
+        'ema_short_period = IntParameter(4, 24, default=8)',
+        'ema_long_period = IntParameter(12, 175, default=21)',
+    ]
+    patches = []
+    for original in declarations:
+        if text.count(original) != 1:
+            raise ValueError(f"Pinned upstream compatibility declaration changed: {original}")
+        replacement = original[:-1] + ', space="buy")'
+        text = text.replace(original, replacement)
+        patches.append(f"{original} -> {replacement}")
+    return text.encode("utf-8"), patches
+
+
 def run_command(args: list[str], log: Path, commands: list[dict], timeout: int = 1200) -> bool:
     require_hosted_runner()
     if not args or args[0] not in ALLOWED_COMMANDS:
@@ -92,6 +117,8 @@ def run_command(args: list[str], log: Path, commands: list[dict], timeout: int =
 def fetch_upstream(out: Path, protocol: dict) -> None:
     strategies = out / "strategies"
     strategies.mkdir(parents=True, exist_ok=True)
+    pristine = out / "upstream_pristine"
+    pristine.mkdir(parents=True, exist_ok=True)
     manifest = {}
     for name in ("VolatilitySystem.py", "FReinforcedStrategy.py", "LICENSE"):
         source_path = name if name == "LICENSE" else f"user_data/strategies/futures/{name}"
@@ -101,8 +128,12 @@ def fetch_upstream(out: Path, protocol: dict) -> None:
             content = response.read()
         if name.endswith(".py"):
             compile(content, name, "exec")
-        (strategies / name).write_bytes(content)
-        manifest[name] = {"url": url, "sha256": hashlib.sha256(content).hexdigest()}
+        (pristine / name).write_bytes(content)
+        executable, patches = compatible_upstream(name, content)
+        (strategies / name).write_bytes(executable)
+        manifest[name] = {"url": url, "sha256": hashlib.sha256(content).hexdigest(),
+                          "executed_sha256": hashlib.sha256(executable).hexdigest(),
+                          "compatibility_patches": patches}
     shutil.copyfile(STUDY / "strategies.py", strategies / "CommunityStrategies.py")
     write_json(out / "upstream_sources.json", manifest)
 
@@ -334,10 +365,15 @@ def main() -> int:
         row["results"] = {window: backtest(candidate, window, protocol["execution"]["base_cost_per_side"], "base") for window in protocol["windows"]}
         if candidate in originals:
             row["status"] = "reference_only_not_risk_matched"
+            if candidate["strategy"] == "FReinforcedStrategy":
+                row["source_note"] = "Compatibility control: three missing IntParameter space annotations; unchanged numeric defaults/signals, no hyperopt. See upstream_sources.json and upstream_pristine."
             summary["original_controls"].append(row)
         else:
             row["screen_reasons"] = screening_reasons(row["results"], protocol["screen_gate"])
-            row["status"] = "rejected_screen" if row["screen_reasons"] else "historical_metrics_pass_pending_validation"
+            if any(value is None for value in row["results"].values()):
+                row["status"] = "blocked_execution"
+            else:
+                row["status"] = "rejected_screen" if row["screen_reasons"] else "historical_metrics_pass_pending_validation"
             row["live_weight"] = 0
             # Bias checks are independent of profitability; failed strategies
             # still need a truthful explanation of their evidence quality.

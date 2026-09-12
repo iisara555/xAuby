@@ -1,5 +1,6 @@
 """Small offline tests; actual Freqtrade backtests run only on hosted CI."""
 
+import ast
 import importlib.util
 import json
 import sys
@@ -83,6 +84,25 @@ def test_download_buffer_does_not_change_locked_windows(research):
     assert research.download_timerange(protocol) == "20260215-20260909"
     assert protocol["data_end_exclusive"] == "20260908"
     assert protocol["windows"]["late"] == "20260710-20260908"
+
+
+def test_compatibility_patch_only_adds_parameter_space(research):
+    source = (b'adx_period = IntParameter(4, 24, default=14)\n'
+              b'ema_short_period = IntParameter(4, 24, default=8)\n'
+              b'ema_long_period = IntParameter(12, 175, default=21)\n')
+    executable, patches = research.compatible_upstream("FReinforcedStrategy.py", source)
+    assert len(patches) == 3
+    original_tree = ast.parse(source)
+    patched_tree = ast.parse(executable)
+    for node in ast.walk(patched_tree):
+        if isinstance(node, ast.Call):
+            spaces = [kw for kw in node.keywords if kw.arg == "space"]
+            assert len(spaces) == 1 and spaces[0].value.value == "buy"
+            node.keywords = [kw for kw in node.keywords if kw.arg != "space"]
+    assert ast.dump(original_tree) == ast.dump(patched_tree)
+    assert research.compatible_upstream("VolatilitySystem.py", source) == (source, [])
+    with pytest.raises(ValueError, match="declaration changed"):
+        research.compatible_upstream("FReinforcedStrategy.py", b"different source")
 
 
 def test_session_filter_dst_weekend_and_boundaries(strategies):

@@ -42,4 +42,4 @@ jobs:
           name: freqtrade-community-${{ github.run_id }}
           path: core/freqtrade_community_research/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
