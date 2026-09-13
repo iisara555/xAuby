@@ -1,0 +1,646 @@
+{
+  "study": "freqtrade-community-btc-xau-15m-screen-v1",
+  "live_weight": 0,
+  "certified": false,
+  "arena_admitted": false,
+  "window_warning": "Both windows were inspected in LONA and Community studies; exploratory screening only, neither is a fresh holdout. Freeze before this run; no hyperopt, parameter, direction or session selection after results.",
+  "candidates": [
+    {
+      "id": "btc-volatility-15m-1h-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "Community15mVolatilityRisk",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "results": {
+        "early": {
+          "net_return_pct": -4.5741036943,
+          "net_pnl_usdt": -457.41036942999995,
+          "profit_factor": 0.6203917115784626,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 5.670484943204743,
+          "trades": 46,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": -1.102422485428499,
+          "side_breakdown": {
+            "long": {
+              "trades": 23,
+              "net_pnl_usdt": -239.9550632
+            },
+            "short": {
+              "trades": 23,
+              "net_pnl_usdt": -217.45530623
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 20,
+              "net_pnl_usdt": -406.63476841999994
+            },
+            "mixed": {
+              "trades": 8,
+              "net_pnl_usdt": 176.22007985
+            },
+            "range": {
+              "trades": 18,
+              "net_pnl_usdt": -226.99568086000002
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 12,
+                "net_pnl_usdt": -146.35585817000003
+              },
+              "mixed": {
+                "trades": 3,
+                "net_pnl_usdt": 62.18392671
+              },
+              "range": {
+                "trades": 8,
+                "net_pnl_usdt": -155.78313174
+              }
+            },
+            "short": {
+              "directional": {
+                "trades": 8,
+                "net_pnl_usdt": -260.27891024999997
+              },
+              "mixed": {
+                "trades": 5,
+                "net_pnl_usdt": 114.03615314000001
+              },
+              "range": {
+                "trades": 10,
+                "net_pnl_usdt": -71.21254912
+              }
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": 1.9489059154999995,
+          "net_pnl_usdt": 194.89059154999995,
+          "profit_factor": 1.5622014466985787,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.727803718239429,
+          "trades": 16,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": -0.34807086821285327,
+          "side_breakdown": {
+            "long": {
+              "trades": 9,
+              "net_pnl_usdt": 339.28712043
+            },
+            "short": {
+              "trades": 7,
+              "net_pnl_usdt": -144.39652888
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 6,
+              "net_pnl_usdt": -175.04897641000002
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": 14.92078531
+            },
+            "range": {
+              "trades": 8,
+              "net_pnl_usdt": 355.01878265
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 4,
+                "net_pnl_usdt": -149.07719047
+              },
+              "mixed": {
+                "trades": 1,
+                "net_pnl_usdt": 32.79813332
+              },
+              "range": {
+                "trades": 4,
+                "net_pnl_usdt": 455.56617758
+              }
+            },
+            "short": {
+              "directional": {
+                "trades": 2,
+                "net_pnl_usdt": -25.971785939999997
+              },
+              "mixed": {
+                "trades": 1,
+                "net_pnl_usdt": -17.87734801
+              },
+              "range": {
+                "trades": 4,
+                "net_pnl_usdt": -100.54739493
+              }
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "early: non-positive return",
+        "late: insufficient trades"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "Community15mVolatilityRisk",
+            "has_bias": "False",
+            "total_signals": "30",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review"
+    },
+    {
+      "id": "btc-freinforced-15m-1h-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "Community15mReinforcedRisk",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "results": {
+        "early": {
+          "net_return_pct": 0.6839752781000001,
+          "net_pnl_usdt": 68.39752781000001,
+          "profit_factor": 2.8948602126223255,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 0.1478862509894527,
+          "trades": 11,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 0.24371134622682727,
+          "side_breakdown": {
+            "long": {
+              "trades": 7,
+              "net_pnl_usdt": 76.5343774
+            },
+            "short": {
+              "trades": 4,
+              "net_pnl_usdt": -8.13684959
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 1,
+              "net_pnl_usdt": -0.90839025
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": 61.04735003
+            },
+            "range": {
+              "trades": 8,
+              "net_pnl_usdt": 8.258568030000003
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 1,
+                "net_pnl_usdt": -0.90839025
+              },
+              "mixed": {
+                "trades": 1,
+                "net_pnl_usdt": 60.14427368
+              },
+              "range": {
+                "trades": 5,
+                "net_pnl_usdt": 17.298493970000003
+              }
+            },
+            "short": {
+              "mixed": {
+                "trades": 1,
+                "net_pnl_usdt": 0.90307635
+              },
+              "range": {
+                "trades": 3,
+                "net_pnl_usdt": -9.03992594
+              }
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": -0.22631954690000003,
+          "net_pnl_usdt": -22.63195469,
+          "profit_factor": 0.07137053411027088,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 0.22631954689999473,
+          "trades": 5,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 0.0,
+          "side_breakdown": {
+            "long": {
+              "trades": 4,
+              "net_pnl_usdt": -11.02595336
+            },
+            "short": {
+              "trades": 1,
+              "net_pnl_usdt": -11.60600133
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 3,
+              "net_pnl_usdt": -21.851369820000002
+            },
+            "mixed": {
+              "trades": 1,
+              "net_pnl_usdt": 1.73939634
+            },
+            "range": {
+              "trades": 1,
+              "net_pnl_usdt": -2.51998121
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 2,
+                "net_pnl_usdt": -10.24536849
+              },
+              "mixed": {
+                "trades": 1,
+                "net_pnl_usdt": 1.73939634
+              },
+              "range": {
+                "trades": 1,
+                "net_pnl_usdt": -2.51998121
+              }
+            },
+            "short": {
+              "directional": {
+                "trades": 1,
+                "net_pnl_usdt": -11.60600133
+              }
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "Community15mReinforcedRisk",
+            "has_bias": "False",
+            "total_signals": "16",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review"
+    },
+    {
+      "id": "xau-volatility-15m-1h-risk",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "Community15mVolatilityRisk",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "results": {
+        "early": {
+          "net_return_pct": -0.5394978368999997,
+          "net_pnl_usdt": -53.949783689999975,
+          "profit_factor": 0.934023780415105,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 3.080384369611751,
+          "trades": 56,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": -2.5472393010151233,
+          "side_breakdown": {
+            "long": {
+              "trades": 28,
+              "net_pnl_usdt": -181.17723202000002
+            },
+            "short": {
+              "trades": 28,
+              "net_pnl_usdt": 127.22744833000002
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 30,
+              "net_pnl_usdt": -212.50155603
+            },
+            "mixed": {
+              "trades": 3,
+              "net_pnl_usdt": 61.86995924
+            },
+            "range": {
+              "trades": 23,
+              "net_pnl_usdt": 96.68181310000004
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 13,
+                "net_pnl_usdt": -233.08263749
+              },
+              "mixed": {
+                "trades": 3,
+                "net_pnl_usdt": 61.86995924
+              },
+              "range": {
+                "trades": 12,
+                "net_pnl_usdt": -9.964553770000006
+              }
+            },
+            "short": {
+              "directional": {
+                "trades": 17,
+                "net_pnl_usdt": 20.58108146
+              },
+              "range": {
+                "trades": 11,
+                "net_pnl_usdt": 106.64636687000001
+              }
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": -1.0220783764999999,
+          "net_pnl_usdt": -102.20783765,
+          "profit_factor": 0.7586961213077789,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.7849868996522202,
+          "trades": 28,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 7.381690163421855,
+          "side_breakdown": {
+            "long": {
+              "trades": 15,
+              "net_pnl_usdt": -8.702600839999988
+            },
+            "short": {
+              "trades": 13,
+              "net_pnl_usdt": -93.50523681000001
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 12,
+              "net_pnl_usdt": 32.82507647000003
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": -3.0242296799999995
+            },
+            "range": {
+              "trades": 14,
+              "net_pnl_usdt": -132.00868444000002
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 7,
+                "net_pnl_usdt": 15.873815080000012
+              },
+              "range": {
+                "trades": 8,
+                "net_pnl_usdt": -24.576415920000002
+              }
+            },
+            "short": {
+              "directional": {
+                "trades": 5,
+                "net_pnl_usdt": 16.951261389999996
+              },
+              "mixed": {
+                "trades": 2,
+                "net_pnl_usdt": -3.0242296799999995
+              },
+              "range": {
+                "trades": 6,
+                "net_pnl_usdt": -107.43226852000001
+              }
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "early: non-positive return",
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "Community15mVolatilityRisk",
+            "has_bias": "False",
+            "total_signals": "30",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review"
+    },
+    {
+      "id": "xau-volatility-15m-1h-session",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "Community15mVolatilitySession",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "results": {
+        "early": {
+          "net_return_pct": 0.13051730359999994,
+          "net_pnl_usdt": 13.051730359999993,
+          "profit_factor": 1.0431959669603736,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 1.6283808992125084,
+          "trades": 21,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 1,
+          "funding_fees_sum": -5.015292819239148,
+          "side_breakdown": {
+            "long": {
+              "trades": 11,
+              "net_pnl_usdt": 7.05405852
+            },
+            "short": {
+              "trades": 10,
+              "net_pnl_usdt": 5.997671839999999
+            }
+          },
+          "backtest_start": "2026-03-12 00:00:00",
+          "backtest_end": "2026-07-10 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 13,
+              "net_pnl_usdt": 18.51564456
+            },
+            "range": {
+              "trades": 8,
+              "net_pnl_usdt": -5.463914199999991
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 5,
+                "net_pnl_usdt": -57.23503063999999
+              },
+              "range": {
+                "trades": 6,
+                "net_pnl_usdt": 64.28908916
+              }
+            },
+            "short": {
+              "directional": {
+                "trades": 8,
+                "net_pnl_usdt": 75.75067519999999
+              },
+              "range": {
+                "trades": 2,
+                "net_pnl_usdt": -69.75300336
+              }
+            }
+          }
+        },
+        "late": {
+          "net_return_pct": -2.3873946227999996,
+          "net_pnl_usdt": -238.73946227999997,
+          "profit_factor": 0.4032139291955667,
+          "all_wins_no_losses": false,
+          "max_drawdown_pct": 2.7559726172000047,
+          "trades": 15,
+          "unclosed_trades": 0,
+          "forced_exit_trades": 0,
+          "funding_fees_sum": 6.086891980569416,
+          "side_breakdown": {
+            "long": {
+              "trades": 9,
+              "net_pnl_usdt": -50.63629310999999
+            },
+            "short": {
+              "trades": 6,
+              "net_pnl_usdt": -188.10316917
+            }
+          },
+          "backtest_start": "2026-07-10 00:00:00",
+          "backtest_end": "2026-09-08 00:00:00",
+          "ledger_reconciled": true,
+          "entry_regime_breakdown": {
+            "directional": {
+              "trades": 8,
+              "net_pnl_usdt": -118.07983689
+            },
+            "mixed": {
+              "trades": 2,
+              "net_pnl_usdt": -55.350705489999996
+            },
+            "range": {
+              "trades": 5,
+              "net_pnl_usdt": -65.30891989999999
+            }
+          },
+          "side_entry_regime_breakdown": {
+            "long": {
+              "directional": {
+                "trades": 4,
+                "net_pnl_usdt": 14.672626790000002
+              },
+              "range": {
+                "trades": 5,
+                "net_pnl_usdt": -65.30891989999999
+              }
+            },
+            "short": {
+              "directional": {
+                "trades": 4,
+                "net_pnl_usdt": -132.75246368
+              },
+              "mixed": {
+                "trades": 2,
+                "net_pnl_usdt": -55.350705489999996
+              }
+            }
+          }
+        }
+      },
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead": {
+        "status": "no_bias_detected_in_tested_signals",
+        "rows": [
+          {
+            "filename": "CommunityStrategies.py",
+            "strategy": "Community15mVolatilitySession",
+            "has_bias": "False",
+            "total_signals": "30",
+            "biased_entry_signals": "0",
+            "biased_exit_signals": "0",
+            "biased_indicators": ""
+          }
+        ]
+      },
+      "recursive": "completed_requires_table_review"
+    }
+  ],
+  "errors": []
+}

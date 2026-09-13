@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "study": "freqtrade-community-btc-xau-15m-screen-v1",
+  "run": {
+    "url": "https://github.com/iisara555/xAuby/actions/runs/34732740878",
+    "head_commit": "99208df1a5bff1f3f73b7c9fe078b84b09e0d2ba",
+    "commit": "e6bb6f585ab817b70efb152b5384722325b9252a",
+    "run_id": "34732740878",
+    "runner": "github-hosted",
+    "started_at": "2026-09-13T02:19:50.615014+00:00",
+    "protocol_sha256": "703c3ff4365c293db98fb6f32357e61e5ce52b0495b64001371a4fef71edee2a",
+    "harness_sha256": "5963dc2b12293ea9a6ab9c2cd659890748d22f1d5396580e18a4ef16be6c9eaa",
+    "shared_helpers_sha256": "bfa2b3fbff10bd3c1d088e865d2dbfff70481a9c8233e1280273a6a550fe1d9e"
+  },
+  "artifact": {
+    "id": 10310122754,
+    "name": "freqtrade-community-15m-34732740878",
+    "url": "https://github.com/iisara555/xAuby/actions/runs/34732740878/artifacts/10310122754",
+    "size_bytes": 12660782,
+    "expires_at": "2026-12-12T02:19:00Z"
+  },
+  "execution": {
+    "command_counts": {
+      "download-data": 2,
+      "backtesting": 8,
+      "lookahead-analysis": 4,
+      "recursive-analysis": 4
+    },
+    "command_count": 18,
+    "all_native_commands_successful": true,
+    "trade_count": 198,
+    "stress_backtests": 0,
+    "stress_reason": "No candidate passed the base screen; conditional stress stage not triggered."
+  },
+  "upstream": {
+    "VolatilitySystem.py": {
+      "url": "https://raw.githubusercontent.com/freqtrade/freqtrade-strategies/f3340ce11f5bdf62f598522e64d1f5638eaa13f5/user_data/strategies/futures/VolatilitySystem.py",
+      "sha256": "10a32ea131fb8f4684741b48cd3eae70aa4d4990319b49a7acb7a2f9c7c8a672",
+      "executed_sha256": "b020b75771c77d22b1eb153bd980101042d01de36788cd0627c9c7a9a1d5633a",
+      "compatibility_patches": [],
+      "research_model_patches": [
+        "resample_int = 60 * 3 -> resample_int = 60"
+      ]
+    },
+    "FReinforcedStrategy.py": {
+      "url": "https://raw.githubusercontent.com/freqtrade/freqtrade-strategies/f3340ce11f5bdf62f598522e64d1f5638eaa13f5/user_data/strategies/futures/FReinforcedStrategy.py",
+      "sha256": "4148d3d2d736a454a470649646a59b77a62f7d4ccb7f7bc6d2ecc5ad0ec01152",
+      "executed_sha256": "878fa3618ad4fe4c95216ea9ecbcb5ca28c34eabcc6c96c9e00e1d21b9399bf9",
+      "compatibility_patches": [
+        "adx_period = IntParameter(4, 24, default=14) -> adx_period = IntParameter(4, 24, default=14, space=\"buy\")",
+        "ema_short_period = IntParameter(4, 24, default=8) -> ema_short_period = IntParameter(4, 24, default=8, space=\"buy\")",
+        "ema_long_period = IntParameter(12, 175, default=21) -> ema_long_period = IntParameter(12, 175, default=21, space=\"buy\")"
+      ],
+      "research_model_patches": [
+        "self.resample_interval = timeframe_to_minutes(self.timeframe) * 12 -> self.resample_interval = 60"
+      ]
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/freqtrade/freqtrade-strategies/f3340ce11f5bdf62f598522e64d1f5638eaa13f5/LICENSE",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "executed_sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "compatibility_patches": []
+    }
+  },
+  "data": {
+    "BTC": {
+      "candles": {
+        "1m": {
+          "file": "data/futures/BTC_USDT_USDT-1m-futures.feather",
+          "bars": 295200,
+          "expected_bars": 295200,
+          "first": "2026-02-15 00:00:00+00:00",
+          "last": "2026-09-07 23:59:00+00:00",
+          "missing": 0,
+          "duplicates": 0,
+          "invalid_ohlcv": false,
+          "sha256": "aef83388df2e87cf1c5a7653a56f7fb20945d836205df47423314dd6fc9f5672"
+        },
+        "1h": {
+          "file": "data/futures/BTC_USDT_USDT-1h-futures.feather",
+          "bars": 4920,
+          "expected_bars": 4920,
+          "first": "2026-02-15 00:00:00+00:00",
+          "last": "2026-09-07 23:00:00+00:00",
+          "missing": 0,
+          "duplicates": 0,
+          "invalid_ohlcv": false,
+          "sha256": "bbda2a28a2bf05636329c35da59705a417e1db7eb7ae4f9ccb0ac987984421f4"
+        },
+        "15m": {
+          "bars": 19680,
+          "expected_bars": 19680,
+          "first": "2026-02-15 00:00:00+00:00",
+          "last": "2026-09-07 23:45:00+00:00",
+          "missing": 0,
+          "off_grid": 0,
+          "duplicates": 0,
+          "invalid_ohlcv": false,
+          "file": "data/futures/BTC_USDT_USDT-15m-futures.feather",
+          "sha256": "c3f0e45780fa40e88d93a91d957ce989da25aa0ed2a4fa875d72f43174dc1367"
+        }
+      },
+      "funding": [
+        {
+          "file": "data/futures/BTC_USDT_USDT-1h-funding_rate.feather",
+          "rows": 291,
+          "first": "2026-06-08 08:00:00+00:00",
+          "last": "2026-09-13 00:00:00+00:00",
+          "sha256": "bedfdd416dceea95e4f6e5c953aef16b0cf5dddbd58ceb0e262838563541aab5"
+        }
+      ],
+      "certification_funding_complete": false,
+      "funding_note": "Native available rates with zero fallback for gaps; coverage is not certified by first/last alone."
+    },
+    "XAU": {
+      "candles": {
+        "1m": {
+          "file": "data/futures/XAU_USDT_USDT-1m-futures.feather",
+          "bars": 295200,
+          "expected_bars": 295200,
+          "first": "2026-02-15 00:00:00+00:00",
+          "last": "2026-09-07 23:59:00+00:00",
+          "missing": 0,
+          "duplicates": 0,
+          "invalid_ohlcv": false,
+          "sha256": "7db723f6a7643c841e1cd8e1489a857b85b4aac97ae5f669b73fd16139ec38cd"
+        },
+        "1h": {
+          "file": "data/futures/XAU_USDT_USDT-1h-futures.feather",
+          "bars": 4920,
+          "expected_bars": 4920,
+          "first": "2026-02-15 00:00:00+00:00",
+          "last": "2026-09-07 23:00:00+00:00",
+          "missing": 0,
+          "duplicates": 0,
+          "invalid_ohlcv": false,
+          "sha256": "a9f65fd233303d38c757b5285b4342b0e914e6a9b0705efa074e23e73ead6f0d"
+        },
+        "15m": {
+          "bars": 19680,
+          "expected_bars": 19680,
+          "first": "2026-02-15 00:00:00+00:00",
+          "last": "2026-09-07 23:45:00+00:00",
+          "missing": 0,
+          "off_grid": 0,
+          "duplicates": 0,
+          "invalid_ohlcv": false,
+          "file": "data/futures/XAU_USDT_USDT-15m-futures.feather",
+          "sha256": "543398090aec987f9ad77b30b7b7111f0f6c70447fd66b3727030e3b8c359940"
+        }
+      },
+      "funding": [
+        {
+          "file": "data/futures/XAU_USDT_USDT-1h-funding_rate.feather",
+          "rows": 291,
+          "first": "2026-06-08 08:00:00+00:00",
+          "last": "2026-09-13 00:00:00+00:00",
+          "sha256": "85b9de25e336f2c017c49a97bcae70038dd68f04bb48d1abf14cde219042ad3c"
+        }
+      ],
+      "certification_funding_complete": false,
+      "funding_note": "Native available rates with zero fallback for gaps; coverage is not certified by first/last alone."
+    }
+  },
+  "artifact_file_sha256": {
+    "summary.json": "82f31514879c7f2e0a57ab9965c493670b446af4cdef638a4e5824f8caf969b4",
+    "dependencies.txt": "a8a7cf349b85f8efd0168383bb849d1c45fdacbfc584dd1c2d26fc5a491ad676",
+    "trade_ledger.csv": "f43b679f7b1ae5b690f921cd2e017c7b33f434fd89beb3f28c7fc0e0bb2abf35",
+    "environment.json": "fbc53b0d293d616197b8f35e7a82629df90d70a0fbdbea6646cd46a0652bb7cb",
+    "upstream_sources.json": "0886d519fef7f913c43ff56a19132d65b738cf71a906e754354546403417e468",
+    "commands.json": "79c672b6cc26c8b09298bff104af3ce934396c05a9e9cc8c8204da4499ccd2c9",
+    "data_audit_BTC.json": "15006bd63cce0ecabd72760880daf50e6a745eb3f8d7a341d1f5fd8e1adece39",
+    "data_audit_XAU.json": "f10d1b71d5171309d820b8199c8e659aaff34d93bb2974b3870883c9524db938",
+    "protocol.json": "703c3ff4365c293db98fb6f32357e61e5ce52b0495b64001371a4fef71edee2a",
+    "strategies/CommunityStrategies.py": "41eeb443aa4b5676deeca8b0d500c708d0d376e5c19a25c4ef4a6b7b19ac50c0",
+    "logs/recursive_btc-freinforced-15m-1h-risk.log": "aaa373e483fc4abd118f0d98646e24846dd3f7ed2f8e075989ef24f4de123702",
+    "logs/recursive_btc-volatility-15m-1h-risk.log": "d1729c1bd13ee7b4717f5a1692e6b70b438e10ee756fb86624ba2fdff06286d2",
+    "logs/recursive_xau-volatility-15m-1h-risk.log": "8897fc735ce8001954436c51749d612b6f2e44cb8e3c9e56317b9b85d8343c25",
+    "logs/recursive_xau-volatility-15m-1h-session.log": "4672fa7a7ab6289b8ec0b27cfa0da160bcd5637dd575011abac5ec28724ca45a"
+  },
+  "post_run_file_hash_review": "All audited candle/funding file hashes match initial audit hashes after all 18 native commands.",
+  "persisted_evidence": {
+    "results": "results.json is the unmodified native summary. Manual recursive decisions are separate in registry.json.",
+    "ledger": "trade_ledger.csv contains all 198 native exported rows; only CRLF line endings normalized to LF for the repository. Original raw byte hash remains in artifact_file_sha256; CSV fields/rows are unchanged.",
+    "dependencies": "dependencies.txt is the exact isolated hosted pip freeze, not application dependencies.",
+    "audit": "native_audit.json independently recomputes single-entry 1x PnL from amount, rates, fees and funding, reconciles wallets and checks windows, overlap, stops, stakes, duration and sessions.",
+    "recursive": "recursive_tables.json preserves native table excerpts; complete logs remain in the linked artifact with SHA-256 hashes.",
+    "limitations": "Reused historical windows, missing early funding, three warmup failures, and no forward evidence. No certification or portfolio allocation."
+  }
+}
