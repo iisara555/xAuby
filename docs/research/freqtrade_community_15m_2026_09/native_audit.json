@@ -1,0 +1,121 @@
+{
+  "study": "freqtrade-community-btc-xau-15m-screen-v1",
+  "read_only_native_audit": true,
+  "all_checks_passed": true,
+  "runs": [
+    {
+      "run": "btc-volatility-15m-1h-risk_early_base",
+      "trades": 46,
+      "starting_balance": 10000,
+      "final_balance": 9542.58963057,
+      "net_pnl_usdt": -457.4103694300047,
+      "fees_including_friction_proxy_usdt": 156.36621695100007,
+      "funding_fees_usdt": -1.102422485428499,
+      "max_trade_pnl_recompute_error_usdt": 5.000082126116467e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-26-41.zip": "1736121c8848ed66a0fb57700bd7b133a4fe922ace62d333c299e3e6ba1b4ab1"
+      }
+    },
+    {
+      "run": "btc-volatility-15m-1h-risk_late_base",
+      "trades": 16,
+      "starting_balance": 10000,
+      "final_balance": 10194.89059155,
+      "net_pnl_usdt": 194.89059155000177,
+      "fees_including_friction_proxy_usdt": 55.684297578,
+      "funding_fees_usdt": -0.34807086821285327,
+      "max_trade_pnl_recompute_error_usdt": 4.859071367491197e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-26-52.zip": "e4b9ed409577fb293970f6ac55cf48a9551955e440e1df9d1388bd5a6320e6ab"
+      }
+    },
+    {
+      "run": "btc-freinforced-15m-1h-risk_early_base",
+      "trades": 11,
+      "starting_balance": 10000,
+      "final_balance": 10068.39752781,
+      "net_pnl_usdt": 68.39752781000243,
+      "fees_including_friction_proxy_usdt": 38.27875352699999,
+      "funding_fees_usdt": 0.24371134622682727,
+      "max_trade_pnl_recompute_error_usdt": 4.000184183894362e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-33-36.zip": "0fb85e0e14e1767870f44503f7d234f72c0c6aeedb6683ff9740e951ec63b4b0"
+      }
+    },
+    {
+      "run": "btc-freinforced-15m-1h-risk_late_base",
+      "trades": 5,
+      "starting_balance": 10000,
+      "final_balance": 9977.36804531,
+      "net_pnl_usdt": -22.631954689997656,
+      "fees_including_friction_proxy_usdt": 17.289484695000002,
+      "funding_fees_usdt": 0,
+      "max_trade_pnl_recompute_error_usdt": 4.000110465085527e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-33-41.zip": "e1007dfc4366d4dcdb17080af49cc9ec2c7a907fc662c7db175205d60a44b868"
+      }
+    },
+    {
+      "run": "xau-volatility-15m-1h-risk_early_base",
+      "trades": 56,
+      "starting_balance": 10000,
+      "final_balance": 9946.050216309999,
+      "net_pnl_usdt": -53.94978369000273,
+      "fees_including_friction_proxy_usdt": 191.6533444,
+      "funding_fees_usdt": -2.5472393010151233,
+      "max_trade_pnl_recompute_error_usdt": 4.750976501100013e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-34-45.zip": "8422b72fdc809e58294d0b1108dcf9e6ff1efda3708a657544600d2dbb35330a"
+      }
+    },
+    {
+      "run": "xau-volatility-15m-1h-risk_late_base",
+      "trades": 28,
+      "starting_balance": 10000,
+      "final_balance": 9897.79216235,
+      "net_pnl_usdt": -102.20783765000124,
+      "fees_including_friction_proxy_usdt": 96.28142782999997,
+      "funding_fees_usdt": 7.381690163421855,
+      "max_trade_pnl_recompute_error_usdt": 4.688068599989492e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-35-00.zip": "13ec53c736ab1ed316eb84f20926edbb005989b904f7ff711428cec47115b1d4"
+      }
+    },
+    {
+      "run": "xau-volatility-15m-1h-session_early_base",
+      "trades": 21,
+      "starting_balance": 10000,
+      "final_balance": 10013.05173036,
+      "net_pnl_usdt": 13.051730359997237,
+      "fees_including_friction_proxy_usdt": 72.90567683,
+      "funding_fees_usdt": -5.015292819239148,
+      "max_trade_pnl_recompute_error_usdt": 4.2049634885188425e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-41-14.zip": "f3a2931b650fc5dcbd45610d17c1e8fc441243d04c2e2d602071796b583608ce"
+      }
+    },
+    {
+      "run": "xau-volatility-15m-1h-session_late_base",
+      "trades": 15,
+      "starting_balance": 10000,
+      "final_balance": 9761.26053772,
+      "net_pnl_usdt": -238.73946228000023,
+      "fees_including_friction_proxy_usdt": 51.144454270000004,
+      "funding_fees_usdt": 6.086891980569416,
+      "max_trade_pnl_recompute_error_usdt": 4.706599554538116e-9,
+      "issues": [],
+      "native_archive_sha256": {
+        "backtest-result-2026-09-13_02-41-25.zip": "75c8f06730817f38bedcc3c11b3951976a891631e7317e0936516b5f150525f3"
+      }
+    }
+  ],
+  "live_weight": 0,
+  "certified": false
+}

@@ -65,5 +65,108 @@ offline tests:
 PYTHONPATH=. python3 -m pytest -q tests/test_freqtrade_community_15m_research.py tests/test_freqtrade_community_research.py
 ```
 
-Native evidence will be recorded separately after the hosted run; pending is
-not passed. This study does not change live config, weights or strategy code.
+## Completed results — 2026-09-13
+
+**All four candidates are rejected by the frozen base screen. All live weights
+remain zero. No candidate advances to cost stress or the reserved forward stage.**
+
+[Hosted run 34732740878](https://github.com/iisara555/xAuby/actions/runs/34732740878)
+completed successfully at 02:49 UTC: 2 data downloads, 8 base backtests, 4
+lookahead analyses and 4 recursive analyses. All 18 native commands succeeded.
+Operational success is not strategy qualification.
+
+Returns below are net simulated wallet returns after the assumed 0.07% per-side
+cost and available funding. Early = Mar 12–Jul 10; late = Jul 10–Sep 8, 2026,
+exclusive ends. Each run starts with its own 10,000 USDT wallet.
+
+| Candidate | Early return | Early trades | Late return | Late trades | Late PF | Max DD early / late |
+|---|---:|---:|---:|---:|---:|---:|
+| BTC Volatility 15m / 1h | -4.5741% | 46 | +1.9489% | 16 | 1.5622 | 5.6705% / 1.7278% |
+| BTC FReinforced 15m / 1h | +0.6840% | 11 | -0.2263% | 5 | 0.0714 | 0.1479% / 0.2263% |
+| XAU Volatility 15m / 1h | -0.5395% | 56 | -1.0221% | 28 | 0.7587 | 3.0804% / 1.7850% |
+| XAU Volatility 15m / 1h session | +0.1305% | 21 | -2.3874% | 15 | 0.4032 | 1.6284% / 2.7560% |
+
+The gate requires positive returns in both windows, late PF >= 1.2 and at least
+30 late trades, among other risk checks. BTC Volatility fails early return and
+late sample size. Both other families fail late return, sample size and PF;
+unfiltered XAU also loses in the early window. Low drawdown does not erase those
+failures. The two XAU early runs each include one forced boundary exit; none of
+the eight runs has unclosed trades.
+
+### Bias and warmup: three additional failures
+
+Native lookahead found no bias in the tested signals: 30 for BTC Volatility,
+16 for BTC FReinforced, 30 for XAU Volatility and 30 for XAU session. FReinforced
+exceeded the 10-trade minimum but did not reach the 30-signal target. These finite
+checks do not prove that every possible signal is bias-free; the diagnostic also
+overrides wallet/stake settings and is not a performance run.
+
+The preregistered recursive tolerance is **0.001%** at the actual strategy
+startup, not at a more favorable probe selected after results:
+
+| Candidate | Actual startup | Signal indicator difference | Decision |
+|---|---:|---|---|
+| BTC Volatility | 499 | ATR and resampled ATR **-0.003%** | Fail |
+| BTC FReinforced | 999 | No reported differences for signal indicators | Pass at printed precision only |
+| XAU Volatility | 499 | ATR and resampled ATR **-0.007%** | Fail |
+| XAU session | 499 | ATR and resampled ATR **-0.007%** | Fail |
+
+The 999/1499 Volatility probes display +/-0.000%, but the actual 499 warmup is
+unchanged. These are sensitivity observations, not permission to rerun with a
+better-looking warmup. A technically revised variant would require a new frozen
+protocol and untouched evaluation data. Full native table excerpts are in
+[recursive_tables.json](recursive_tables.json); [registry.json](registry.json)
+records manual decisions separately from the untouched native summary.
+
+### Direction and regime observations, not new strategies
+
+BTC Volatility's late longs made +339.29 USDT over 9 trades, while shorts lost
+144.40 USDT over 7. Its early long and short groups both lost money. The late
+range-tagged trades made +355.02 USDT over 8 trades, but early range-tagged trades
+lost 227.00 USDT over 18. This is not evidence to switch to long-only or range-only
+after seeing the result. Regimes are the fixed, prior-completed-hour ER20 labels,
+not an assertion that this volatility model consistently profits in ranges.
+
+The XAU session restriction improves early return slightly but worsens the late
+window versus unfiltered XAU. BTC FReinforced has only 16 trades across both
+independent windows. No long/short or regime subgroup is admitted, and no weights
+are fitted. Full side-by-regime breakdowns remain in [results.json](results.json).
+
+### Data and independent reconciliation
+
+For each pair the audit covers 295,200 one-minute bars, 19,680 fifteen-minute
+bars and 4,920 hourly bars from Feb 15 to Sep 8 exclusive: no missing bars,
+duplicates or invalid OHLCV; no off-grid 15m dates. Every audited candle/funding
+file retained its original audit hash after the full run.
+
+Funding files contain 291 observations each, beginning **2026-06-08 08:00 UTC**
+and ending Sep 13 00:00 UTC. Earlier required funding is missing and uses the
+explicit zero fallback. First/last timestamps do not certify internal coverage.
+Neither the recorded returns nor a positive subgroup is certification-ready.
+
+The independent read-only audit reconciles **198 trades in eight native ZIP
+reports**. Recomputed price PnL minus entry/exit fees plus signed funding matches
+every native trade within 0.00000001 USDT. It also checks actual 15m/1m settings,
+window bounds, wallet totals, no overlapping positions or additions, 1x leverage,
+stake caps, 2% stop configuration, 48h duration and allowed session entry clocks.
+All these accounting/execution-contract checks pass; this does not override the
+profitability or recursive failures. See [native_audit.json](native_audit.json).
+
+The raw [artifact](https://github.com/iisara555/xAuby/actions/runs/34732740878/artifacts/10310122754)
+expires 2026-12-12. Durable evidence here includes the unmodified native summary,
+198-row [trade ledger](trade_ledger.csv) (line endings normalized only), exact
+hosted dependency freeze, source/run/data hashes in [provenance.json](provenance.json),
+recursive excerpts and the research-only registry. No raw runtime/account files
+are committed. The original and LONA studies remain unchanged.
+
+## Decision and next action
+
+Close this frozen round as **rejected**, with no new live allocation and no
+automatic forward job. Do not retry parameter/session/direction combinations on
+the same inspected windows. Any further 15m study should state a new hypothesis,
+correct warmup requirements before viewing results, and reserve genuinely fresh
+data. This result rejects these four variants, not every possible 15m strategy.
+
+The harness PR passed 1,708 Python tests and 117 subtests on hosted CI. The
+separate evidence PR adds independent audit tests without rerunning or modifying
+the frozen backtest. No live config, weights, engine restart or deployment changed.

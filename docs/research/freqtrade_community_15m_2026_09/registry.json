@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "study": "freqtrade-community-btc-xau-15m-screen-v1",
+  "updated_at_utc": "2026-09-13T08:10:00Z",
+  "research_only": true,
+  "live_weight": 0,
+  "certified": false,
+  "arena_admitted": false,
+  "decision": "No finalist from this frozen study. Do not select sides/regimes or change warmup using these observed results. No live allocation or scheduled forward job.",
+  "candidates": [
+    {
+      "id": "btc-volatility-15m-1h-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "Community15mVolatilityRisk",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "evidence": "results.json",
+      "screen_reasons": [
+        "early: non-positive return",
+        "late: insufficient trades"
+      ],
+      "lookahead_review": {
+        "status": "no_bias_detected_in_tested_signals",
+        "tested_signals": 30,
+        "note": "No bias observed in tested signals only; not proof of absence. FReinforced reached 16, not the 30-signal target."
+      },
+      "recursive_review": {
+        "status": "failed_preregistered_tolerance",
+        "actual_startup": 499,
+        "tolerance_percent": 0.001,
+        "atr_difference_percent": -0.003,
+        "note": "At actual 499, both atr and resample_60_atr exceed absolute 0.001% tolerance. 999/1499 display +/-0.000%, but actual warmup is NOT changed after seeing results.",
+        "source_log": "logs/recursive_btc-volatility-15m-1h-risk.log"
+      },
+      "funding_certified": false,
+      "stress_status": "not_run_base_gate_failed",
+      "run_url": "https://github.com/iisara555/xAuby/actions/runs/34732740878"
+    },
+    {
+      "id": "btc-freinforced-15m-1h-risk",
+      "pair": "BTC/USDT:USDT",
+      "strategy": "Community15mReinforcedRisk",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "evidence": "results.json",
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead_review": {
+        "status": "no_bias_detected_in_tested_signals",
+        "tested_signals": 16,
+        "note": "No bias observed in tested signals only; not proof of absence. FReinforced reached 16, not the 30-signal target."
+      },
+      "recursive_review": {
+        "status": "passed_at_printed_precision",
+        "actual_startup": 999,
+        "tolerance_percent": 0.001,
+        "atr_difference_percent": null,
+        "note": "At actual 999, signal-bearing indicators have no reported differences; Bollinger display indicators +/-0.000%. No NaN at actual startup. Finite diagnostic only.",
+        "source_log": "logs/recursive_btc-freinforced-15m-1h-risk.log"
+      },
+      "funding_certified": false,
+      "stress_status": "not_run_base_gate_failed",
+      "run_url": "https://github.com/iisara555/xAuby/actions/runs/34732740878"
+    },
+    {
+      "id": "xau-volatility-15m-1h-risk",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "Community15mVolatilityRisk",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "evidence": "results.json",
+      "screen_reasons": [
+        "early: non-positive return",
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead_review": {
+        "status": "no_bias_detected_in_tested_signals",
+        "tested_signals": 30,
+        "note": "No bias observed in tested signals only; not proof of absence. FReinforced reached 16, not the 30-signal target."
+      },
+      "recursive_review": {
+        "status": "failed_preregistered_tolerance",
+        "actual_startup": 499,
+        "tolerance_percent": 0.001,
+        "atr_difference_percent": -0.007,
+        "note": "At actual 499, both atr and resample_60_atr exceed absolute 0.001% tolerance. 999/1499 display +/-0.000%, but actual warmup is NOT changed after seeing results.",
+        "source_log": "logs/recursive_xau-volatility-15m-1h-risk.log"
+      },
+      "funding_certified": false,
+      "stress_status": "not_run_base_gate_failed",
+      "run_url": "https://github.com/iisara555/xAuby/actions/runs/34732740878"
+    },
+    {
+      "id": "xau-volatility-15m-1h-session",
+      "pair": "XAU/USDT:USDT",
+      "strategy": "Community15mVolatilitySession",
+      "timeframe": "15m",
+      "informative": "1h",
+      "status": "rejected_screen",
+      "live_weight": 0,
+      "certified": false,
+      "arena_admitted": false,
+      "evidence": "results.json",
+      "screen_reasons": [
+        "late: non-positive return",
+        "late: insufficient trades",
+        "late: profit factor below gate"
+      ],
+      "lookahead_review": {
+        "status": "no_bias_detected_in_tested_signals",
+        "tested_signals": 30,
+        "note": "No bias observed in tested signals only; not proof of absence. FReinforced reached 16, not the 30-signal target."
+      },
+      "recursive_review": {
+        "status": "failed_preregistered_tolerance",
+        "actual_startup": 499,
+        "tolerance_percent": 0.001,
+        "atr_difference_percent": -0.007,
+        "note": "At actual 499, both atr and resample_60_atr exceed absolute 0.001% tolerance. 999/1499 display +/-0.000%, but actual warmup is NOT changed after seeing results.",
+        "source_log": "logs/recursive_xau-volatility-15m-1h-session.log"
+      },
+      "funding_certified": false,
+      "stress_status": "not_run_base_gate_failed",
+      "run_url": "https://github.com/iisara555/xAuby/actions/runs/34732740878"
+    }
+  ]
+}
