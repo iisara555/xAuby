@@ -1,0 +1,56 @@
+{
+  "id": "freqtrade-community-btc-xau-15m-screen-v1",
+  "locked_at_utc": "2026-09-13T02:12:00Z",
+  "purpose": "Exploratory 15m derivatives; not upstream-native performance, certification or live allocation",
+  "engine": "freqtrade==2026.8",
+  "upstream_commit": "f3340ce11f5bdf62f598522e64d1f5638eaa13f5",
+  "source_repository": "https://github.com/freqtrade/freqtrade-strategies",
+  "upstream_sha256": {
+    "VolatilitySystem.py": "10a32ea131fb8f4684741b48cd3eae70aa4d4990319b49a7acb7a2f9c7c8a672",
+    "FReinforcedStrategy.py": "4148d3d2d736a454a470649646a59b77a62f7d4ccb7f7bc6d2ecc5ad0ec01152"
+  },
+  "adaptations": {
+    "VolatilitySystem": "Base 1h -> 15m; resample_int 180 -> 60 minutes. ATR14 x 2, signed hourly close change, base-row atr.shift(1), opposite-signal exits retained. Signals may persist across multiple 15m rows; no new crossover rule.",
+    "FReinforcedStrategy": "Base 5m -> 15m; self.resample_interval becomes fixed 60, not timeframe_minutes * 12 (which would silently become 3h). EMA8/21, ADX14 exit threshold30, SMA50 on completed hours, native ROI minutes retained. Only three parameter-space compatibility annotations added.",
+    "comparison_warning": "Both base and informative timeframe change for Volatility. Previous study uses different detail resolution and funding snapshots. These are new fixed hypotheses, not an isolated causal comparison of base timeframes. No native controls rerun in this study."
+  },
+  "data_start": "20260215",
+  "data_end_exclusive": "20260908",
+  "download_timeframes": ["1m", "15m", "1h"],
+  "windows": {"early": "20260312-20260710", "late": "20260710-20260908"},
+  "window_warning": "Both windows were inspected in LONA and Community studies; exploratory screening only, neither is a fresh holdout. Freeze before this run; no hyperopt, parameter, direction or session selection after results.",
+  "reserved_forward_window": {
+    "start": "20260914",
+    "end_exclusive": "20261114",
+    "status": "future_unavailable_not_scheduled",
+    "rule": "Only unchanged finalists may be evaluated after completion. Any rule change requires new preregistration and an untouched window. Reservation authorizes no live or recurring job."
+  },
+  "execution": {
+    "initial_cash_usdt": 10000,
+    "proposed_stake_usdt": 2500,
+    "base_cost_per_side": 0.0007,
+    "stress_cost_per_side": 0.0012,
+    "cost_note": "Assumed 5 bp taker plus 2 bp friction per side; stress adds 5 bp per side. Friction is a fee proxy, not simulated price-path slippage. Independent wallets, do not add percentage returns.",
+    "funding_note": "Native available funding/mark prices; zero fallback explicitly used for missing rates. Incomplete historic funding blocks certification regardless of performance.",
+    "detail_timeframes": {"15m": "1m"},
+    "risk_variants": {"leverage": 1, "max_realized_wallet_fraction": 0.25, "stoploss": -0.02, "max_holding_hours": 48, "position_adjustment_enable": false}
+  },
+  "candidates": [
+    {"id": "btc-volatility-15m-1h-risk", "pair": "BTC/USDT:USDT", "strategy": "Community15mVolatilityRisk", "timeframe": "15m", "informative": "1h", "status": "pending_screen", "live_weight": 0},
+    {"id": "btc-freinforced-15m-1h-risk", "pair": "BTC/USDT:USDT", "strategy": "Community15mReinforcedRisk", "timeframe": "15m", "informative": "1h", "status": "pending_screen", "live_weight": 0},
+    {"id": "xau-volatility-15m-1h-risk", "pair": "XAU/USDT:USDT", "strategy": "Community15mVolatilityRisk", "timeframe": "15m", "informative": "1h", "status": "pending_screen", "live_weight": 0},
+    {"id": "xau-volatility-15m-1h-session", "pair": "XAU/USDT:USDT", "strategy": "Community15mVolatilitySession", "timeframe": "15m", "informative": "1h", "status": "pending_screen", "live_weight": 0}
+  ],
+  "session_rule": "Intended next-open clock (signal date + 15 minutes): Monday-Friday, 08:00 <= Europe/London < 12:00 OR 08:00 <= America/New_York < 12:00, IANA DST. Entries only; opposite-signal and risk exits remain unrestricted.",
+  "screen_gate": {"positive_return_both_windows": true, "late_profit_factor_min": 1.2, "late_trades_min": 30, "max_drawdown_fraction_max": 0.10, "stress_positive_both_windows": true, "stress_late_profit_factor_min": 1.05},
+  "validation": {
+    "lookahead_minimum_trades": 10,
+    "lookahead_target_trades": 30,
+    "lookahead_detail_timeframe": "1m",
+    "recursive_startups": [199, 499, 999, 1499],
+    "risk_strategy_startup": {"Community15mVolatilityRisk": 499, "Community15mVolatilitySession": 499, "Community15mReinforcedRisk": 999},
+    "recursive_rule": "Manually inspect native table at actual strategy startup: no NaN for signal-bearing indicators, finite differences at most 0.001 percent at printed precision. Dash means no reported difference, not proof for all data. Missing/failed/insufficient evidence stays unverified.",
+    "regime_rule": "Descriptive prior-completed-hour ER20: <=0.25 range, >=0.30 directional, otherwise mixed; split long/short as well. No subgroup-based promotion or weight fitting."
+  },
+  "live_weight": 0
+}
