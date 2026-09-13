@@ -1,0 +1,47 @@
+name: Freqtrade community 15m research (no live trading)
+
+on:
+  pull_request:
+    paths:
+      - docs/research/freqtrade_community_15m_2026_09/protocol.json
+      - docs/research/freqtrade_community_15m_2026_09/strategies.py
+      - scripts/freqtrade_community_15m_research.py
+      - scripts/freqtrade_community_research.py
+      - .github/workflows/freqtrade-community-15m-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: freqtrade-community-15m-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screen-15m:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install isolated research engine
+        run: pip install freqtrade==2026.8
+      - name: Execute preregistered public-data 15m study
+        run: python scripts/freqtrade_community_15m_research.py --out-dir core/freqtrade_community_15m
+      - name: Preserve evidence even if gates fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: freqtrade-community-15m-${{ github.run_id }}
+          path: core/freqtrade_community_15m/
+          if-no-files-found: error
+          retention-days: 90
