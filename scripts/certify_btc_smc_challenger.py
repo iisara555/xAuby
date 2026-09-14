@@ -506,7 +506,13 @@ def main() -> int:
         "note": (
             "Clears the locked SMC structure-alpha protocol; eligible for forward shadow only."
             if gate["passed"]
-            else "Fails one or more locked SMC gates; not eligible for Strategy Arena shadow."
+            else (
+                "Fails the locked SMC acceptance gates: latest-fold net acceptance "
+                f"margin was {float(gate['observed']['latest_fold_net_profit_pct']):+.2f}pp "
+                "against >0.00%, and candidate-positive folds while the Champion "
+                f"was nonpositive were {int(gate['observed']['candidate_positive_when_champion_nonpositive_folds'])} "
+                "against >=1; not eligible for Strategy Arena shadow."
+            )
         ),
         "document": "docs/research/btc_smc_structure_candidate_2026-08.md",
         "evidence": {

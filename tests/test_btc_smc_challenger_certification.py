@@ -117,14 +117,15 @@ def test_latest_fold_failure_rejects_even_when_other_metrics_pass() -> None:
     assert gate["checks"]["latest_fold_net_positive"] is False
 
 
-def test_catalog_candidate_is_research_only_and_unassessed() -> None:
+def test_catalog_candidate_publishes_failed_verdict_and_stays_research_only() -> None:
     preset = preset_by_id("okx-btc-smc-structure-long-v1")
 
     assert preset["strategy"] == "xauby_smc_pro"
     assert preset["allowed_sides"] == ["long"]
     assert preset["execution_profile"]["allow_short"] is False
-    assert preset["certification_status"] == "not_assessed"
-    assert preset["backtest"]["status"] == "pending"
+    assert preset["certification_status"] == "failed"
+    assert preset["backtest"]["status"] == "validated"
+    assert preset["backtest"]["score_label"] == "PF 1.26"
     assert preset["live_certified"] is False
 
 
