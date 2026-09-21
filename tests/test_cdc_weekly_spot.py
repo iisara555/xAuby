@@ -113,6 +113,8 @@ def test_profile_resolves_to_thb_paper_without_old_overrides():
         assert not rules["enable_short"]
         assert not rules["require_fresh_zone"]
         assert not rules["use_d1_regime_filter"]
+        assert rules["rsi_min"] == -1
+        assert rules["rsi_max"] == 101
         assert rules["minimal_roi"] == {}
         assert rules["fixed_tp_pct"] == 0
 

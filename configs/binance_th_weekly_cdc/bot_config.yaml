@@ -40,8 +40,8 @@ strategy:
       require_fresh_zone: false
       require_slow_slope: false
       entry_thrust_min: 0.0
-      rsi_min: 0.0
-      rsi_max: 100.0
+      rsi_min: -1.0
+      rsi_max: 101.0
       vol_min_ratio: 0.0
       exit_on_bear_cross: false
       disable_stop_loss: true

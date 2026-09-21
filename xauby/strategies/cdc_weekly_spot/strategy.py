@@ -28,8 +28,10 @@ class CDCWeeklySpotStrategy(CDCActionZoneStrategy):
             "primary_timeframe": "1w",
             "confirm_timeframe": "",
             "require_fresh_zone": False,
-            "rsi_min": 0.0,
-            "rsi_max": 100.0,
+            # Wider than the mathematical RSI range so floating-point output
+            # such as 100.00000000000001 cannot turn this disabled filter on.
+            "rsi_min": -1.0,
+            "rsi_max": 101.0,
             "vol_min_ratio": 0.0,
             "disable_stop_loss": True,
             "sl_atr_mult": 0.0,
