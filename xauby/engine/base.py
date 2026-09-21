@@ -217,6 +217,7 @@ class BaseEngine:
             initial_balance=self.initial_balance,
             fee_resolver=self._symbol_fee_pct,
             funding_rate_8h=float((self.config.get("derivatives") or {}).get("sim_funding_rate_8h", 0.0001)),
+            quote_asset=self._quote_asset(),
         )
         exec_cfg = self.config.get("execution", {}) or {}
         self._live_broker = LiveBroker(
@@ -1003,14 +1004,10 @@ class BaseEngine:
 
     @staticmethod
     def _timeframe_ms(timeframe: str) -> int:
-        return {
-            "1m": 60_000,
-            "5m": 300_000,
-            "15m": 900_000,
-            "1h": 3_600_000,
-            "4h": 14_400_000,
-            "1d": 86_400_000,
-        }.get(timeframe, 14_400_000)
+        from xauby.strategies.timeframes import timeframe_seconds
+
+        seconds = timeframe_seconds(timeframe, default=0)
+        return seconds * 1000 if seconds > 0 else 14_400_000
 
     def _get_tick_snapshot(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         return self._sc(symbol).get_tick_snapshot()

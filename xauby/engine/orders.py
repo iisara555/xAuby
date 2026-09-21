@@ -1936,6 +1936,7 @@ class OrderMixin:
         rejects values above 0.10.
         """
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        quote_asset = getattr(self, "_quote_asset", lambda: "USDT")()
         position_management_mode = str(management_mode or "strategy").lower()
         if position_management_mode not in {"strategy", "strategy_handoff", "manual"}:
             position_management_mode = "strategy"
@@ -2060,18 +2061,25 @@ class OrderMixin:
             max_pos_pct = float(eff_cfg.portfolio.get("max_position_per_trade_pct", 28.0)) / 100.0
             max_pos_usdt = equity * max_pos_pct
             if buy_amount_usdt > max_pos_usdt:
-                logger.info(f"Capping buy amount from {buy_amount_usdt:.2f} USDT to max position size {max_pos_usdt:.2f} USDT ({max_pos_pct*100:.1f}%)")
+                logger.info(
+                    "Capping buy amount from %.2f %s to max position size %.2f %s (%.1f%%)",
+                    buy_amount_usdt,
+                    quote_asset,
+                    max_pos_usdt,
+                    quote_asset,
+                    max_pos_pct * 100,
+                )
                 buy_amount_usdt = max_pos_usdt
                 qty = buy_amount_usdt / ticker_price
 
         min_order_amt = float(eff_cfg.portfolio.get("min_order_amount", 10.0))
         if buy_amount_usdt < min_order_amt:
-            msg = f"BUY order value {buy_amount_usdt:.2f} USDT is below minimum {min_order_amt:.2f} USDT. Aborting."
+            msg = f"BUY order value {buy_amount_usdt:.2f} {quote_asset} is below minimum {min_order_amt:.2f} {quote_asset}. Aborting."
             logger.warning(msg)
             self.last_log_message = msg
             self._emit_event(
                 EventType.RISK_REJECTED,
-                reason=f"Order value {buy_amount_usdt:.2f} USDT below minimum {min_order_amt:.2f} USDT",
+                reason=f"Order value {buy_amount_usdt:.2f} {quote_asset} below minimum {min_order_amt:.2f} {quote_asset}",
                 equity=round(equity, 2),
                 notional=round(buy_amount_usdt, 2),
                 symbol=sym,
@@ -2137,11 +2145,11 @@ class OrderMixin:
             
             base_coin = self._get_base_asset(sym)
             if manual_management:
-                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (manual sell only)"
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} (manual sell only)"
             elif disable_sl:
-                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (no SL — CDC exit on RED)"
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} (no SL — CDC exit on RED)"
             else:
-                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (Risk: {risk_pct*100}%, SL: {stop_loss:.2f})"
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} (Risk: {risk_pct*100}%, SL: {stop_loss:.2f})"
             logger.info(msg)
             self.last_log_message = msg
             self.send_telegram_alert(msg)
@@ -2167,7 +2175,7 @@ class OrderMixin:
             with self._sim_balance_lock:
                 sim_bal = self.get_simulated_balance()
                 if sim_bal < total_spent:
-                    msg = f"Insufficient simulated balance for BUY. Need {total_spent:.2f} USDT, have {sim_bal:.2f} USDT."
+                    msg = f"Insufficient simulated balance for BUY. Need {total_spent:.2f} {quote_asset}, have {sim_bal:.2f} {quote_asset}."
                     logger.warning(msg)
                     self.last_log_message = msg
                     return False
@@ -2216,11 +2224,11 @@ class OrderMixin:
 
             base_coin = self._get_base_asset(sym)
             if manual_management:
-                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (manual sell only)"
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} (manual sell only)"
             elif disable_sl:
-                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (no SL - CDC exit on RED)"
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} (no SL - CDC exit on RED)"
             else:
-                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT (Risk: {risk_pct*100}%, SL: {stop_loss:.2f})"
+                msg = f"🟢 [PAPER BUY] Filled {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} (Risk: {risk_pct*100}%, SL: {stop_loss:.2f})"
             logger.info(msg)
             self.last_log_message = msg
             self.send_telegram_alert(msg)
@@ -2600,6 +2608,7 @@ class OrderMixin:
 
     def execute_sell(self, state: Dict[str, Any], ticker_price: float, trigger_reason: str, symbol: Optional[str] = None) -> bool:
         sym = self._sym() if symbol is None else symbol.upper().replace("_", "")
+        quote_asset = getattr(self, "_quote_asset", lambda: "USDT")()
         halt_reason = self._close_halt_reason(sym)
         if halt_reason:
             logger.warning("SELL blocked for %s: trading halted (%s)", sym, halt_reason)
@@ -2670,8 +2679,8 @@ class OrderMixin:
                 return False
             base_coin = self._get_base_asset(sym)
             msg = (
-                f"🔴 [PAPER SELL] Exit {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT | "
-                f"Trigger: {trigger_reason} | PnL: {net_pnl:+.2f} USDT ({net_pnl_pct:+.2f}%)"
+                f"🔴 [PAPER SELL] Exit {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} | "
+                f"Trigger: {trigger_reason} | PnL: {net_pnl:+.2f} {quote_asset} ({net_pnl_pct:+.2f}%)"
             )
             logger.info(msg)
             self.last_log_message = msg
@@ -2734,7 +2743,7 @@ class OrderMixin:
                 return False
             
             base_coin = self._get_base_asset(sym)
-            msg = f"🔴 [PAPER SELL] Exit {qty:.6f} {base_coin} @ {ticker_price:.2f} USDT | Trigger: {trigger_reason} | PnL: {net_pnl:+.2f} USDT ({net_pnl_pct:+.2f}%)"
+            msg = f"🔴 [PAPER SELL] Exit {qty:.6f} {base_coin} @ {ticker_price:.2f} {quote_asset} | Trigger: {trigger_reason} | PnL: {net_pnl:+.2f} {quote_asset} ({net_pnl_pct:+.2f}%)"
             logger.info(msg)
             self.last_log_message = msg
             self.send_telegram_alert(msg)

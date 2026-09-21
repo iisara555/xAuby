@@ -498,19 +498,20 @@ class LoopMixin:
         )
 
     def _balance_totals_map(self) -> Dict[str, float]:
-        # All-sim path: return SimBroker USDT + DB-tracked base quantities.
+        # All-sim path: return SimBroker quote cash + DB-tracked base quantities.
         # When ANY symbol is live, use exchange balances for the real portfolio.
         # Sim-gated symbols in a mixed portfolio have no real exchange holdings;
-        # their virtual SimBroker USDT is kept separate and not mixed in here.
+        # their virtual SimBroker cash is kept separate and not mixed in here.
         if self._all_symbols_sim():
-            out: Dict[str, float] = {"USDT": float(self.get_simulated_balance())}
+            quote = self._quote_asset()
+            out: Dict[str, float] = {quote: float(self.get_simulated_balance())}
             for spec in self._pair_registry.active():
                 sym = spec.symbol
                 base = self._get_base_asset(sym)
                 st = self.db.get_trade_state(sym)
                 if st.get("state") == "bought" and str(st.get("position_side") or "LONG").upper() == "SHORT":
                     ledger = self._sim_broker.get_ledger(sym)
-                    out["USDT"] += float(ledger.margin_reserved) + float(ledger.unrealized_pnl)
+                    out[quote] += float(ledger.margin_reserved) + float(ledger.unrealized_pnl)
                     out[base] = 0.0
                 else:
                     out[base] = float(st["quantity"]) if st.get("state") == "bought" else 0.0
@@ -645,11 +646,12 @@ class LoopMixin:
     def get_equity(self, coin_price: Optional[float] = None, symbol: Optional[str] = None) -> float:
         _ = coin_price
         # For a sim-mode symbol return its own SimBroker balance so that
-        # position sizing uses virtual capital, not the live exchange equity.
+        # position sizing uses total virtual equity, including open positions,
+        # rather than shrinking each later pair from the remaining cash only.
         if symbol:
             sym = symbol.upper().replace("_", "")
             if self._use_sim_broker(sym):
-                return float(self.get_simulated_balance())
+                return float(self._sim_portfolio_equity_total())
         return self.get_portfolio_equity_total()
 
     def _load_global_guard_state(self) -> Dict[str, Any]:
@@ -752,7 +754,7 @@ class LoopMixin:
     def get_simulated_balance(self) -> float:
         from xauby.runtime.architecture_config import sim_broker_enabled
 
-        # SimBroker owns the balance file when enabled ({"USDT", "ledgers"}
+        # SimBroker owns the balance file when enabled ({<quote>, "ledgers"}
         # schema); the legacy {"balance"} schema below would read stale data
         # and overwrite the broker's ledgers.
         if sim_broker_enabled(self.config):
@@ -990,7 +992,7 @@ class LoopMixin:
         if self._use_sim_broker(sym):
             usdt_bal = self.get_simulated_balance()
             base_bal = state["quantity"] if state["state"] == "bought" else 0.0
-            portfolio = {"USDT": usdt_bal, base_coin: base_bal}
+            portfolio = {quote: usdt_bal, base_coin: base_bal}
         else:
             try:
                 b = self.client.get_balances()
@@ -999,7 +1001,7 @@ class LoopMixin:
                 base_avail = b.get(base_coin, {}).get("available", 0.0)
                 base_res = b.get(base_coin, {}).get("reserved", 0.0)
                 portfolio = {
-                    "USDT": usdt_avail + usdt_res,
+                    quote: usdt_avail + usdt_res,
                     base_coin: base_avail + base_res,
                 }
             except Exception as e:
@@ -1011,7 +1013,7 @@ class LoopMixin:
                     base_avail = b.get(base_coin, {}).get("available", 0.0)
                     base_res = b.get(base_coin, {}).get("reserved", 0.0)
                     portfolio = {
-                        "USDT": usdt_avail + usdt_res,
+                        quote: usdt_avail + usdt_res,
                         base_coin: base_avail + base_res,
                     }
                 else:

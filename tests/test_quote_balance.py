@@ -1,8 +1,12 @@
 """Tests for quote-asset-aware live balance reads (item 2 final edge)."""
 
 import unittest
+import json
+import os
+import tempfile
 
 from xauby.engine.brokers.live_broker import LiveBroker
+from xauby.engine.brokers.sim_broker import SimBroker
 
 
 class _FakeClient:
@@ -62,6 +66,26 @@ class TestEngineQuoteAssetResolver(unittest.TestCase):
 
     def test_default_usdt(self):
         self.assertEqual(self._resolve({}, None), "USDT")
+
+
+class TestSimBrokerQuoteBalance(unittest.TestCase):
+    def test_thb_cash_uses_thb_state_key(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        handle.close()
+        try:
+            broker = SimBroker(handle.name, initial_balance=100_000, quote_asset="thb")
+            result = broker.execute_buy(
+                "BTCTHB", qty=0.01, price=2_700_000, notional=27_000
+            )
+            self.assertTrue(result.success)
+            self.assertEqual(broker.quote_asset, "THB")
+            self.assertEqual(broker.get_quote_balance(), broker.get_usdt_balance())
+            with open(handle.name, encoding="utf-8") as file:
+                state = json.load(file)
+            self.assertIn("THB", state)
+            self.assertNotIn("USDT", state)
+        finally:
+            os.unlink(handle.name)
 
 
 if __name__ == "__main__":

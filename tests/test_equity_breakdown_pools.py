@@ -81,6 +81,7 @@ class _EngineStub:
     # bind the real implementations
     _sim_portfolio_equity_total = LoopMixin._sim_portfolio_equity_total
     get_symbol_equity_breakdown = LoopMixin.get_symbol_equity_breakdown
+    get_equity = LoopMixin.get_equity
 
 
 class TestEquityBreakdownPools(unittest.TestCase):
@@ -122,6 +123,7 @@ class TestEquityBreakdownPools(unittest.TestCase):
         # virtual cash 1000 + position value (0.01 * 60000 = 600) = 1600.
         self.assertEqual(btc["portfolio_total_usdt"], 1600.0)
         self.assertNotEqual(btc["portfolio_total_usdt"], 99999.0)
+        self.assertEqual(eng.get_equity(symbol="BTCUSDT"), 1600.0)
 
     def test_live_swap_position_exposure_uses_position_notional(self):
         # Regression: a swap position holds no spot base asset, so exposure
@@ -186,6 +188,18 @@ class TestEquityBreakdownPools(unittest.TestCase):
         xau = eng.get_symbol_equity_breakdown("XAUUSDT")
         self.assertEqual(btc["portfolio_total_usdt"], xau["portfolio_total_usdt"])
         self.assertEqual(btc["portfolio_total_usdt"], 1000.0)
+
+    def test_all_sim_balance_map_uses_configured_quote(self):
+        stub = types.SimpleNamespace(
+            _all_symbols_sim=lambda: True,
+            _quote_asset=lambda: "THB",
+            get_simulated_balance=lambda: 100_000.0,
+            _pair_registry=_Registry(["BTCTHB"]),
+            db=_DB({"BTCTHB": {"state": "none"}}),
+            _get_base_asset=lambda symbol: "BTC",
+        )
+        totals = LoopMixin._balance_totals_map(stub)
+        self.assertEqual(totals, {"THB": 100_000.0, "BTC": 0.0})
 
 
 if __name__ == "__main__":
