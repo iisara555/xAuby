@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "quote_asset": "THB",
+  "require_supported_market": true,
+  "include_assets_with_balance": false,
+  "assets": [
+    {
+      "symbol": "BTC",
+      "enabled": true,
+      "mode": "sim",
+      "primary_timeframe": "1w",
+      "confirm_timeframe": "",
+      "strategy": "cdc_weekly_spot",
+      "strategy_params": {},
+      "allowed_sides": ["long"],
+      "leverage": 1.0,
+      "short_live_enabled": false,
+      "regime_router_enabled": false,
+      "regime_router_live_confirmed": false,
+      "sim_fee_pct": 0.25
+    },
+    {
+      "symbol": "SOL",
+      "enabled": true,
+      "mode": "sim",
+      "primary_timeframe": "1w",
+      "confirm_timeframe": "",
+      "strategy": "cdc_weekly_spot",
+      "strategy_params": {},
+      "allowed_sides": ["long"],
+      "leverage": 1.0,
+      "short_live_enabled": false,
+      "regime_router_enabled": false,
+      "regime_router_live_confirmed": false,
+      "sim_fee_pct": 0.25
+    }
+  ]
+}

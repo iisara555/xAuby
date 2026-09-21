@@ -25,12 +25,14 @@ class SimBroker:
         default_fee_pct: float = 0.001,
         fee_resolver: Optional[Callable[[str], float]] = None,
         funding_rate_8h: float = 0.0001,
+        quote_asset: str = "USDT",
     ):
         self.balance_file = balance_file
         self.initial_balance = float(initial_balance)
         self.default_fee_pct = float(default_fee_pct)
         self._fee_resolver = fee_resolver
         self.funding_rate_8h = float(funding_rate_8h)
+        self.quote_asset = str(quote_asset or "USDT").upper()
         self._lock = threading.Lock()
         self._ledgers: Dict[str, SimPositionLedger] = {}
         self._load_ledgers()
@@ -45,17 +47,17 @@ class SimBroker:
 
     def _read_state_unlocked(self) -> Dict[str, Any]:
         if not os.path.exists(self.balance_file):
-            return {"USDT": self.initial_balance, "ledgers": {}}
+            return {self.quote_asset: self.initial_balance, "ledgers": {}}
         try:
             with open(self.balance_file, "r", encoding="utf-8") as f:
                 data = json.load(f) or {}
             if not isinstance(data, dict):
                 data = {}
-            data.setdefault("USDT", self.initial_balance)
+            data.setdefault(self.quote_asset, self.initial_balance)
             data.setdefault("ledgers", {})
             return data
         except Exception:
-            return {"USDT": self.initial_balance, "ledgers": {}}
+            return {self.quote_asset: self.initial_balance, "ledgers": {}}
 
     def _write_state_unlocked(self, data: Dict[str, Any]) -> None:
         atomic_json_write(self.balance_file, data, indent=2)
@@ -91,19 +93,26 @@ class SimBroker:
     def _read_balance_unlocked(self) -> float:
         data = self._read_state_unlocked()
         try:
-            return float(data.get("USDT", self.initial_balance))
+            return float(data.get(self.quote_asset, self.initial_balance))
         except (TypeError, ValueError):
             return self.initial_balance
 
-    def get_usdt_balance(self) -> float:
+    def get_quote_balance(self) -> float:
         with self._lock:
             return self._read_balance_unlocked()
 
-    def save_usdt_balance(self, amount: float) -> None:
+    # Back-compat aliases retained while callers still use the old USDT names.
+    def get_usdt_balance(self) -> float:
+        return self.get_quote_balance()
+
+    def save_quote_balance(self, amount: float) -> None:
         with self._lock:
             data = self._read_state_unlocked()
-            data["USDT"] = float(amount)
+            data[self.quote_asset] = float(amount)
             self._write_state_unlocked(data)
+
+    def save_usdt_balance(self, amount: float) -> None:
+        self.save_quote_balance(amount)
 
     def debit_usdt(self, amount: float) -> bool:
         with self._lock:
@@ -111,7 +120,7 @@ class SimBroker:
             if bal < amount:
                 return False
             data = self._read_state_unlocked()
-            data["USDT"] = float(bal - amount)
+            data[self.quote_asset] = float(bal - amount)
             self._write_state_unlocked(data)
             return True
 
@@ -119,7 +128,7 @@ class SimBroker:
         with self._lock:
             bal = self._read_balance_unlocked()
             data = self._read_state_unlocked()
-            data["USDT"] = float(bal + amount)
+            data[self.quote_asset] = float(bal + amount)
             self._write_state_unlocked(data)
 
     def get_ledger(self, symbol: str) -> SimPositionLedger:
@@ -159,7 +168,10 @@ class SimBroker:
         with self._lock:
             bal = self._read_balance_unlocked()
             if bal < total:
-                return FillResult(success=False, error=f"Insufficient sim balance ({total:.2f} USDT)")
+                return FillResult(
+                    success=False,
+                    error=f"Insufficient sim balance ({total:.2f} {self.quote_asset})",
+                )
             existing = self._ledgers.get(sym)
             if existing and existing.quantity > 0:
                 logger.warning(
@@ -169,7 +181,7 @@ class SimBroker:
                 return FillResult(success=False, error=f"Position already open for {sym}")
             self._ledgers[sym] = SimPositionLedger(entry_price=price, quantity=qty)
             data = self._read_state_unlocked()
-            data["USDT"] = float(bal - total)
+            data[self.quote_asset] = float(bal - total)
             data["ledgers"] = {s: asdict(ledger) for s, ledger in self._ledgers.items()}
             self._write_state_unlocked(data)
         return FillResult(
@@ -202,7 +214,7 @@ class SimBroker:
             ledger.unrealized_pnl = 0.0
             self._ledgers[sym] = ledger
             data = self._read_state_unlocked()
-            data["USDT"] = float(self._read_balance_unlocked() + net_exit)
+            data[self.quote_asset] = float(self._read_balance_unlocked() + net_exit)
             data["ledgers"] = {s: asdict(l) for s, l in self._ledgers.items()}
             self._write_state_unlocked(data)
         return FillResult(
@@ -253,7 +265,7 @@ class SimBroker:
                 last_funding_ts=time.time(),
             )
             data = self._read_state_unlocked()
-            data["USDT"] = float(bal - margin - fees)
+            data[self.quote_asset] = float(bal - margin - fees)
             data["ledgers"] = {s: asdict(v) for s, v in self._ledgers.items()}
             self._write_state_unlocked(data)
         return FillResult(True, qty=qty, price=price, fees=fees,
@@ -299,7 +311,7 @@ class SimBroker:
                 ledger.funding_paid = funding_total
             self._ledgers[sym] = ledger
             data = self._read_state_unlocked()
-            data["USDT"] = float(self._read_balance_unlocked() + credit)
+            data[self.quote_asset] = float(self._read_balance_unlocked() + credit)
             data["ledgers"] = {s: asdict(v) for s, v in self._ledgers.items()}
             self._write_state_unlocked(data)
         return FillResult(True, qty=qty, price=price, fees=fees,

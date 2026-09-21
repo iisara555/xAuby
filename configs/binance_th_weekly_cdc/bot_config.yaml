@@ -1,0 +1,150 @@
+# Standalone PAPER candidate. Never overlay this onto a live tenant config.
+# The 100,000 THB balance and 45/45/10 allocation are simulation assumptions.
+simulate_only: true
+read_only: true
+exchange:
+  provider: binance
+  name: binance
+  base_url: https://api.binance.th
+  quote_asset: THB
+  market_type: spot
+  fee_pct: 0.0025
+  api_key_env: BINANCE_TH_PAPER_API_KEY
+  api_secret_env: BINANCE_TH_PAPER_API_SECRET
+trading:
+  trading_pair: BTCTHB
+  mode: full_auto
+  timeframe: 1w
+  interval_seconds: 60
+  max_open_positions: 2
+  min_order_amount: 100.0
+  risk_pct: 0.02
+  max_position_per_trade_pct: 45.0
+  max_daily_loss_pct: 6.0
+  startup_order_reconcile: false
+  runtime_order_reconcile: false
+strategy:
+  active: cdc_weekly_spot
+  use_closed_candles: true
+  config:
+    cdc_weekly_spot:
+      enabled: true
+      timeframe: 1w
+      primary_timeframe: 1w
+      confirm_timeframe: ''
+      ap_smoothing: 2
+      enable_short: false
+      use_d1_regime_filter: false
+      use_d1_regime_filter_long: false
+      use_d1_regime_filter_short: false
+      require_fresh_zone: false
+      require_slow_slope: false
+      entry_thrust_min: 0.0
+      rsi_min: -1.0
+      rsi_max: 101.0
+      vol_min_ratio: 0.0
+      exit_on_bear_cross: false
+      disable_stop_loss: true
+      sl_atr_mult: 0.0
+      trailing_atr_mult: 0.0
+      breakeven_sl_enabled: false
+      position_pct: 0.45
+      fixed_tp_pct: 0.0
+      partial_tp_pct: 0.0
+      minimal_roi: {}
+strategy_mode:
+  active: trend_only
+  trend_only:
+    primary_timeframe: 1w
+    confirm_timeframe: ''
+    min_confidence: 0.4
+    min_strategies_agree: 1
+    confirmations_required: 1
+    confirmation_candles: 1
+    max_hold_hours: 0
+    mtf_enabled: false
+mode_indicator_profiles:
+  trend_only:
+    active_strategies: [cdc_weekly_spot]
+    primary_timeframe: 1w
+    confirm_timeframe: ''
+    min_confidence: 0.4
+    confirmation_candles: 1
+multi_timeframe:
+  enabled: true
+  timeframes: [1w]
+  higher_timeframes: []
+  required_candles_for_readiness: 100
+  backfill_target_bars: 200
+  require_htf_confirmation: false
+  signal_source: strategy
+data:
+  pairs: [BTCTHB, SOLTHB]
+  auto_detect_held_pairs: false
+  collect_interval_seconds: 60
+  candle_sync_max_workers: 1
+  candle_sync_max_interval_seconds: 900
+  candle_staleness_factor: 2.5
+  hybrid_dynamic_coin_config:
+    whitelist_json_path: coin_whitelist.json
+    require_supported_market: true
+    include_assets_with_balance: false
+    hot_reload_enabled: false
+    min_quote_balance_thb: 100.0
+  pair_filters:
+    min_quote_volume_24h: 0
+portfolio:
+  initial_balance: 100000.0
+  quote_asset: THB
+  max_open_positions: 2
+  min_balance_threshold: 100.0
+  read_only: true
+  position_sizing:
+    mode: fixed_fraction
+    max_position_per_trade_pct: 45.0
+    min_order_amount: 100.0
+  symbols:
+    BTCTHB:
+      allocation_pct: 45.0
+    SOLTHB:
+      allocation_pct: 45.0
+risk:
+  max_open_positions: 2
+  max_daily_trades: 2
+  max_risk_per_trade_pct: 2.0
+  max_position_per_trade_pct: 45.0
+  max_daily_loss_pct: 6.0
+  use_dynamic_sl_tp: false
+  cool_down_minutes: 0
+  drawdown_guard:
+    enabled: true
+    max_drawdown_pct: 25.0
+    close_positions: false
+minimal_roi:
+  enabled: false
+auto_mode_switch:
+  enabled: false
+architecture:
+  whitelist_strict: true
+  strategy_validate_strict: true
+  per_symbol_execution_mode: true
+  sim_broker_enabled: true
+  exchange_plugin_registry_enabled: true
+  regime_router_enabled: false
+  regime_confidence_filter: false
+backtest:
+  data_source: binance
+  data_base_url: https://api.binance.th
+  fee_pct: 0.0025
+  slippage_bps: 10.0
+  funding_rate_8h: 0.0
+candle_retention:
+  enabled: true
+  timeframes:
+    1w: 2000
+telegram:
+  enabled: false
+weekly_review:
+  enabled: false
+monthly_report:
+  enabled: false
