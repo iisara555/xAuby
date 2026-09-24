@@ -60,8 +60,8 @@ class AppHeader(Static):
     def __init__(self, **kwargs):
         super().__init__("", **kwargs)
         self.styles.dock = "top"
-        self.styles.background = "#18181B"
-        self.styles.border_bottom = ("solid", "#3F3F46")
+        self.styles.background = "#111C2C"
+        self.styles.border_bottom = ("solid", "#2A3D54")
         self._state: Dict[str, Any] = {}
         self._envelope: Dict[str, Any] = {}
         self._render_fp: tuple = ()
@@ -272,11 +272,17 @@ class AppFooter(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.styles.dock = "bottom"
-        self.styles.background = "#18181B"
-        self.styles.border_top = ("solid", "#3F3F46")
+        self.styles.background = "#111C2C"
+        self.styles.border_top = ("solid", "#2A3D54")
         
     def render(self) -> Text:
         W = self.size.width
+        if self.active_view == "menu":
+            hint = (
+                " [↑↓] Move  [Enter] Open  [1-9] Shortcut  [Q] Quit"
+                if W >= 58 else " [↑↓] Move  [Enter] Open  [Q] Quit"
+            )
+            return Text.from_ansi(f"\033[96m{hint}\033[0m")
         # Highlight the active view
         d_style = "\033[1;97m" if self.active_view == "dashboard" else "\033[1;36m"
         t_style = "\033[1;97m" if self.active_view == "tradelog" else "\033[1;36m"

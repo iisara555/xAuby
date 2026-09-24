@@ -75,6 +75,20 @@ _READ_ONLY_MENU_GROUPS: List[Tuple[str, List[str]]] = [
     ("EXIT", ["9"]),
 ]
 
+_MENU_DETAILS = {
+    "run_sim": "Start the engine with simulated orders.",
+    "run_live": "Start live trading with the configured safety gates.",
+    "dashboard": "View market charts, positions, and engine health.",
+    "tradelog": "Review completed trades and performance.",
+    "incidents": "Inspect alerts and the event timeline.",
+    "backtest": "Explore historical strategy results.",
+    "config": "Edit trading and system settings.",
+    "system_check": "Validate configuration and dependencies.",
+    "db_tools": "Inspect and back up the database.",
+    "restart_service": "Restart the bot engine service.",
+    "exit": "Close the launcher.",
+}
+
 
 def _active_menu() -> tuple[List[Tuple[str, str, str]], List[Tuple[str, List[str]]]]:
     if is_read_only_mode():
@@ -122,6 +136,9 @@ class LauncherStatus(Static):
         self._refresh()
         self.set_interval(2.0, self._refresh)
 
+    def on_resize(self, event) -> None:  # noqa: ARG002
+        self._refresh()
+
     def _refresh(self) -> None:
         try:
             eng, is_sim = check_engine_status()
@@ -140,17 +157,17 @@ class LauncherStatus(Static):
         db = f"{C_GREEN}DB ✓{C_RESET}" if db_ok else f"{C_RED}DB ✗{C_RESET}"
 
         clock = datetime.now(TH_TZ).strftime("%H:%M:%S")
+        scope = (
+            f"{C_PRIMARY}READ ONLY · {attached_tenant()}{C_RESET}"
+            if is_read_only_mode()
+            else f"{C_PRIMARY}LOCAL SESSION{C_RESET}"
+        )
         sep = f"{C_MUTED}  ·  {C_RESET}"
-        line = sep.join([
-            f"Engine {engine}",
-            db,
-            (
-                f"{C_PRIMARY}RO · {attached_tenant()}{C_RESET}"
-                if is_read_only_mode()
-                else f"{C_PRIMARY}XAUT · BTC{C_RESET}"
-            ),
-            f"{C_MUTED}{clock} ICT{C_RESET}",
-        ])
+        width = self.size.width or 80
+        if width < 66:
+            line = "\n".join((f"Engine {engine}{sep}{db}", f"{scope}{sep}{clock} ICT"))
+        else:
+            line = sep.join((f"Engine {engine}", db, scope, f"{C_MUTED}{clock} ICT{C_RESET}"))
         self.update(Text.from_ansi(line))
 
 
@@ -217,23 +234,29 @@ class MenuScreen(Screen):
             yield LauncherBanner(id="launcher-banner")
             with Vertical(id="menu-body"):
                 yield LauncherStatus(id="launcher-status")
+                yield Static("CHOOSE AN ACTION", id="menu-section-title")
                 yield LauncherMenu(id="launcher-menu")
-                yield Static(
-                    Text.from_ansi(
-                        f"{C_MUTED}↑/↓ move  ·  Enter select  ·  1-9 jump  ·  q quit{C_RESET}"
-                    ),
-                    id="menu-help",
-                )
+                yield Static(_MENU_DETAILS["run_sim"], id="menu-selection")
         yield AppFooter()
 
     def on_mount(self) -> None:
+        self.query_one(AppFooter).active_view = "menu"
         self.call_after_refresh(self._focus_menu)
 
     def _focus_menu(self) -> None:
         try:
-            self.query_one(LauncherMenu).focus()
+            menu = self.query_one(LauncherMenu)
+            menu.focus()
+            if menu.highlighted is not None:
+                option = menu.get_option_at_index(menu.highlighted)
+                if option.id:
+                    self.query_one("#menu-selection", Static).update(_MENU_DETAILS[option.id])
         except Exception:
             pass
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list is self.query_one(LauncherMenu) and event.option.id:
+            self.query_one("#menu-selection", Static).update(_MENU_DETAILS[event.option.id])
 
     # --- action dispatch (contract preserved) ---
     def _run_action(self, action: str) -> None:
