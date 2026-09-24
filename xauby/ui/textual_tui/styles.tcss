@@ -1,22 +1,22 @@
-/* Premium Gemini Modern Gradient TUI Theme Styles */
+/* xAuby console: restrained navy surfaces with clear cyan focus states. */
 
 Screen {
-    background: #121215; /* Soft charcoal — not pure black */
-    color: #f4f4f5;      /* Zinc 100 - clean off-white */
+    background: #0b1220;
+    color: #e8eef7;
 }
 
 /* Header & Footer styling */
 AppHeader {
-    background: #18181b; /* Zinc 900 */
-    color: #f4f4f5;
+    background: #111c2c;
+    color: #e8eef7;
     padding: 0 1;
     height: auto;
     min-height: 2;
 }
 
 AppFooter {
-    background: #18181b;
-    color: #a1a1aa;
+    background: #111c2c;
+    color: #a5b4c8;
     padding: 0 1;
     height: auto;
     min-height: 1;
@@ -55,9 +55,9 @@ AppFooter {
 /* ─── Panel Boxes ─── */
 
 .panel-box {
-    background: #18181b;    /* Zinc 900 */
-    border: round #3f3f46;  /* match the launcher menu's inactive border */
-    border-title-color: #818cf8;  /* Indigo 400 */
+    background: #111c2c;
+    border: round #2a3d54;
+    border-title-color: #7dd3fc;
     border-title-align: left;
     border-title-style: bold;
     padding: 0 1 1 1;
@@ -66,8 +66,8 @@ AppFooter {
 }
 
 .panel-box:focus {
-    border: round #818cf8;
-    background: #818cf8 6%;
+    border: round #67e8f9;
+    background: #163047;
 }
 
 /* Sidebar panels */
@@ -91,9 +91,9 @@ AppFooter {
 #chart-panel {
     height: 70%;
     min-height: 20;
-    background: #141417;
-    border: round #4f46e5;
-    border-title-color: #22d3ee;
+    background: #0e1929;
+    border: round #2c7890;
+    border-title-color: #67e8f9;
     layout: vertical;
 }
 
@@ -104,8 +104,8 @@ AppFooter {
 #chart-ansi {
     height: auto;
     min-height: 15;
-    background: #141417;
-    color: #f4f4f5;
+    background: #0e1929;
+    color: #e8eef7;
     padding: 0 0 0 0;
 }
 
@@ -122,8 +122,8 @@ AppFooter {
 #chart-legend {
     height: auto;
     max-height: 3;
-    background: #1c1c21;
-    color: #a1a1aa;
+    background: #152338;
+    color: #a5b4c8;
     padding: 0 0;
 }
 
@@ -135,8 +135,8 @@ AppFooter {
 /* ─── Scrollbar Customizations ─── */
 
 ScrollBar {
-    background: #18181b;
-    color: #818cf8;
+    background: #111c2c;
+    color: #67e8f9;
 }
 
 ScrollableContainer {
@@ -146,21 +146,21 @@ ScrollableContainer {
 /* ─── Data Table ─── */
 
 DataTable {
-    background: #18181b;
+    background: #111c2c;
     border: none;
-    color: #f4f4f5;
+    color: #e8eef7;
     height: auto;
     max-height: 20;
 }
 
 DataTable > .datatable--header {
-    background: #27272a;
-    color: #a78bfa; /* Violet 400 */
+    background: #1a2b40;
+    color: #7dd3fc;
     text-style: bold;
 }
 
 DataTable > .datatable--cursor {
-    background: #312e81; /* Deep indigo */
+    background: #194159;
 }
 
 /* ─── TradeLog & Incidents (RawTUI fallback) ─── */
@@ -185,7 +185,7 @@ DataTable > .datatable--cursor {
 }
 
 #menu-scroll {
-    align: center middle;
+    align: center top;
 }
 
 #launcher-banner {
@@ -196,7 +196,7 @@ DataTable > .datatable--cursor {
 
 #menu-body {
     width: 100%;
-    max-width: 80;
+    max-width: 76;
     height: auto;
     padding: 0 2 1 2;
 }
@@ -204,49 +204,60 @@ DataTable > .datatable--cursor {
 #launcher-status {
     width: 100%;
     height: auto;
-    border: round #6366F1;
+    background: #15283a;
+    border: round #2a6073;
     padding: 0 1;
-    margin: 1 0;
-    color: #E5E7EB;
-    content-align: center middle;
+    margin: 1 0 0 0;
+    color: #e8eef7;
+    content-align: left middle;
+}
+
+#menu-section-title {
+    height: auto;
+    color: #7dd3fc;
+    text-style: bold;
+    padding: 1 1 0 1;
 }
 
 OptionList#launcher-menu {
     width: 100%;
     height: auto;
-    border: round #3F3F46;
-    background: transparent;
+    border: round #2a3d54;
+    background: #111c2c;
     padding: 0 1;
 }
 
 OptionList#launcher-menu:focus {
-    border: round #818CF8;
+    border: round #67e8f9;
 }
 
 OptionList#launcher-menu > .option-list--option-highlighted {
-    background: #818CF8 20%;
+    background: #194159;
+    color: #ffffff;
     text-style: bold;
 }
 
 OptionList#launcher-menu > .option-list--option-hover {
-    background: #818CF8 12%;
+    background: #193348;
 }
 
 OptionList#launcher-menu > .option-list--separator {
-    color: #374151;
+    color: #2a3d54;
 }
 
 OptionList#launcher-menu > .option-list--option-disabled {
-    color: #6B7280;
+    color: #a5b4c8;
     text-style: bold;
 }
 
-#menu-help {
-    width: 100%;
+#menu-selection {
     height: auto;
-    color: #6B7280;
-    text-align: center;
-    padding: 1 0 0 0;
+    min-height: 2;
+    color: #c4d4e5;
+    background: #152338;
+    border-left: solid #67e8f9;
+    padding: 0 1;
+    margin-top: 1;
 }
 
 /* ─── Responsive Stacked Layout (< 110 cols) — Termius / tablet / phone ─── */
@@ -342,6 +353,23 @@ OptionList#launcher-menu > .option-list--option-disabled {
     min-height: 1;
 }
 
+/* A 24-row phone terminal keeps the full action list above the footer. */
+.phone-mode #launcher-banner,
+.phone-mode #menu-section-title,
+.phone-mode #menu-selection,
+.phone-mode OptionList#launcher-menu > .option-list--separator {
+    display: none;
+}
+
+.phone-mode #menu-body {
+    padding: 0 1;
+}
+
+.phone-mode #launcher-status {
+    margin: 0;
+    border: none;
+}
+
 /* Trade log & incident native screens */
 .muted-panel {
     color: #a1a1aa;
@@ -411,11 +439,11 @@ OptionList#launcher-menu > .option-list--option-disabled {
     height: auto;
 }
 
-/* Premium Panel box styles for Trade Log Section panels */
+/* Shared panels for trade log and incident explorer. */
 #tl-regime, #tl-perf, #tl-peak, #tl-cards, #inc-runs-panel, #inc-summary, #inc-validation, #inc-timeline {
-    background: #18181b;
-    border: round #3f3f46;
-    border-title-color: #818cf8;
+    background: #111c2c;
+    border: round #2a3d54;
+    border-title-color: #7dd3fc;
     border-title-align: left;
     border-title-style: bold;
     padding: 0 1;
@@ -424,7 +452,7 @@ OptionList#launcher-menu > .option-list--option-disabled {
 }
 
 #inc-runs-panel:focus-within {
-    border: round #818cf8;
+    border: round #67e8f9;
 }
 
 /* Runs panel fills the entire left column */
@@ -461,7 +489,7 @@ OptionList#launcher-menu > .option-list--option-disabled {
 }
 
 #inc-runs-panel ListView > ListItem.-highlight {
-    background: #27272a;
+    background: #194159;
 }
 
 /* Summary is compact; validation is collapsible; timeline expands */
@@ -686,30 +714,30 @@ ListItem.run-selected {
 OptionList.qc-list {
     width: 100%;
     height: auto;
-    border: round #3F3F46;
-    background: transparent;
+    border: round #2a3d54;
+    background: #111c2c;
     padding: 0 1;
 }
 
 OptionList.qc-list:focus {
-    border: round #818CF8;
+    border: round #67e8f9;
 }
 
 OptionList.qc-list > .option-list--option-highlighted {
-    background: #818CF8 20%;
+    background: #194159;
     text-style: bold;
 }
 
 OptionList.qc-list > .option-list--option-hover {
-    background: #818CF8 12%;
+    background: #193348;
 }
 
 OptionList.qc-list > .option-list--separator {
-    color: #374151;
+    color: #2a3d54;
 }
 
 OptionList.qc-list > .option-list--option-disabled {
-    color: #6B7280;
+    color: #a5b4c8;
 }
 
 /* Modals */
@@ -722,8 +750,8 @@ QuickConfigScreen, QuickConfigHubScreen {
     max-width: 80%;
     height: auto;
     padding: 1 2;
-    border: round #818CF8;
-    background: #18181B;
+    border: round #67e8f9;
+    background: #111c2c;
 }
 
 #qc-modal-title {
@@ -733,7 +761,7 @@ QuickConfigScreen, QuickConfigHubScreen {
 
 #qc-modal-hint {
     width: 100%;
-    color: #9CA3AF;
+    color: #a5b4c8;
     padding-bottom: 1;
 }
 

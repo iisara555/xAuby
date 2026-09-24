@@ -72,6 +72,7 @@ Captured exports (regenerate anytime):
 | Trade log | [tradelog.svg](screenshots/tradelog.svg) |
 | Incidents | [incidents.svg](screenshots/incidents.svg) |
 | Menu | [menu.svg](screenshots/menu.svg) - also used in root README |
+| Menu (60-column terminal) | [menu-phone.svg](screenshots/menu-phone.svg) |
 | Quick Config | [quick-config.svg](screenshots/quick-config.svg) |
 
 ```bash
@@ -91,6 +92,11 @@ Captured exports (regenerate anytime):
 ![Incident explorer](screenshots/incidents.svg)
 
 ### Launcher menu
+
+The menu shows engine and database status above grouped actions. On wide
+terminals, moving the highlight shows a short description of the selected
+action. On narrow terminals, the header and description collapse so every
+action remains visible at 60×24; the footer shows the relevant keys.
 
 ![Launcher menu](screenshots/menu.svg)
 
