@@ -115,9 +115,15 @@ The UI adapts to terminal width (see `xauby/ui/textual_tui/layout.py`):
 
 | Width | Layout |
 |-------|--------|
-| >= 110 cols | Two columns: chart left, stats right |
+| >= 110 cols | Desktop: two-column dashboard, trade log, incidents, and backtest |
 | 75-109 | Single column, full-width panels |
 | < 75 | Compact phone rows, shorter chart |
+
+On Ubuntu Desktop, a terminal around **160 columns × 45 rows** gives each view
+room for its full layout. The launcher and configuration pages use centered
+reading-width columns; the trade table expands vertically, while incident runs
+and backtest results use the available horizontal space. Resizing the terminal
+below 110 columns stacks the panels automatically.
 
 Charts use each pair's `primary_timeframe` from the whitelist. In the current
 OKX baseline, XAUUSDT uses 4H with a 1D confirm timeframe and BTCUSDT uses 4H

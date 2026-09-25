@@ -39,7 +39,7 @@ class _Section(Static):
     def __init__(self, title: str, **kwargs):
         super().__init__("", **kwargs)
         self.border_title = title
-        self.styles.border = ("round", "#3f3f46")
+        self.styles.border = ("round", "#2a3d54")
         self.styles.padding = (0, 1)
 
     def update_ansi(self, lines: list[str]) -> None:
