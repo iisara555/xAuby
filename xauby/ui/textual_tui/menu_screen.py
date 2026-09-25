@@ -16,7 +16,7 @@ from typing import Dict, List, Tuple
 
 from rich.text import Text
 from textual.binding import Binding
-from textual.containers import ScrollableContainer, Vertical
+from textual.containers import Center, ScrollableContainer, Vertical
 from textual.widgets import OptionList, Static
 from textual.widgets.option_list import Option
 
@@ -231,12 +231,14 @@ class MenuScreen(Screen):
     def compose(self):
         yield AppHeader()
         with ScrollableContainer(id="menu-scroll"):
-            yield LauncherBanner(id="launcher-banner")
-            with Vertical(id="menu-body"):
-                yield LauncherStatus(id="launcher-status")
-                yield Static("CHOOSE AN ACTION", id="menu-section-title")
-                yield LauncherMenu(id="launcher-menu")
-                yield Static(_MENU_DETAILS["run_sim"], id="menu-selection")
+            with Center(id="menu-center"):
+                with Vertical(id="menu-shell"):
+                    yield LauncherBanner(id="launcher-banner")
+                    with Vertical(id="menu-body"):
+                        yield LauncherStatus(id="launcher-status")
+                        yield Static("CHOOSE AN ACTION", id="menu-section-title")
+                        yield LauncherMenu(id="launcher-menu")
+                        yield Static(_MENU_DETAILS["run_sim"], id="menu-selection")
         yield AppFooter()
 
     def on_mount(self) -> None:

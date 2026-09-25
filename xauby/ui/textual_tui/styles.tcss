@@ -188,6 +188,17 @@ DataTable > .datatable--cursor {
     align: center top;
 }
 
+#menu-center {
+    width: 100%;
+    height: auto;
+}
+
+#menu-shell {
+    width: 100%;
+    max-width: 76;
+    height: auto;
+}
+
 #launcher-banner {
     width: 100%;
     height: auto;
@@ -196,7 +207,6 @@ DataTable > .datatable--cursor {
 
 #menu-body {
     width: 100%;
-    max-width: 76;
     height: auto;
     padding: 0 2 1 2;
 }
@@ -386,7 +396,7 @@ OptionList#launcher-menu > .option-list--option-disabled {
 #tradelog-split {
     layout: horizontal;
     width: 100%;
-    height: auto;
+    height: 100%;
 }
 
 #tradelog-split.stacked {
@@ -397,12 +407,26 @@ OptionList#launcher-menu > .option-list--option-disabled {
 #tradelog-split.stacked #tradelog-left-col,
 #tradelog-split.stacked #tradelog-right-col {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: auto;
 }
 
-#tradelog-left-col, #tradelog-right-col {
-    width: 1fr;
+#tradelog-left-col {
+    width: 36%;
+    min-width: 42;
+    max-width: 58;
     height: auto;
+}
+
+#tradelog-right-col {
+    width: 1fr;
+    height: 100%;
+}
+
+#tradelog-split.stacked #tl-datatable {
+    height: auto;
+    max-height: 20;
 }
 
 /* ── Incident Explorer 2-column split ── */
@@ -418,8 +442,9 @@ OptionList#launcher-menu > .option-list--option-disabled {
 }
 
 #incident-left-col {
-    width: 38;
-    min-width: 28;
+    width: 32%;
+    min-width: 38;
+    max-width: 56;
     height: 1fr;
 }
 
@@ -430,6 +455,8 @@ OptionList#launcher-menu > .option-list--option-disabled {
 
 #incident-split.stacked #incident-left-col {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: auto;
     max-height: 12;
 }
@@ -560,17 +587,17 @@ OptionList#launcher-menu > .option-list--option-disabled {
 
 /* Premium styled Trade DataTable */
 TradeDataTable {
-    border: round #3f3f46;
-    border-title-color: #818cf8;
+    border: round #2a3d54;
+    border-title-color: #7dd3fc;
     border-title-align: left;
     border-title-style: bold;
     margin-bottom: 1;
-    height: auto;
-    max-height: 20;
+    height: 1fr;
+    max-height: 100%;
 }
 
 TradeDataTable:focus {
-    border: round #818cf8;
+    border: round #67e8f9;
 }
 
 .phone-mode TradeDataTable {
@@ -583,7 +610,7 @@ TradeDataTable:focus {
 }
 
 ListItem.run-selected {
-    background: #27272a;
+    background: #194159;
 }
 
 /* ─── Backtest Screen Layout ─── */
@@ -600,14 +627,16 @@ ListItem.run-selected {
 }
 
 #backtest-left-col {
-    width: 38%;
-    min-width: 38;
-    max-width: 50;
+    width: 34%;
+    min-width: 42;
+    max-width: 56;
     height: 100%;
 }
 
 #backtest-split.stacked #backtest-left-col {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     height: auto;
 }
 
@@ -619,6 +648,12 @@ ListItem.run-selected {
 #backtest-split.stacked #backtest-right-col {
     width: 100%;
     height: auto;
+}
+
+#bt-summary, #bt-parity, #bt-curve, #bt-trades {
+    background: #111c2c;
+    border-title-color: #7dd3fc;
+    border-title-style: bold;
 }
 
 #bt-summary {
@@ -741,7 +776,7 @@ OptionList.qc-list > .option-list--option-disabled {
 }
 
 /* Modals */
-QuickConfigScreen, QuickConfigHubScreen {
+NumberModal, ChoiceModal, TextModal, ConfirmModal {
     align: center middle;
 }
 
